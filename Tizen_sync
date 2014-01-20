@@ -13,3 +13,10 @@ python $source_root/src/build/util/lastchange.py \
 python $source_root/src/build/util/lastchange.py \
        -o $source_root/src/build/util/LASTCHANGE.blink \
        -s $source_root/src/third_party/WebKit
+
+
+#Import packging (gbs do not allow link.)
+mkdir -p packaging
+cp src/xwalk/packaging/* packaging/
+rm -f packaging/gbp*
+
