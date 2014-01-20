@@ -1,0 +1,15 @@
+#This should fetch Crosswalk into src/xwalk and generate a
+#   .gclient-xwalk with the other dependencies.
+gclient sync
+
+#This will fetch all the other source files but not run any hooks.
+gclient sync --gclientfile=.gclient-xwalk --nohooks [aka -n]
+
+#Generate the LASTCHANGE files.
+python $source_root/src/build/util/lastchange.py \
+       -o $source_root/src/build/util/LASTCHANGE \
+       -s $source_root/src
+
+python $source_root/src/build/util/lastchange.py \
+       -o $source_root/src/build/util/LASTCHANGE.blink \
+       -s $source_root/src/third_party/WebKit
