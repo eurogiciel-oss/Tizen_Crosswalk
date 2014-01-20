@@ -1,0 +1,148 @@
+From 0fd635681c6e7e3d2e1875f0c9e7f32547990ba1 Mon Sep 17 00:00:00 2001
+From: Tiago Vignatti <tiago.vignatti@intel.com>
+Date: Tue, 17 Dec 2013 15:33:36 +0200
+Subject: [PATCH] browser: Support Desktop Aura creation on Ozone
+
+This CL creates BrowserDesktopRootWindowHostOzone and gives support for Aura
+Ozone implementations.
+
+Different than the BDRWHX11 constructor, Ozone's assigns
+views::DesktopRootWindowHost::Create to desktop_root_window_host_, where this
+pointer is used throughout BDRWHL methods for making reference to it.
+
+In particular, this CL brings back support for Chrome browser in Ozone-Wayland.
+
+BUG=295089
+---
+ .../browser_desktop_root_window_host_ozone.cc      |   55 ++++++++++++++++++++
+ .../frame/browser_desktop_root_window_host_ozone.h |   42 +++++++++++++++
+ chrome/chrome_browser_ui.gypi                      |    2 +
+ 3 files changed, 99 insertions(+)
+ create mode 100644 chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.cc
+ create mode 100644 chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.h
+
+diff --git a/chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.cc b/chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.cc
+new file mode 100644
+index 0000000..f29c51b
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.cc
+@@ -0,0 +1,55 @@
++// Copyright (c) 2013 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.h"
++
++////////////////////////////////////////////////////////////////////////////////
++// BrowserDesktopRootWindowHostOzone, public:
++
++BrowserDesktopRootWindowHostOzone::BrowserDesktopRootWindowHostOzone(
++    views::internal::NativeWidgetDelegate* native_widget_delegate,
++    views::DesktopNativeWidgetAura* desktop_native_widget_aura,
++    BrowserView* browser_view)
++      : browser_view_(browser_view),
++      desktop_root_window_host_(NULL) {
++  desktop_root_window_host_ = views::DesktopRootWindowHost::Create(
++      native_widget_delegate,
++      desktop_native_widget_aura);
++}
++
++BrowserDesktopRootWindowHostOzone::~BrowserDesktopRootWindowHostOzone() {
++  desktop_root_window_host_ = NULL;
++}
++
++////////////////////////////////////////////////////////////////////////////////
++// BrowserDesktopRootWindowHostOzone,
++//     BrowserDesktopRootWindowHost implementation:
++
++views::DesktopRootWindowHost*
++    BrowserDesktopRootWindowHostOzone::AsDesktopRootWindowHost() {
++  return desktop_root_window_host_;
++}
++
++int BrowserDesktopRootWindowHostOzone::GetMinimizeButtonOffset() const {
++  return 0;
++}
++
++bool BrowserDesktopRootWindowHostOzone::UsesNativeSystemMenu() const {
++  return false;
++}
++
++////////////////////////////////////////////////////////////////////////////////
++// BrowserDesktopRootWindowHost, public:
++
++// static
++BrowserDesktopRootWindowHost*
++    BrowserDesktopRootWindowHost::CreateBrowserDesktopRootWindowHost(
++        views::internal::NativeWidgetDelegate* native_widget_delegate,
++        views::DesktopNativeWidgetAura* desktop_native_widget_aura,
++        BrowserView* browser_view,
++        BrowserFrame* browser_frame) {
++  return new BrowserDesktopRootWindowHostOzone(native_widget_delegate,
++                                               desktop_native_widget_aura,
++                                               browser_view);
++}
+diff --git a/chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.h b/chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.h
+new file mode 100644
+index 0000000..f1dbe3f
+--- /dev/null
++++ b/chrome/browser/ui/views/frame/browser_desktop_root_window_host_ozone.h
+@@ -0,0 +1,42 @@
++// Copyright (c) 2013 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_BROWSER_DESKTOP_ROOT_WINDOW_HOST_OZONE_H_
++#define CHROME_BROWSER_UI_VIEWS_FRAME_BROWSER_DESKTOP_ROOT_WINDOW_HOST_OZONE_H_
++
++#include "ui/aura/root_window_host.h"
++#include "ui/views/widget/desktop_aura/desktop_root_window_host.h"
++#include "chrome/browser/ui/views/frame/browser_desktop_root_window_host.h"
++
++class BrowserFrame;
++class BrowserView;
++
++namespace views {
++class DesktopNativeWidgetAura;
++}
++
++class BrowserDesktopRootWindowHostOzone
++    : public BrowserDesktopRootWindowHost {
++ public:
++  BrowserDesktopRootWindowHostOzone(
++      views::internal::NativeWidgetDelegate* native_widget_delegate,
++      views::DesktopNativeWidgetAura* desktop_native_widget_aura,
++      BrowserView* browser_view);
++  virtual ~BrowserDesktopRootWindowHostOzone();
++
++ private:
++  // Overridden from BrowserDesktopRootWindowHost:
++  virtual views::DesktopRootWindowHost* AsDesktopRootWindowHost() OVERRIDE;
++  virtual int GetMinimizeButtonOffset() const OVERRIDE;
++  virtual bool UsesNativeSystemMenu() const OVERRIDE;
++
++  BrowserView* browser_view_;
++
++  // Ownership passed to RootWindow on Init.
++  views::DesktopRootWindowHost* desktop_root_window_host_;
++
++  DISALLOW_COPY_AND_ASSIGN(BrowserDesktopRootWindowHostOzone);
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_BROWSER_DESKTOP_ROOT_WINDOW_HOST_OZONE_H_
+diff --git a/chrome/chrome_browser_ui.gypi b/chrome/chrome_browser_ui.gypi
+index dd25e1c..a33cce8 100644
+--- a/chrome/chrome_browser_ui.gypi
++++ b/chrome/chrome_browser_ui.gypi
+@@ -1860,6 +1860,8 @@
+         'browser/ui/views/frame/desktop_user_action_handler_aura.cc',
+         'browser/ui/views/frame/desktop_user_action_handler_aura.h',
+         'browser/ui/views/frame/browser_desktop_root_window_host.h',
++        'browser/ui/views/frame/browser_desktop_root_window_host_ozone.cc',
++        'browser/ui/views/frame/browser_desktop_root_window_host_ozone.h',
+         'browser/ui/views/frame/browser_desktop_root_window_host_win.cc',
+         'browser/ui/views/frame/browser_desktop_root_window_host_win.h',
+         'browser/ui/views/frame/browser_desktop_root_window_host_x11.cc',
+-- 
+1.7.9.5
+
