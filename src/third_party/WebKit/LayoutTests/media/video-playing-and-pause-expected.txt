@@ -1,0 +1,8 @@
+Test that pausing the media element in "playing" event handler pauses the media element.
+
+EVENT(playing)
+EVENT(timeupdate)
+EVENT(pause)
+
+PASS Verifies pause actually pauses. 
+

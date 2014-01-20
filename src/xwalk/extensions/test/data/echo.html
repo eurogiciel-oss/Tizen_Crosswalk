@@ -1,0 +1,17 @@
+<html>
+<head>
+<title></title>
+</head>
+<body>
+<script>
+try {
+    echo.echo("Pass", function(msg) {
+            document.title = msg;
+        });
+} catch(e) {
+    console.log(e);
+    document.title = "Fail";
+}
+</script>
+</body>
+</html>

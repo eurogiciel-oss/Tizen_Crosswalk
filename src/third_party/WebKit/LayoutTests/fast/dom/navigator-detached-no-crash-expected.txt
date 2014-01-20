@@ -1,0 +1,55 @@
+This tests that the navigator object of a deleted frame is disconnected properly. Accessing fields or methods shouldn't crash the browser. 
+ Check Navigator
+navigator.appCodeName is OK
+navigator.appName is OK
+navigator.appVersion is OK
+navigator.cookieEnabled is OK
+navigator.doNotTrack is OK
+navigator.getStorageUpdates() is OK
+navigator.javaEnabled() is OK
+navigator.language is OK
+navigator.maxTouchPoints is OK
+navigator.mimeTypes is OK
+navigator.onLine is OK
+navigator.platform is OK
+navigator.plugins is OK
+navigator.product is OK
+navigator.productSub is OK
+navigator.registerProtocolHandler() threw err TypeError: Failed to execute 'registerProtocolHandler' on 'Navigator': 3 arguments required, but only 0 present.
+navigator.registerServiceWorker() threw err TypeError: Failed to execute 'registerServiceWorker' on 'Navigator': 2 arguments required, but only 0 present.
+navigator.requestMIDIAccess() is OK
+navigator.unregisterServiceWorker() threw err TypeError: Failed to execute 'unregisterServiceWorker' on 'Navigator': 1 argument required, but only 0 present.
+navigator.userAgent is OK
+navigator.vendor is OK
+navigator.vendorSub is OK
+navigator.vibrate() threw err TypeError: Failed to execute 'vibrate' on 'Navigator': 1 argument required, but only 0 present.
+navigator.webkitGetGamepads() is OK
+navigator.webkitPersistentStorage is OK
+navigator.webkitTemporaryStorage is OK
+navigator.appCodeName is OK
+navigator.appName is OK
+navigator.appVersion is OK
+navigator.cookieEnabled is OK
+navigator.doNotTrack is OK
+navigator.getStorageUpdates() is OK
+navigator.javaEnabled() is OK
+navigator.language is OK
+navigator.maxTouchPoints is OK
+navigator.mimeTypes is OK
+navigator.onLine is OK
+navigator.platform is OK
+navigator.plugins is OK
+navigator.product is OK
+navigator.productSub is OK
+navigator.registerProtocolHandler() threw err TypeError: Failed to execute 'registerProtocolHandler' on 'Navigator': 3 arguments required, but only 0 present.
+navigator.registerServiceWorker() threw err TypeError: Failed to execute 'registerServiceWorker' on 'Navigator': 2 arguments required, but only 0 present.
+navigator.requestMIDIAccess() is OK
+navigator.unregisterServiceWorker() threw err TypeError: Failed to execute 'unregisterServiceWorker' on 'Navigator': 1 argument required, but only 0 present.
+navigator.userAgent is OK
+navigator.vendor is OK
+navigator.vendorSub is OK
+navigator.vibrate() threw err TypeError: Failed to execute 'vibrate' on 'Navigator': 1 argument required, but only 0 present.
+navigator.webkitGetGamepads() is OK
+navigator.webkitPersistentStorage is OK
+navigator.webkitTemporaryStorage is OK
+

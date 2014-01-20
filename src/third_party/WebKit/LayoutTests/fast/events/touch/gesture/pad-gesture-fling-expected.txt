@@ -1,0 +1,15 @@
+Tests basic use of GestureFlingStart
+
+On success, you will see a series of "PASS" messages, followed by "TEST COMPLETE".
+
+
+PASS successfullyParsed is true
+
+TEST COMPLETE
+PASS actualWheelEventsOccurred is >= 40
+PASS cumulativeScrollX is >= 200
+PASS cumulativeScrollY is >= 200
+PASS successfullyParsed is true
+
+TEST COMPLETE
+

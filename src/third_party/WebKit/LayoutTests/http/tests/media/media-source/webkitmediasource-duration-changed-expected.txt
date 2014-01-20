@@ -1,0 +1,31 @@
+Tests duration attribute on MediaSource object
+
+Test setting the duration when closed.
+Got expected exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable.
+Test getting the duration when closed.
+
+running testExpectExceptionOnNegativeDuration
+EVENT(webkitsourceopen)
+Got expected exception InvalidAccessError: A parameter or an operation was not supported by the underlying object.
+
+running testExpectExceptionOnNaNDuration
+EVENT(webkitsourceopen)
+Got expected exception InvalidAccessError: A parameter or an operation was not supported by the underlying object.
+
+running testDurationChange
+EVENT(webkitsourceopen)
+EVENT(loadedmetadata)
+EVENT(durationchange)
+
+running testDurationChangeThenOverwriteDuration
+EVENT(webkitsourceopen)
+EVENT(loadedmetadata)
+EVENT(durationchange)
+EVENT(durationchange)
+
+running testDurationChangeTruncates
+EVENT(webkitsourceopen)
+EVENT(loadedmetadata)
+EVENT(durationchange)
+END OF TEST
+

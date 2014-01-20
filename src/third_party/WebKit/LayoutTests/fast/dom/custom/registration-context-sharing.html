@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<script src="../../../resources/testharness.js"></script>
+<script src="../../../resources/testharnessreport.js"></script>
+<script src="test-harness-utils.js"></script>
+<body>
+<script>
+function TestRegistrationContextSharing(window, documentA, documentB) {
+    this.window = window;
+    this.documentA = documentA;
+    this.documentB = documentB;
+}
+
+TestRegistrationContextSharing.prototype.
+testRegistrationContextIsShared = function () {
+    this.testUpgrade_oneDefinitionShouldUpgradeMultipleDocuments();
+    this.testRegisterInAInstantiateInB_shouldActivateDefinition();
+};
+
+TestRegistrationContextSharing.prototype.
+testUpgrade_oneDefinitionShouldUpgradeMultipleDocuments = function () {
+    var documentAUpgradeCandidate = this.documentA.createElement('x-u');
+    documentAUpgradeCandidate.dataset.name = 'document A upgrade candidate';
+
+    var documentBUpgradeCandidate = this.documentB.createElement('x-u');
+    documentBUpgradeCandidate.dataset.name = 'document B upgrade candidate';
+
+    var invocations = [];
+    function created() {
+        invocations.push('created ' + this.dataset.name + ' with prototype ' +
+                         'tagged ' + this.prototypeTag);
+    }
+
+    var protoU = Object.create(this.window.HTMLElement.prototype);
+    protoU.prototypeTag = 'U';
+    protoU.createdCallback = created;
+    this.documentB.register('x-u', {prototype: protoU});
+
+    assert_array_equals(
+        invocations,
+        ['created document A upgrade candidate with prototype tagged U',
+         'created document B upgrade candidate with prototype tagged U'],
+        'the created callback should have been called for both elements ' +
+        'in creation order');
+};
+
+TestRegistrationContextSharing.prototype.
+testRegisterInAInstantiateInB_shouldActivateDefinition = function () {
+    var invocations = [];
+    function created() {
+        invocations.push('created ' + this.dataset.name + ' with prototype ' +
+                         'tagged ' + this.prototypeTag);
+    }
+
+    var protoV = Object.create(this.window.HTMLElement.prototype);
+    protoV.prototypeTag = 'V';
+    protoV.createdCallback = created;
+    this.documentA.register('x-v', {prototype: protoV});
+
+    var div = this.documentB.createElement('div');
+    div.innerHTML = '<x-v data-name="document B element V"></x-v>';
+    assert_array_equals(
+        invocations,
+        ['created document B element V with prototype tagged V'],
+        'the created callback should have been called for the x-v element');
+};
+
+(function () {
+
+var t = async_test('registration context is shared with the template document');
+
+withFrame(t.step_func(function (frame) {
+    var documentA = frame.contentDocument;
+    documentA.body.innerHTML = '<template>foo</template>';
+    var documentB = documentA.body.firstChild.content.ownerDocument;
+    var tester = new TestRegistrationContextSharing(
+        frame.contentWindow, documentA, documentB);
+    tester.testRegistrationContextIsShared();
+    frame.remove();
+    t.done();
+}));
+
+})();
+
+(function () {
+
+var t = async_test('registration context is shared with DOMImplementation-' +
+                   'created documents');
+
+withFrame(t.step_func(function (frame) {
+    var documentA = frame.contentDocument;
+    var documentB = documentA.implementation.createHTMLDocument();
+    var tester = new TestRegistrationContextSharing(
+        frame.contentWindow, documentA, documentB);
+    tester.testRegistrationContextIsShared();
+    frame.remove();
+}));
+
+withFrame(t.step_func(function (frame) {
+    var documentA = frame.contentDocument;
+    var documentB = documentA.implementation.createDocument(
+        'http://www.w3.org/1999/xhtml', 'html');
+    var tester = new TestRegistrationContextSharing(
+        frame.contentWindow, documentA, documentB);
+    tester.testRegistrationContextIsShared();
+    frame.remove();
+}));
+
+withFrame(t.step_func(function (frame) {
+    // Test transitively sharing a registration context through multiple
+    // createDocument/createHTMLDocument steps.
+
+    var documentA = frame.contentDocument;
+
+    // This document is not HTML, XHTML; it will not process custom elements.
+    var documentB = documentA.implementation.createDocument(null, '');
+
+    // This document *will* process custom elements, in a new context.
+    var documentC = documentB.implementation.createHTMLDocument();
+
+    var documentD = documentC.implementation.createDocument(
+        'http://www.w3.org/1999/xhtml', 'html');
+
+    var documentE = documentD.implementation.createDocument(
+        'http://www.w3.org/1999/xhtml', 'html');
+
+    var tester = new TestRegistrationContextSharing(
+        frame.contentWindow, documentC, documentE);
+    tester.testRegistrationContextIsShared();
+    frame.remove();
+    t.done();
+}));
+
+})();
+
+(function () {
+
+var t = async_test('registration context is shared with imported documents');
+var link;
+var documentA;
+
+t.step(function () {
+    // FIXME: When inserting a <link> within a frame triggers an import,
+    // run this part of the test in isolation within a frame.
+    documentA = document;
+
+    link = documentA.createElement('link');
+    link.rel = 'import';
+    link.href = 'resources/empty-document.html';
+    link.onload = t.step_func(function () {
+        var documentB = link.import;
+        var tester = new TestRegistrationContextSharing(window,
+                                                        documentA, documentB);
+        tester.testRegistrationContextIsShared();
+        t.done();
+    });
+
+    documentA.head.appendChild(link);
+});
+
+})();
+
+</script>

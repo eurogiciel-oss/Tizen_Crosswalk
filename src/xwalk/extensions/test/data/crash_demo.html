@@ -1,0 +1,46 @@
+<html>
+<head>
+<title>0</title>
+</head>
+<body>
+<h1>Counter: <p id="counter">0</p></h1>
+
+<script>
+var counter = document.getElementById("counter");
+
+function createButton(caption, callback) {
+  var button = document.createElement("button");
+  button.innerText = caption;
+  button.addEventListener("click", callback);
+  document.body.appendChild(button);
+}
+
+function start() {
+  setTimeout(function() {
+      increment();
+  }, 1000);
+}
+
+function increment() {
+  counter.innerHTML = parseInt(counter.innerHTML) + 1;
+  start();
+}
+
+createButton("Start Timer", function() {
+  start();
+});
+
+createButton("Sync Dieeeee!", function() {
+  var a = crash.syncDie("ExtensionProcess Sync DIED!");
+  document.title = a;
+});
+
+createButton("Dieeeee!", function() {
+  crash.die("ExtensionProcess DIED!!!", function(msg) {
+      document.title = msg;
+    }
+  );
+});
+</script>
+</body>
+</html>

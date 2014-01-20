@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grit latest_public_release="0" current_release="1">
+  <outputs>
+    <output filename="grit/xwalk_application_resources.h" type="rc_header">
+      <emit emit_type='prepend'></emit>
+    </output>
+    <output filename="xwalk_application_resources.pak" type="data_package" />
+    <output filename="xwalk_application_resources.rc" type="rc_all" />
+  </outputs>
+  <translations />
+  <release seq="1">
+    <includes>
+      <include name="IDR_XWALK_APPLICATION_EVENT_API" file="extension/application_event_api.js" type="BINDATA" />
+      <include name="IDR_XWALK_APPLICATION_RUNTIME_API" file="extension/application_runtime_api.js" type="BINDATA" />
+      <include name="IDR_XWALK_APPLICATION_TEST_API" file="test/application_testapi.js" type="BINDATA" />
+    </includes>
+  </release>
+</grit>

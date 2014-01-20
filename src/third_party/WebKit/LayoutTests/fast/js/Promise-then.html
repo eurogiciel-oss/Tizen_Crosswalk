@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="resources/js-test-pre.js"></script>
+</head>
+<body>
+<div id="description"></div>
+<div id="console"></div>
+<script>
+description('Test Promise.');
+
+window.jsTestIsAsync = true;
+
+var resolve;
+
+var firstPromise = new Promise(function(newResolve) {
+  window.thisInInit = this;
+  resolve = newResolve;
+});
+
+var secondPromise = firstPromise.then(function(result) {
+  window.thisInFulfillCallback = this;
+  shouldBeFalse('thisInFulfillCallback === firstPromise');
+  shouldBeFalse('thisInFulfillCallback === secondPromise');
+  shouldBeTrue('thisInFulfillCallback === window');
+  window.result = result;
+  shouldBeEqualToString('result', 'hello');
+  finishJSTest();
+});
+
+shouldBeFalse('thisInInit === firstPromise');
+shouldBeTrue('thisInInit === window');
+shouldBeTrue('firstPromise instanceof Promise');
+shouldBeTrue('secondPromise instanceof Promise');
+
+shouldThrow('firstPromise.then(null)', '"TypeError: onFulfilled must be a function or undefined"');
+shouldThrow('firstPromise.then(undefined, null)', '"TypeError: onRejected must be a function or undefined"');
+shouldThrow('firstPromise.then(37)', '"TypeError: onFulfilled must be a function or undefined"');
+
+resolve('hello');
+
+</script>
+</body>
+</html>

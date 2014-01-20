@@ -1,0 +1,72 @@
+Tests to ensure selectionStart, selectionEnd, selectionDirection and selectionRange throw exceptions when the input element is not a text field.
+
+On success, you will see a series of "PASS" messages, followed by "TEST COMPLETE".
+
+
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS test.selectionStart threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionStart = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionEnd = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionDirection = 0 threw exception InvalidStateError: An attempt was made to use an object that is not, or is no longer, usable..
+PASS test.selectionRange() threw exception TypeError: Object #<HTMLInputElement> has no method 'selectionRange'.
+PASS successfullyParsed is true
+
+TEST COMPLETE
+

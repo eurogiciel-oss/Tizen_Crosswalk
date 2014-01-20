@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grit current_release="1" latest_public_release="0">
+  <release allow_pseudo="false" seq="1">
+    <messages fallback_to_english="true">
+      <message desc="Title for the Javascript Alert dialog [CHAR-LIMIT=32]" name="IDS_JS_ALERT_TITLE">
+        Javascript Alert
+      </message>
+      <message desc="Title for the Javascript Confirm dialog [CHAR-LIMIT=32]" name="IDS_JS_CONFIRM_TITLE">
+        Javascript Confirm
+      </message>
+      <message desc="Title for the Javascript Prompt dialog [CHAR-LIMIT=32]" name="IDS_JS_PROMPT_TITLE">
+        Javascript Prompt
+      </message>
+      <message desc="Prompt for the Download Starting toast [CHAR-LIMIT=32]" name="IDS_DOWNLOAD_START_TOAST">
+        Downloading file:
+      </message>
+      <message desc="Prompt for Downloading no permission toast [CHAR-LIMIT=32]" name="IDS_DOWNLOAD_NO_PERMISSION_TOAST">
+        No permission to write, abort.
+      </message>
+      <message desc="Prompt for Downloading already exists toast [CHAR-LIMIT=32]" name="IDS_DOWNLOAD_ALREADY_EXISTS_TOAST">
+        Downloading file already exists, abort.
+      </message>
+      <message desc="Prompt for failed to download toast [CHAR-LIMIT=32]" name="IDS_DOWNLOAD_FAILED_TOAST">
+        Failed to download file.
+      </message>
+      <message desc="Prompt for finished to download toast [CHAR-LIMIT=32]" name="IDS_DOWNLOAD_FINISHED_TOAST">
+        Finished to download file.
+      </message>
+      <message desc="Title for the Ssl Alert dialog [CHAR-LIMIT=32]" name="IDS_SSL_ALERT_TITLE">
+        Ssl Alert
+      </message>
+      <message desc="Title for the http authentication dialog [CHAR-LIMIT=32]" name="IDS_HTTP_AUTH_TITLE">
+        Authentication Required
+      </message>
+      <message desc="Prompt for the http authentication user name [CHAR-LIMIT=32]" name="IDS_HTTP_AUTH_USER_NAME">
+        Username
+      </message>
+      <message desc="Prompt for the http authentication pasword [CHAR-LIMIT=32]" name="IDS_HTTP_AUTH_PASSWORD">
+        Password
+      </message>
+      <message desc="Prompt for the http authentication login [CHAR-LIMIT=32]" name="IDS_HTTP_AUTH_LOG_IN">
+        Log In
+      </message>
+    </messages>
+  </release>
+
+  <translations>
+  </translations>
+  <outputs>
+    <output filename="values/android_xwalk_strings.xml" lang="en" type="android" />
+  </outputs>
+</grit>
+

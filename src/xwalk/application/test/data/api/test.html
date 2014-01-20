@@ -1,0 +1,35 @@
+<html>
+<head>
+<title></title>
+</head>
+<body>
+  <script>
+  var assert = xwalk.app.test.assert;
+  var getManifestTest = function(resolve) {
+    xwalk.app.runtime.getManifest(function(manifest) {
+      assert(manifest);
+      assert(manifest.name === "xwalk.app API Test");
+      assert(manifest.version === "1.0");
+      assert(manifest.manifest_version === 1);
+      resolve();
+    });
+  };
+
+  var getMainDocumentTest = function(resolve) {
+    xwalk.app.runtime.getMainDocument(function(main) {
+      assert(main);
+      assert(main.initialized);
+      resolve();
+    });
+  };
+
+  var tests = [
+    getManifestTest,
+    getMainDocumentTest,
+  ];
+
+  // Wait at most 10 seconds, see commen in eventapi/main.js
+  xwalk.app.test.runTests(tests, 10000);
+  </script>
+</body>
+</html>

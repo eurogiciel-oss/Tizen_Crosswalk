@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="UTF-8">
+<style>
+.container {
+  display: inline-block;
+  border: 2px solid black;
+}
+.target {
+  width: 120px;
+  height: 120px;
+  background-image: url(../resources/stripes-100.png), url(../resources/blue-100.png);
+  -webkit-mask-image: radial-gradient(20px circle at 20px 20px, black 18px, transparent),
+                      radial-gradient(20px circle at 20px 20px, black 18px, transparent),
+                      radial-gradient(20px circle at 20px 20px, black 18px, transparent),
+                      radial-gradient(20px circle at 20px 20px, black 18px, transparent);
+}
+</style>
+<body>
+<template id="target-template">
+  <div class="container">
+    <div class="target"></div>
+  </div>
+</template>
+<script src="resources/interpolation-test.js"></script>
+<script>
+// Test equal number of position values as background images.
+assertInterpolation({
+  property: '-webkit-mask-position',
+  from: '0px 0px, 0px 0px, 0px 0px, 0px 0px',
+  to: '80px 80px, 80px 80px, 80px 80px, 80px 80px',
+}, [
+  {at: -0.25, is: 'left -20px top -20px, left -20px top -20px, left -20px top -20px, left -20px top -20px'},
+  {at: 0, is:     'left   0px top   0px, left   0px top   0px, left   0px top   0px, left   0px top   0px'},
+  {at: 0.25, is:  'left  20px top  20px, left  20px top  20px, left  20px top  20px, left  20px top  20px'},
+  {at: 0.5, is:   'left  40px top  40px, left  40px top  40px, left  40px top  40px, left  40px top  40px'},
+  {at: 0.75, is:  'left  60px top  60px, left  60px top  60px, left  60px top  60px, left  60px top  60px'},
+  {at: 1, is:     'left  80px top  80px, left  80px top  80px, left  80px top  80px, left  80px top  80px'},
+  {at: 1.25, is:  'left 100px top 100px, left 100px top 100px, left 100px top 100px, left 100px top 100px'},
+]);
+
+// Test single position value repeated over background images.
+assertInterpolation({
+  property: '-webkit-mask-position',
+  from: 'top 0px left 0px',
+  to: 'left 80px top 80px',
+}, [
+  {at: -0.25, is: 'left -20px top -20px, left -20px top -20px, left -20px top -20px, left -20px top -20px'},
+  {at: 0, is:     'left   0px top   0px, left   0px top   0px, left   0px top   0px, left   0px top   0px'},
+  {at: 0.25, is:  'left  20px top  20px, left  20px top  20px, left  20px top  20px, left  20px top  20px'},
+  {at: 0.5, is:   'left  40px top  40px, left  40px top  40px, left  40px top  40px, left  40px top  40px'},
+  {at: 0.75, is:  'left  60px top  60px, left  60px top  60px, left  60px top  60px, left  60px top  60px'},
+  {at: 1, is:     'left  80px top  80px, left  80px top  80px, left  80px top  80px, left  80px top  80px'},
+  {at: 1.25, is:  'left 100px top 100px, left 100px top 100px, left 100px top 100px, left 100px top 100px'},
+]);
+
+// Test mismatched numbers of position values.
+assertInterpolation({
+  property: '-webkit-mask-position',
+  from: '0px 0px, 80px 0px',
+  to: '40px 40px, 80px 80px, 0px 80px',
+}, [
+  {at: -0.25, is: 'left -10px top -10px, left 80px top -20px, left 0px top -20px, left 90px top -10px'},
+  {at: 0, is:     'left   0px top   0px, left 80px top   0px, left 0px top   0px, left 80px top   0px'},
+  {at: 0.25, is:  'left  10px top  10px, left 80px top  20px, left 0px top  20px, left 70px top  10px'},
+  {at: 0.5, is:   'left  20px top  20px, left 80px top  40px, left 0px top  40px, left 60px top  20px'},
+  {at: 0.75, is:  'left  30px top  30px, left 80px top  60px, left 0px top  60px, left 50px top  30px'},
+  {at: 1, is:     'left  40px top  40px, left 80px top  80px, left 0px top  80px, left 40px top  40px'},
+  {at: 1.25, is:  'left  50px top  50px, left 80px top 100px, left 0px top 100px, left 30px top  50px'},
+]);
+</script>
+</body>

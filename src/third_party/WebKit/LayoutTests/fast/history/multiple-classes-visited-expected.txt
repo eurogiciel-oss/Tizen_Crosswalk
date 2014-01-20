@@ -1,0 +1,8 @@
+These two links should be the same color (orange):
+
+One Two
+FAIL firstStyle.color failed to change to secondStyle.color in 0.5 seconds.
+PASS successfullyParsed is true
+
+TEST COMPLETE
+

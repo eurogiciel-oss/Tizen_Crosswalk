@@ -1,0 +1,2 @@
+CONSOLE ERROR: line 14: Uncaught TypeError: Type error
+PASS: Invalid blend modes do not trigger a crash. 

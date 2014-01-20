@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="../fast/js/resources/js-test-pre.js"></script>
+<script src="resources/common.js"></script>
+</head>
+<body>
+<p id="description"></p>
+<div id="console"></div>
+
+<script>
+description("Tests cypto.subtle.exportKey.");
+
+jsTestIsAsync = true;
+
+importTestKeys().then(function(result) {
+    keys = result;
+
+    // Invalid export formats.
+    shouldThrow("crypto.subtle.exportKey(3, keys.aesCbcJustDecrypt)");
+    shouldThrow("crypto.subtle.exportKey(null, keys.aesCbcJustDecrypt)");
+    shouldThrow("crypto.subtle.exportKey('invalid', keys.aesCbcJustDecrypt)");
+
+    // Invalid keys
+    shouldThrow("crypto.subtle.exportKey('raw', null)");
+    shouldThrow("crypto.subtle.exportKey('raw', 3)");
+
+    shouldBe("keys.aesCbcJustDecrypt.extractable", "false")
+    shouldThrow("crypto.subtle.exportKey('raw', keys.aesCbcJustDecrypt)");
+
+    // TODO(eroman): exportKey() is not implemented.
+}).then(finishJSTest, failAndFinishJSTest);
+
+</script>
+
+</body>
+</html>

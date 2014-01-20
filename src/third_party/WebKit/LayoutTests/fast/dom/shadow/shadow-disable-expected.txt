@@ -1,0 +1,51 @@
+Tests to ensure that shadow element cannot be created in elements having dynamically created shadow root.
+
+On success, you will see a series of "PASS" messages, followed by "TEST COMPLETE".
+
+
+DIV
+PASS element.createShadowRoot() is not null
+SPAN
+PASS element.createShadowRoot() is not null
+A
+PASS element.createShadowRoot() is not null
+SECTION
+PASS element.createShadowRoot() is not null
+INPUT
+PASS element.createShadowRoot() is not null
+tref
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+AUDIO
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+VIDEO
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+SELECT
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+IMG
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+TEXTAREA
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+IFRAME
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+CANVAS
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+METER
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+PROGRESS
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+OBJECT
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+EMBED
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+KEYGEN
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+VIDEO
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+AUDIO
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+FIELDSET
+PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+PASS successfullyParsed is true
+
+TEST COMPLETE
+

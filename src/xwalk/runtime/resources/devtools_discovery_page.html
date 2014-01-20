@@ -1,0 +1,59 @@
+<html>
+<head>
+<title>XWalk Remote Debugging</title>
+<style>
+  a div {
+    background: no-repeat 0;
+    background-size: 16px;
+    padding: 2px 0px 0px 20px;
+  }
+</style>
+
+<script>
+function onLoad() {
+  var appListRequest = new XMLHttpRequest();
+  appListRequest.open("GET", "/json/list?t=" + new Date().getTime(), true);
+  appListRequest.onreadystatechange = onReady;
+  appListRequest.send();
+}
+
+function onReady() {
+  if (this.readyState == 4 && this.status == 200) {
+    if (this.response != null)
+      var responseJSON = JSON.parse(this.response);
+      for (var i = 0; i < responseJSON.length; ++i)
+        appendItem(responseJSON[i]);
+  }
+}
+
+function appendItem(itemObject) {
+  var frontendRef;
+  if (itemObject.devtoolsFrontendUrl) {
+    frontendRef = document.createElement("a");
+    frontendRef.href = itemObject.devtoolsFrontendUrl;
+    frontendRef.title = itemObject.title;
+  } else {
+    frontendRef = document.createElement("div");
+    frontendRef.title = "The app already has active debugging session";
+  }
+
+  var text = document.createElement("div");
+  if (frontendRef.title)
+    text.innerText = frontendRef.title;
+  else
+    text.innerText = "(untitled)";
+  text.style.cssText = "background-image:url(" + itemObject.faviconUrl + ")";
+  frontendRef.appendChild(text);
+
+  var item = document.createElement("p");
+  item.appendChild(frontendRef);
+
+  document.getElementById("items").appendChild(item);
+}
+</script>
+</head>
+<body onload='onLoad()'>
+  <div id='caption'>Inspectable App</div>
+  <div id='items'></div>
+</body>
+</html>

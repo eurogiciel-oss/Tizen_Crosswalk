@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="../fast/js/resources/js-test-pre.js"></script>
+</head>
+<body>
+<script>
+description("Check that the AudioContext constructor throws when the limit on hardware contexts is reached.");
+
+function reachHardwareContextsLimit() {
+    var context = [];
+    for (var i=0; i<10; ++i) {
+        context[i] = new webkitAudioContext();
+        // Trigger lazy initialization.
+        context[i].createBufferSource();
+    }
+}
+
+shouldThrow("reachHardwareContextsLimit()");
+</script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="../js/resources/js-test-pre.js"></script>
+<script>
+jsTestIsAsync = true;
+
+var numErrors = 0;
+var numErrorsExpected = 3;
+
+function runTests()
+{
+    if (typeof HTMLFormElement.prototype.requestAutocomplete != 'function') {
+        testFailed('no requestAutocomplete function');
+        finishJSTest();
+        return;
+    }
+
+    checkDynamicAttributes();
+    checkNonUserGesture();
+    checkParsedAttributes();
+}
+
+function checkForEnumerableProperties(form)
+{
+    var enumerable = {};
+    for (var field in form)
+        enumerable[field] = true;
+    if (!enumerable.onautocomplete)
+        testFailed('failed to enumerate HTMLFormElement.onautocomplete');
+    if (!enumerable.onautocompleteerror)
+        testFailed('failed to enumerate HTMLFormElement.onautocompleteerror');
+    testPassed('found enumerable properties on HTMLFormElement');
+}
+
+function checkDynamicAttributes()
+{
+    var form = document.createElement('form');
+    checkForEnumerableProperties(form);
+
+    form.autocomplete = 'off';
+    form.addEventListener('autocompleteerror', errorWithReason('disabled'));
+    form.requestAutocomplete();
+}
+
+function checkNonUserGesture()
+{
+    var form = document.createElement('form');
+    checkForEnumerableProperties(form);
+    form.onautocompleteerror = errorWithReason('disabled');
+
+    setTimeout(function()
+    {
+        form.requestAutocomplete();
+    }, 0);
+}
+
+function checkParsedAttributes()
+{
+    var form = document.forms[0];
+    if (!form || !form.onautocompleteerror || form.autocomplete != 'off')
+        testFailed('failed to pick up parsed DOM attributes correctly');
+    checkForEnumerableProperties(form);
+
+    form.requestAutocomplete();
+}
+
+function errorWithReason(reason)
+{
+    return function(event) {
+        if (event instanceof AutocompleteErrorEvent)
+            testPassed('event is an AutocompleteErrorEvent');
+        else
+            testFailed('expected an AutocompleteErrorEvent');
+
+        if (event.reason == reason)
+            testPassed('got expected reason: ' + reason);
+        else
+            testFailed('wrong reason, expected: ' + reason + ', got: ' + event.reason);
+
+        onError();
+    };
+}
+
+function onError()
+{
+    numErrors += 1;
+    if (numErrors > numErrorsExpected)
+        testFailed('too many error events');
+    else if (numErrors == numErrorsExpected) {
+        testPassed('got expected number of error events (' + numErrorsExpected + ')');
+        finishJSTest();
+    }
+}
+
+window.addEventListener('load', runTests, true);
+</script>
+</head>
+<body>
+<p> <a href="https://code.google.com/p/chromium/issues/detail?id=159537">HTMLFormElement#requestAutocomplete and associated events</a> </p>
+<p> For this test to pass, you should see all PASSED below. </p>
+<form autocomplete="off" onautocompleteerror="onError();"></form>
+<p id="console"></p>
+</body>
+</html>
