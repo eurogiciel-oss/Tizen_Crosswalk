@@ -3,7 +3,7 @@
 gclient sync
 
 #This will fetch all the other source files but not run any hooks.
-gclient sync --gclientfile=.gclient-xwalk --nohooks [aka -n]
+gclient sync --gclientfile=.gclient-xwalk --nohooks
 
 #Generate the LASTCHANGE files.
 python $source_root/src/build/util/lastchange.py \
