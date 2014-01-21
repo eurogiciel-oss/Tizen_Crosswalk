@@ -6,6 +6,7 @@ gclient sync
 gclient sync --gclientfile=.gclient-xwalk --nohooks
 
 #Generate the LASTCHANGE files.
+source_root=$(pwd)
 python $source_root/src/build/util/lastchange.py \
        -o $source_root/src/build/util/LASTCHANGE \
        -s $source_root/src
