@@ -51,15 +51,26 @@ class Application : public Runtime::Observer {
   enum LaunchEntryPoint {
     AppMainKey = 1 << 0,  // app.main
     LaunchLocalPathKey = 1 << 1,  // app.launch.local_path
-    LaunchWebURLKey = 1 << 2,  // app.launch.web_url
+    // NOTE: The following key is only used for "dummy" hosted apps,
+    // which can be using any arbitrary URL, incl. remote ones.
+    // For now this should be disabled for all other cases as this will
+    // require special care with permissions etc.
+    URLKey = 1 << 2,  // url
     Default = AppMainKey | LaunchLocalPathKey
   };
   typedef unsigned LaunchEntryPoints;
 
-  LaunchEntryPoints entry_points() const { return entry_points_; }
+  struct LaunchParams {
+    LaunchParams() :
+        entry_points(Default) {}
+
+    LaunchEntryPoints entry_points;
+  };
 
   // Closes all the application's runtimes (application pages).
-  void Close();
+  // NOTE: ApplicationService deletes an Application instance
+  // immediately after its termination.
+  void Terminate();
 
   // Returns Runtime (application page) containing the application's
   // 'main document'. The main document is the main entry point of
@@ -91,11 +102,10 @@ class Application : public Runtime::Observer {
   Application(scoped_refptr<ApplicationData> data,
               RuntimeContext* context,
               Observer* observer);
-  bool Launch();
+  bool Launch(const LaunchParams& launch_params);
 
   template<LaunchEntryPoint>
   bool TryLaunchAt();
-  void set_entry_points(LaunchEntryPoints entry_points);
 
   friend class FinishEventObserver;
   void CloseMainDocument();
@@ -107,7 +117,6 @@ class Application : public Runtime::Observer {
   std::set<Runtime*> runtimes_;
   scoped_ptr<EventObserver> finish_observer_;
   Observer* observer_;
-  LaunchEntryPoints entry_points_;
 
   DISALLOW_COPY_AND_ASSIGN(Application);
 };

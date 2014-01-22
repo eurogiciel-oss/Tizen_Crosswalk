@@ -28,6 +28,7 @@
 
 #if defined(OS_TIZEN_MOBILE)
 #include "xwalk/application/browser/installer/tizen/package_installer.h"
+#include "xwalk/application/browser/installer/tizen/service_package_installer.h"
 #endif
 
 using xwalk::RuntimeContext;
@@ -133,16 +134,15 @@ void WaitForFinishLoad(
 #if defined(OS_TIZEN_MOBILE)
 bool InstallPackageOnTizen(xwalk::application::ApplicationService* service,
                            xwalk::application::ApplicationStorage* storage,
-                           const std::string& app_id,
+                           xwalk::application::ApplicationData* application,
                            const base::FilePath& data_dir) {
-  // FIXME(cmarcelo): The Tizen-specific steps of installation in
-  // service mode are not supported yet. Remove when this is fixed.
-  if (xwalk::XWalkRunner::GetInstance()->is_running_as_service())
-    return true;
+  if (xwalk::XWalkRunner::GetInstance()->is_running_as_service()) {
+    return InstallApplicationForTizen(application, data_dir);
+  }
 
   scoped_ptr<xwalk::application::PackageInstaller> installer =
       xwalk::application::PackageInstaller::Create(service, storage,
-                                                   app_id, data_dir);
+                                                   application->ID(), data_dir);
   if (!installer || !installer->Install()) {
     LOG(ERROR) << "An error occurred during installation on Tizen.";
     return false;
@@ -152,16 +152,15 @@ bool InstallPackageOnTizen(xwalk::application::ApplicationService* service,
 
 bool UninstallPackageOnTizen(xwalk::application::ApplicationService* service,
                              xwalk::application::ApplicationStorage* storage,
-                             const std::string& app_id,
+                             xwalk::application::ApplicationData* application,
                              const base::FilePath& data_dir) {
-  // FIXME(cmarcelo): The Tizen-specific steps of installation in
-  // service mode are not supported yet. Remove when this is fixed.
-  if (xwalk::XWalkRunner::GetInstance()->is_running_as_service())
-    return true;
+  if (xwalk::XWalkRunner::GetInstance()->is_running_as_service()) {
+    return UninstallApplicationForTizen(application, data_dir);
+  }
 
   scoped_ptr<xwalk::application::PackageInstaller> installer =
       xwalk::application::PackageInstaller::Create(service, storage,
-                                                   app_id, data_dir);
+                                                   application->ID(), data_dir);
   if (!installer || !installer->Uninstall()) {
     LOG(ERROR) << "An error occurred during uninstallation on Tizen.";
     return false;
@@ -270,9 +269,11 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
 
 #if defined(OS_TIZEN_MOBILE)
   if (!InstallPackageOnTizen(this, application_storage_,
-                             application_data->ID(),
-                             runtime_context_->GetPath()))
+                             application_data.get(),
+                             runtime_context_->GetPath())) {
+    application_storage_->RemoveApplication(application_data->ID());
     return false;
+  }
 #endif
 
   LOG(INFO) << "Application be installed in: " << app_dir.MaybeAsASCII();
@@ -296,16 +297,26 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
 }
 
 bool ApplicationService::Uninstall(const std::string& id) {
-#if defined(OS_TIZEN_MOBILE)
-  if (!UninstallPackageOnTizen(this, application_storage_, id,
-                               runtime_context_->GetPath()))
+  bool result = true;
+
+  scoped_refptr<ApplicationData> application =
+      application_storage_->GetApplicationData(id);
+  if (!application) {
+    LOG(ERROR) << "Cannot uninstall application with id " << id
+               << "; invalid application id";
     return false;
+  }
+
+#if defined(OS_TIZEN_MOBILE)
+  if (!UninstallPackageOnTizen(this, application_storage_, application.get(),
+                               runtime_context_->GetPath()))
+    result = false;
 #endif
 
   if (!application_storage_->RemoveApplication(id)) {
     LOG(ERROR) << "Cannot uninstall application with id " << id
                << "; application is not installed.";
-    return false;
+    result = false;
   }
 
   const base::FilePath resources =
@@ -314,12 +325,12 @@ bool ApplicationService::Uninstall(const std::string& id) {
       !base::DeleteFile(resources, true)) {
     LOG(ERROR) << "Error occurred while trying to remove application with id "
                << id << "; Cannot remove all resources.";
-    return false;
+    result = false;
   }
 
   FOR_EACH_OBSERVER(Observer, observers_, OnApplicationUninstalled(id));
 
-  return true;
+  return result;
 }
 
 Application* ApplicationService::Launch(const std::string& id) {
@@ -330,7 +341,7 @@ Application* ApplicationService::Launch(const std::string& id) {
     return NULL;
   }
 
-  return Launch(application_data);
+  return Launch(application_data, Application::LaunchParams());
 }
 
 Application* ApplicationService::Launch(const base::FilePath& path) {
@@ -347,7 +358,7 @@ Application* ApplicationService::Launch(const base::FilePath& path) {
     return NULL;
   }
 
-  return Launch(application_data);
+  return Launch(application_data, Application::LaunchParams());
 }
 
 Application* ApplicationService::Launch(const GURL& url) {
@@ -361,7 +372,7 @@ Application* ApplicationService::Launch(const GURL& url) {
 
   base::DictionaryValue manifest;
   // FIXME: define permissions!
-  manifest.SetString(keys::kLaunchWebURLKey, url_spec);
+  manifest.SetString(keys::kURLKey, url_spec);
   manifest.SetString(keys::kNameKey, "XWalk Browser");
   manifest.SetString(keys::kVersionKey, "0");
   manifest.SetInteger(keys::kManifestVersionKey, 1);
@@ -374,7 +385,9 @@ Application* ApplicationService::Launch(const GURL& url) {
     return NULL;
   }
 
-  return Launch(application_data, Application::LaunchWebURLKey);
+  Application::LaunchParams launch_params;
+  launch_params.entry_points = Application::URLKey;
+  return Launch(application_data, launch_params);
 }
 
 namespace {
@@ -441,7 +454,7 @@ void ApplicationService::OnApplicationTerminated(
 
 Application* ApplicationService::Launch(
     scoped_refptr<ApplicationData> application_data,
-    Application::LaunchEntryPoints entry_points) {
+    const Application::LaunchParams& launch_params) {
   if (GetApplicationByID(application_data->ID()) != NULL) {
     LOG(INFO) << "Application with id: " << application_data->ID()
               << " is already running.";
@@ -454,11 +467,10 @@ Application* ApplicationService::Launch(
   Application* application(new Application(application_data,
                                            runtime_context_,
                                            this));
-  application->set_entry_points(entry_points);
   ScopedVector<Application>::iterator app_iter =
       applications_.insert(applications_.end(), application);
 
-  if (!application->Launch()) {
+  if (!application->Launch(launch_params)) {
     event_manager_->RemoveEventRouterForApp(application_data);
     applications_.erase(app_iter);
     return NULL;

@@ -1,5 +1,5 @@
 Name:           crosswalk
-Version:        4.32.73.0
+Version:        4.32.74.0
 Release:        0
 Summary:        Crosswalk is an app runtime based on Chromium
 # License:        (BSD-3-Clause and LGPL-2.1+)
@@ -243,7 +243,8 @@ install -p -D %{SOURCE3} %{buildroot}%{_systemduserservicedir}/xwalk.service
 install -p -D ${BUILDDIR_NAME}/out/Release/xwalk %{buildroot}%{_libdir}/xwalk/xwalk
 install -p -D ${BUILDDIR_NAME}/out/Release/xwalkctl %{buildroot}%{_bindir}/xwalkctl
 install -p -D ${BUILDDIR_NAME}/out/Release/xwalk-launcher %{buildroot}%{_bindir}/xwalk-launcher
-install -p -D ${BUILDDIR_NAME}/out/Release/xwalk-pkg-helper %{buildroot}%{_bindir}/xwalk-pkg-helper
+# xwalk-pkg-helper needs to be set-user-ID-root so it can finish the installation process.
+install -m 06755 -p -D ${BUILDDIR_NAME}/out/Release/xwalk-pkg-helper %{buildroot}%{_bindir}/xwalk-pkg-helper
 
 # Supporting libraries and resources.
 install -p -D ${BUILDDIR_NAME}/out/Release/libffmpegsumo.so %{buildroot}%{_libdir}/xwalk/libffmpegsumo.so
