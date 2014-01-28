@@ -28,9 +28,11 @@ BuildRequires:  expat-devel
 BuildRequires:  flex
 BuildRequires:  gperf
 BuildRequires:  libcap-devel
+BuildRequires:  libjpeg-devel
+BuildRequires:  perl
 BuildRequires:  python
 BuildRequires:  python-xml
-BuildRequires:  perl
+BuildRequires:  v8-devel
 BuildRequires:  which
 BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(appcore-common)
@@ -41,17 +43,22 @@ BuildRequires:  pkgconfig(cairo)
 BuildRequires:  pkgconfig(capi-appfw-application)
 BuildRequires:  pkgconfig(capi-location-manager)
 BuildRequires:  pkgconfig(dbus-1)
+BuildRequires:  pkgconfig(flac)
 BuildRequires:  pkgconfig(fontconfig)
 BuildRequires:  pkgconfig(freetype2)
 BuildRequires:  pkgconfig(gles20)
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  pkgconfig(haptic)
+BuildRequires:  pkgconfig(harfbuzz)
 BuildRequires:  pkgconfig(icu-i18n)
 BuildRequires:  pkgconfig(libdrm)
+BuildRequires:  pkgconfig(libevent)
 BuildRequires:  pkgconfig(libexif)
 BuildRequires:  pkgconfig(libpci)
+BuildRequires:  pkgconfig(libpng)
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libudev)
+BuildRequires:  pkgconfig(libusb-1.0)
 BuildRequires:  pkgconfig(libxml-2.0)
 BuildRequires:  pkgconfig(libxslt)
 BuildRequires:  pkgconfig(pango)
@@ -59,7 +66,9 @@ BuildRequires:  pkgconfig(pkgmgr-info)
 BuildRequires:  pkgconfig(pkgmgr-parser)
 BuildRequires:  pkgconfig(nspr)
 BuildRequires:  pkgconfig(sensor)
+BuildRequires:  pkgconfig(speex)
 BuildRequires:  pkgconfig(vconf)
+BuildRequires:  pkgconfig(vpx)
 BuildRequires:  pkgconfig(x11)
 BuildRequires:  pkgconfig(xcomposite)
 BuildRequires:  pkgconfig(xcursor)
@@ -72,6 +81,7 @@ BuildRequires:  pkgconfig(xrender)
 BuildRequires:  pkgconfig(xscrnsaver)
 BuildRequires:  pkgconfig(xt)
 BuildRequires:  pkgconfig(xtst)
+BuildRequires:  pkgconfig(zlib)
 
 # Depending on the Tizen version and profile we are building for, we have
 # different dependencies, patches and gyp options to pass. Checking for
@@ -212,7 +222,22 @@ ${GYP_EXTRA_FLAGS} \
 -Duse_system_libxml=1 \
 -Duse_system_nspr=1 \
 -Denable_xi21_mt=1 \
--Duse_xi2_mt=0
+-Duse_xi2_mt=0 \
+-Duse_system_expat=1 \
+-Duse_system_flac=1 \
+-Duse_system_harfbuzz=1 \
+-Duse_system_libevent=1 \
+-Duse_system_libjpeg=1 \
+-Duse_system_libpng=1 \
+-Duse_system_libusb=1 \
+-Duse_system_libvpx=1 \
+-Duse_system_libxslt=1 \
+-Duse_system_libopenssl=1 \
+-Duse_system_speex=1 \
+-Duse_system_v8=1 \
+-Duse_system_zlib=1
+
+# -Duse_system_sqlite=1  # We use upstream sqlite package as it is patched locally.
 
 make %{?_smp_mflags} -C "${BUILDDIR_NAME}" BUILDTYPE=Release xwalk xwalkctl xwalk_launcher xwalk-pkg-helper
 
