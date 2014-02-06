@@ -2,6 +2,7 @@
 <!DOCTYPE translationbundle>
 <translationbundle lang="zh-CN">
 <translation id="6676384891291319759">访问互联网</translation>
+<translation id="8586442755830160949">版权所有<ph name="YEAR"/> The Chromium Authors。保留所有权利。</translation>
 <translation id="6373523479360886564">确定要卸载 Chromium 吗？</translation>
 <translation id="5065199687811594072">您希望 Chromium 保存该信用卡信息以便填写网络表单吗？</translation>
 <translation id="6510925080656968729">卸载 Chromium</translation>
@@ -119,7 +120,7 @@
 <translation id="3582788516608077514">正在更新 Chromium...</translation>
 <translation id="7223968959479464213">任务管理器 - Chromium</translation>
 <translation id="3838208658251026018">Chromium 正在从<ph name="BROWSER_COMPONENT"/>中导入以下内容：</translation>
-<translation id="1779356040007214683">为了提高 Chromium 的安全性，系统停用了一些未列在“<ph name="IDS_EXTENSION_WEB_STORE_TITLE"/>”中，并可能是在您不知情的情况下添加的扩展程序。</translation>
+<translation id="1779356040007214683">为了提高 Chromium 的安全性，系统停用了一些未列在 <ph name="IDS_EXTENSION_WEB_STORE_TITLE"/>中、可能是在您不知情的情况下添加的扩展程序。</translation>
 <translation id="6638567566961868659">在 Chromium 菜单或书签栏中查找您的书签。</translation>
 <translation id="2673087257647337101">即将更新到最新版本！重新启动 Chromium 以完成更新。</translation>
 <translation id="5398878173008909840">Chromium 现已推出新版本。</translation>
@@ -170,7 +171,6 @@
 <translation id="805745970029938373">您可以在此处查看来自 Chromium 应用、扩展程序和网站的所有通知。</translation>
 <translation id="2119636228670142020">关于 Chromium 操作系统(&amp;C)</translation>
 <translation id="1708666629004767631">Chromium 现已推出更安全的新版本。</translation>
-<translation id="1539981464052805551">版权所有 2013 The Chromium Authors。保留所有权利。</translation>
 <translation id="378917192836375108">您可以在 Chromium 中点击网上的电话号码，然后通过 Skype 拨打！</translation>
 <translation id="8724049448828509830">正在进行一项下载。您希望退出 Chromium 并取消该下载吗？</translation>
 <translation id="3360567213983886831">Chromium 二进制文件</translation>

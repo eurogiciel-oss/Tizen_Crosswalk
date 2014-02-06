@@ -81,6 +81,7 @@ class UserManagerImpl
   virtual User* GetActiveUser() OVERRIDE;
   virtual const User* GetPrimaryUser() const OVERRIDE;
   virtual User* GetUserByProfile(Profile* profile) const OVERRIDE;
+  virtual Profile* GetProfileByUser(const User* user) const OVERRIDE;
   virtual void SaveUserOAuthStatus(
       const std::string& user_id,
       User::OAuthTokenStatus oauth_token_status) OVERRIDE;
@@ -153,6 +154,14 @@ class UserManagerImpl
   friend class UserManagerTest;
   friend class WallpaperManagerTest;
 
+  // Stages of loading user list from preferences. Some methods can have
+  // different behavior depending on stage.
+  enum UserLoadStage {
+    STAGE_NOT_LOADED = 0,
+    STAGE_LOADING,
+    STAGE_LOADED
+  };
+
   UserManagerImpl();
 
   // LoginUtils::Delegate implementation:
@@ -184,6 +193,10 @@ class UserManagerImpl
   // Returns the user with the given email address if found in the persistent
   // list. Returns |NULL| otherwise.
   const User* FindUserInList(const std::string& user_id) const;
+
+  // Returns |true| if user with the given id is found in the persistent list.
+  // Returns |false| otherwise. Does not trigger user loading.
+  const bool UserExistsInList(const std::string& user_id) const;
 
   // Same as FindUserInList but returns non-const pointer to User object.
   User* FindUserInListAndModify(const std::string& user_id);
@@ -314,7 +327,16 @@ class UserManagerImpl
   void UpdateUserAccountDataImplCallbackDecorator(
       const scoped_ptr<UpdateUserAccountDataCallbackData>& data);
 
-  Profile* GetProfileByUser(const User* user) const;
+  // Implementation for RemoveUser method. This is an asynchronous part of the
+  // method, that verifies that owner will not get deleted, and calls
+  // |RemoveNonOwnerUserInternal|.
+  void RemoveUserInternal(const std::string& user_email,
+                          RemoveUserDelegate* delegate);
+
+  // Implementation for RemoveUser method. It is synchronous. It is called from
+  // RemoveUserInternal after owner check.
+  void RemoveNonOwnerUserInternal(const std::string& user_email,
+                                  RemoveUserDelegate* delegate);
 
   // MultiProfileUserControllerDelegate implementation:
   virtual void OnUserNotAllowed() OVERRIDE;
@@ -325,8 +347,8 @@ class UserManagerImpl
   // Interface to device-local account definitions and associated policy.
   policy::DeviceLocalAccountPolicyService* device_local_account_policy_service_;
 
-  // True if users have been loaded from prefs already.
-  bool users_loaded_;
+  // Indicates stage of loading user from prefs.
+  UserLoadStage user_loading_stage_;
 
   // List of all known users. User instances are owned by |this|. Regular users
   // are removed by |RemoveUserFromList|, public accounts by

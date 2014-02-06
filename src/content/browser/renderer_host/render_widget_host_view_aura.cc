@@ -80,6 +80,7 @@
 #include "base/win/windows_version.h"
 #include "content/browser/accessibility/browser_accessibility_manager_win.h"
 #include "content/browser/accessibility/browser_accessibility_win.h"
+#include "content/common/plugin_constants_win.h"
 #include "ui/base/win/hidden_window.h"
 #include "ui/gfx/gdi_util.h"
 #include "ui/gfx/win/dpi.h"
@@ -142,7 +143,8 @@ BOOL CALLBACK ShowWindowsCallback(HWND window, LPARAM param) {
   RenderWidgetHostViewAura* widget =
       reinterpret_cast<RenderWidgetHostViewAura*>(param);
 
-  if (GetProp(window, kWidgetOwnerProperty) == widget) {
+  if (GetProp(window, kWidgetOwnerProperty) == widget &&
+      widget->GetNativeView()->GetDispatcher()) {
     HWND parent =
         widget->GetNativeView()->GetDispatcher()->GetAcceleratedWidget();
     SetParent(window, parent);
@@ -245,6 +247,15 @@ bool CanRendererHandleEvent(const ui::MouseEvent* event) {
     case WM_XBUTTONDBLCLK:
     case WM_NCMOUSELEAVE:
     case WM_NCMOUSEMOVE:
+    case WM_NCLBUTTONDOWN:
+    case WM_NCLBUTTONUP:
+    case WM_NCLBUTTONDBLCLK:
+    case WM_NCRBUTTONDOWN:
+    case WM_NCRBUTTONUP:
+    case WM_NCRBUTTONDBLCLK:
+    case WM_NCMBUTTONDOWN:
+    case WM_NCMBUTTONUP:
+    case WM_NCMBUTTONDBLCLK:
     case WM_NCXBUTTONDOWN:
     case WM_NCXBUTTONUP:
     case WM_NCXBUTTONDBLCLK:
@@ -457,6 +468,7 @@ RenderWidgetHostViewAura::RenderWidgetHostViewAura(RenderWidgetHost* host)
       text_input_mode_(ui::TEXT_INPUT_MODE_DEFAULT),
       can_compose_inline_(true),
       has_composition_text_(false),
+      accept_return_character_(false),
       last_output_surface_id_(0),
       pending_delegated_ack_count_(0),
       skipped_frames_(false),
@@ -479,6 +491,9 @@ RenderWidgetHostViewAura::RenderWidgetHostViewAura(RenderWidgetHost* host)
   gfx::Screen::GetScreenFor(window_)->AddObserver(this);
   software_frame_manager_.reset(new SoftwareFrameManager(
       weak_ptr_factory_.GetWeakPtr()));
+#if defined(OS_WIN)
+  plugin_parent_window_ = NULL;
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -574,6 +589,13 @@ void RenderWidgetHostViewAura::WasShown() {
 #if defined(OS_WIN)
   LPARAM lparam = reinterpret_cast<LPARAM>(this);
   EnumChildWindows(ui::GetHiddenWindow(), ShowWindowsCallback, lparam);
+
+  if (::IsWindow(plugin_parent_window_)) {
+    gfx::Rect window_bounds = window_->GetBoundsInRootWindow();
+    ::SetWindowPos(plugin_parent_window_, NULL, window_bounds.x(),
+                   window_bounds.y(), window_bounds.width(),
+                   window_bounds.height(), 0);
+  }
 #endif
 }
 
@@ -594,6 +616,8 @@ void RenderWidgetHostViewAura::WasHidden() {
 
     EnumChildWindows(parent, HideWindowsCallback, lparam);
   }
+  if (::IsWindow(plugin_parent_window_))
+    ::SetWindowPos(plugin_parent_window_, NULL, 0, 0, 0, 0, 0);
 #endif
 }
 
@@ -695,10 +719,9 @@ gfx::NativeView RenderWidgetHostViewAura::GetNativeView() const {
 gfx::NativeViewId RenderWidgetHostViewAura::GetNativeViewId() const {
 #if defined(OS_WIN)
   aura::WindowEventDispatcher* dispatcher = window_->GetDispatcher();
-  if (dispatcher) {
-    HWND window = dispatcher->GetAcceleratedWidget();
-    return reinterpret_cast<gfx::NativeViewId>(window);
-  }
+  if (dispatcher)
+    return reinterpret_cast<gfx::NativeViewId>(
+        dispatcher->GetAcceleratedWidget());
 #endif
   return static_cast<gfx::NativeViewId>(NULL);
 }
@@ -749,6 +772,16 @@ RenderWidgetHostViewAura::GetOrCreateBrowserAccessibilityManager() {
 
   SetBrowserAccessibilityManager(manager);
   return manager;
+}
+
+void RenderWidgetHostViewAura::SetKeyboardFocus() {
+#if defined(OS_WIN)
+  if (CanFocus()) {
+    aura::WindowEventDispatcher* dispatcher = window_->GetDispatcher();
+    if (dispatcher)
+      ::SetFocus(dispatcher->GetAcceleratedWidget());
+  }
+#endif
 }
 
 void RenderWidgetHostViewAura::MovePluginWindows(
@@ -1129,6 +1162,29 @@ void RenderWidgetHostViewAura::InternalSetBounds(const gfx::Rect& rect) {
     touch_editing_client_->OnSelectionOrCursorChanged(selection_anchor_rect_,
       selection_focus_rect_);
   }
+#if defined(OS_WIN)
+  // Create the dummy plugin parent window which will be passed as the
+  // container window to windowless plugins.
+  // Plugins like Flash assume the container window which is returned via the
+  // NPNVnetscapeWindow property corresponds to the bounds of the webpage.
+  // This is not true in Aura where we have only HWND which is the main Aura
+  // window. If we return this window to plugins like Flash then it causes the
+  // coordinate translations done by these plugins to break.
+  if (!plugin_parent_window_ && GetNativeViewId()) {
+    plugin_parent_window_ = ::CreateWindowEx(
+        0, L"Static", NULL, WS_CHILDWINDOW, 0, 0, 0, 0,
+        reinterpret_cast<HWND>(GetNativeViewId()), NULL, NULL, NULL);
+    if (::IsWindow(plugin_parent_window_))
+      ::SetProp(plugin_parent_window_, content::kPluginDummyParentProperty,
+                reinterpret_cast<HANDLE>(true));
+  }
+  if (::IsWindow(plugin_parent_window_)) {
+    gfx::Rect window_bounds = window_->GetBoundsInRootWindow();
+    ::SetWindowPos(plugin_parent_window_, NULL, window_bounds.x(),
+                   window_bounds.y(), window_bounds.width(),
+                   window_bounds.height(), 0);
+  }
+#endif
 }
 
 void RenderWidgetHostViewAura::CheckResizeLock() {
@@ -1250,6 +1306,8 @@ void RenderWidgetHostViewAura::DidReceiveFrameFromRenderer() {
 #if defined(OS_WIN)
 void RenderWidgetHostViewAura::UpdateConstrainedWindowRects(
     const std::vector<gfx::Rect>& rects) {
+  if (rects == constrained_rects_)
+    return;
   constrained_rects_ = rects;
   UpdateCutoutRects();
 }
@@ -1581,6 +1639,11 @@ void RenderWidgetHostViewAura::SetParentNativeViewAccessible(
     GetBrowserAccessibilityManager()->ToBrowserAccessibilityManagerWin()
         ->set_parent_iaccessible(accessible_parent);
   }
+}
+
+gfx::NativeViewId RenderWidgetHostViewAura::GetParentForWindowlessPlugin()
+    const {
+  return reinterpret_cast<gfx::NativeViewId>(plugin_parent_window_);
 }
 #endif
 
@@ -2154,7 +2217,8 @@ void RenderWidgetHostViewAura::InsertChar(char16 ch, int flags) {
     return;
   }
 
-  if (host_) {
+  // Ignore character messages for VKEY_RETURN sent on CTRL+M. crbug.com/315547
+  if (host_ && (accept_return_character_ || ch != ui::VKEY_RETURN)) {
     double now = ui::EventTimeForNow().InSecondsF();
     // Send a WebKit::WebInputEvent::Char event to |host_|.
     NativeWebKeyboardEvent webkit_event(ui::ET_KEY_PRESSED,
@@ -2574,6 +2638,14 @@ void RenderWidgetHostViewAura::OnKeyEvent(ui::KeyEvent* event) {
       host_->Shutdown();
     }
   } else {
+    if (event->key_code() == ui::VKEY_RETURN) {
+      // Do not forward return key release events if no press event was handled.
+      if (event->type() == ui::ET_KEY_RELEASED && !accept_return_character_)
+        return;
+      // Accept return key character events between press and release events.
+      accept_return_character_ = event->type() == ui::ET_KEY_PRESSED;
+    }
+
     // We don't have to communicate with an input method here.
     if (!event->HasNativeEvent()) {
       NativeWebKeyboardEvent webkit_event(
@@ -2640,8 +2712,13 @@ void RenderWidgetHostViewAura::OnMouseEvent(ui::MouseEvent* event) {
       }
       // Forward event to renderer.
       if (CanRendererHandleEvent(event) &&
-          !(event->flags() & ui::EF_FROM_TOUCH))
+          !(event->flags() & ui::EF_FROM_TOUCH)) {
         host_->ForwardMouseEvent(mouse_event);
+        // Ensure that we get keyboard focus on mouse down as a plugin window
+        // may have grabbed keyboard focus.
+        if (event->type() == ui::ET_MOUSE_PRESSED)
+          SetKeyboardFocus();
+      }
     }
     return;
   }
@@ -2685,6 +2762,10 @@ void RenderWidgetHostViewAura::OnMouseEvent(ui::MouseEvent* event) {
     WebKit::WebMouseEvent mouse_event = MakeWebMouseEvent(event);
     ModifyEventMovementAndCoords(&mouse_event);
     host_->ForwardMouseEvent(mouse_event);
+    // Ensure that we get keyboard focus on mouse down as a plugin window may
+    // have grabbed keyboard focus.
+    if (event->type() == ui::ET_MOUSE_PRESSED)
+      SetKeyboardFocus();
   }
 
   switch (event->type()) {
@@ -2720,8 +2801,12 @@ void RenderWidgetHostViewAura::OnScrollEvent(ui::ScrollEvent* event) {
     return;
 
   if (event->type() == ui::ET_SCROLL) {
+#if !defined(OS_WIN)
+    // TODO(ananta)
+    // Investigate if this is true for Windows 8 Metro ASH as well.
     if (event->finger_count() != 2)
       return;
+#endif
     WebKit::WebGestureEvent gesture_event =
         MakeWebGestureEventFlingCancel();
     host_->ForwardGestureEvent(gesture_event);
@@ -2903,6 +2988,17 @@ void RenderWidgetHostViewAura::OnWindowFocused(aura::Window* gained_focus,
         (screen->GetDisplayNearestWindow(window_).id() !=
          screen->GetDisplayNearestWindow(gained_focus).id());
     if (is_fullscreen_ && !in_shutdown_ && !focusing_other_display) {
+#if defined(OS_WIN)
+      // On Windows, if we are switching to a non Aura Window on a different
+      // screen we should not close the fullscreen window.
+      if (!gained_focus) {
+        POINT point = {0};
+        ::GetCursorPos(&point);
+        if (screen->GetDisplayNearestWindow(window_).id() !=
+            screen->GetDisplayNearestPoint(gfx::Point(point)).id())
+          return;
+      }
+#endif
       in_shutdown_ = true;
       host_->Shutdown();
     }
@@ -3106,6 +3202,11 @@ RenderWidgetHostViewAura::~RenderWidgetHostViewAura() {
 
   if (resource_collection_.get())
     resource_collection_->SetClient(NULL);
+
+#if defined(OS_WIN)
+  if (::IsWindow(plugin_parent_window_))
+    ::DestroyWindow(plugin_parent_window_);
+#endif
 }
 
 void RenderWidgetHostViewAura::UpdateCursorIfOverSelf() {

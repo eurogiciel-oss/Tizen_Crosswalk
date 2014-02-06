@@ -122,8 +122,6 @@ void MediaCodecBridge::GetCodecsInfo(
     CodecsInfo info;
     info.codecs = AndroidMimeTypeToCodecType(mime_type);
     ConvertJavaStringToUTF8(env, j_codec_name.obj(), &info.name);
-    info.secure_decoder_supported =
-        Java_CodecInfo_isSecureDecoderSupported(env, j_info.obj());
     codecs_info->push_back(info);
   }
 }
@@ -242,6 +240,12 @@ MediaCodecStatus MediaCodecBridge::QueueSecureInputBuffer(
     DCHECK_GT(subsamples_size, 0);
     DCHECK(subsamples);
     for (int i = 0; i < subsamples_size; ++i) {
+      DCHECK(subsamples[i].clear_bytes <= std::numeric_limits<uint16>::max());
+      if (subsamples[i].cypher_bytes >
+          static_cast<uint32>(std::numeric_limits<jint>::max())) {
+        return MEDIA_CODEC_ERROR;
+      }
+
       native_clear_array[i] = subsamples[i].clear_bytes;
       native_cypher_array[i] = subsamples[i].cypher_bytes;
     }

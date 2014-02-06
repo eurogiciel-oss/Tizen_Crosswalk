@@ -18,6 +18,7 @@
 #include "ui/base/win/shell.h"
 #include "ui/gfx/insets.h"
 #include "ui/gfx/native_widget_types.h"
+#include "ui/gfx/path.h"
 #include "ui/gfx/path_win.h"
 #include "ui/gfx/vector2d.h"
 #include "ui/gfx/win/dpi.h"
@@ -42,6 +43,24 @@
 
 namespace views {
 
+namespace {
+
+gfx::Size GetExpandedWindowSize(DWORD window_style, gfx::Size size) {
+  if (!(window_style & WS_EX_COMPOSITED) || !ui::win::IsAeroGlassEnabled())
+    return size;
+
+  // Some AMD drivers can't display windows that are less than 64x64 pixels,
+  // so expand them to be at least that size. http://crbug.com/286609
+  gfx::Size expanded(std::max(size.width(), 64), std::max(size.height(), 64));
+  return expanded;
+}
+
+void InsetBottomRight(gfx::Rect* rect, gfx::Vector2d vector) {
+  rect->Inset(0, 0, vector.x(), vector.y());
+}
+
+}  // namespace
+
 DEFINE_WINDOW_PROPERTY_KEY(aura::Window*, kContentWindowForRootWindow, NULL);
 
 // Identifies the DesktopRootWindowHostWin associated with the RootWindow.
@@ -64,7 +83,8 @@ DesktopRootWindowHostWin::DesktopRootWindowHostWin(
       should_animate_window_close_(false),
       pending_close_(false),
       has_non_client_view_(false),
-      tooltip_(NULL) {
+      tooltip_(NULL),
+      is_cursor_visible_(true) {
 }
 
 DesktopRootWindowHostWin::~DesktopRootWindowHostWin() {
@@ -155,9 +175,9 @@ DesktopRootWindowHostWin::CreateDragDropClient(
 }
 
 void DesktopRootWindowHostWin::Close() {
+  // TODO(beng): Move this entire branch to DNWA so it can be shared with X11.
   if (should_animate_window_close_) {
     pending_close_ = true;
-    content_window_->Hide();
     const bool is_animating =
         content_window_->layer()->GetAnimator()->IsAnimatingProperty(
             ui::LayerAnimationElement::VISIBILITY);
@@ -195,7 +215,12 @@ bool DesktopRootWindowHostWin::IsVisible() const {
 
 void DesktopRootWindowHostWin::SetSize(const gfx::Size& size) {
   gfx::Size size_in_pixels = gfx::win::DIPToScreenSize(size);
-  message_handler_->SetSize(size_in_pixels);
+  gfx::Size expanded = GetExpandedWindowSize(
+      message_handler_->window_ex_style(), size_in_pixels);
+  window_enlargement_ =
+      gfx::Vector2d(expanded.width() - size_in_pixels.width(),
+                    expanded.height() - size_in_pixels.height());
+  message_handler_->SetSize(expanded);
 }
 
 void DesktopRootWindowHostWin::CenterWindow(const gfx::Size& size) {
@@ -207,21 +232,25 @@ void DesktopRootWindowHostWin::GetWindowPlacement(
     gfx::Rect* bounds,
     ui::WindowShowState* show_state) const {
   message_handler_->GetWindowPlacement(bounds, show_state);
+  InsetBottomRight(bounds, window_enlargement_);
   *bounds = gfx::win::ScreenToDIPRect(*bounds);
 }
 
 gfx::Rect DesktopRootWindowHostWin::GetWindowBoundsInScreen() const {
   gfx::Rect pixel_bounds = message_handler_->GetWindowBoundsInScreen();
+  InsetBottomRight(&pixel_bounds, window_enlargement_);
   return gfx::win::ScreenToDIPRect(pixel_bounds);
 }
 
 gfx::Rect DesktopRootWindowHostWin::GetClientAreaBoundsInScreen() const {
   gfx::Rect pixel_bounds = message_handler_->GetClientAreaBoundsInScreen();
+  InsetBottomRight(&pixel_bounds, window_enlargement_);
   return gfx::win::ScreenToDIPRect(pixel_bounds);
 }
 
 gfx::Rect DesktopRootWindowHostWin::GetRestoredBounds() const {
   gfx::Rect pixel_bounds = message_handler_->GetRestoredBounds();
+  InsetBottomRight(&pixel_bounds, window_enlargement_);
   return gfx::win::ScreenToDIPRect(pixel_bounds);
 }
 
@@ -333,6 +362,11 @@ NonClientFrameView* DesktopRootWindowHostWin::CreateNonClientFrameView() {
 
 void DesktopRootWindowHostWin::SetFullscreen(bool fullscreen) {
   message_handler_->fullscreen_handler()->SetFullscreen(fullscreen);
+  // TODO(sky): workaround for ScopedFullscreenVisibility showing window
+  // directly. Instead of this should listen for visibility changes and then
+  // update window.
+  if (message_handler_->IsVisible() && !content_window_->TargetVisibility())
+    content_window_->Show();
   SetWindowTransparency();
 }
 
@@ -419,8 +453,10 @@ gfx::Rect DesktopRootWindowHostWin::GetBounds() const {
   gfx::Rect without_expansion(
       bounds.x() + window_expansion_top_left_delta_.x(),
       bounds.y() + window_expansion_top_left_delta_.y(),
-      bounds.width() - window_expansion_bottom_right_delta_.x(),
-      bounds.height() - window_expansion_bottom_right_delta_.y());
+      bounds.width() - window_expansion_bottom_right_delta_.x() -
+          window_enlargement_.x(),
+      bounds.height() - window_expansion_bottom_right_delta_.y() -
+          window_enlargement_.y());
   return without_expansion;
 }
 
@@ -433,7 +469,15 @@ void DesktopRootWindowHostWin::SetBounds(const gfx::Rect& bounds) {
       bounds.y() - window_expansion_top_left_delta_.y(),
       bounds.width() + window_expansion_bottom_right_delta_.x(),
       bounds.height() + window_expansion_bottom_right_delta_.y());
-  message_handler_->SetBounds(expanded);
+
+  gfx::Rect new_expanded(
+      expanded.origin(),
+      GetExpandedWindowSize(message_handler_->window_ex_style(),
+                            expanded.size()));
+  window_enlargement_ =
+      gfx::Vector2d(new_expanded.width() - expanded.width(),
+                    new_expanded.height() - expanded.height());
+  message_handler_->SetBounds(new_expanded);
 }
 
 gfx::Insets DesktopRootWindowHostWin::GetInsets() const {
@@ -487,6 +531,9 @@ void DesktopRootWindowHostWin::UnConfineCursor() {
 }
 
 void DesktopRootWindowHostWin::OnCursorVisibilityChanged(bool show) {
+  if (is_cursor_visible_ == show)
+    return;
+  is_cursor_visible_ = show;
   ::ShowCursor(!!show);
 }
 
@@ -605,8 +652,15 @@ int DesktopRootWindowHostWin::GetNonClientComponent(
 
 void DesktopRootWindowHostWin::GetWindowMask(const gfx::Size& size,
                                              gfx::Path* path) {
-  if (GetWidget()->non_client_view())
+  if (GetWidget()->non_client_view()) {
     GetWidget()->non_client_view()->GetWindowMask(size, path);
+  } else if (!window_enlargement_.IsZero()) {
+    gfx::Rect bounds(WidgetSizeIsClientSize()
+                         ? message_handler_->GetClientAreaBoundsInScreen()
+                         : message_handler_->GetWindowBoundsInScreen());
+    InsetBottomRight(&bounds, window_enlargement_);
+    path->addRect(SkRect::MakeXYWH(0, 0, bounds.width(), bounds.height()));
+  }
 }
 
 bool DesktopRootWindowHostWin::GetClientAreaInsets(gfx::Insets* insets) const {
@@ -747,6 +801,7 @@ void DesktopRootWindowHostWin::HandleClientSizeChanged(
 }
 
 void DesktopRootWindowHostWin::HandleFrameChanged() {
+  SetWindowTransparency();
   // Replace the frame and layout the contents.
   GetWidget()->non_client_view()->UpdateFrame(true);
 }
@@ -867,6 +922,12 @@ void DesktopRootWindowHostWin::PostHandleMSG(UINT message,
                                              LPARAM l_param) {
 }
 
+bool DesktopRootWindowHostWin::HandleScrollEvent(
+    const ui::ScrollEvent& event) {
+  return root_window_host_delegate_->OnHostScrollEvent(
+      const_cast<ui::ScrollEvent*>(&event));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // DesktopRootWindowHostWin, private:
 
@@ -886,6 +947,7 @@ void DesktopRootWindowHostWin::SetWindowTransparency() {
   bool transparent = ShouldUseNativeFrame() && !IsFullscreen();
   root_window_->compositor()->SetHostHasTransparentBackground(transparent);
   root_window_->SetTransparent(transparent);
+  content_window_->SetTransparent(transparent);
 }
 
 bool DesktopRootWindowHostWin::IsModalWindowActive() const {

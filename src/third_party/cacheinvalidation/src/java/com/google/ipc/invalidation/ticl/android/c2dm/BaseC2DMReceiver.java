@@ -57,6 +57,10 @@ public abstract class BaseC2DMReceiver extends IntentService {
   @Override
   protected void onHandleIntent(Intent intent) {
     logger.fine("Handle intent: %s", intent);
+    if (intent == null) {
+      logger.warning("Ignoring null intent");
+      return;
+    }
     try {
       // Examine the action and raise the appropriate onYYY event
       if (intent.getAction().equals(C2DMessaging.ACTION_MESSAGE)) {

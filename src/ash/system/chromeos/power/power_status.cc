@@ -188,6 +188,18 @@ bool PowerStatus::IsUsbChargerConnected() const {
       power_manager::PowerSupplyProperties_ExternalPower_USB;
 }
 
+bool PowerStatus::IsOriginalSpringChargerConnected() const {
+  // Use has_external_power() as a workaround for R31 and R32 to detect
+  // the spring original charger, due to the fact the enum
+  // PowerSupplyProperties_ExternalPower_ORIGINAL_SPRING_CHARGER can't
+  // be integrated back to the older releases. has_exteranl_pwower() returns
+  // false for PowerSupplyProperties_ExternalPower_ORIGINAL_SPRING_CHARGER.
+  // TODO(jennyz): change this to use
+  // PowerSupplyProperties_ExternalPower_ORIGINAL_SPRING_CHARGER on trunk
+  // after the change has been merged.
+  return !proto_.has_external_power();
+}
+
 gfx::ImageSkia PowerStatus::GetBatteryImage(IconSet icon_set) const {
   gfx::Image all;
   if (IsUsbChargerConnected()) {

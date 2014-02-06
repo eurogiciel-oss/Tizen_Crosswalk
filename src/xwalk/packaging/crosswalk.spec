@@ -1,5 +1,5 @@
 Name:           crosswalk
-Version:        4.32.74.0
+Version:        5.32.84.0
 Release:        0
 Summary:        Crosswalk is an app runtime based on Chromium
 # License:        (BSD-3-Clause and LGPL-2.1+)
@@ -21,6 +21,7 @@ Patch5:         Chromium-Fix-gcc-4.5.3-uninitialized-warnings.patch
 Patch6:         Blink-Fix-gcc-4.5.3-uninitialized-warnings.patch
 Patch7:         %{name}-tizen-audio-session-manager.patch
 Patch8:         %{name}-mesa-ozone-typedefs.patch
+Patch9:         Blink-Add-GCC-flag-Wno-narrowing-fix-64bits-build.patch
 
 BuildRequires:  bison
 BuildRequires:  bzip2-devel
@@ -137,12 +138,14 @@ cp -a src/xwalk/LICENSE LICENSE.xwalk
 %patch3
 %patch4
 %patch5 -p1
-%patch6 -p1
+%patch6
 %endif
 
 %if %{with wayland}
 %patch8
 %endif
+
+%patch9
 
 %build
 

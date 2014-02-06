@@ -579,6 +579,13 @@ public abstract class TabBase implements NavigationClient {
     }
 
     /**
+     * @return Whether or not this Tab has a live native component.
+     */
+    public boolean isInitialized() {
+        return mNativeTabAndroid != 0;
+    }
+
+    /**
      * @return The url associated with the tab.
      */
     @CalledByNative
@@ -699,6 +706,7 @@ public abstract class TabBase implements NavigationClient {
     /** This is currently called when committing a pre-rendered page. */
     @CalledByNative
     private void swapWebContents(final int newWebContents) {
+        if (mContentViewCore != null) mContentViewCore.onHide();
         destroyContentView(false);
         initContentView(newWebContents);
         mContentViewCore.onShow();

@@ -33,6 +33,7 @@ class ApplicationService : public Application::Observer {
    public:
     virtual void OnApplicationInstalled(const std::string& app_id) {}
     virtual void OnApplicationUninstalled(const std::string& app_id) {}
+    virtual void OnApplicationUpdated(const std::string& app_id) {}
 
     virtual void DidLaunchApplication(Application* app) {}
     virtual void WillDestroyApplication(Application* app) {}
@@ -47,8 +48,11 @@ class ApplicationService : public Application::Observer {
 
   bool Install(const base::FilePath& path, std::string* id);
   bool Uninstall(const std::string& id);
+  bool Update(const std::string& id, const base::FilePath& path);
   // Launch an installed application using application id.
-  Application* Launch(const std::string& id);
+  Application* Launch(
+      const std::string& id,
+      const Application::LaunchParams& params = Application::LaunchParams());
   // Launch an unpacked application using path to a local directory which
   // contains manifest file.
   Application* Launch(const base::FilePath& path);

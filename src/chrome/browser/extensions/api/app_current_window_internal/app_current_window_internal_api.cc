@@ -8,6 +8,7 @@
 #include "apps/shell_window_registry.h"
 #include "apps/ui/native_app_window.h"
 #include "base/command_line.h"
+#include "chrome/browser/extensions/api/app_window/app_window_api.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/app_current_window_internal.h"
 #include "chrome/common/extensions/api/app_window.h"
@@ -141,6 +142,11 @@ bool AppCurrentWindowInternalSetBoundsFunction::RunWithWindow(
 
 bool AppCurrentWindowInternalSetMinWidthFunction::RunWithWindow(
     ShellWindow* window) {
+  if (GetCurrentChannel() > chrome::VersionInfo::CHANNEL_DEV) {
+    error_ = kDevChannelOnly;
+    return false;
+  }
+
   scoped_ptr<SetMinWidth::Params> params(SetMinWidth::Params::Create(*args_));
   CHECK(params.get());
   gfx::Size min_size = window->size_constraints().GetMinimumSize();
@@ -152,6 +158,11 @@ bool AppCurrentWindowInternalSetMinWidthFunction::RunWithWindow(
 
 bool AppCurrentWindowInternalSetMinHeightFunction::RunWithWindow(
     ShellWindow* window) {
+  if (GetCurrentChannel() > chrome::VersionInfo::CHANNEL_DEV) {
+    error_ = kDevChannelOnly;
+    return false;
+  }
+
   scoped_ptr<SetMinHeight::Params> params(SetMinHeight::Params::Create(*args_));
   CHECK(params.get());
   gfx::Size min_size = window->size_constraints().GetMinimumSize();
@@ -163,6 +174,11 @@ bool AppCurrentWindowInternalSetMinHeightFunction::RunWithWindow(
 
 bool AppCurrentWindowInternalSetMaxWidthFunction::RunWithWindow(
     ShellWindow* window) {
+  if (GetCurrentChannel() > chrome::VersionInfo::CHANNEL_DEV) {
+    error_ = kDevChannelOnly;
+    return false;
+  }
+
   scoped_ptr<SetMaxWidth::Params> params(SetMaxWidth::Params::Create(*args_));
   CHECK(params.get());
   gfx::Size max_size = window->size_constraints().GetMaximumSize();
@@ -174,6 +190,11 @@ bool AppCurrentWindowInternalSetMaxWidthFunction::RunWithWindow(
 
 bool AppCurrentWindowInternalSetMaxHeightFunction::RunWithWindow(
     ShellWindow* window) {
+  if (GetCurrentChannel() > chrome::VersionInfo::CHANNEL_DEV) {
+    error_ = kDevChannelOnly;
+    return false;
+  }
+
   scoped_ptr<SetMaxHeight::Params> params(SetMaxHeight::Params::Create(*args_));
   CHECK(params.get());
   gfx::Size max_size = window->size_constraints().GetMaximumSize();
@@ -257,6 +278,11 @@ bool AppCurrentWindowInternalSetInputRegionFunction::RunWithWindow(
 
 bool AppCurrentWindowInternalSetAlwaysOnTopFunction::RunWithWindow(
     ShellWindow* window) {
+  if (!AppWindowCreateFunction::AllowAlwaysOnTopWindows(GetExtension()->id())) {
+    error_ = kDevChannelOnly;
+    return false;
+  }
+
   scoped_ptr<SetAlwaysOnTop::Params> params(
       SetAlwaysOnTop::Params::Create(*args_));
   CHECK(params.get());

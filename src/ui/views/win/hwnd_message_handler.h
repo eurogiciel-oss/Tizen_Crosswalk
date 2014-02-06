@@ -252,7 +252,7 @@ class VIEWS_EXPORT HWNDMessageHandler :
   // Resets the window region for the current widget bounds if necessary.
   // If |force| is true, the window region is reset to NULL even for native
   // frame windows.
-  void ResetWindowRegion(bool force);
+  void ResetWindowRegion(bool force, bool redraw);
 
   // Calls DefWindowProc, safely wrapping the call in a ScopedRedrawLock to
   // prevent frame flicker. DefWindowProc handling can otherwise render the
@@ -320,6 +320,10 @@ class VIEWS_EXPORT HWNDMessageHandler :
     MESSAGE_HANDLER_EX(WM_SYSCHAR, OnImeMessages)
     MESSAGE_HANDLER_EX(WM_DEADCHAR, OnImeMessages)
     MESSAGE_HANDLER_EX(WM_SYSDEADCHAR, OnImeMessages)
+
+    // Scroll events
+    MESSAGE_HANDLER_EX(WM_VSCROLL, OnScrollMessage)
+    MESSAGE_HANDLER_EX(WM_HSCROLL, OnScrollMessage)
 
     // Touch Events.
     MESSAGE_HANDLER_EX(WM_TOUCH, OnTouchEvent)
@@ -403,6 +407,7 @@ class VIEWS_EXPORT HWNDMessageHandler :
   LRESULT OnNotify(int w_param, NMHDR* l_param);
   void OnPaint(HDC dc);
   LRESULT OnReflectedMessage(UINT message, WPARAM w_param, LPARAM l_param);
+  LRESULT OnScrollMessage(UINT message, WPARAM w_param, LPARAM l_param);
   LRESULT OnSetCursor(UINT message, WPARAM w_param, LPARAM l_param);
   void OnSetFocus(HWND last_focused_window);
   LRESULT OnSetIcon(UINT size_type, HICON new_icon);
@@ -522,8 +527,19 @@ class VIEWS_EXPORT HWNDMessageHandler :
   // Generates touch-ids for touch-events.
   ui::SequentialIDGenerator id_generator_;
 
+  // Indicates if the window needs the WS_VSCROLL and WS_HSCROLL styles.
+  bool needs_scroll_styles_;
+
+  // Set to true if we are in the context of a sizing operation.
+  bool in_size_loop_;
+
   DISALLOW_COPY_AND_ASSIGN(HWNDMessageHandler);
 };
+
+// This window property if set on the window does not activate the window for a
+// touch based WM_MOUSEACTIVATE message.
+const wchar_t kIgnoreTouchMouseActivateForWindow[] =
+    L"Chrome.IgnoreMouseActivate";
 
 }  // namespace views
 

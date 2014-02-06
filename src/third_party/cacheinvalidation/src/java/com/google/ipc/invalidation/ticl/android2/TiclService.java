@@ -87,6 +87,11 @@ public class TiclService extends IntentService {
     // TODO: We may want to use wakelocks to prevent the phone from sleeping
     // before we have finished handling the Intent.
 
+    if (intent == null) {
+      resources.getLogger().fine("Ignoring null intent");
+      return;
+    }
+
     // We create resources anew each time.
     resources = createResources();
     resources.start();
@@ -94,11 +99,6 @@ public class TiclService extends IntentService {
     validator = new AndroidIntentProtocolValidator(resources.getLogger());
 
     try {
-      if (intent == null) {
-        resources.getLogger().fine("Ignoring null intent");
-        return;
-      }
-  
       // Dispatch the appropriate handler function based on which extra key is set.
       if (intent.hasExtra(ProtocolIntents.CLIENT_DOWNCALL_KEY)) {
         handleClientDowncall(intent.getByteArrayExtra(ProtocolIntents.CLIENT_DOWNCALL_KEY));

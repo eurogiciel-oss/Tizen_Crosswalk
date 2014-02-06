@@ -251,6 +251,7 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
 #if defined(OS_WIN)
   virtual void SetParentNativeViewAccessible(
       gfx::NativeViewAccessible accessible_parent) OVERRIDE;
+  virtual gfx::NativeViewId GetParentForWindowlessPlugin() const OVERRIDE;
 #endif
 
   // Overridden from ui::TextInputClient:
@@ -551,6 +552,9 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
 
   BrowserAccessibilityManager* GetOrCreateBrowserAccessibilityManager();
 
+  // Helper function to set keyboard focus to the main window.
+  void SetKeyboardFocus();
+
 #if defined(OS_WIN)
   // Updates the total list of cutout rects, which is the union of transient
   // windows and constrained windows.
@@ -608,6 +612,9 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
 
   // Indicates if there is onging composition text.
   bool has_composition_text_;
+
+  // Whether return characters should be passed on to the RenderWidgetHostImpl.
+  bool accept_return_character_;
 
   // Current tooltip text.
   string16 tooltip_;
@@ -757,6 +764,13 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
   scoped_ptr<DelegatedFrameEvictor> delegated_frame_evictor_;
 
   base::WeakPtrFactory<RenderWidgetHostViewAura> weak_ptr_factory_;
+
+#if defined(OS_WIN)
+  // The dummy HWND which corresponds to the bounds of the web page. This is
+  // passed to windowless plugins like Flash/Silverlight, etc as the
+  // container window.
+  HWND plugin_parent_window_;
+#endif
   DISALLOW_COPY_AND_ASSIGN(RenderWidgetHostViewAura);
 };
 

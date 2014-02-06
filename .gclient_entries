@@ -1,3 +1,0 @@
-entries = {
-  'src/xwalk': 'git://github.com/crosswalk-project/crosswalk.git',
-}

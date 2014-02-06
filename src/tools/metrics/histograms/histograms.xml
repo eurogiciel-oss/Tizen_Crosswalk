@@ -4595,6 +4595,36 @@ other types of suffix sets.
   </summary>
 </histogram>
 
+<histogram name="Extensions.ResourceDirectoryTimestampQueryLatency"
+    units="milliseconds">
+  <summary>
+    The initialization latency (in milliseconds) introduced to each extension
+    resource request by querying the directory timestamp.
+  </summary>
+</histogram>
+
+<histogram name="Extensions.ResourceLastModifiedDelta" units="seconds">
+  <summary>
+    The difference in seconds between an extension resource's last modification
+    time and its extension base directory's creation time. Recorded on each
+    extension resource request if the difference is non-negative (i.e., the
+    resource's last modification time is more recent than the directory's
+    creation time.) For cases where the directory creation date is more recent,
+    see Extensions.ResourceLastModifiedNegativeDelta instead.
+  </summary>
+</histogram>
+
+<histogram name="Extensions.ResourceLastModifiedNegativeDelta" units="seconds">
+  <summary>
+    The absolute difference in seconds between an extension resource's last
+    modification time and extension base directory's creation time. Recorded on
+    each extension resource request if the difference is negative (i.e., the
+    directory's creation time is more recent than the resource's last
+    modification time.) For cases where the resource modification time is more
+    recent, see Extensions.ResourceLastModifiedDelta instead.
+  </summary>
+</histogram>
+
 <histogram name="Extensions.SandboxUnpackFailure">
   <summary>
     Count the number of times a sandboxed extension unpack fails.
@@ -5934,6 +5964,13 @@ other types of suffix sets.
   <summary>
     Time spent waiting in AudioOutputController::WaitTillDataReady() if the data
     was not initially available.
+  </summary>
+</histogram>
+
+<histogram name="Media.AudioOutputControllerPlaybackStartupSuccess"
+    enum="BooleanSuccess">
+  <summary>
+    Whether playback started successfully after stream startup was requested.
   </summary>
 </histogram>
 
@@ -11348,6 +11385,10 @@ other types of suffix sets.
   <summary>The cat's flavor and how many bits there are in it.</summary>
 </histogram>
 
+<histogram name="OSX.ExceptionHandlerEvents" enum="OSXExceptionHandlerEvents">
+  <summary>Events seen by the OSX NSException swizzle.</summary>
+</histogram>
+
 <histogram name="OutdatedUpgradeBubble.NumLaterPerReinstall">
   <summary>
     Counts the number of times the user clicked on the later button of the
@@ -13299,6 +13340,14 @@ other types of suffix sets.
   <summary>
     Number of times the user has adjusted brightness up and down while running
     on AC power.
+  </summary>
+</histogram>
+
+<histogram name="Power.ChargerType" enum="PowerChargerType">
+  <summary>
+    External power supply type such as MAINS_CHARGER, USB_CHARGER,
+    UNCONFIRMED_SPRING_CHARGER, SAFE_SPRING_CHARGER. A sample is reported each
+    time a charger is connected to the device.
   </summary>
 </histogram>
 
@@ -26013,6 +26062,26 @@ other types of suffix sets.
   <int value="34" label="ERANGE">Numerical result out of range</int>
 </enum>
 
+<enum name="OSXExceptionHandlerEvents" type="int">
+  <int value="0" label="EXCEPTION_ACCESSIBILITY">
+    Object does not support accessibility attributes
+  </int>
+  <int value="1" label="EXCEPTION_MENU_ITEM_BOUNDS_CHECK">
+    Forced crash due to menu item bounds checking failure
+  </int>
+  <int value="2" label="EXCEPTION_VIEW_NOT_IN_WINDOW">
+    Forced crash due to view not in a window requiring a window
+  </int>
+  <int value="3" label="EXCEPTION_NSURL_INIT_NIL">
+    Whitelisted exception for bug 85463.  Suspect ImageKit conversions for media
+    browser in open or save panel.
+  </int>
+  <int value="4" label="EXCEPTION_NSDATADETECTOR_NIL_STRING">
+    Whitelisted exception for bug 316759.  Suspect background address detection,
+    field unknown.
+  </int>
+</enum>
+
 <enum name="OtherPossibleUsernamesUsage" type="int">
   <int value="0" label="Nothing to Autofill"/>
   <int value="1" label="No other possible usernames"/>
@@ -26549,6 +26618,14 @@ other types of suffix sets.
   <int value="0" label="Brightness Down"/>
   <int value="1" label="Brightness Up"/>
   <int value="2" label="Brightness Absolute"/>
+</enum>
+
+<enum name="PowerChargerType" type="int">
+  <int value="0" label="Unknown charger"/>
+  <int value="1" label="MAINS charger"/>
+  <int value="2" label="USB Charger"/>
+  <int value="3" label="Unconfirmed Spring Charger"/>
+  <int value="4" label="Safe Spring Charger"/>
 </enum>
 
 <enum name="PreconnectedNavigation" type="int">

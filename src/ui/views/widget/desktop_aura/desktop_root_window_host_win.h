@@ -209,6 +209,7 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   virtual void PostHandleMSG(UINT message,
                              WPARAM w_param,
                              LPARAM l_param) OVERRIDE;
+  virtual bool HandleScrollEvent(const ui::ScrollEvent& event) OVERRIDE;
 
   Widget* GetWidget();
   const Widget* GetWidget() const;
@@ -244,6 +245,10 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   gfx::Vector2d window_expansion_top_left_delta_;
   gfx::Vector2d window_expansion_bottom_right_delta_;
 
+  // Windows are enlarged to be at least 64x64 pixels, so keep track of the
+  // extra added here.
+  gfx::Vector2d window_enlargement_;
+
   // Whether the window close should be converted to a hide, and then actually
   // closed on the completion of the hide animation. This is cached because
   // the property is set on the contained window which has a shorter lifetime.
@@ -263,6 +268,9 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   // Owned by TooltipController, but we need to forward events to it so we keep
   // a reference.
   corewm::TooltipWin* tooltip_;
+
+  // State of the cursor.
+  bool is_cursor_visible_;
 
   DISALLOW_COPY_AND_ASSIGN(DesktopRootWindowHostWin);
 };

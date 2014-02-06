@@ -80,7 +80,8 @@ CastSocket::CastSocket(const std::string& owner_extension_id,
     read_callback_pending_(false),
     current_message_size_(0),
     net_log_(net_log),
-    next_state_(CONN_STATE_NONE) {
+    next_state_(CONN_STATE_NONE),
+    in_connect_loop_(false) {
   DCHECK(net_log_);
   net_log_source_.type = net::NetLog::SOURCE_SOCKET;
   net_log_source_.id = net_log_->NextID();
@@ -103,8 +104,9 @@ scoped_ptr<net::TCPClientSocket> CastSocket::CreateTcpSocket() {
   net::AddressList addresses(ip_endpoint_);
   scoped_ptr<net::TCPClientSocket> tcp_socket(
       new net::TCPClientSocket(addresses, net_log_, net_log_source_));
-  // Enable keepalive
-  tcp_socket->SetKeepAlive(true, kTcpKeepAliveDelaySecs);
+  // Options cannot be set on the TCPClientSocket yet, because the
+  // underlying platform socket will not be created until we Bind()
+  // or Connect() it.
   return tcp_socket.Pass();
 }
 
@@ -153,13 +155,15 @@ int CastSocket::SendAuthChallenge() {
   CastMessage challenge_message;
   CreateAuthChallengeMessage(&challenge_message);
   DVLOG(1) << "Sending challenge: " << CastMessageToString(challenge_message);
-  return SendMessageInternal(
+  int result = SendMessageInternal(
       challenge_message,
       base::Bind(&CastSocket::OnChallengeEvent, AsWeakPtr()));
+  return (result < 0) ? result : net::OK;
 }
 
 int CastSocket::ReadAuthChallengeReply() {
-  return ReadData();
+  int result = ReadData();
+  return (result < 0) ? result : net::OK;
 }
 
 void CastSocket::OnConnectComplete(int result) {
@@ -202,7 +206,12 @@ void CastSocket::Connect(const net::CompletionCallback& callback) {
 //    is done. OnConnectComplete calls this method to continue the state
 //    machine transitions.
 int CastSocket::DoConnectLoop(int result) {
-  // Network operations can either finish sycnronously or asynchronously.
+  // Avoid re-entrancy as a result of synchronous completion.
+  if (in_connect_loop_)
+    return net::ERR_IO_PENDING;
+  in_connect_loop_ = true;
+
+  // Network operations can either finish synchronously or asynchronously.
   // This method executes the state machine transitions in a loop so that
   // correct state transitions happen even when network operations finish
   // synchronously.
@@ -246,6 +255,8 @@ int CastSocket::DoConnectLoop(int result) {
   // a. A network operation is pending, OR
   // b. The Do* method called did not change state
 
+  in_connect_loop_ = false;
+
   return rv;
 }
 
@@ -259,8 +270,12 @@ int CastSocket::DoTcpConnect() {
 
 int CastSocket::DoTcpConnectComplete(int result) {
   DVLOG(1) << "DoTcpConnectComplete: " << result;
-  if (result == net::OK)
+  if (result == net::OK) {
+    // Enable TCP protocol-level keep-alive.
+    bool result = tcp_socket_->SetKeepAlive(true, kTcpKeepAliveDelaySecs);
+    LOG_IF(WARNING, !result) << "Failed to SetKeepAlive.";
     next_state_ = CONN_STATE_SSL_CONNECT;
+  }
   return result;
 }
 

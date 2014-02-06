@@ -82,6 +82,7 @@ public class AndroidMessageSenderService extends IntentService {
 
   public AndroidMessageSenderService() {
     super("AndroidNetworkService");
+    setIntentRedelivery(true);
   }
 
   @Override
@@ -96,6 +97,11 @@ public class AndroidMessageSenderService extends IntentService {
 
   @Override
   protected void onHandleIntent(Intent intent) {
+    if (intent == null) {
+      logger.warning("Ignoring null intent");
+      return;
+    }
+
     if (intent.hasExtra(ProtocolIntents.OUTBOUND_MESSAGE_KEY)) {
       // Request from the Ticl service to send a message.
       handleOutboundMessage(intent.getByteArrayExtra(ProtocolIntents.OUTBOUND_MESSAGE_KEY));

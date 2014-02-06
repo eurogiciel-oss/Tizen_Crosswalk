@@ -3,24 +3,23 @@
 // found in the LICENSE file.
 
 #include "content/public/test/browser_test_utils.h"
+#include "content/public/test/test_utils.h"
 #include "net/base/net_util.h"
 #include "xwalk/application/browser/application.h"
 #include "xwalk/application/browser/application_service.h"
 #include "xwalk/application/browser/application_system.h"
-#include "xwalk/application/test/application_apitest.h"
+#include "xwalk/application/test/application_browsertest.h"
 #include "xwalk/application/test/application_testapi.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
 
 using xwalk::application::Application;
+using xwalk::application::ApplicationService;
 
-class ApplicationMultiAppTest : public ApplicationApiTest {
+class ApplicationMultiAppTest : public ApplicationBrowserTest {
 };
 
 IN_PROC_BROWSER_TEST_F(ApplicationMultiAppTest, TestMultiApp) {
-  xwalk::application::ApplicationSystem* system =
-      xwalk::XWalkRunner::GetInstance()->app_system();
-  xwalk::application::ApplicationService* service =
-      system->application_service();
+  ApplicationService* service = application_sevice();
   // Launch the first app.
   Application* app1 = service->Launch(
       test_data_dir_.Append(FILE_PATH_LITERAL("dummy_app1")));
@@ -62,14 +61,11 @@ IN_PROC_BROWSER_TEST_F(ApplicationMultiAppTest, TestMultiApp) {
   EXPECT_EQ(service->GetApplicationByID(app1->id()), app1);
   EXPECT_EQ(service->GetApplicationByID(app2->id()), app2);
 
-  // As we do not have subscription to "onsuspend" event, the app
-  // closing should be sync.
-  // FIXME: Closing of a runtime having a window causes tcmalloc exception
-  // on Linux debug bots and the test cannot complete.
-  // Below should be uncommented, when the issue is treated.
-  // app1->Close();
-  // EXPECT_EQ(service->active_applications().size(), 1);
+  app1->Terminate();
+  content::RunAllPendingInMessageLoop();
+  EXPECT_EQ(service->active_applications().size(), 1);
 
-  // app2->Close();
-  // EXPECT_EQ(service->active_applications().size(), 0);
+  app2->Terminate();
+  content::RunAllPendingInMessageLoop();
+  EXPECT_EQ(service->active_applications().size(), 0);
 }

@@ -28,6 +28,7 @@
 #include "grit/xwalk_resources.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/native_widget_types.h"
 
 using content::FaviconURL;
 using content::WebContents;
@@ -40,26 +41,13 @@ namespace {
 const int kDefaultWidth = 840;
 const int kDefaultHeight = 600;
 
-static Runtime::Observer* g_observer_for_testing;
-
 }  // namespace
-
-// static
-Runtime* Runtime::Create(
-        RuntimeContext* runtime_context, const GURL& url, Observer* observer) {
-  WebContents::CreateParams params(runtime_context, NULL);
-  params.routing_id = MSG_ROUTING_NONE;
-  WebContents* web_contents = WebContents::Create(params);
-
-  Runtime* runtime = new Runtime(web_contents, observer);
-  runtime->LoadURL(url);
-  return runtime;
-}
 
 // static
 Runtime* Runtime::CreateWithDefaultWindow(
     RuntimeContext* runtime_context, const GURL& url, Observer* observer) {
-  Runtime* runtime = Runtime::Create(runtime_context, url, observer);
+  Runtime* runtime = Runtime::Create(runtime_context, observer);
+  runtime->LoadURL(url);
   runtime->AttachDefaultWindow();
   return runtime;
 }
@@ -71,19 +59,13 @@ Runtime* Runtime::Create(
   params.routing_id = MSG_ROUTING_NONE;
   WebContents* web_contents = WebContents::Create(params);
 
-  return new Runtime(web_contents, observer);
-}
+  Runtime* runtime = new Runtime(web_contents, observer);
+#if defined(OS_TIZEN_MOBILE)
+  runtime->InitRootWindow();
+#endif
 
-// static
-void Runtime::SetGlobalObserverForTesting(Observer* observer) {
-  g_observer_for_testing = observer;
+  return runtime;
 }
-
-#define FOR_EACH_RUNTIME_OBSERVER(method) \
-  if (observer_)                          \
-    observer_->method;                    \
-  if (g_observer_for_testing)             \
-    g_observer_for_testing->method
 
 Runtime::Runtime(content::WebContents* web_contents, Observer* observer)
     : WebContentsObserver(web_contents),
@@ -98,8 +80,11 @@ Runtime::Runtime(content::WebContents* web_contents, Observer* observer)
        xwalk::NOTIFICATION_RUNTIME_OPENED,
        content::Source<Runtime>(this),
        content::NotificationService::NoDetails());
-
-  FOR_EACH_RUNTIME_OBSERVER(OnRuntimeAdded(this));
+#if defined(OS_TIZEN_MOBILE)
+  root_window_ = NULL;
+#endif
+  if (observer_)
+    observer_->OnRuntimeAdded(this);
 }
 
 Runtime::~Runtime() {
@@ -107,19 +92,12 @@ Runtime::~Runtime() {
           xwalk::NOTIFICATION_RUNTIME_CLOSED,
           content::Source<Runtime>(this),
           content::NotificationService::NoDetails());
-  FOR_EACH_RUNTIME_OBSERVER(OnRuntimeRemoved(this));
+  if (observer_)
+    observer_->OnRuntimeRemoved(this);
 }
 
 void Runtime::AttachDefaultWindow() {
   NativeAppWindow::CreateParams params;
-  params.delegate = this;
-  params.web_contents = web_contents_.get();
-  params.bounds = gfx::Rect(0, 0, kDefaultWidth, kDefaultHeight);
-  CommandLine* cmd_line = CommandLine::ForCurrentProcess();
-  if (cmd_line->HasSwitch(switches::kFullscreen)) {
-    params.state = ui::SHOW_STATE_FULLSCREEN;
-    fullscreen_options_ |= FULLSCREEN_FOR_LAUNCH;
-  }
   AttachWindow(params);
 }
 
@@ -128,6 +106,9 @@ void Runtime::AttachWindow(const NativeAppWindow::CreateParams& params) {
   NOTIMPLEMENTED();
 #else
   CHECK(!window_);
+  NativeAppWindow::CreateParams effective_params(params);
+  ApplyWindowDefaultParams(&effective_params);
+
   // Set the app icon if it is passed from command line.
   CommandLine* command_line = CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kAppIcon)) {
@@ -144,10 +125,14 @@ void Runtime::AttachWindow(const NativeAppWindow::CreateParams& params) {
         content::NOTIFICATION_WEB_CONTENTS_TITLE_UPDATED,
         content::Source<content::WebContents>(web_contents_.get()));
 
-  window_ = NativeAppWindow::Create(params);
+  window_ = NativeAppWindow::Create(effective_params);
   if (!app_icon_.IsEmpty())
     window_->UpdateIcon(app_icon_);
   window_->Show();
+#if defined(OS_TIZEN_MOBILE)
+  if (root_window_)
+    root_window_->Show();
+#endif
 #endif
 }
 
@@ -240,6 +225,9 @@ void Runtime::WebContentsCreated(
     const GURL& target_url,
     content::WebContents* new_contents) {
   Runtime* new_runtime = new Runtime(new_contents, observer_);
+#if defined(OS_TIZEN_MOBILE)
+  new_runtime->SetRootWindow(root_window_);
+#endif
   new_runtime->AttachDefaultWindow();
 }
 
@@ -353,5 +341,59 @@ void Runtime::RenderProcessGone(base::TerminationStatus status) {
   XWalkRunner::GetInstance()->OnRenderProcessHostGone(rph);
 }
 
+void Runtime::ApplyWindowDefaultParams(NativeAppWindow::CreateParams* params) {
+  if (!params->delegate)
+    params->delegate = this;
+  if (!params->web_contents)
+    params->web_contents = web_contents_.get();
+  if (params->bounds.IsEmpty())
+    params->bounds = gfx::Rect(0, 0, kDefaultWidth, kDefaultHeight);
+#if defined(OS_TIZEN_MOBILE)
+  if (root_window_)
+    params->parent = root_window_->GetNativeWindow();
+#endif
+  ApplyFullScreenParam(params);
+}
 
+void Runtime::ApplyFullScreenParam(NativeAppWindow::CreateParams* params) {
+  DCHECK(params);
+  // TODO(cmarcelo): This is policy that probably should be moved to outside
+  // Runtime class.
+  CommandLine* cmd_line = CommandLine::ForCurrentProcess();
+  if (cmd_line->HasSwitch(switches::kFullscreen)) {
+    params->state = ui::SHOW_STATE_FULLSCREEN;
+    fullscreen_options_ |= FULLSCREEN_FOR_LAUNCH;
+  }
+}
+
+#if defined(OS_TIZEN_MOBILE)
+void Runtime::CloseRootWindow() {
+  if (root_window_) {
+    root_window_->Close();
+    root_window_ = NULL;
+  }
+}
+
+void Runtime::ApplyRootWindowParams(NativeAppWindow::CreateParams* params) {
+  if (!params->delegate)
+    params->delegate = this;
+  if (params->bounds.IsEmpty())
+    params->bounds = gfx::Rect(0, 0, kDefaultWidth, kDefaultHeight);
+  ApplyFullScreenParam(params);
+}
+
+void Runtime::InitRootWindow() {
+  if (root_window_)
+    return;
+
+  NativeAppWindow::CreateParams params;
+  ApplyRootWindowParams(&params);
+  root_window_ = NativeAppWindow::Create(params);
+}
+
+void Runtime::SetRootWindow(NativeAppWindow* window) {
+  root_window_= window;
+}
+
+#endif
 }  // namespace xwalk

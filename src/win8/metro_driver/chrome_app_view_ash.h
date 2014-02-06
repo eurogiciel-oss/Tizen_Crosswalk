@@ -49,7 +49,7 @@ class ChromeAppViewAsh
   // Returns S_OK on success.
   static HRESULT Unsnap();
 
-  void OnActivateDesktop(const base::FilePath& file_path);
+  void OnActivateDesktop(const base::FilePath& file_path, bool ash_exit);
   void OnOpenURLOnDesktop(const base::FilePath& shortcut, const string16& url);
   void OnSetCursor(HCURSOR cursor);
   void OnDisplayFileOpenDialog(const string16& title,
@@ -81,6 +81,8 @@ class ChromeAppViewAsh
   // the FolderPickerSession class.
   void OnFolderPickerCompleted(FolderPickerSession* folder_picker,
                                bool success);
+
+  HWND core_window_hwnd() const { return  core_window_hwnd_; }
 
  private:
   HRESULT OnActivate(winapp::Core::ICoreApplicationView* view,
@@ -119,6 +121,9 @@ class ChromeAppViewAsh
   // Helper to handle http/https url requests in ASH.
   HRESULT HandleProtocolRequest(winapp::Activation::IActivatedEventArgs* args);
 
+  HRESULT OnEdgeGestureCompleted(winui::Input::IEdgeGesture* gesture,
+                                 winui::Input::IEdgeGestureEventArgs* args);
+
   // Tasks posted to the UI thread to initiate the search/url navigation
   // requests.
   void OnSearchRequest(const string16& search_string);
@@ -141,6 +146,7 @@ class ChromeAppViewAsh
   EventRegistrationToken accel_keyup_token_;
   EventRegistrationToken window_activated_token_;
   EventRegistrationToken sizechange_token_;
+  EventRegistrationToken edgeevent_token_;
 
   // Keep state about which button is currently down, if any, as PointerMoved
   // events do not contain that state, but Ash's MouseEvents need it.

@@ -110,9 +110,11 @@ void HandleSelectFolder(const base::string16& title,
 }
 
 void HandleActivateDesktop(const base::FilePath& shortcut,
+                           bool ash_exit,
                            const ActivateDesktopCompleted& on_success) {
   DCHECK(aura::RemoteRootWindowHostWin::Instance());
   aura::RemoteRootWindowHostWin::Instance()->HandleActivateDesktop(shortcut,
+                                                                   ash_exit,
                                                                    on_success);
 }
 
@@ -201,12 +203,13 @@ void RemoteRootWindowHostWin::HandleOpenURLOnDesktop(
 
 void RemoteRootWindowHostWin::HandleActivateDesktop(
     const base::FilePath& shortcut,
+    bool ash_exit,
     const ActivateDesktopCompleted& on_success) {
   if (!host_)
     return;
   DCHECK(activate_completed_callback_.is_null());
   activate_completed_callback_ = on_success;
-  host_->Send(new MetroViewerHostMsg_ActivateDesktop(shortcut));
+  host_->Send(new MetroViewerHostMsg_ActivateDesktop(shortcut, ash_exit));
 }
 
 void RemoteRootWindowHostWin::HandleOpenFile(
@@ -594,8 +597,14 @@ void RemoteRootWindowHostWin::DispatchKeyboardMessage(ui::EventType type,
                                                       bool is_character) {
   SetEventFlags(flags | mouse_event_flags());
   if (base::MessageLoop::current()->IsNested()) {
-    uint32 message = is_character ? WM_CHAR :
-        (type == ui::ET_KEY_PRESSED ? WM_KEYDOWN : WM_KEYUP);
+    int index = (flags & ui::EF_ALT_DOWN) ? 1 : 0;
+    const int char_message[] = {WM_CHAR, WM_SYSCHAR};
+    const int keydown_message[] = {WM_KEYDOWN, WM_SYSKEYDOWN};
+    const int keyup_message[] = {WM_KEYUP, WM_SYSKEYUP};
+    uint32 message = is_character
+                         ? char_message[index]
+                         : (type == ui::ET_KEY_PRESSED ? keydown_message[index]
+                                                       : keyup_message[index]);
     ::PostThreadMessage(::GetCurrentThreadId(),
                         message,
                         vkey,

@@ -427,6 +427,13 @@ const char kDisableRestoreSessionState[]    = "disable-restore-session-state";
 const char kDisableScriptedPrintThrottling[] =
     "disable-scripted-print-throttling";
 
+// Disable SPDY/2. This is a temporary testing flag. See
+// http://crbug.com/303957 .
+const char kDisableSpdy2[]                  = "disable-spdy2";
+
+// Disable SPDY/3.1. This is a temporary testing flag.
+const char kDisableSpdy31[]                 = "disable-spdy31";
+
 // Disables syncing browser data to a Google Account.
 const char kDisableSync[]                   = "disable-sync";
 
@@ -744,13 +751,6 @@ const char kEnableStickyKeys[]              = "enable-sticky-keys";
 // Disables support of sticky keys.
 const char kDisableStickyKeys[]              = "disable-sticky-keys";
 
-// Enable SPDY/2. This is a temporary testing flag. See
-// http://crbug.com/303957 .
-const char kEnableSpdy2[]                   = "enable-spdy2";
-
-// Disable SPDY/3.1. This is a temporary testing flag.
-const char kDisableSpdy31[]                 = "disable-spdy31";
-
 // Enable SPDY/4 alpha 2. This is a temporary testing flag.
 const char kEnableSpdy4a2[]                 = "enable-spdy4a2";
 
@@ -791,6 +791,8 @@ const char kEnableTranslateNewUX[]         = "enable-translate-new-ux";
 // With this switch, SSL 3.0 fallback will be enabled for all sites.
 // Without this switch, SSL 3.0 fallback will be disabled for a site
 // pinned to the Google pin list (indicating that it is a Google site).
+// Note: until http://crbug/237055 is resolved, unrestricted SSL 3.0
+// fallback is always enabled, with or without this switch.
 const char kEnableUnrestrictedSSL3Fallback[] =
     "enable-unrestricted-ssl3-fallback";
 
@@ -1564,17 +1566,10 @@ const char kEnableCast[]                    = "enable-cast";
 const char kOpenAsh[]                       = "open-ash";
 #endif
 
-#if defined(OS_POSIX)
-// Used for turning on Breakpad crash reporting in a debug environment where
-// crash reporting is typically compiled but disabled.
-const char kEnableCrashReporterForTesting[] =
-    "enable-crash-reporter-for-testing";
-
-#if !defined(OS_MACOSX) && !defined(OS_CHROMEOS)
+#if defined(OS_POSIX) && !defined(OS_MACOSX) && !defined(OS_CHROMEOS)
 // Specifies which password store to use (detect, default, gnome, kwallet).
 const char kPasswordStore[]                 = "password-store";
 #endif
-#endif  // OS_POSIX
 
 #if defined(OS_LINUX) && !defined(OS_CHROMEOS)
 // Triggers migration of user data directory to another directory

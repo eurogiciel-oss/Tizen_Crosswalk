@@ -10,7 +10,9 @@ NativeAppWindow::CreateParams::CreateParams()
   : delegate(NULL),
     web_contents(NULL),
     state(ui::SHOW_STATE_NORMAL),
-    resizable(true) {
+    resizable(true),
+    net_wm_pid(0),
+    parent(NULL) {
 }
 
 }  // namespace xwalk

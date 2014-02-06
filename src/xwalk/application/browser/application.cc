@@ -58,76 +58,17 @@ Application::Application(
     : runtime_context_(runtime_context),
       application_data_(data),
       main_runtime_(NULL),
-      observer_(observer) {
+      observer_(observer),
+      entry_point_used_(Default),
+      termination_mode_used_(Normal),
+      weak_factory_(this) {
   DCHECK(runtime_context_);
   DCHECK(application_data_);
   DCHECK(observer_);
 }
 
 Application::~Application() {
-}
-
-template<>
-bool Application::TryLaunchAt<Application::AppMainKey>() {
-  const MainDocumentInfo* main_info =
-      ToMainDocumentInfo(application_data_->GetManifestData(keys::kAppMainKey));
-  if (!main_info || !main_info->GetMainURL().is_valid()) {
-    LOG(WARNING) << "Can't find a valid main document URL for app.";
-    return false;
-  }
-
-  DCHECK(HasMainDocument());
-  main_runtime_ = Runtime::Create(runtime_context_, this);
-  main_runtime_->LoadURL(main_info->GetMainURL());
-  return true;
-}
-
-template<>
-bool Application::TryLaunchAt<Application::LaunchLocalPathKey>() {
-  const Manifest* manifest = application_data_->GetManifest();
-  std::string entry_page;
-  if (manifest->GetString(application_manifest_keys::kLaunchLocalPathKey,
-        &entry_page) && !entry_page.empty()) {
-    GURL url = application_data_->GetResourceURL(entry_page);
-    if (url.is_empty()) {
-      LOG(WARNING) << "Can't find a valid local path URL for app.";
-      return false;
-    }
-
-    // main_runtime_ should be initialized before 'LoadURL' call,
-    // so that it is in place already when application extensions
-    // are created.
-    main_runtime_= Runtime::Create(runtime_context_, this);
-    main_runtime_->LoadURL(url);
-    main_runtime_->AttachDefaultWindow();
-    return true;
-  }
-
-  return false;
-}
-
-template<>
-bool Application::TryLaunchAt<Application::URLKey>() {
-  const Manifest* manifest = application_data_->GetManifest();
-  std::string url_string;
-  if (manifest->GetString(application_manifest_keys::kURLKey,
-      &url_string)) {
-    GURL url(url_string);
-    if (!url.is_valid()) {
-      LOG(WARNING) << "Can't find a valid URL for app.";
-      return false;
-    }
-
-    // main_runtime_ should be initialized before 'LoadURL' call,
-    // so that it is in place already when application extensions
-    // are created.
-    main_runtime_= Runtime::Create(runtime_context_, this);
-    main_runtime_->LoadURL(url);
-    main_runtime_->AttachDefaultWindow();
-    return true;
-  }
-
-  return false;
+  Terminate(Immediate);
 }
 
 bool Application::Launch(const LaunchParams& launch_params) {
@@ -137,18 +78,90 @@ bool Application::Launch(const LaunchParams& launch_params) {
     return false;
   }
 
-  if ((launch_params.entry_points & AppMainKey) && TryLaunchAt<AppMainKey>())
-    return true;
-  if ((launch_params.entry_points & LaunchLocalPathKey)
-      && TryLaunchAt<LaunchLocalPathKey>())
-    return true;
-  if ((launch_params.entry_points & URLKey) && TryLaunchAt<URLKey>())
-    return true;
+  GURL url = GetURLForLaunch(launch_params, &entry_point_used_);
+  if (!url.is_valid())
+    return false;
 
-  return false;
+  main_runtime_ = Runtime::Create(runtime_context_, this);
+  main_runtime_->LoadURL(url);
+  if (entry_point_used_ != AppMainKey) {
+    NativeAppWindow::CreateParams params;
+    params.net_wm_pid = launch_params.launcher_pid;
+    main_runtime_->AttachWindow(params);
+  }
+
+  return true;
 }
 
-void Application::Terminate() {
+GURL Application::GetURLForLaunch(const LaunchParams& params,
+                                  LaunchEntryPoint* used) {
+  if (params.entry_points & AppMainKey) {
+    GURL url = GetURLFromAppMainKey();
+    if (url.is_valid()) {
+      *used = AppMainKey;
+      return url;
+    }
+  }
+
+  if (params.entry_points & LaunchLocalPathKey) {
+    GURL url = GetURLFromLocalPathKey();
+    if (url.is_valid()) {
+      *used = LaunchLocalPathKey;
+      return url;
+    }
+  }
+
+  if (params.entry_points & URLKey) {
+    GURL url = GetURLFromURLKey();
+    if (url.is_valid()) {
+      *used = URLKey;
+      return url;
+    }
+  }
+  LOG(WARNING) << "Failed to find a valid launch URL for the app.";
+  return GURL();
+}
+
+GURL Application::GetURLFromAppMainKey() {
+  MainDocumentInfo* main_info = ToMainDocumentInfo(
+    application_data_->GetManifestData(keys::kAppMainKey));
+  if (!main_info)
+    return GURL();
+
+  DCHECK(application_data_->HasMainDocument());
+  return main_info->GetMainURL();
+}
+
+GURL Application::GetURLFromLocalPathKey() {
+  const Manifest* manifest = application_data_->GetManifest();
+  std::string entry_page;
+  if (!manifest->GetString(keys::kLaunchLocalPathKey, &entry_page)
+      || entry_page.empty())
+    return GURL();
+
+  return application_data_->GetResourceURL(entry_page);
+}
+
+GURL Application::GetURLFromURLKey() {
+  const Manifest* manifest = application_data_->GetManifest();
+  std::string url_string;
+  if (!manifest->GetString(keys::kURLKey, &url_string))
+    return GURL();
+
+  return GURL(url_string);
+}
+
+void Application::Terminate(TerminationMode mode) {
+  termination_mode_used_ = mode;
+  if (IsTerminating()) {
+    LOG(WARNING) << "Attempt to Terminate app: " << id()
+                 << ", which is already in the process of being terminated.";
+    if (mode == Immediate)
+      CloseMainDocument();
+
+    return;
+  }
+
   std::set<Runtime*> to_be_closed(runtimes_);
   if (HasMainDocument() && to_be_closed.size() > 1) {
     // The main document runtime is closed separately
@@ -156,9 +169,22 @@ void Application::Terminate() {
     to_be_closed.erase(main_runtime_);
   }
 
-  std::set<Runtime*>::iterator it = to_be_closed.begin();
-  for (; it!= to_be_closed.end(); ++it)
-    (*it)->Close();
+  std::for_each(to_be_closed.begin(), to_be_closed.end(),
+                std::mem_fun(&Runtime::Close));
+}
+
+Runtime* Application::GetMainDocumentRuntime() const {
+  return HasMainDocument() ? main_runtime_ : NULL;
+}
+
+int Application::GetRenderProcessHostID() const {
+  DCHECK(main_runtime_);
+  return main_runtime_->web_contents()->
+          GetRenderProcessHost()->GetID();
+}
+
+bool Application::HasMainDocument() const {
+  return entry_point_used_ == AppMainKey;
 }
 
 void Application::OnRuntimeAdded(Runtime* runtime) {
@@ -171,7 +197,12 @@ void Application::OnRuntimeRemoved(Runtime* runtime) {
   runtimes_.erase(runtime);
 
   if (runtimes_.empty()) {
-    observer_->OnApplicationTerminated(this);
+#if defined(OS_TIZEN_MOBILE)
+    runtime->CloseRootWindow();
+#endif
+    base::MessageLoop::current()->PostTask(FROM_HERE,
+        base::Bind(&Application::NotifyTermination,
+                   weak_factory_.GetWeakPtr()));
     return;
   }
 
@@ -182,7 +213,8 @@ void Application::OnRuntimeRemoved(Runtime* runtime) {
 
     // If onSuspend is not registered in main document,
     // we close the main document immediately.
-    if (!IsOnSuspendHandlerRegistered()) {
+    if (!IsOnSuspendHandlerRegistered() ||
+        termination_mode_used_ == Immediate) {
       CloseMainDocument();
       return;
     }
@@ -209,14 +241,8 @@ void Application::CloseMainDocument() {
   main_runtime_ = NULL;
 }
 
-Runtime* Application::GetMainDocumentRuntime() const {
-  return HasMainDocument() ? main_runtime_ : NULL;
-}
-
-int Application::GetRenderProcessHostID() const {
-  DCHECK(main_runtime_);
-  return main_runtime_->web_contents()->
-          GetRenderProcessHost()->GetID();
+void Application::NotifyTermination() {
+  observer_->OnApplicationTerminated(this);
 }
 
 bool Application::IsOnSuspendHandlerRegistered() const {

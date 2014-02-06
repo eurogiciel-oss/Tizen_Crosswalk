@@ -11,6 +11,8 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_android.h"
 #include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/signin/signin_manager.h"
+#include "chrome/browser/signin/signin_manager_factory.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/browser_thread.h"
 #include "jni/BookmarksBridge_jni.h"
@@ -31,15 +33,15 @@ BookmarksBridge::BookmarksBridge(JNIEnv* env,
                                  jobject j_profile)
     : weak_java_ref_(env, obj) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  Profile* profile = ProfileAndroid::FromProfileAndroid(j_profile);
-  bookmark_model_ = BookmarkModelFactory::GetForProfile(profile);
+  profile_ = ProfileAndroid::FromProfileAndroid(j_profile);
+  bookmark_model_ = BookmarkModelFactory::GetForProfile(profile_);
 
   // Registers the notifications we are interested.
   bookmark_model_->AddObserver(this);
   if (bookmark_model_->loaded())
     Java_BookmarksBridge_bookmarkModelLoaded(env, obj);
 
-  managed_bookmarks_shim_.reset(new ManagedBookmarksShim(profile->GetPrefs()));
+  managed_bookmarks_shim_.reset(new ManagedBookmarksShim(profile_->GetPrefs()));
   managed_bookmarks_shim_->AddObserver(this);
 
   // Since a sync or import could have started before this class is
@@ -87,6 +89,12 @@ void BookmarksBridge::GetBookmarksForFolder(JNIEnv* env,
   long folder_id = Java_BookmarkId_getId(env, j_folder_id_obj);
   int type = Java_BookmarkId_getType(env, j_folder_id_obj);
   const BookmarkNode* folder = GetFolderWithFallback(folder_id, type);
+  // Recreate the java bookmarkId object due to fallback.
+  ScopedJavaLocalRef<jobject> folder_id_obj =
+      Java_BookmarksBridge_createBookmarkId(
+          env, folder->id(), GetBookmarkType(folder));
+  j_folder_id_obj = folder_id_obj.obj();
+
   // If this is the Mobile bookmarks folder then add the "Managed bookmarks"
   // folder first, so that it's the first entry.
   if (folder == bookmark_model_->mobile_node() &&
@@ -98,6 +106,8 @@ void BookmarksBridge::GetBookmarksForFolder(JNIEnv* env,
   // Get the folder contents
   for (int i = 0; i < folder->child_count(); ++i) {
     const BookmarkNode* node = folder->GetChild(i);
+    if (!IsFolderAvailable(node))
+      continue;
     ExtractBookmarkNodeInformation(node, j_result_obj);
   }
 
@@ -114,6 +124,12 @@ void BookmarksBridge::GetCurrentFolderHierarchy(JNIEnv* env,
   long folder_id = Java_BookmarkId_getId(env, j_folder_id_obj);
   int type = Java_BookmarkId_getType(env, j_folder_id_obj);
   const BookmarkNode* folder = GetFolderWithFallback(folder_id, type);
+  // Recreate the java bookmarkId object due to fallback.
+  ScopedJavaLocalRef<jobject> folder_id_obj =
+      Java_BookmarksBridge_createBookmarkId(
+          env, folder->id(), GetBookmarkType(folder));
+  j_folder_id_obj = folder_id_obj.obj();
+
   // Get the folder heirarchy
   const BookmarkNode* node = folder;
   while (node) {
@@ -191,8 +207,10 @@ const BookmarkNode* BookmarksBridge::GetNodeByID(long node_id,
 const BookmarkNode* BookmarksBridge::GetFolderWithFallback(
     long folder_id, int type) {
   const BookmarkNode* folder = GetNodeByID(folder_id, type);
-  if (!folder || folder->type() == BookmarkNode::URL)
+  if (!folder || folder->type() == BookmarkNode::URL ||
+      !IsFolderAvailable(folder)) {
     folder = bookmark_model_->mobile_node();
+  }
   return folder;
 }
 
@@ -217,6 +235,15 @@ int BookmarksBridge::GetBookmarkType(const BookmarkNode* node) {
     return kBookmarkTypeManaged;
   else
     return kBookmarkTypeNormal;
+}
+
+bool BookmarksBridge::IsFolderAvailable(
+    const BookmarkNode* folder) const {
+  SigninManager* signin = SigninManagerFactory::GetForProfile(
+      profile_->GetOriginalProfile());
+  return (folder->type() != BookmarkNode::BOOKMARK_BAR &&
+      folder->type() != BookmarkNode::OTHER_NODE) ||
+      (signin && !signin->GetAuthenticatedUsername().empty());
 }
 
 // ------------- Observer-related methods ------------- //

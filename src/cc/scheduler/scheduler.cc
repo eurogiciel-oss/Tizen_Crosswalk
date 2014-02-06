@@ -156,6 +156,7 @@ void Scheduler::SetupNextBeginImplFrameIfNeeded() {
     last_set_needs_begin_impl_frame_ = needs_begin_impl_frame;
   }
 
+  bool needs_advance_commit_state_timer = false;
   // Setup PollForAnticipatedDrawTriggers if we need to monitor state but
   // aren't expecting any more BeginImplFrames. This should only be needed by
   // the synchronous compositor when BeginImplFrameNeeded is false.
@@ -173,6 +174,30 @@ void Scheduler::SetupNextBeginImplFrameIfNeeded() {
     }
   } else {
     poll_for_draw_triggers_closure_.Cancel();
+
+    // At this point we'd prefer to advance through the commit flow by
+    // drawing a frame, however it's possible that the frame rate controller
+    // will not give us a BeginImplFrame until the commit completes.  See
+    // crbug.com/317430 for an example of a swap ack being held on commit. Thus
+    // we set a repeating timer to poll on ProcessScheduledActions until we
+    // successfully reach BeginImplFrame.
+    if (state_machine_.IsCommitStateWaiting())
+      needs_advance_commit_state_timer = true;
+  }
+  if (needs_advance_commit_state_timer !=
+      advance_commit_state_timer_.IsRunning()) {
+    if (needs_advance_commit_state_timer &&
+        last_begin_impl_frame_args_.IsValid()) {
+    // Since we'd rather get a BeginImplFrame by the normally mechanism, we set
+    // the interval to twice the interval from the previous frame.
+      advance_commit_state_timer_.Start(
+          FROM_HERE,
+          last_begin_impl_frame_args_.interval * 2,
+          base::Bind(&Scheduler::ProcessScheduledActions,
+                     base::Unretained(this)));
+    } else {
+      advance_commit_state_timer_.Stop();
+    }
   }
 }
 
@@ -252,11 +277,10 @@ void Scheduler::OnBeginImplFrameDeadline() {
 
 void Scheduler::PollForAnticipatedDrawTriggers() {
   TRACE_EVENT0("cc", "Scheduler::PollForAnticipatedDrawTriggers");
+  poll_for_draw_triggers_closure_.Cancel();
   state_machine_.DidEnterPollForAnticipatedDrawTriggers();
   ProcessScheduledActions();
   state_machine_.DidLeavePollForAnticipatedDrawTriggers();
-
-  poll_for_draw_triggers_closure_.Cancel();
 }
 
 void Scheduler::DrawAndSwapIfPossible() {

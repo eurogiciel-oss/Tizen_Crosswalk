@@ -148,14 +148,6 @@ const Experiment::Choice kEnableAcceleratedFixedRootBackgroundChoices[] = {
     switches::kDisableAcceleratedFixedRootBackground, ""},
 };
 
-const Experiment::Choice kGDIPresentChoices[] = {
-  { IDS_GENERIC_EXPERIMENT_CHOICE_DEFAULT, "", "" },
-  { IDS_FLAGS_PRESENT_WITH_GDI_FIRST_SHOW,
-    switches::kDoFirstShowPresentWithGDI, ""},
-  { IDS_FLAGS_PRESENT_WITH_GDI_ALL_SHOW,
-    switches::kDoAllShowPresentWithGDI, ""}
-};
-
 const Experiment::Choice kTouchEventsChoices[] = {
   { IDS_GENERIC_EXPERIMENT_CHOICE_AUTOMATIC, "", "" },
   { IDS_GENERIC_EXPERIMENT_CHOICE_ENABLED,
@@ -390,7 +382,7 @@ const Experiment kExperiments[] = {
     "force-compositing-mode-2",
     IDS_FLAGS_FORCE_COMPOSITING_MODE_NAME,
     IDS_FLAGS_FORCE_COMPOSITING_MODE_DESCRIPTION,
-    kOsMac | kOsWin | kOsLinux,
+    kOsMac | kOsLinux,
     ENABLE_DISABLE_VALUE_TYPE(switches::kForceCompositingMode,
                               switches::kDisableForceCompositingMode)
   },
@@ -398,7 +390,7 @@ const Experiment kExperiments[] = {
     "threaded-compositing-mode",
     IDS_FLAGS_THREADED_COMPOSITING_MODE_NAME,
     IDS_FLAGS_THREADED_COMPOSITING_MODE_DESCRIPTION,
-    kOsMac | kOsWin | kOsLinux,
+    kOsMac | kOsLinux,
     ENABLE_DISABLE_VALUE_TYPE(switches::kEnableThreadedCompositing,
                               switches::kDisableThreadedCompositing)
   },
@@ -420,13 +412,6 @@ const Experiment kExperiments[] = {
          switches::kDisableUniversalAcceleratedOverflowScroll)
   },
   {
-    "present-with-GDI",
-    IDS_FLAGS_PRESENT_WITH_GDI_NAME,
-    IDS_FLAGS_PRESENT_WITH_GDI_DESCRIPTION,
-    kOsWin,
-    MULTI_VALUE_TYPE(kGDIPresentChoices)
-  },
-  {
     "enable-experimental-canvas-features",
     IDS_FLAGS_ENABLE_EXPERIMENTAL_CANVAS_FEATURES_NAME,
     IDS_FLAGS_ENABLE_EXPERIMENTAL_CANVAS_FEATURES_DESCRIPTION,
@@ -439,13 +424,6 @@ const Experiment kExperiments[] = {
     IDS_FLAGS_DISABLE_ACCELERATED_2D_CANVAS_DESCRIPTION,
     kOsAll,
     SINGLE_VALUE_TYPE(switches::kDisableAccelerated2dCanvas)
-  },
-  {
-    "disable-threaded-animation",
-    IDS_FLAGS_DISABLE_THREADED_ANIMATION_NAME,
-    IDS_FLAGS_DISABLE_THREADED_ANIMATION_DESCRIPTION,
-    kOsAll,
-    SINGLE_VALUE_TYPE(cc::switches::kDisableThreadedAnimation)
   },
   {
     "composited-layer-borders",
@@ -1411,7 +1389,7 @@ const Experiment kExperiments[] = {
     "impl-side-painting",
     IDS_FLAGS_IMPL_SIDE_PAINTING_NAME,
     IDS_FLAGS_IMPL_SIDE_PAINTING_DESCRIPTION,
-    kOsAndroid | kOsLinux | kOsCrOS,
+    kOsLinux | kOsCrOS,
     MULTI_VALUE_TYPE(kImplSidePaintingChoices)
   },
   {
@@ -1597,12 +1575,13 @@ const Experiment kExperiments[] = {
     SINGLE_VALUE_TYPE(switches::kEnableSimplifiedFullscreen)
   },
 #endif
-#if defined(OS_CHROMEOS) || defined(OS_WIN)
+#if defined(OS_CHROMEOS) || defined(OS_WIN) || \
+    (defined(OS_LINUX) && defined(TOOLKIT_VIEWS))
   {
     "omnibox-auto-completion-for-ime",
     IDS_FLAGS_ENABLE_OMNIBOX_AUTO_COMPLETION_FOR_IME_NAME,
     IDS_FLAGS_ENABLE_OMNIBOX_AUTO_COMPLETION_FOR_IME_DESCRIPTION,
-    kOsCrOS | kOsWin,
+    kOsCrOS | kOsWin | kOsLinux,
     ENABLE_DISABLE_VALUE_TYPE(switches::kEnableOmniboxAutoCompletionForIme,
                               switches::kDisableOmniboxAutoCompletionForIme)
   },
@@ -1829,13 +1808,6 @@ const Experiment kExperiments[] = {
     SINGLE_VALUE_TYPE(chromeos::switches::kEnableIMEModeIndicator)
   },
 #endif
-  {
-    "enable-translate-new-ux",
-    IDS_FLAGS_ENABLE_TRANSLATE_NEW_UX_NAME,
-    IDS_FLAGS_ENABLE_TRANSLATE_NEW_UX_DESCRIPTION,
-    kOsDesktop,
-    SINGLE_VALUE_TYPE(switches::kEnableTranslateNewUX)
-  },
 };
 
 const Experiment* experiments = kExperiments;

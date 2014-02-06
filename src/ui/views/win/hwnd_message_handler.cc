@@ -299,11 +299,21 @@ bool ProcessChildWindowMessage(UINT message,
 // The thickness of an auto-hide taskbar in pixels.
 const int kAutoHideTaskbarThicknessPx = 2;
 
-// For windows with the standard frame removed, the client area needs to be
-// different from the window area to avoid a "feature" in Windows's handling of
-// WM_NCCALCSIZE data. See the comment near the bottom of GetClientAreaInsets
-// for more details.
-const int kClientAreaBottomInsetHack = -1;
+bool IsTopLevelWindow(HWND window) {
+  long style = ::GetWindowLong(window, GWL_STYLE);
+  if (!(style & WS_CHILD))
+    return true;
+  HWND parent = ::GetParent(window);
+  return !parent || (parent == ::GetDesktopWindow());
+}
+
+void AddScrollStylesToWindow(HWND window) {
+  if (::IsWindow(window)) {
+    long current_style = ::GetWindowLong(window, GWL_STYLE);
+    ::SetWindowLong(window, GWL_STYLE,
+                    current_style | WS_VSCROLL | WS_HSCROLL);
+  }
+}
 
 }  // namespace
 
@@ -395,7 +405,9 @@ HWNDMessageHandler::HWNDMessageHandler(HWNDMessageHandlerDelegate* delegate)
       can_update_layered_window_(true),
       is_first_nccalc_(true),
       autohide_factory_(this),
-      id_generator_(0) {
+      id_generator_(0),
+      needs_scroll_styles_(false),
+      in_size_loop_(false) {
 }
 
 HWNDMessageHandler::~HWNDMessageHandler() {
@@ -412,6 +424,27 @@ void HWNDMessageHandler::Init(HWND parent, const gfx::Rect& bounds) {
 
   // Create the window.
   WindowImpl::Init(parent, bounds);
+
+#if defined(USE_AURA)
+  // Certain trackpad drivers on Windows have bugs where in they don't generate
+  // WM_MOUSEWHEEL messages for the trackpoint and trackpad scrolling gestures
+  // unless there is an entry for Chrome with the class name of the Window.
+  // These drivers check if the window under the trackpoint has the WS_VSCROLL/
+  // WS_HSCROLL style and if yes they generate the legacy WM_VSCROLL/WM_HSCROLL
+  // messages. We add these styles to ensure that trackpad/trackpoint scrolling
+  // work.
+  // TODO(ananta)
+  // Look into moving the WS_VSCROLL and WS_HSCROLL style setting logic to the
+  // CalculateWindowStylesFromInitParams function. Doing it there seems to
+  // cause some interactive tests to fail. Investigation needed.
+  if (IsTopLevelWindow(hwnd())) {
+    long current_style = ::GetWindowLong(hwnd(), GWL_STYLE);
+    if (!(current_style & WS_POPUP)) {
+      AddScrollStylesToWindow(hwnd());
+      needs_scroll_styles_ = true;
+    }
+  }
+#endif
 }
 
 void HWNDMessageHandler::InitModalType(ui::ModalType modal_type) {
@@ -786,10 +819,26 @@ void HWNDMessageHandler::FrameTypeChanged() {
                           &policy, sizeof(DWMNCRENDERINGPOLICY));
   }
 
-  ResetWindowRegion(true);
+  // Don't redraw the window here, because we need to hide and show the window
+  // which will also trigger a redraw.
+  ResetWindowRegion(true, false);
 
   // The non-client view needs to update too.
   delegate_->HandleFrameChanged();
+
+  if (IsVisible() && !delegate_->IsUsingCustomFrame()) {
+    // For some reason, we need to hide the window after we change from a custom
+    // frame to a native frame.  If we don't, the client area will be filled
+    // with black.  This seems to be related to an interaction between DWM and
+    // SetWindowRgn, but the details aren't clear. Additionally, we need to
+    // specify SWP_NOZORDER here, otherwise if you have multiple chrome windows
+    // open they will re-appear with a non-deterministic Z-order.
+    UINT flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER;
+    SetWindowPos(hwnd(), NULL, 0, 0, 0, 0, flags | SWP_HIDEWINDOW);
+    SetWindowPos(hwnd(), NULL, 0, 0, 0, 0, flags | SWP_SHOWWINDOW);
+
+    UpdateWindow(hwnd());
+  }
 
   // WM_DWMCOMPOSITIONCHANGED is only sent to top level windows, however we want
   // to notify our children too, since we can have MDI child windows who need to
@@ -1043,22 +1092,10 @@ void HWNDMessageHandler::ClientAreaSizeChanged() {
   // In case of minimized window GetWindowRect can return normally unexpected
   // coordinates.
   if (!IsMinimized()) {
-    if (delegate_->WidgetSizeIsClientSize()) {
+    if (delegate_->WidgetSizeIsClientSize())
       GetClientRect(hwnd(), &r);
-      gfx::Insets insets;
-      bool got_insets = GetClientAreaInsets(&insets);
-      if (got_insets) {
-        // This is needed due to a hack that works around a "feature" in
-        // Windows's handling of WM_NCCALCSIZE. See the comment near the end of
-        // GetClientAreaInsets for more details.
-        if ((remove_standard_frame_ && !IsMaximized()) ||
-            !fullscreen_handler_->fullscreen()) {
-          r.bottom += kClientAreaBottomInsetHack;
-        }
-      }
-    } else {
+    else
       GetWindowRect(hwnd(), &r);
-    }
   }
   gfx::Size s(std::max(0, static_cast<int>(r.right - r.left)),
               std::max(0, static_cast<int>(r.bottom - r.top)));
@@ -1090,46 +1127,11 @@ bool HWNDMessageHandler::GetClientAreaInsets(gfx::Insets* insets) const {
     return true;
   }
 
-  // Returning empty insets for a window with the standard frame removed seems
-  // to cause Windows to treat the window specially, treating black as
-  // transparent and changing around some of the painting logic. I suspect it's
-  // some sort of horrible backwards-compatability hack, but the upshot of it
-  // is that if the insets are empty then in certain conditions (it seems to
-  // be subtly related to timing), the contents of windows with the standard
-  // frame removed will flicker to transparent during resize.
-  //
-  // To work around this, we increase the size of the client area by 1px
-  // *beyond* the bottom of the window. This prevents Windows from having a
-  // hissy fit and flashing the window incessantly during resizes, but it also
-  // means that the client area is reported 1px larger than it really is, so
-  // user code has to compensate by making its content shorter if it wants
-  // everything to appear inside the window.
-  if (remove_standard_frame_) {
-    *insets =
-        gfx::Insets(0, 0, IsMaximized() ? 0 : kClientAreaBottomInsetHack, 0);
-    return true;
-  }
-
-  // This is weird, but highly essential. If we don't offset the bottom edge
-  // of the client rect, the window client area and window area will match,
-  // and when returning to glass rendering mode from non-glass, the client
-  // area will not paint black as transparent. This is because (and I don't
-  // know why) the client area goes from matching the window rect to being
-  // something else. If the client area is not the window rect in both
-  // modes, the blackness doesn't occur. Because of this, we need to tell
-  // the RootView to lay out to fit the window rect, rather than the client
-  // rect when using the opaque frame.
-  // Note: this is only required for non-fullscreen windows. Note that
-  // fullscreen windows are in restored state, not maximized.
-  // Note that previously we used to inset by 1 instead of outset, but that
-  // doesn't work with Aura: http://crbug.com/172099 http://crbug.com/277228
-  *insets = gfx::Insets(
-      0, 0,
-      fullscreen_handler_->fullscreen() ? 0 : kClientAreaBottomInsetHack, 0);
+  *insets = gfx::Insets();
   return true;
 }
 
-void HWNDMessageHandler::ResetWindowRegion(bool force) {
+void HWNDMessageHandler::ResetWindowRegion(bool force, bool redraw) {
   // A native frame uses the native window region, and we don't want to mess
   // with it.
   // WS_EX_COMPOSITED is used instead of WS_EX_LAYERED under aura. WS_EX_LAYERED
@@ -1139,7 +1141,7 @@ void HWNDMessageHandler::ResetWindowRegion(bool force) {
   if ((window_ex_style() & WS_EX_COMPOSITED) == 0 &&
       (!delegate_->IsUsingCustomFrame() || !delegate_->IsWidgetWindow())) {
     if (force)
-      SetWindowRgn(hwnd(), NULL, TRUE);
+      SetWindowRgn(hwnd(), NULL, redraw);
     return;
   }
 
@@ -1168,7 +1170,7 @@ void HWNDMessageHandler::ResetWindowRegion(bool force) {
 
   if (current_rgn_result == ERROR || !EqualRgn(current_rgn, new_region)) {
     // SetWindowRgn takes ownership of the HRGN created by CreateNativeRegion.
-    SetWindowRgn(hwnd(), new_region, TRUE);
+    SetWindowRgn(hwnd(), new_region, redraw);
   } else {
     DeleteObject(new_region);
   }
@@ -1381,17 +1383,19 @@ LRESULT HWNDMessageHandler::OnDwmCompositionChanged(UINT msg,
     SetMsgHandled(FALSE);
     return 0;
   }
-  // For some reason, we need to hide the window while we're changing the frame
-  // type only when we're changing it in response to WM_DWMCOMPOSITIONCHANGED.
-  // If we don't, the client area will be filled with black. I'm suspecting
-  // something skia-ey.
-  // Frame type toggling caused by the user (e.g. switching theme) doesn't seem
-  // to have this requirement.
+
   FrameTypeChanged();
   return 0;
 }
 
 void HWNDMessageHandler::OnEnterSizeMove() {
+  // Please refer to the comments in the OnSize function about the scrollbar
+  // hack.
+  // Hide the Windows scrollbar if the scroll styles are present to ensure
+  // that a paint flicker does not occur while sizing.
+  if (in_size_loop_ && needs_scroll_styles_)
+    ShowScrollBar(hwnd(), SB_BOTH, FALSE);
+
   delegate_->HandleBeginWMSizeMove();
   SetMsgHandled(FALSE);
 }
@@ -1404,6 +1408,13 @@ LRESULT HWNDMessageHandler::OnEraseBkgnd(HDC dc) {
 void HWNDMessageHandler::OnExitSizeMove() {
   delegate_->HandleEndWMSizeMove();
   SetMsgHandled(FALSE);
+  // Please refer to the notes in the OnSize function for information about
+  // the scrolling hack.
+  // We hide the Windows scrollbar in the OnEnterSizeMove function. We need
+  // to add the scroll styles back to ensure that scrolling works in legacy
+  // trackpoint drivers.
+  if (in_size_loop_ && needs_scroll_styles_)
+    AddScrollStylesToWindow(hwnd());
 }
 
 void HWNDMessageHandler::OnGetMinMaxInfo(MINMAXINFO* minmax_info) {
@@ -1417,11 +1428,6 @@ void HWNDMessageHandler::OnGetMinMaxInfo(MINMAXINFO* minmax_info) {
     CRect client_rect, window_rect;
     GetClientRect(hwnd(), &client_rect);
     GetWindowRect(hwnd(), &window_rect);
-    // Due to the client area bottom inset hack (detailed elsewhere), adjust
-    // the reported size of the client area in the case that the standard frame
-    // has been removed.
-    if (remove_standard_frame_)
-      client_rect.bottom += kClientAreaBottomInsetHack;
     window_rect -= client_rect;
     min_window_size.Enlarge(window_rect.Width(), window_rect.Height());
     if (!max_window_size.IsEmpty())
@@ -1507,6 +1513,26 @@ void HWNDMessageHandler::OnKillFocus(HWND focused_window) {
 LRESULT HWNDMessageHandler::OnMouseActivate(UINT message,
                                             WPARAM w_param,
                                             LPARAM l_param) {
+#if defined(USE_AURA)
+  // On Windows, if we select the menu item by touch and if the window at the
+  // location is another window on the same thread, that window gets a
+  // WM_MOUSEACTIVATE message and ends up activating itself, which is not
+  // correct. We workaround this by setting a property on the window at the
+  // current cursor location. We check for this property in our
+  // WM_MOUSEACTIVATE handler and don't activate the window if the property is
+  // set.
+  if (::GetProp(hwnd(), kIgnoreTouchMouseActivateForWindow)) {
+    ::RemoveProp(hwnd(), kIgnoreTouchMouseActivateForWindow);
+    return MA_NOACTIVATE;
+  }
+  // A child window activation should be treated as if we lost activation.
+  POINT cursor_pos = {0};
+  ::GetCursorPos(&cursor_pos);
+  ::ScreenToClient(hwnd(), &cursor_pos);
+  HWND child = ::RealChildWindowFromPoint(hwnd(), cursor_pos);
+  if (::IsWindow(child) && child != hwnd() && ::IsWindowVisible(child))
+    PostProcessActivateMessage(WA_INACTIVE, false);
+#endif
   // TODO(beng): resolve this with the GetWindowLong() check on the subsequent
   //             line.
   if (delegate_->IsWidgetWindow())
@@ -1812,8 +1838,23 @@ LRESULT HWNDMessageHandler::OnNCHitTest(const CPoint& point) {
 
   // Otherwise, we let Windows do all the native frame non-client handling for
   // us.
+#if defined(USE_AURA)
+  LRESULT hit_test_code = DefWindowProc(hwnd(), WM_NCHITTEST, 0,
+                                        MAKELPARAM(point.x, point.y));
+  // If we faked the WS_VSCROLL and WS_HSCROLL styles for this window, then
+  // Windows returns the HTVSCROLL or HTHSCROLL hit test codes if we hover or
+  // click on the non client portions of the window where the OS scrollbars
+  // would be drawn. These hittest codes are returned even when the scrollbars
+  // are hidden, which is the case in Aura. We fake the hittest code as
+  // HTCLIENT in this case to ensure that we receive client mouse messages as
+  // opposed to non client mouse messages.
+  if (needs_scroll_styles_ && (hit_test_code == HTVSCROLL ||
+      hit_test_code == HTHSCROLL))
+    hit_test_code = HTCLIENT;
+  return hit_test_code;
+#else
   SetMsgHandled(FALSE);
-  return 0;
+#endif
 }
 
 void HWNDMessageHandler::OnNCPaint(HRGN rgn) {
@@ -1952,6 +1993,15 @@ LRESULT HWNDMessageHandler::OnReflectedMessage(UINT message,
   return 0;
 }
 
+LRESULT HWNDMessageHandler::OnScrollMessage(UINT message,
+                                            WPARAM w_param,
+                                            LPARAM l_param) {
+  MSG msg = { hwnd(), message, w_param, l_param, GetMessageTime() };
+  ui::ScrollEvent event(msg);
+  delegate_->HandleScrollEvent(event);
+  return 0;
+}
+
 LRESULT HWNDMessageHandler::OnSetCursor(UINT message,
                                         WPARAM w_param,
                                         LPARAM l_param) {
@@ -2028,7 +2078,22 @@ void HWNDMessageHandler::OnSize(UINT param, const CSize& size) {
   RedrawWindow(hwnd(), NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN);
   // ResetWindowRegion is going to trigger WM_NCPAINT. By doing it after we've
   // invoked OnSize we ensure the RootView has been laid out.
-  ResetWindowRegion(false);
+  ResetWindowRegion(false, true);
+
+#if defined(USE_AURA)
+  // We add the WS_VSCROLL and WS_HSCROLL styles to top level windows to ensure
+  // that legacy trackpad/trackpoint drivers generate the WM_VSCROLL and
+  // WM_HSCROLL messages and scrolling works.
+  // We want the scroll styles to be present on the window. However we don't
+  // want Windows to draw the scrollbars. To achieve this we hide the scroll
+  // bars and readd them to the window style in a posted task to ensure that we
+  // don't get nested WM_SIZE messages.
+  if (needs_scroll_styles_ && !in_size_loop_) {
+    ShowScrollBar(hwnd(), SB_BOTH, FALSE);
+    base::MessageLoop::current()->PostTask(
+        FROM_HERE, base::Bind(&AddScrollStylesToWindow, hwnd()));
+  }
+#endif
 }
 
 void HWNDMessageHandler::OnSysCommand(UINT notification_code,
@@ -2079,8 +2144,13 @@ void HWNDMessageHandler::OnSysCommand(UINT notification_code,
 
   // If the delegate can't handle it, the system implementation will be called.
   if (!delegate_->HandleCommand(notification_code)) {
+    // If the window is being resized by dragging the borders of the window
+    // with the mouse/touch/keyboard, we flag as being in a size loop.
+    if ((notification_code & sc_mask) == SC_SIZE)
+      in_size_loop_ = true;
     DefWindowProc(hwnd(), WM_SYSCOMMAND, notification_code,
                   MAKELPARAM(point.x, point.y));
+    in_size_loop_ = false;
   }
 }
 
@@ -2243,7 +2313,8 @@ void HWNDMessageHandler::OnWindowPosChanged(WINDOWPOS* window_pos) {
 }
 
 void HWNDMessageHandler::HandleTouchEvents(const TouchEvents& touch_events) {
-  for (size_t i = 0; i < touch_events.size(); ++i)
+  base::WeakPtr<HWNDMessageHandler> ref(weak_factory_.GetWeakPtr());
+  for (size_t i = 0; i < touch_events.size() && ref; ++i)
     delegate_->HandleTouchEvent(touch_events[i]);
 }
 

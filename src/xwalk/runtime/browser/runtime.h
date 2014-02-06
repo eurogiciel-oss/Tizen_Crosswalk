@@ -55,8 +55,6 @@ class Runtime : public content::WebContentsDelegate,
 
   void SetObserver(Observer* observer) { observer_ = observer; }
 
-  // Create a new Runtime instance with the given browsing context and URL.
-  static Runtime* Create(RuntimeContext*, const GURL&, Observer* = NULL);
   // Create a new Runtime instance which binds to a default app window.
   static Runtime* CreateWithDefaultWindow(RuntimeContext*,
                                           const GURL&, Observer* = NULL);
@@ -76,7 +74,9 @@ class Runtime : public content::WebContentsDelegate,
   RuntimeContext* runtime_context() const { return runtime_context_; }
   gfx::Image app_icon() const { return app_icon_; }
 
-  static void SetGlobalObserverForTesting(Observer* observer);
+#if defined(OS_TIZEN_MOBILE)
+  void CloseRootWindow();
+#endif
 
  protected:
   Runtime(content::WebContents* web_contents, Observer* observer);
@@ -148,6 +148,15 @@ class Runtime : public content::WebContentsDelegate,
   // NativeAppWindowDelegate implementation.
   virtual void OnWindowDestroyed() OVERRIDE;
 
+  void ApplyWindowDefaultParams(NativeAppWindow::CreateParams* params);
+  void ApplyFullScreenParam(NativeAppWindow::CreateParams* params);
+
+#if defined(OS_TIZEN_MOBILE)
+  void ApplyRootWindowParams(NativeAppWindow::CreateParams* params);
+  void SetRootWindow(NativeAppWindow* window);
+  void InitRootWindow();
+#endif
+
   // The browsing context.
   xwalk::RuntimeContext* runtime_context_;
 
@@ -158,6 +167,10 @@ class Runtime : public content::WebContentsDelegate,
   scoped_ptr<content::WebContents> web_contents_;
 
   NativeAppWindow* window_;
+
+#if defined(OS_TIZEN_MOBILE)
+  NativeAppWindow* root_window_;
+#endif
 
   gfx::Image app_icon_;
 

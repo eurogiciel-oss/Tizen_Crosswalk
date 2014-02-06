@@ -144,6 +144,7 @@ class MenuDelegate : public ui::SimpleMenuModel::Delegate {
 }
 
 - (void)dealloc {
+  [mediaIndicatorView_ setAnimationDoneCallbackObject:nil withSelector:nil];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [[self tabView] setController:nil];
   [super dealloc];
@@ -194,6 +195,9 @@ class MenuDelegate : public ui::SimpleMenuModel::Delegate {
 }
 
 - (void)setTitle:(NSString*)title {
+  if ([[self title] isEqualToString:title])
+    return;
+
   [titleView_ setStringValue:title];
   base::string16 title16 = base::SysNSStringToUTF16(title);
   bool isRTL = base::i18n::GetFirstStrongCharacterDirection(title16) ==
@@ -277,8 +281,13 @@ class MenuDelegate : public ui::SimpleMenuModel::Delegate {
   [mediaIndicatorView_ removeFromSuperview];
   mediaIndicatorView_.reset([mediaIndicatorView retain]);
   [self updateVisibility];
-  if (mediaIndicatorView_)
+  if (mediaIndicatorView_) {
     [[self view] addSubview:mediaIndicatorView_];
+    [mediaIndicatorView_
+      setAnimationDoneCallbackObject:self
+                        withSelector:@selector(updateVisibility)];
+
+  }
 }
 
 - (HoverCloseButton*)closeButton {

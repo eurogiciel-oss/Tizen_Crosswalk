@@ -126,36 +126,6 @@ void OnRemoveUserComplete(const std::string& user_email,
   }
 }
 
-// This method is used to implement UserManager::RemoveUser.
-void RemoveUserInternal(const std::string& user_email,
-                        chromeos::RemoveUserDelegate* delegate) {
-  CrosSettings* cros_settings = CrosSettings::Get();
-
-  // Ensure the value of owner email has been fetched.
-  if (CrosSettingsProvider::TRUSTED != cros_settings->PrepareTrustedValues(
-          base::Bind(&RemoveUserInternal, user_email, delegate))) {
-    // Value of owner email is not fetched yet.  RemoveUserInternal will be
-    // called again after fetch completion.
-    return;
-  }
-  std::string owner;
-  cros_settings->GetString(kDeviceOwner, &owner);
-  if (user_email == owner) {
-    // Owner is not allowed to be removed from the device.
-    return;
-  }
-
-  if (delegate)
-    delegate->OnBeforeUserRemoved(user_email);
-
-  chromeos::UserManager::Get()->RemoveUserFromList(user_email);
-  cryptohome::AsyncMethodCaller::GetInstance()->AsyncRemove(
-      user_email, base::Bind(&OnRemoveUserComplete, user_email));
-
-  if (delegate)
-    delegate->OnUserRemoved(user_email);
-}
-
 // Helper function that copies users from |users_list| to |users_vector| and
 // |users_set|. Duplicates and users already present in |existing_users| are
 // skipped.
@@ -219,7 +189,7 @@ void UserManager::RegisterPrefs(PrefRegistrySimple* registry) {
 UserManagerImpl::UserManagerImpl()
     : cros_settings_(CrosSettings::Get()),
       device_local_account_policy_service_(NULL),
-      users_loaded_(false),
+      user_loading_stage_(STAGE_NOT_LOADED),
       active_user_(NULL),
       primary_user_(NULL),
       session_started_(false),
@@ -332,8 +302,8 @@ const UserList& UserManagerImpl::GetLRULoggedInUsers() {
 
 UserList UserManagerImpl::GetUnlockUsers() const {
   UserList unlock_users;
-  CHECK(primary_user_);
-  unlock_users.push_back(primary_user_);
+  if (primary_user_)
+    unlock_users.push_back(primary_user_);
   return unlock_users;
 }
 
@@ -511,12 +481,58 @@ void UserManagerImpl::RemoveUser(const std::string& user_id,
   RemoveUserInternal(user_id, delegate);
 }
 
+void UserManagerImpl::RemoveUserInternal(const std::string& user_email,
+                                         RemoveUserDelegate* delegate) {
+  CrosSettings* cros_settings = CrosSettings::Get();
+
+  // Ensure the value of owner email has been fetched.
+  if (CrosSettingsProvider::TRUSTED != cros_settings->PrepareTrustedValues(
+          base::Bind(&UserManagerImpl::RemoveUserInternal,
+                     base::Unretained(this),
+                     user_email, delegate))) {
+    // Value of owner email is not fetched yet.  RemoveUserInternal will be
+    // called again after fetch completion.
+    return;
+  }
+  std::string owner;
+  cros_settings->GetString(kDeviceOwner, &owner);
+  if (user_email == owner) {
+    // Owner is not allowed to be removed from the device.
+    return;
+  }
+  RemoveNonOwnerUserInternal(user_email, delegate);
+}
+
+void UserManagerImpl::RemoveNonOwnerUserInternal(const std::string& user_email,
+                                                 RemoveUserDelegate* delegate) {
+  if (delegate)
+    delegate->OnBeforeUserRemoved(user_email);
+  RemoveUserFromList(user_email);
+  cryptohome::AsyncMethodCaller::GetInstance()->AsyncRemove(
+      user_email, base::Bind(&OnRemoveUserComplete, user_email));
+
+  if (delegate)
+    delegate->OnUserRemoved(user_email);
+}
+
 void UserManagerImpl::RemoveUserFromList(const std::string& user_id) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  EnsureUsersLoaded();
   RemoveNonCryptohomeData(user_id);
-  User* user = RemoveRegularOrLocallyManagedUserFromList(user_id);
-  delete user;
+  if (user_loading_stage_ == STAGE_LOADED) {
+    User* user = RemoveRegularOrLocallyManagedUserFromList(user_id);
+    delete user;
+  } else if (user_loading_stage_ == STAGE_LOADING) {
+    DCHECK(gaia::ExtractDomainName(user_id) ==
+        UserManager::kLocallyManagedUserDomain);
+    // Special case, removing partially-constructed supervised user during user
+    // list loading.
+    ListPrefUpdate users_update(g_browser_process->local_state(),
+                                kRegularUsers);
+    users_update->Remove(base::StringValue(user_id), NULL);
+  } else {
+    NOTREACHED() << "Users are not loaded yet.";
+    return;
+  }
   // Make sure that new data is persisted to Local State.
   g_browser_process->local_state()->CommitPendingWrite();
 }
@@ -571,6 +587,12 @@ User* UserManagerImpl::GetUserByProfile(Profile* profile) const {
     return (pos != users.end()) ? *pos : NULL;
   }
   return active_user_;
+}
+
+Profile* UserManagerImpl::GetProfileByUser(const User* user) const {
+  if (IsMultipleProfilesAllowed())
+    return ProfileHelper::GetProfileByUserIdHash(user->username_hash());
+  return g_browser_process->profile_manager()->GetDefaultProfile();
 }
 
 void UserManagerImpl::SaveUserOAuthStatus(
@@ -793,12 +815,6 @@ void UserManagerImpl::RespectLocalePreference(Profile* profile,
   chromeos::LanguageSwitchMenu::SwitchLanguage(pref_locale);
 }
 
-Profile* UserManagerImpl::GetProfileByUser(const User* user) const {
-  if (IsMultipleProfilesAllowed())
-    return ProfileHelper::GetProfileByUserIdHash(user->username_hash());
-  return g_browser_process->profile_manager()->GetDefaultProfile();
-}
-
 void UserManagerImpl::Observe(int type,
                               const content::NotificationSource& source,
                               const content::NotificationDetails& details) {
@@ -957,7 +973,7 @@ bool UserManagerImpl::IsUserNonCryptohomeDataEphemeral(
 
   // Data belonging to the owner, anyone found on the user list and obsolete
   // public accounts whose data has not been removed yet is not ephemeral.
-  if (user_id == owner_email_  || FindUserInList(user_id) ||
+  if (user_id == owner_email_  || UserExistsInList(user_id) ||
       user_id == g_browser_process->local_state()->
           GetString(kPublicAccountPendingDataRemoval)) {
     return false;
@@ -1031,11 +1047,12 @@ void UserManagerImpl::EnsureUsersLoaded() {
   if (!g_browser_process || !g_browser_process->local_state())
     return;
 
-  if (users_loaded_)
+  if (user_loading_stage_ != STAGE_NOT_LOADED)
     return;
-  users_loaded_ = true;
-
-  // Clean up user list first.
+  user_loading_stage_ = STAGE_LOADING;
+  // Clean up user list first. All code down the path should be synchronous,
+  // so that local state after transaction rollback is in consistent state.
+  // This process also should not trigger EnsureUsersLoaded again.
   if (supervised_user_manager_->HasFailedUserCreationTransaction())
     supervised_user_manager_->RollbackUserCreationTransaction();
 
@@ -1087,6 +1104,7 @@ void UserManagerImpl::EnsureUsersLoaded() {
     users_.push_back(User::CreatePublicAccountUser(*it));
     UpdatePublicAccountDisplayName(*it);
   }
+  user_loading_stage_ = STAGE_LOADED;
 
   user_image_manager_->LoadUserImages(users_);
 }
@@ -1162,6 +1180,17 @@ const User* UserManagerImpl::FindUserInList(const std::string& user_id) const {
       return *it;
   }
   return NULL;
+}
+
+const bool UserManagerImpl::UserExistsInList(const std::string& user_id) const {
+  PrefService* local_state = g_browser_process->local_state();
+  const ListValue* user_list = local_state->GetList(kRegularUsers);
+  for (size_t i = 0; i < user_list->GetSize(); ++i) {
+    std::string email;
+    if (user_list->GetString(i, &email) && (user_id == email))
+      return true;
+  }
+  return false;
 }
 
 User* UserManagerImpl::FindUserInListAndModify(const std::string& user_id) {

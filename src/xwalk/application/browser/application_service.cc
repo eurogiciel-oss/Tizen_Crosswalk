@@ -11,6 +11,7 @@
 #include "base/file_util.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/message_loop/message_loop.h"
+#include "base/version.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "xwalk/application/browser/application_event_manager.h"
@@ -131,6 +132,21 @@ void WaitForFinishLoad(
   new CloseAfterLoadObserver(application, event_manager, contents);
 }
 
+void SaveSystemEventsInfo(
+    xwalk::application::ApplicationService* application_service,
+    scoped_refptr<xwalk::application::ApplicationData> application_data,
+    xwalk::application::ApplicationEventManager* event_manager) {
+  // We need to run main document after installation in order to
+  // register system events.
+  if (application_data->HasMainDocument()) {
+    if (xwalk::application::Application* application =
+        application_service->Launch(application_data->ID())) {
+      WaitForFinishLoad(application->data(), event_manager,
+                        application->GetMainDocumentRuntime()->web_contents());
+    }
+  }
+}
+
 #if defined(OS_TIZEN_MOBILE)
 bool InstallPackageOnTizen(xwalk::application::ApplicationService* service,
                            xwalk::application::ApplicationStorage* storage,
@@ -221,18 +237,20 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
       !file_util::CreateDirectory(data_dir))
     return false;
 
+  std::string app_id;
   base::FilePath unpacked_dir;
   scoped_ptr<Package> package;
   if (!base::DirectoryExists(path)) {
     package = Package::Create(path);
     package->Extract(&unpacked_dir);
+    app_id = package->Id();
   } else {
     unpacked_dir = path;
   }
 
   std::string error;
   scoped_refptr<ApplicationData> application_data = LoadApplication(
-                      unpacked_dir, Manifest::COMMAND_LINE, &error);
+      unpacked_dir, app_id, Manifest::COMMAND_LINE, &error);
   if (!application_data) {
     LOG(ERROR) << "Error during application installation: " << error;
     return false;
@@ -240,7 +258,7 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
 
   if (application_storage_->Contains(application_data->ID())) {
     *id = application_data->ID();
-    LOG(INFO) << "Already installed: " << id;
+    LOG(INFO) << "Already installed: " << *id;
     return false;
   }
 
@@ -281,17 +299,131 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
             << " successfully.";
   *id = application_data->ID();
 
+  SaveSystemEventsInfo(this, application_data, event_manager_);
+
   FOR_EACH_OBSERVER(Observer, observers_,
                     OnApplicationInstalled(application_data->ID()));
 
-  // We need to run main document after installation in order to
-  // register system events.
-  if (application_data->HasMainDocument()) {
-    if (Application* application = Launch(application_data->ID())) {
-      WaitForFinishLoad(application->data(), event_manager_,
-          application->GetMainDocumentRuntime()->web_contents());
-    }
+  return true;
+}
+
+bool ApplicationService::Update(const std::string& id,
+                                const base::FilePath& path) {
+  if (!base::PathExists(path)) {
+    LOG(ERROR) << "The XPK/WGT package file " << path.value() << " is invalid.";
+    return false;
   }
+
+  if (base::DirectoryExists(path)) {
+    LOG(WARNING) << "Can not update an unpacked XPK/WGT package.";
+    return false;
+  }
+
+  base::FilePath unpacked_dir;
+  base::FilePath origin_dir;
+  std::string app_id;
+  scoped_ptr<Package> package = Package::Create(path);
+  if (!package) {
+    LOG(ERROR) << "XPK/WGT file is invalid.";
+    return false;
+  }
+
+  app_id = package->Id();
+
+  if (app_id.empty()) {
+    LOG(ERROR) << "XPK/WGT file is invalid, and the application id is empty.";
+    return false;
+  }
+
+  if (id.empty() &&
+      id.compare(app_id) != 0) {
+    LOG(ERROR) << "The XPK/WGT file is not the same as expecting.";
+    return false;
+  }
+
+  if (!package->Extract(&unpacked_dir))
+    return false;
+
+  std::string error;
+  scoped_refptr<ApplicationData> new_application =
+      LoadApplication(unpacked_dir,
+                      app_id,
+                      Manifest::COMMAND_LINE,
+                      &error);
+  if (!new_application) {
+    LOG(ERROR) << "An error occurred during application updating: " << error;
+    return false;
+  }
+
+  scoped_refptr<ApplicationData> old_application =
+      application_storage_->GetApplicationData(app_id);
+  if (!old_application) {
+    LOG(INFO) << "Application haven't installed yet: " << app_id;
+    return false;
+  }
+
+  if (old_application->Version()->CompareTo(
+          *(new_application->Version())) >= 0) {
+    LOG(INFO) << "The version number of new XPK/WGT package "
+                 "should be higher than "
+              << old_application->VersionString();
+    return false;
+  }
+
+  const base::FilePath& app_dir = old_application->Path();
+  const base::FilePath tmp_dir(app_dir.value()
+                               + FILE_PATH_LITERAL(".tmp"));
+
+  // FIXME: Need to terminate the application here if it's running, after
+  // shared runtime process mode has been implemented.
+  if (!base::Move(app_dir, tmp_dir) ||
+      !base::Move(unpacked_dir, app_dir))
+    return false;
+
+  new_application = LoadApplication(app_dir,
+                                    app_id,
+                                    Manifest::COMMAND_LINE,
+                                    &error);
+  if (!new_application) {
+    LOG(ERROR) << "Error during loading new package: " << error;
+    base::DeleteFile(app_dir, true);
+    base::Move(tmp_dir, app_dir);
+    return false;
+  }
+
+#if defined(OS_TIZEN_MOBILE)
+  if (!UninstallPackageOnTizen(this, application_storage_,
+                               old_application.get(),
+                               runtime_context_->GetPath())) {
+    base::DeleteFile(app_dir, true);
+    base::Move(tmp_dir, app_dir);
+    return false;
+  }
+#endif
+
+  if (!application_storage_->UpdateApplication(new_application)) {
+    LOG(ERROR) << "An Error occurred when updating the application.";
+    base::DeleteFile(app_dir, true);
+    base::Move(tmp_dir, app_dir);
+#if defined(OS_TIZEN_MOBILE)
+    InstallPackageOnTizen(this, application_storage_,
+                          old_application.get(),
+                          runtime_context_->GetPath());
+#endif
+    return false;
+  }
+#if defined(OS_TIZEN_MOBILE)
+  if (!InstallPackageOnTizen(this, application_storage_,
+                             new_application.get(),
+                             runtime_context_->GetPath()))
+    return false;
+#endif
+  base::DeleteFile(tmp_dir, true);
+
+  SaveSystemEventsInfo(this, new_application, event_manager_);
+
+  FOR_EACH_OBSERVER(Observer, observers_,
+                    OnApplicationUpdated(app_id));
 
   return true;
 }
@@ -333,7 +465,8 @@ bool ApplicationService::Uninstall(const std::string& id) {
   return result;
 }
 
-Application* ApplicationService::Launch(const std::string& id) {
+Application* ApplicationService::Launch(
+    const std::string& id, const Application::LaunchParams& params) {
   scoped_refptr<ApplicationData> application_data =
     application_storage_->GetApplicationData(id);
   if (!application_data) {
@@ -341,7 +474,7 @@ Application* ApplicationService::Launch(const std::string& id) {
     return NULL;
   }
 
-  return Launch(application_data, Application::LaunchParams());
+  return Launch(application_data, params);
 }
 
 Application* ApplicationService::Launch(const base::FilePath& path) {
@@ -373,7 +506,7 @@ Application* ApplicationService::Launch(const GURL& url) {
   base::DictionaryValue manifest;
   // FIXME: define permissions!
   manifest.SetString(keys::kURLKey, url_spec);
-  manifest.SetString(keys::kNameKey, "XWalk Browser");
+  manifest.SetString(keys::kNameKey, "XWalk Dummy App");
   manifest.SetString(keys::kVersionKey, "0");
   manifest.SetInteger(keys::kManifestVersionKey, 1);
   std::string error;

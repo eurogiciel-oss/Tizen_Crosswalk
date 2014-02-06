@@ -78,6 +78,16 @@ void MediaStreamDispatcherHost::DeviceOpened(
   DVLOG(1) << "MediaStreamDispatcherHost::DeviceOpened("
            << ", {label = " << label <<  "})";
 
+  // TODO(perkj): Checking for StreamRequest here is a temporary fix to avoid
+  // an Assert in PopRequest. Remove this once the real problem is solved.
+  // crbug/316396.
+  StreamMap::iterator it = streams_.find(label);
+  DCHECK(it != streams_.end());
+  if (it == streams_.end()) {
+    LOG(ERROR) << "DeviceOpened but there is no request for the device.";
+    return;
+  }
+
   StreamRequest request = PopRequest(label);
 
   Send(new MediaStreamMsg_DeviceOpened(
@@ -95,6 +105,8 @@ bool MediaStreamDispatcherHost::OnMessageReceived(
                         OnStopStreamDevice)
     IPC_MESSAGE_HANDLER(MediaStreamHostMsg_EnumerateDevices,
                         OnEnumerateDevices)
+    IPC_MESSAGE_HANDLER(MediaStreamHostMsg_CancelEnumerateDevices,
+                        OnCancelEnumerateDevices)
     IPC_MESSAGE_HANDLER(MediaStreamHostMsg_OpenDevice,
                         OnOpenDevice)
     IPC_MESSAGE_HANDLER(MediaStreamHostMsg_CloseDevice,
@@ -192,6 +204,13 @@ void MediaStreamDispatcherHost::OnCancelEnumerateDevices(
            << render_view_id << ", "
            << label << ")";
 
+  if (streams_.find(label) == streams_.end()) {
+    // According to the comments in MediaStreamDispatcher::OnDevicesEnumerated,
+    // OnCancelEnumerateDevices can be called several times with the same label.
+    DVLOG(1) << "Enumeration request with label " << label
+             << "does not exist.";
+    return;
+  }
   media_stream_manager_->CancelRequest(label);
   PopRequest(label);
 }
