@@ -783,34 +783,38 @@
       'type': 'none',
       'toolsets': ['host', 'target'],
       'conditions': [
-        ['_toolset=="target"', {
-          'direct_dependent_settings': {
-            'cflags': [
-              '<!@(<(pkg-config) --cflags x11)',
-            ],
-          },
-          'link_settings': {
-            'ldflags': [
-              '<!@(<(pkg-config) --libs-only-L --libs-only-other x11 xi)',
-            ],
-            'libraries': [
-              '<!@(<(pkg-config) --libs-only-l x11 xi)',
-            ],
-          },
-        }, {
-          'direct_dependent_settings': {
-            'cflags': [
-              '<!@(pkg-config --cflags x11)',
-            ],
-          },
-          'link_settings': {
-            'ldflags': [
-              '<!@(pkg-config --libs-only-L --libs-only-other x11 xi)',
-            ],
-            'libraries': [
-              '<!@(pkg-config --libs-only-l x11 xi)',
-            ],
-          },
+        ['use_x11==1', {
+        'conditions': [
+          ['_toolset=="target"', {
+            'direct_dependent_settings': {
+              'cflags': [
+                '<!@(<(pkg-config) --cflags x11)',
+              ],
+            },
+            'link_settings': {
+              'ldflags': [
+                '<!@(<(pkg-config) --libs-only-L --libs-only-other x11 xi)',
+              ],
+              'libraries': [
+                '<!@(<(pkg-config) --libs-only-l x11 xi)',
+              ],
+            },
+          }, {
+            'direct_dependent_settings': {
+              'cflags': [
+                '<!@(pkg-config --cflags x11)',
+              ],
+            },
+            'link_settings': {
+              'ldflags': [
+                '<!@(pkg-config --libs-only-L --libs-only-other x11 xi)',
+              ],
+              'libraries': [
+                '<!@(pkg-config --libs-only-l x11 xi)',
+              ],
+            },
+          }],
+        ],
         }],
       ],
     },
@@ -861,34 +865,38 @@
       'type': 'none',
       'toolsets': ['host', 'target'],
       'conditions': [
-        ['_toolset=="target"', {
-          'direct_dependent_settings': {
-            'cflags': [
-              '<!@(<(pkg-config) --cflags xrandr)',
-            ],
-          },
-          'link_settings': {
-            'ldflags': [
-              '<!@(<(pkg-config) --libs-only-L --libs-only-other xrandr)',
-            ],
-            'libraries': [
-              '<!@(<(pkg-config) --libs-only-l xrandr)',
-            ],
-          },
-        }, {
-          'direct_dependent_settings': {
-            'cflags': [
-              '<!@(pkg-config --cflags xrandr)',
-            ],
-          },
-          'link_settings': {
-            'ldflags': [
-              '<!@(pkg-config --libs-only-L --libs-only-other xrandr)',
-            ],
-            'libraries': [
-              '<!@(pkg-config --libs-only-l xrandr)',
-            ],
-          },
+        ['use_x11==1', {
+          'conditions': [
+            ['_toolset=="target"', {
+              'direct_dependent_settings': {
+                'cflags': [
+                  '<!@(<(pkg-config) --cflags xrandr)',
+                ],
+              },
+              'link_settings': {
+                'ldflags': [
+                  '<!@(<(pkg-config) --libs-only-L --libs-only-other xrandr)',
+                ],
+                'libraries': [
+                  '<!@(<(pkg-config) --libs-only-l xrandr)',
+                ],
+              },
+            }, {
+              'direct_dependent_settings': {
+                'cflags': [
+                  '<!@(pkg-config --cflags xrandr)',
+                ],
+              },
+              'link_settings': {
+                'ldflags': [
+                  '<!@(pkg-config --libs-only-L --libs-only-other xrandr)',
+                ],
+                'libraries': [
+                  '<!@(pkg-config --libs-only-l xrandr)',
+                ],
+              },
+            }],
+          ],
         }],
       ],
     },

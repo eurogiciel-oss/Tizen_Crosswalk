@@ -1,3 +1,5 @@
+%bcond_with wayland
+
 Name:           crosswalk
 Version:        5.32.86.0
 Release:        0
@@ -61,6 +63,8 @@ BuildRequires:  pkgconfig(pkgmgr-parser)
 BuildRequires:  pkgconfig(nspr)
 BuildRequires:  pkgconfig(sensor)
 BuildRequires:  pkgconfig(vconf)
+BuildRequires:  pkgconfig(vpx)
+%if !%{with wayland}
 BuildRequires:  pkgconfig(x11)
 BuildRequires:  pkgconfig(xcomposite)
 BuildRequires:  pkgconfig(xcursor)
@@ -73,6 +77,7 @@ BuildRequires:  pkgconfig(xrender)
 BuildRequires:  pkgconfig(xscrnsaver)
 BuildRequires:  pkgconfig(xt)
 BuildRequires:  pkgconfig(xtst)
+%endif
 
 # Depending on the Tizen version and profile we are building for, we have
 # different dependencies, patches and gyp options to pass. Checking for
