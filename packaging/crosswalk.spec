@@ -1,3 +1,5 @@
+%bcond_with wayland
+
 Name:           crosswalk
 Version:        4.32.74.0
 Release:        0
@@ -69,6 +71,7 @@ BuildRequires:  pkgconfig(sensor)
 BuildRequires:  pkgconfig(speex)
 BuildRequires:  pkgconfig(vconf)
 BuildRequires:  pkgconfig(vpx)
+%if !%{with wayland}
 BuildRequires:  pkgconfig(x11)
 BuildRequires:  pkgconfig(xcomposite)
 BuildRequires:  pkgconfig(xcursor)
@@ -81,6 +84,7 @@ BuildRequires:  pkgconfig(xrender)
 BuildRequires:  pkgconfig(xscrnsaver)
 BuildRequires:  pkgconfig(xt)
 BuildRequires:  pkgconfig(xtst)
+%endif
 BuildRequires:  pkgconfig(zlib)
 
 # Depending on the Tizen version and profile we are building for, we have
@@ -92,12 +96,8 @@ BuildRequires:  pkgconfig(zlib)
 # and build dependencies, for example).
 %bcond_with wayland
 
-%if "%{tizen}" < "3.0"
-BuildRequires:  gst-plugins-atomisp-devel
-BuildRequires:  pkgconfig(openssl)
-%else
+
 BuildRequires:  pkgconfig(nss)
-%endif
 
 %if %{with wayland}
 BuildRequires:  pkgconfig(wayland-client)
