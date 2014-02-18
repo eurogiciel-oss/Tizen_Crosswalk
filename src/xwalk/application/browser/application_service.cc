@@ -12,6 +12,7 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/message_loop/message_loop.h"
 #include "base/version.h"
+#include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "xwalk/application/browser/application_event_manager.h"
@@ -23,6 +24,7 @@
 #include "xwalk/application/common/application_manifest_constants.h"
 #include "xwalk/application/common/event_names.h"
 #include "xwalk/application/common/id_util.h"
+#include "xwalk/application/common/permission_policy_manager.h"
 #include "xwalk/runtime/browser/runtime_context.h"
 #include "xwalk/runtime/browser/runtime.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
@@ -214,7 +216,8 @@ ApplicationService::ApplicationService(RuntimeContext* runtime_context,
                                        ApplicationEventManager* event_manager)
     : runtime_context_(runtime_context),
       application_storage_(app_storage),
-      event_manager_(event_manager) {
+      event_manager_(event_manager),
+      permission_policy_handler_(new PermissionPolicyManager()) {
   AddObserver(event_manager);
 }
 
@@ -253,6 +256,11 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
       unpacked_dir, app_id, Manifest::COMMAND_LINE, &error);
   if (!application_data) {
     LOG(ERROR) << "Error during application installation: " << error;
+    return false;
+  }
+  if (!permission_policy_handler_->
+      InitApplicationPermission(application_data)) {
+    LOG(ERROR) << "Application permission data is invalid";
     return false;
   }
 
@@ -460,6 +468,15 @@ bool ApplicationService::Uninstall(const std::string& id) {
     result = false;
   }
 
+  content::StoragePartition* partition =
+      content::BrowserContext::GetStoragePartitionForSite(
+          runtime_context_, application->GetBaseURLFromApplicationId(id));
+  partition->ClearDataForOrigin(
+      content::StoragePartition::REMOVE_DATA_MASK_ALL,
+      content::StoragePartition::QUOTA_MANAGED_STORAGE_MASK_ALL,
+      application->URL(),
+      partition->GetURLRequestContext());
+
   FOR_EACH_OBSERVER(Observer, observers_, OnApplicationUninstalled(id));
 
   return result;
@@ -613,6 +630,77 @@ Application* ApplicationService::Launch(
                     DidLaunchApplication(application));
 
   return application;
+}
+
+void ApplicationService::CheckAPIAccessControl(const std::string& app_id,
+    const std::string& extension_name,
+    const std::string& api_name, const PermissionCallback& callback) {
+  Application* app = GetApplicationByID(app_id);
+  if (!app) {
+    LOG(ERROR) << "No running application found with ID: "
+      << app_id;
+    callback.Run(UNDEFINED_RUNTIME_PERM);
+    return;
+  }
+  if (!app->UseExtension(extension_name)) {
+    LOG(ERROR) << "Can not find extension: "
+      << extension_name << " of Application with ID: "
+      << app_id;
+    callback.Run(UNDEFINED_RUNTIME_PERM);
+    return;
+  }
+  // Permission name should have been registered at extension initialization.
+  std::string permission_name =
+      app->GetRegisteredPermissionName(extension_name, api_name);
+  if (permission_name.empty()) {
+    LOG(ERROR) << "API: " << api_name << " of extension: "
+      << extension_name << " not registered!";
+    callback.Run(UNDEFINED_RUNTIME_PERM);
+    return;
+  }
+  // Okay, since we have the permission name, let's get down to the policies.
+  // First, find out whether the permission is stored for the current session.
+  StoredPermission perm = app->GetPermission(
+      SESSION_PERMISSION, permission_name);
+  if (perm != UNDEFINED_STORED_PERM) {
+    // "PROMPT" should not be in the session storage.
+    DCHECK(perm != PROMPT);
+    if (perm == ALLOW) {
+      callback.Run(ALLOW_SESSION);
+      return;
+    }
+    if (perm == DENY) {
+      callback.Run(DENY_SESSION);
+      return;
+    }
+    NOTREACHED();
+  }
+  // Then, query the persistent policy storage.
+  perm = app->GetPermission(PERSISTENT_PERMISSION, permission_name);
+  // Permission not found in persistent permission table, normally this should
+  // not happen because all the permission needed by the application should be
+  // contained in its manifest, so it also means that the application is asking
+  // for something wasn't allowed.
+  if (perm == UNDEFINED_STORED_PERM) {
+    callback.Run(UNDEFINED_RUNTIME_PERM);
+    return;
+  }
+  if (perm == PROMPT) {
+    // TODO(Bai): We needed to pop-up a dialog asking user to chose one from
+    // either allow/deny for session/one shot/forever. Then, we need to update
+    // the session and persistent policy accordingly.
+    callback.Run(UNDEFINED_RUNTIME_PERM);
+    return;
+  }
+  if (perm == ALLOW) {
+    callback.Run(ALLOW_ALWAYS);
+    return;
+  }
+  if (perm == DENY) {
+    callback.Run(DENY_ALWAYS);
+    return;
+  }
+  NOTREACHED();
 }
 
 }  // namespace application

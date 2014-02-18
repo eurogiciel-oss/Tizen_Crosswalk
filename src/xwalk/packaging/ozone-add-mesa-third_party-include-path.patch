@@ -1,0 +1,16 @@
+Author: Yannick Gicquel <yannick.gicquel@open.eurogiciel.org>
+
+There is currently a missing path while building in chroot environment
+as Tizen GBS. This patch is needed to use the third_party/mesa headers
+file instead of the global ones (/usr/include/...)
+
+--- src/ozone/wayland/wayland.gyp
++++ src/ozone/wayland/wayland.gyp
+@@ -49,6 +49,7 @@
+       ],
+       'include_dirs': [
+         '../..',
++        '../../third_party/mesa/src/include',
+       ],
+       'sources': [
+         'display.cc',

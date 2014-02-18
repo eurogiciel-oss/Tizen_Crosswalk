@@ -1,0 +1,7 @@
+*.mk
+src/.DEPS.git
+src/.clang-format
+src/.gn
+src/Makefile
+src/out/
+

@@ -1,5 +1,7 @@
+%bcond_with x
+%bcond_with wayland
 Name:           crosswalk
-Version:        5.32.86.0
+Version:        5.32.88.0
 Release:        0
 Summary:        Crosswalk is an app runtime based on Chromium
 # License:        (BSD-3-Clause and LGPL-2.1+)
@@ -22,6 +24,7 @@ Patch6:         Blink-Fix-gcc-4.5.3-uninitialized-warnings.patch
 Patch7:         %{name}-tizen-audio-session-manager.patch
 Patch8:         %{name}-mesa-ozone-typedefs.patch
 Patch9:         Blink-Add-GCC-flag-Wno-narrowing-fix-64bits-build.patch
+Patch10:        ozone-add-mesa-third_party-include-path.patch
 
 BuildRequires:  bison
 BuildRequires:  bzip2-devel
@@ -61,6 +64,7 @@ BuildRequires:  pkgconfig(pkgmgr-parser)
 BuildRequires:  pkgconfig(nspr)
 BuildRequires:  pkgconfig(sensor)
 BuildRequires:  pkgconfig(vconf)
+%if %{with x}
 BuildRequires:  pkgconfig(x11)
 BuildRequires:  pkgconfig(xcomposite)
 BuildRequires:  pkgconfig(xcursor)
@@ -73,6 +77,7 @@ BuildRequires:  pkgconfig(xrender)
 BuildRequires:  pkgconfig(xscrnsaver)
 BuildRequires:  pkgconfig(xt)
 BuildRequires:  pkgconfig(xtst)
+%endif
 
 # Depending on the Tizen version and profile we are building for, we have
 # different dependencies, patches and gyp options to pass. Checking for
@@ -81,7 +86,6 @@ BuildRequires:  pkgconfig(xtst)
 # Wayland support) or for a certain Tizen major version (the differences betwen
 # Tizen 2 and Tizen 3 are big enough that we need completely different patches
 # and build dependencies, for example).
-%bcond_with wayland
 
 %if "%{tizen}" < "3.0"
 BuildRequires:  gst-plugins-atomisp-devel
@@ -146,6 +150,10 @@ cp -a src/xwalk/LICENSE LICENSE.xwalk
 %endif
 
 %patch9
+
+%if !%{with x}
+%patch10 -p0
+%endif
 
 %build
 
