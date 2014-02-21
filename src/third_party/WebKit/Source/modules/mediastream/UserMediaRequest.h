@@ -32,9 +32,10 @@
 #define UserMediaRequest_h
 
 #include "core/dom/ActiveDOMObject.h"
-#include "core/platform/mediastream/MediaStreamSource.h"
 #include "modules/mediastream/NavigatorUserMediaErrorCallback.h"
 #include "modules/mediastream/NavigatorUserMediaSuccessCallback.h"
+#include "platform/mediastream/MediaStreamSource.h"
+#include "public/platform/WebMediaConstraints.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/RefCounted.h"
 #include "wtf/text/WTFString.h"
@@ -44,15 +45,13 @@ namespace WebCore {
 class Dictionary;
 class Document;
 class ExceptionState;
-class MediaConstraints;
-class MediaConstraintsImpl;
 class MediaStreamDescriptor;
 class UserMediaController;
 
-class UserMediaRequest : public RefCounted<UserMediaRequest>, public ContextLifecycleObserver {
+class UserMediaRequest FINAL : public RefCounted<UserMediaRequest>, public ContextLifecycleObserver {
 public:
-    static PassRefPtr<UserMediaRequest> create(ExecutionContext*, UserMediaController*, const Dictionary& options, PassRefPtr<NavigatorUserMediaSuccessCallback>, PassRefPtr<NavigatorUserMediaErrorCallback>, ExceptionState&);
-    ~UserMediaRequest();
+    static PassRefPtr<UserMediaRequest> create(ExecutionContext*, UserMediaController*, const Dictionary& options, PassOwnPtr<NavigatorUserMediaSuccessCallback>, PassOwnPtr<NavigatorUserMediaErrorCallback>, ExceptionState&);
+    virtual ~UserMediaRequest();
 
     NavigatorUserMediaSuccessCallback* successCallback() const { return m_successCallback.get(); }
     NavigatorUserMediaErrorCallback* errorCallback() const { return m_errorCallback.get(); }
@@ -66,22 +65,22 @@ public:
 
     bool audio() const;
     bool video() const;
-    MediaConstraints* audioConstraints() const;
-    MediaConstraints* videoConstraints() const;
+    blink::WebMediaConstraints audioConstraints() const;
+    blink::WebMediaConstraints videoConstraints() const;
 
     // ContextLifecycleObserver
-    virtual void contextDestroyed();
+    virtual void contextDestroyed() OVERRIDE;
 
 private:
-    UserMediaRequest(ExecutionContext*, UserMediaController*, PassRefPtr<MediaConstraintsImpl> audio, PassRefPtr<MediaConstraintsImpl> video, PassRefPtr<NavigatorUserMediaSuccessCallback>, PassRefPtr<NavigatorUserMediaErrorCallback>);
+    UserMediaRequest(ExecutionContext*, UserMediaController*, blink::WebMediaConstraints audio, blink::WebMediaConstraints video, PassOwnPtr<NavigatorUserMediaSuccessCallback>, PassOwnPtr<NavigatorUserMediaErrorCallback>);
 
-    RefPtr<MediaConstraintsImpl> m_audio;
-    RefPtr<MediaConstraintsImpl> m_video;
+    blink::WebMediaConstraints m_audio;
+    blink::WebMediaConstraints m_video;
 
     UserMediaController* m_controller;
 
-    RefPtr<NavigatorUserMediaSuccessCallback> m_successCallback;
-    RefPtr<NavigatorUserMediaErrorCallback> m_errorCallback;
+    OwnPtr<NavigatorUserMediaSuccessCallback> m_successCallback;
+    OwnPtr<NavigatorUserMediaErrorCallback> m_errorCallback;
 };
 
 } // namespace WebCore

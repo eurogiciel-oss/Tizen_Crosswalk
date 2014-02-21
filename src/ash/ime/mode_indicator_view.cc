@@ -1,0 +1,69 @@
+// Copyright 2014 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ash/ime/mode_indicator_view.h"
+
+#include "base/logging.h"
+#include "ui/views/bubble/bubble_delegate.h"
+#include "ui/views/controls/label.h"
+#include "ui/views/corewm/window_animations.h"
+#include "ui/views/layout/fill_layout.h"
+
+namespace ash {
+namespace ime {
+
+namespace {
+// Minimum size of inner contents in pixel.
+// 43 is the designed size including the default margin (6 * 2).
+const int kMinSize = 31;
+
+// After this duration in msec, the mode inicator will be fading out.
+const int kShowingDuration = 500;
+}  // namespace
+
+
+ModeIndicatorView::ModeIndicatorView(gfx::NativeView parent,
+                                     const gfx::Rect& cursor_bounds,
+                                     const base::string16& label)
+    : cursor_bounds_(cursor_bounds),
+      label_view_(new views::Label(label)) {
+  set_use_focusless(true);
+  set_accept_events(false);
+  set_parent_window(parent);
+  set_shadow(views::BubbleBorder::NO_SHADOW);
+  set_arrow(views::BubbleBorder::TOP_CENTER);
+}
+
+ModeIndicatorView::~ModeIndicatorView() {}
+
+void ModeIndicatorView::FadeOut() {
+  StartFade(false);
+}
+
+void ModeIndicatorView::ShowAndFadeOut() {
+  views::corewm::SetWindowVisibilityAnimationTransition(
+      GetWidget()->GetNativeView(),
+      views::corewm::ANIMATE_HIDE);
+  GetWidget()->Show();
+  timer_.Start(FROM_HERE,
+               base::TimeDelta::FromMilliseconds(kShowingDuration),
+               this,
+               &ModeIndicatorView::FadeOut);
+}
+
+gfx::Size ModeIndicatorView::GetPreferredSize() {
+  gfx::Size size = label_view_->GetPreferredSize();
+  size.SetToMax(gfx::Size(kMinSize, kMinSize));
+  return size;
+}
+
+void ModeIndicatorView::Init() {
+  SetLayoutManager(new views::FillLayout());
+  AddChildView(label_view_);
+
+  SetAnchorRect(cursor_bounds_);
+}
+
+}  // namespace ime
+}  // namespace ash

@@ -76,7 +76,7 @@ void HTMLFrameElementBase::openURL(bool lockBackForwardList)
         return;
 
     if (m_URL.isEmpty())
-        m_URL = blankURL().string();
+        m_URL = AtomicString(blankURL().string());
 
     Frame* parentFrame = document().frame();
     if (!parentFrame)
@@ -202,7 +202,8 @@ void HTMLFrameElementBase::setFocus(bool received)
 
 bool HTMLFrameElementBase::isURLAttribute(const Attribute& attribute) const
 {
-    return attribute.name() == srcAttr || HTMLFrameOwnerElement::isURLAttribute(attribute);
+    return attribute.name() == longdescAttr || attribute.name() == srcAttr
+        || HTMLFrameOwnerElement::isURLAttribute(attribute);
 }
 
 bool HTMLFrameElementBase::isHTMLContentAttribute(const Attribute& attribute) const

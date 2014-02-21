@@ -53,31 +53,25 @@ enum EntityMask {
     EntityMaskInCDATA = 0,
     EntityMaskInPCDATA = EntityAmp | EntityLt | EntityGt,
     EntityMaskInHTMLPCDATA = EntityMaskInPCDATA | EntityNbsp,
-    EntityMaskInAttributeValue = EntityAmp | EntityLt | EntityGt | EntityQuot,
-    EntityMaskInHTMLAttributeValue = EntityMaskInAttributeValue | EntityNbsp,
+    EntityMaskInAttributeValue = EntityAmp | EntityQuot | EntityLt | EntityGt,
+    EntityMaskInHTMLAttributeValue = EntityAmp | EntityQuot | EntityNbsp,
 };
 
-struct EntityDescription {
-    UChar entity;
-    const String& reference;
-    EntityMask mask;
-};
-
-// FIXME: Noncopyable?
 class MarkupAccumulator {
+    WTF_MAKE_NONCOPYABLE(MarkupAccumulator);
+
 public:
     MarkupAccumulator(Vector<Node*>*, EAbsoluteURLs, const Range* = 0);
     virtual ~MarkupAccumulator();
 
-    String serializeNodes(Node* targetNode, EChildrenOnly);
-    String serializeNodes(Node* targetNode, EChildrenOnly, Vector<QualifiedName>* tagNamesToSkip);
+    String serializeNodes(Node* targetNode, EChildrenOnly, Vector<QualifiedName>* tagNamesToSkip = 0);
 
     static void appendComment(StringBuilder&, const String&);
 
     static void appendCharactersReplacingEntities(StringBuilder&, const String&, unsigned, unsigned, EntityMask);
 
 protected:
-    virtual void appendString(const String&);
+    void appendString(const String&);
     void appendStartTag(Node*, Namespaces* = 0);
     virtual void appendEndTag(Node*);
     static size_t totalLength(const Vector<String>&);
@@ -85,7 +79,6 @@ protected:
     void concatenateMarkup(StringBuilder&);
     void appendAttributeValue(StringBuilder&, const String&, bool);
     virtual void appendCustomAttributes(StringBuilder&, Element*, Namespaces*);
-    void appendNodeValue(StringBuilder&, const Node*, const Range*, EntityMask);
     bool shouldAddNamespaceElement(const Element*);
     bool shouldAddNamespaceAttribute(const Attribute&, Namespaces&);
     void appendNamespace(StringBuilder&, const AtomicString& prefix, const AtomicString& namespaceURI, Namespaces&);

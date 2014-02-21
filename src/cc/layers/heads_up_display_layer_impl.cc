@@ -86,7 +86,7 @@ bool HeadsUpDisplayLayerImpl::WillDraw(DrawMode draw_mode,
     return false;
 
   if (!hud_resource_)
-    hud_resource_ = ScopedResource::create(resource_provider);
+    hud_resource_ = ScopedResource::Create(resource_provider);
 
   // TODO(danakj): The HUD could swap between two textures instead of creating a
   // texture every frame in ubercompositor.
@@ -180,7 +180,7 @@ void HeadsUpDisplayLayerImpl::UpdateHudTexture(
                                gfx::Vector2d());
 }
 
-void HeadsUpDisplayLayerImpl::DidLoseOutputSurface() { hud_resource_.reset(); }
+void HeadsUpDisplayLayerImpl::ReleaseResources() { hud_resource_.reset(); }
 
 bool HeadsUpDisplayLayerImpl::LayerIsAlwaysDamaged() const { return true; }
 
@@ -652,6 +652,12 @@ void HeadsUpDisplayLayerImpl::DrawDebugRects(
         stroke_width = DebugColors::NonFastScrollableRectBorderWidth();
         label_text = "repaints on scroll";
         break;
+      case ANIMATION_BOUNDS_RECT_TYPE:
+        stroke_color = DebugColors::LayerAnimationBoundsBorderColor();
+        fill_color = DebugColors::LayerAnimationBoundsFillColor();
+        stroke_width = DebugColors::LayerAnimationBoundsBorderWidth();
+        label_text = "animation bounds";
+        break;
     }
 
     gfx::RectF debug_layer_rect = gfx::ScaleRect(debug_rects[i].rect,
@@ -701,6 +707,11 @@ void HeadsUpDisplayLayerImpl::DrawDebugRects(
 
 const char* HeadsUpDisplayLayerImpl::LayerTypeAsString() const {
   return "cc::HeadsUpDisplayLayerImpl";
+}
+
+void HeadsUpDisplayLayerImpl::AsValueInto(base::DictionaryValue* dict) const {
+  LayerImpl::AsValueInto(dict);
+  dict->SetString("layer_name", "Heads Up Display Layer");
 }
 
 }  // namespace cc

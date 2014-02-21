@@ -30,11 +30,11 @@
 #define SVGImageChromeClient_h
 
 #include "core/loader/EmptyClients.h"
-#include "core/platform/graphics/ImageObserver.h"
+#include "platform/graphics/ImageObserver.h"
 
 namespace WebCore {
 
-class SVGImageChromeClient : public EmptyChromeClient {
+class SVGImageChromeClient FINAL : public EmptyChromeClient {
     WTF_MAKE_NONCOPYABLE(SVGImageChromeClient); WTF_MAKE_FAST_ALLOCATED;
 public:
     SVGImageChromeClient(SVGImage* image)
@@ -42,16 +42,16 @@ public:
     {
     }
 
-    virtual bool isSVGImageChromeClient() const { return true; }
+    virtual bool isSVGImageChromeClient() const OVERRIDE { return true; }
     SVGImage* image() const { return m_image; }
 
 private:
-    virtual void chromeDestroyed()
+    virtual void chromeDestroyed() OVERRIDE
     {
         m_image = 0;
     }
 
-    virtual void invalidateContentsAndRootView(const IntRect& r)
+    virtual void invalidateContentsAndRootView(const IntRect& r) OVERRIDE
     {
         // If m_image->m_page is null, we're being destructed, don't fire changedInRect() in that case.
         if (m_image && m_image->imageObserver() && m_image->m_page)
@@ -61,11 +61,7 @@ private:
     SVGImage* m_image;
 };
 
-inline SVGImageChromeClient* toSVGImageChromeClient(ChromeClient* client)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!client || client->isSVGImageChromeClient());
-    return static_cast<SVGImageChromeClient*>(client);
-}
+DEFINE_TYPE_CASTS(SVGImageChromeClient, ChromeClient, client, client->isSVGImageChromeClient(), client.isSVGImageChromeClient());
 
 }
 

@@ -32,32 +32,13 @@
 #include "core/dom/custom/CustomElementCallbackInvocation.h"
 
 #include "core/dom/Element.h"
-#include "core/dom/custom/CustomElementCallbackScheduler.h"
+#include "core/dom/custom/CustomElementScheduler.h"
 
 namespace WebCore {
 
-class CreatedInvocation : public CustomElementCallbackInvocation {
+class AttachedDetachedInvocation : public CustomElementCallbackInvocation {
 public:
-    CreatedInvocation(PassRefPtr<CustomElementLifecycleCallbacks> callbacks)
-        : CustomElementCallbackInvocation(callbacks)
-    {
-    }
-
-private:
-    virtual void dispatch(Element*) OVERRIDE;
-    virtual bool isCreated() const OVERRIDE { return true; }
-};
-
-void CreatedInvocation::dispatch(Element* element)
-{
-    if (element->inDocument() && element->document().domWindow())
-        CustomElementCallbackScheduler::scheduleEnteredViewCallback(callbacks(), element);
-    callbacks()->created(element);
-}
-
-class EnteredLeftViewInvocation : public CustomElementCallbackInvocation {
-public:
-    EnteredLeftViewInvocation(PassRefPtr<CustomElementLifecycleCallbacks>, CustomElementLifecycleCallbacks::CallbackType which);
+    AttachedDetachedInvocation(PassRefPtr<CustomElementLifecycleCallbacks>, CustomElementLifecycleCallbacks::CallbackType which);
 
 private:
     virtual void dispatch(Element*) OVERRIDE;
@@ -65,21 +46,21 @@ private:
     CustomElementLifecycleCallbacks::CallbackType m_which;
 };
 
-EnteredLeftViewInvocation::EnteredLeftViewInvocation(PassRefPtr<CustomElementLifecycleCallbacks> callbacks, CustomElementLifecycleCallbacks::CallbackType which)
+AttachedDetachedInvocation::AttachedDetachedInvocation(PassRefPtr<CustomElementLifecycleCallbacks> callbacks, CustomElementLifecycleCallbacks::CallbackType which)
     : CustomElementCallbackInvocation(callbacks)
     , m_which(which)
 {
-    ASSERT(m_which == CustomElementLifecycleCallbacks::EnteredView || m_which == CustomElementLifecycleCallbacks::LeftView);
+    ASSERT(m_which == CustomElementLifecycleCallbacks::Attached || m_which == CustomElementLifecycleCallbacks::Detached);
 }
 
-void EnteredLeftViewInvocation::dispatch(Element* element)
+void AttachedDetachedInvocation::dispatch(Element* element)
 {
     switch (m_which) {
-    case CustomElementLifecycleCallbacks::EnteredView:
-        callbacks()->enteredView(element);
+    case CustomElementLifecycleCallbacks::Attached:
+        callbacks()->attached(element);
         break;
-    case CustomElementLifecycleCallbacks::LeftView:
-        callbacks()->leftView(element);
+    case CustomElementLifecycleCallbacks::Detached:
+        callbacks()->detached(element);
         break;
     default:
         ASSERT_NOT_REACHED();
@@ -114,13 +95,9 @@ void AttributeChangedInvocation::dispatch(Element* element)
 PassOwnPtr<CustomElementCallbackInvocation> CustomElementCallbackInvocation::createInvocation(PassRefPtr<CustomElementLifecycleCallbacks> callbacks, CustomElementLifecycleCallbacks::CallbackType which)
 {
     switch (which) {
-    case CustomElementLifecycleCallbacks::Created:
-        return adoptPtr(new CreatedInvocation(callbacks));
-
-    case CustomElementLifecycleCallbacks::EnteredView:
-    case CustomElementLifecycleCallbacks::LeftView:
-        return adoptPtr(new EnteredLeftViewInvocation(callbacks, which));
-
+    case CustomElementLifecycleCallbacks::Attached:
+    case CustomElementLifecycleCallbacks::Detached:
+        return adoptPtr(new AttachedDetachedInvocation(callbacks, which));
     default:
         ASSERT_NOT_REACHED();
         return PassOwnPtr<CustomElementCallbackInvocation>();

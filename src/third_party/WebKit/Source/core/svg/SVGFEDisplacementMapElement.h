@@ -20,10 +20,10 @@
 #ifndef SVGFEDisplacementMapElement_h
 #define SVGFEDisplacementMapElement_h
 
-#include "core/platform/graphics/filters/FEDisplacementMap.h"
 #include "core/svg/SVGAnimatedEnumeration.h"
 #include "core/svg/SVGAnimatedNumber.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
+#include "platform/graphics/filters/FEDisplacementMap.h"
 
 namespace WebCore {
 
@@ -66,25 +66,27 @@ struct SVGPropertyTraits<ChannelSelectorType> {
 
 class SVGFEDisplacementMapElement FINAL : public SVGFilterPrimitiveStandardAttributes {
 public:
-    static PassRefPtr<SVGFEDisplacementMapElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFEDisplacementMapElement> create(Document&);
 
     static ChannelSelectorType stringToChannel(const String&);
 
+    SVGAnimatedNumber* scale() { return m_scale.get(); }
+
 private:
-    SVGFEDisplacementMapElement(const QualifiedName& tagName, Document&);
+    SVGFEDisplacementMapElement(Document&);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName& attrName);
-    virtual void svgAttributeChanged(const QualifiedName&);
-    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*);
+    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName& attrName) OVERRIDE;
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
+    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*) OVERRIDE;
 
+    RefPtr<SVGAnimatedNumber> m_scale;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEDisplacementMapElement)
         DECLARE_ANIMATED_STRING(In1, in1)
         DECLARE_ANIMATED_STRING(In2, in2)
         DECLARE_ANIMATED_ENUMERATION(XChannelSelector, xChannelSelector, ChannelSelectorType)
         DECLARE_ANIMATED_ENUMERATION(YChannelSelector, yChannelSelector, ChannelSelectorType)
-        DECLARE_ANIMATED_NUMBER(Scale, scale)
     END_DECLARE_ANIMATED_PROPERTIES
 };
 

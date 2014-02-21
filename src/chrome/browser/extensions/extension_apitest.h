@@ -159,6 +159,11 @@ class ExtensionApiTest : public ExtensionBrowserTest {
   bool RunPlatformAppTestWithArg(
       const std::string& extension_name, const char* custom_arg);
 
+  // Similar to RunPlatformAppTest, with custom |flags| (as defined in the Flags
+  // enum). The kFlagLaunchPlatformApp flag is automatically added.
+  bool RunPlatformAppTestWithFlags(const std::string& extension_name,
+                                   int flags);
+
   // Start the test server, and store details of its state.  Those details
   // will be available to javascript tests using chrome.test.getConfig().
   bool StartEmbeddedTestServer();
@@ -191,7 +196,7 @@ class ExtensionApiTest : public ExtensionBrowserTest {
 
   // Hold details of the test, set in C++, which can be accessed by
   // javascript using chrome.test.getConfig().
-  scoped_ptr<DictionaryValue> test_config_;
+  scoped_ptr<base::DictionaryValue> test_config_;
 
   // Hold the test WebSocket server.
   scoped_ptr<net::SpawnedTestServer> websocket_server_;

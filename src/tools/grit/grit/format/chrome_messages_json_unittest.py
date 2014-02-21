@@ -49,22 +49,22 @@ class ChromeMessagesJsonFormatUnittest(unittest.TestCase):
     output = buf.getvalue()
     test = u"""
 {
-  "IDS_SIMPLE_MESSAGE": {
+  "SIMPLE_MESSAGE": {
     "message": "Simple message."
   },
-  "IDS_QUOTES": {
+  "QUOTES": {
     "message": "element\\u2019s \\u201c%s\\u201d attribute"
   },
-  "IDS_PLACEHOLDERS": {
+  "PLACEHOLDERS": {
     "message": "%1$d error, %2$d warning"
   },
-  "IDS_STARTS_WITH_SPACE": {
+  "STARTS_WITH_SPACE": {
     "message": "(%d)"
   },
-  "IDS_DOUBLE_QUOTES": {
+  "DOUBLE_QUOTES": {
     "message": "A \\"double quoted\\" message."
   },
-  "IDS_BACKSLASH": {
+  "BACKSLASH": {
     "message": "\\\\"
   }
 }

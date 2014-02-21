@@ -109,31 +109,33 @@ public:
         TEXTPATH_SPACINGTYPE_EXACT = SVGTextPathSpacingExact
     };
 
-    static PassRefPtr<SVGTextPathElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGTextPathElement> create(Document&);
+
+    SVGAnimatedLength* startOffset() const { return m_startOffset.get(); }
 
 private:
-    SVGTextPathElement(const QualifiedName&, Document&);
+    explicit SVGTextPathElement(Document&);
 
     virtual ~SVGTextPathElement();
 
     void clearResourceReferences();
 
-    virtual void buildPendingResource();
+    virtual void buildPendingResource() OVERRIDE;
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void removedFrom(ContainerNode*) OVERRIDE;
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual void svgAttributeChanged(const QualifiedName&);
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
 
-    virtual RenderObject* createRenderer(RenderStyle*);
-    virtual bool childShouldCreateRenderer(const Node& child) const;
-    virtual bool rendererIsNeeded(const RenderStyle&);
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
+    virtual bool childShouldCreateRenderer(const Node& child) const OVERRIDE { return true; }
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE;
 
-    virtual bool selfHasRelativeLengths() const;
+    virtual bool selfHasRelativeLengths() const OVERRIDE;
 
+    RefPtr<SVGAnimatedLength> m_startOffset;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGTextPathElement)
-        DECLARE_ANIMATED_LENGTH(StartOffset, startOffset)
         DECLARE_ANIMATED_ENUMERATION(Method, method, SVGTextPathMethodType)
         DECLARE_ANIMATED_ENUMERATION(Spacing, spacing, SVGTextPathSpacingType)
         DECLARE_ANIMATED_STRING(Href, href)

@@ -10,7 +10,7 @@
 namespace gfx {
 namespace {
 
-const char16 kAcceleratorChar = '&';
+const base::char16 kAcceleratorChar = '&';
 
 TEST(TextUtilsTest, RemoveAcceleratorChar) {
   struct TestData {
@@ -48,11 +48,12 @@ TEST(TextUtilsTest, RemoveAcceleratorChar) {
   for (size_t i = 0; i < ARRAYSIZE_UNSAFE(cases); ++i) {
     int accelerated_char_pos;
     int accelerated_char_span;
-    base::string16 result = RemoveAcceleratorChar(UTF8ToUTF16(cases[i].input),
-                                                  kAcceleratorChar,
-                                                  &accelerated_char_pos,
-                                                  &accelerated_char_span);
-    EXPECT_EQ(result, UTF8ToUTF16(cases[i].output));
+    base::string16 result = RemoveAcceleratorChar(
+        base::UTF8ToUTF16(cases[i].input),
+        kAcceleratorChar,
+        &accelerated_char_pos,
+        &accelerated_char_span);
+    EXPECT_EQ(result, base::UTF8ToUTF16(cases[i].output));
     EXPECT_EQ(accelerated_char_pos, cases[i].accelerated_char_pos);
     EXPECT_EQ(accelerated_char_span, cases[i].accelerated_char_span);
   }

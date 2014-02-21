@@ -14,6 +14,10 @@
 #include "chrome/browser/extensions/chrome_extension_function.h"
 #include "ui/base/accessibility/accessibility_types.h"
 
+namespace extensions {
+class ExtensionHost;
+} // namespace extensions
+
 // Observes the profile and routes accessibility notifications as events
 // to the extension system.
 class ExtensionAccessibilityEventRouter {
@@ -26,7 +30,7 @@ class ExtensionAccessibilityEventRouter {
 
   // Get the dict representing the last control that received an
   // OnControlFocus event.
-  DictionaryValue* last_focused_control_dict() {
+  base::DictionaryValue* last_focused_control_dict() {
     return &last_focused_control_dict_;
   }
 
@@ -54,6 +58,16 @@ class ExtensionAccessibilityEventRouter {
   void HandleControlEvent(ui::AccessibilityTypes::Event event,
                           const AccessibilityControlInfo* info);
 
+  void OnChromeVoxLoadStateChanged(
+      Profile* profile,
+      bool loading,
+      bool make_announcements);
+
+  static void DispatchEventToChromeVox(
+      Profile* profile,
+      const char* event_name,
+      scoped_ptr<base::ListValue> event_args);
+
  private:
   friend struct DefaultSingletonTraits<ExtensionAccessibilityEventRouter>;
 
@@ -71,7 +85,7 @@ class ExtensionAccessibilityEventRouter {
                      const char* event_name,
                      scoped_ptr<base::ListValue> event_args);
 
-  DictionaryValue last_focused_control_dict_;
+  base::DictionaryValue last_focused_control_dict_;
 
   bool enabled_;
 

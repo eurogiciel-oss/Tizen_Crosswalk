@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body>
 <p id="description"></p>
@@ -11,6 +11,7 @@
 description('Test for a bug that spin buttons did not work if a number input has large padding-right value.');
 
 var numberInput = document.getElementById('number');
+numberInput.focus();
 if (window.eventSender) {
     // Reset mouse position
     eventSender.mouseMoveTo(0, 0);

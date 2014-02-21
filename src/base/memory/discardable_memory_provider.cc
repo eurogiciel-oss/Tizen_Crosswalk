@@ -8,8 +8,6 @@
 #include "base/containers/hash_tables.h"
 #include "base/containers/mru_cache.h"
 #include "base/debug/trace_event.h"
-#include "base/lazy_instance.h"
-#include "base/memory/discardable_memory.h"
 #include "base/synchronization/lock.h"
 #include "base/sys_info.h"
 
@@ -17,13 +15,6 @@ namespace base {
 namespace internal {
 
 namespace {
-
-static base::LazyInstance<DiscardableMemoryProvider>::Leaky g_provider =
-    LAZY_INSTANCE_INITIALIZER;
-
-// If this is given a valid value via SetInstanceForTest, this pointer will be
-// returned by GetInstance rather than |g_provider|.
-static DiscardableMemoryProvider* g_provider_for_test = NULL;
 
 // This is admittedly pretty magical. It's approximately enough memory for two
 // 2560x1600 images.
@@ -38,9 +29,7 @@ DiscardableMemoryProvider::DiscardableMemoryProvider()
       bytes_allocated_(0),
       discardable_memory_limit_(kDefaultDiscardableMemoryLimit),
       bytes_to_reclaim_under_moderate_pressure_(
-          kDefaultBytesToReclaimUnderModeratePressure),
-      memory_pressure_listener_(
-          base::Bind(&DiscardableMemoryProvider::NotifyMemoryPressure)) {
+          kDefaultBytesToReclaimUnderModeratePressure) {
 }
 
 DiscardableMemoryProvider::~DiscardableMemoryProvider() {
@@ -48,32 +37,20 @@ DiscardableMemoryProvider::~DiscardableMemoryProvider() {
   DCHECK_EQ(0u, bytes_allocated_);
 }
 
-// static
-DiscardableMemoryProvider* DiscardableMemoryProvider::GetInstance() {
-  if (g_provider_for_test)
-    return g_provider_for_test;
-  return g_provider.Pointer();
+void DiscardableMemoryProvider::RegisterMemoryPressureListener() {
+  AutoLock lock(lock_);
+  DCHECK(base::MessageLoop::current());
+  DCHECK(!memory_pressure_listener_);
+  memory_pressure_listener_.reset(
+      new MemoryPressureListener(
+          base::Bind(&DiscardableMemoryProvider::OnMemoryPressure,
+                     Unretained(this))));
 }
 
-// static
-void DiscardableMemoryProvider::SetInstanceForTest(
-    DiscardableMemoryProvider* provider) {
-  g_provider_for_test = provider;
-}
-
-// static
-void DiscardableMemoryProvider::NotifyMemoryPressure(
-    MemoryPressureListener::MemoryPressureLevel pressure_level) {
-  switch (pressure_level) {
-    case MemoryPressureListener::MEMORY_PRESSURE_MODERATE:
-      DiscardableMemoryProvider::GetInstance()->Purge();
-      return;
-    case MemoryPressureListener::MEMORY_PRESSURE_CRITICAL:
-      DiscardableMemoryProvider::GetInstance()->PurgeAll();
-      return;
-  }
-
-  NOTREACHED();
+void DiscardableMemoryProvider::UnregisterMemoryPressureListener() {
+  AutoLock lock(lock_);
+  DCHECK(memory_pressure_listener_);
+  memory_pressure_listener_.reset();
 }
 
 void DiscardableMemoryProvider::SetDiscardableMemoryLimit(size_t bytes) {
@@ -86,12 +63,16 @@ void DiscardableMemoryProvider::SetBytesToReclaimUnderModeratePressure(
     size_t bytes) {
   AutoLock lock(lock_);
   bytes_to_reclaim_under_moderate_pressure_ = bytes;
-  EnforcePolicyWithLockAcquired();
 }
 
 void DiscardableMemoryProvider::Register(
     const DiscardableMemory* discardable, size_t bytes) {
   AutoLock lock(lock_);
+  // A registered memory listener is currently required. This DCHECK can be
+  // moved or removed if we decide that it's useful to relax this condition.
+  // TODO(reveman): Enable this DCHECK when skia and blink are able to
+  // register memory pressure listeners. crbug.com/333907
+  // DCHECK(memory_pressure_listener_);
   DCHECK(allocations_.Peek(discardable) == allocations_.end());
   allocations_.Put(discardable, Allocation(bytes));
 }
@@ -140,9 +121,17 @@ scoped_ptr<uint8, FreeDeleter> DiscardableMemoryProvider::Acquire(
     PurgeLRUWithLockAcquiredUntilUsageIsWithin(limit);
   }
 
+  // Check for overflow.
+  if (std::numeric_limits<size_t>::max() - bytes < bytes_allocated_)
+    return scoped_ptr<uint8, FreeDeleter>();
+
+  scoped_ptr<uint8, FreeDeleter> memory(static_cast<uint8*>(malloc(bytes)));
+  if (!memory)
+    return scoped_ptr<uint8, FreeDeleter>();
+
   bytes_allocated_ += bytes;
   *purged = true;
-  return scoped_ptr<uint8, FreeDeleter>(static_cast<uint8*>(malloc(bytes)));
+  return memory.Pass();
 }
 
 void DiscardableMemoryProvider::Release(
@@ -184,6 +173,20 @@ size_t DiscardableMemoryProvider::GetBytesAllocatedForTest() const {
   return bytes_allocated_;
 }
 
+void DiscardableMemoryProvider::OnMemoryPressure(
+    MemoryPressureListener::MemoryPressureLevel pressure_level) {
+  switch (pressure_level) {
+    case MemoryPressureListener::MEMORY_PRESSURE_MODERATE:
+      Purge();
+      return;
+    case MemoryPressureListener::MEMORY_PRESSURE_CRITICAL:
+      PurgeAll();
+      return;
+  }
+
+  NOTREACHED();
+}
+
 void DiscardableMemoryProvider::Purge() {
   AutoLock lock(lock_);
 
@@ -191,7 +194,7 @@ void DiscardableMemoryProvider::Purge() {
     return;
 
   size_t limit = 0;
-  if (bytes_to_reclaim_under_moderate_pressure_ < discardable_memory_limit_)
+  if (bytes_to_reclaim_under_moderate_pressure_ < bytes_allocated_)
     limit = bytes_allocated_ - bytes_to_reclaim_under_moderate_pressure_;
 
   PurgeLRUWithLockAcquiredUntilUsageIsWithin(limit);
@@ -223,17 +226,7 @@ void DiscardableMemoryProvider::PurgeLRUWithLockAcquiredUntilUsageIsWithin(
 }
 
 void DiscardableMemoryProvider::EnforcePolicyWithLockAcquired() {
-  lock_.AssertAcquired();
-
-  bool exceeded_bound = bytes_allocated_ > discardable_memory_limit_;
-  if (!exceeded_bound || !bytes_to_reclaim_under_moderate_pressure_)
-    return;
-
-  size_t limit = 0;
-  if (bytes_to_reclaim_under_moderate_pressure_ < discardable_memory_limit_)
-    limit = bytes_allocated_ - bytes_to_reclaim_under_moderate_pressure_;
-
-  PurgeLRUWithLockAcquiredUntilUsageIsWithin(limit);
+  PurgeLRUWithLockAcquiredUntilUsageIsWithin(discardable_memory_limit_);
 }
 
 }  // namespace internal

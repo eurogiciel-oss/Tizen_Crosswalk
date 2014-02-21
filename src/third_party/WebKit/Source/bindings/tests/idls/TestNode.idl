@@ -20,10 +20,9 @@
 
 [
     Constructor,
-    DependentLifetime
 ] interface TestNode : Node {
     // These attributes are needed to test [PutForwards] in TestObject.idl.
     attribute DOMString href;
-    [SetterRaisesException] attribute DOMString hrefThrows;
+    [RaisesException=Setter] attribute DOMString hrefThrows;
 };
 

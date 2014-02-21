@@ -55,10 +55,8 @@ class CONTENT_EXPORT IndexedDBContextImpl
 
   // IndexedDBContext implementation:
   virtual base::TaskRunner* TaskRunner() const OVERRIDE;
-  virtual std::vector<GURL> GetAllOrigins() OVERRIDE;
   virtual std::vector<IndexedDBInfo> GetAllOriginsInfo() OVERRIDE;
   virtual int64 GetOriginDiskUsage(const GURL& origin_url) OVERRIDE;
-  virtual base::Time GetOriginLastModified(const GURL& origin_url) OVERRIDE;
   virtual void DeleteForOrigin(const GURL& origin_url) OVERRIDE;
   virtual base::FilePath GetFilePathForTesting(
       const std::string& origin_id) const OVERRIDE;
@@ -69,11 +67,14 @@ class CONTENT_EXPORT IndexedDBContextImpl
   void ConnectionOpened(const GURL& origin_url, IndexedDBConnection* db);
   void ConnectionClosed(const GURL& origin_url, IndexedDBConnection* db);
   void TransactionComplete(const GURL& origin_url);
+  void DatabaseDeleted(const GURL& origin_url);
   bool WouldBeOverQuota(const GURL& origin_url, int64 additional_bytes);
   bool IsOverQuota(const GURL& origin_url);
 
   quota::QuotaManagerProxy* quota_manager_proxy();
 
+  std::vector<GURL> GetAllOrigins();
+  base::Time GetOriginLastModified(const GURL& origin_url);
   base::ListValue* GetAllOriginsDetails();
   // ForceClose takes a value rather than a reference since it may release the
   // owning object.
@@ -136,8 +137,6 @@ class CONTENT_EXPORT IndexedDBContextImpl
   scoped_ptr<std::set<GURL> > origin_set_;
   OriginToSizeMap origin_size_map_;
   OriginToSizeMap space_available_map_;
-  typedef std::set<IndexedDBConnection*> ConnectionSet;
-  std::map<GURL, ConnectionSet> connections_;
 
   DISALLOW_COPY_AND_ASSIGN(IndexedDBContextImpl);
 };

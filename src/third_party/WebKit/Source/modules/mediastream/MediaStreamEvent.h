@@ -37,7 +37,7 @@ struct MediaStreamEventInit : public EventInit {
     RefPtr<MediaStream> stream;
 };
 
-class MediaStreamEvent : public Event {
+class MediaStreamEvent FINAL : public Event {
 public:
     virtual ~MediaStreamEvent();
 
@@ -46,8 +46,9 @@ public:
     static PassRefPtr<MediaStreamEvent> create(const AtomicString& type, const MediaStreamEventInit& initializer);
 
     MediaStream* stream() const;
+    MediaStream* stream(bool&) const;
 
-    virtual const AtomicString& interfaceName() const;
+    virtual const AtomicString& interfaceName() const OVERRIDE;
 
 private:
     MediaStreamEvent();

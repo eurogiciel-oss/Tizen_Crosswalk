@@ -1,7 +1,7 @@
 <!DOCTYPE HTML>
 <html>
 <head>
-<script src="../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../resources/js-test.js"></script>
 </head>
 <body>
 <script>
@@ -26,8 +26,8 @@ shouldBe('input.getAttribute("inputmode")', '""');
 // Null.
 debug('Setting null to inputMode:');
 input.inputMode = null;
-shouldBe('input.inputMode', '""');
-shouldBe('input.getAttribute("inputmode")', 'null');
+shouldBe('input.inputMode', '"null"');
+shouldBe('input.getAttribute("inputmode")', '"null"');
 input.setAttribute('inputmode', null);
 shouldBe('input.inputMode', '"null"');
 

@@ -39,21 +39,29 @@ using namespace WebCore;
 
 namespace {
 
-TEST(CoreAnimationAnimatableStrokeDasharrayListTest, EqualTo)
+PassRefPtr<SVGLengthList> createSVGLengthList(size_t length)
 {
-    Vector<SVGLength> vectorA(4);
-    Vector<SVGLength> vectorB(4);
-    RefPtr<AnimatableStrokeDasharrayList> listA = AnimatableStrokeDasharrayList::create(vectorA);
-    RefPtr<AnimatableStrokeDasharrayList> listB = AnimatableStrokeDasharrayList::create(vectorB);
+    RefPtr<SVGLengthList> list = SVGLengthList::create();
+    for (size_t i = 0; i < length; ++i)
+        list->append(SVGLength::create());
+    return list.release();
+}
+
+TEST(AnimationAnimatableStrokeDasharrayListTest, EqualTo)
+{
+    RefPtr<SVGLengthList> svgListA = createSVGLengthList(4);
+    RefPtr<SVGLengthList> svgListB = createSVGLengthList(4);
+    RefPtr<AnimatableStrokeDasharrayList> listA = AnimatableStrokeDasharrayList::create(svgListA);
+    RefPtr<AnimatableStrokeDasharrayList> listB = AnimatableStrokeDasharrayList::create(svgListB);
     EXPECT_TRUE(listA->equals(listB.get()));
 
-    TrackExceptionState es;
-    vectorB[3].newValueSpecifiedUnits(LengthTypePX, 50, es);
-    listB = AnimatableStrokeDasharrayList::create(vectorB);
+    TrackExceptionState exceptionState;
+    svgListB->at(3)->newValueSpecifiedUnits(LengthTypePX, 50);
+    listB = AnimatableStrokeDasharrayList::create(svgListB);
     EXPECT_FALSE(listA->equals(listB.get()));
 
-    vectorB = Vector<SVGLength>(5);
-    listB = AnimatableStrokeDasharrayList::create(vectorB);
+    svgListB = createSVGLengthList(5);
+    listB = AnimatableStrokeDasharrayList::create(svgListB);
     EXPECT_FALSE(listA->equals(listB.get()));
 }
 

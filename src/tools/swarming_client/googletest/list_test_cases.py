@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """List all the test cases for a google test.
 
@@ -15,7 +15,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if not ROOT_DIR in sys.path:
   sys.path.insert(0, ROOT_DIR)
 
-import run_test_cases
+from googletest import run_test_cases
 from utils import tools
 
 

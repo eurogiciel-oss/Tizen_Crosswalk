@@ -70,6 +70,7 @@ public:
     // channels for encoding and sending to the network.
     void EncodeAndSend(const int voe_channels[], int number_of_voe_channels);
 
+    // Must be called on the same thread as PrepareDemux().
     uint32_t CaptureLevel() const;
 
     int32_t StopSend();
@@ -241,8 +242,8 @@ private:
     bool swap_stereo_channels_;
 };
 
-#endif // WEBRTC_VOICE_ENGINE_TRANSMIT_MIXER_H
-
 }  // namespace voe
 
 }  // namespace webrtc
+
+#endif  // WEBRTC_VOICE_ENGINE_TRANSMIT_MIXER_H

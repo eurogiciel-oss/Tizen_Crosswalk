@@ -22,7 +22,7 @@ class ViewProp;
 
 namespace gfx {
 class Canvas;
-class Font;
+class FontList;
 class Rect;
 }
 
@@ -53,8 +53,8 @@ class VIEWS_EXPORT NativeWidgetWin : public internal::NativeWidgetPrivate,
   explicit NativeWidgetWin(internal::NativeWidgetDelegate* delegate);
   virtual ~NativeWidgetWin();
 
-  // Returns the system set window title font.
-  static gfx::Font GetWindowTitleFont();
+  // Returns the system set window title font list.
+  static gfx::FontList GetWindowTitleFontList();
 
   // Show the window with the specified show command.
   void Show(int show_state);
@@ -94,7 +94,7 @@ class VIEWS_EXPORT NativeWidgetWin : public internal::NativeWidgetPrivate,
   virtual void GetWindowPlacement(
      gfx::Rect* bounds,
      ui::WindowShowState* show_state) const OVERRIDE;
-  virtual void SetWindowTitle(const string16& title) OVERRIDE;
+  virtual bool SetWindowTitle(const base::string16& title) OVERRIDE;
   virtual void SetWindowIcons(const gfx::ImageSkia& window_icon,
                               const gfx::ImageSkia& app_icon) OVERRIDE;
   virtual void InitModalType(ui::ModalType modal_type) OVERRIDE;
@@ -198,7 +198,7 @@ class VIEWS_EXPORT NativeWidgetWin : public internal::NativeWidgetPrivate,
   virtual void HandleCreate() OVERRIDE;
   virtual void HandleDestroying() OVERRIDE;
   virtual void HandleDestroyed() OVERRIDE;
-  virtual bool HandleInitialFocus() OVERRIDE;
+  virtual bool HandleInitialFocus(ui::WindowShowState show_state) OVERRIDE;
   virtual void HandleDisplayChange() OVERRIDE;
   virtual void HandleBeginWMSizeMove() OVERRIDE;
   virtual void HandleEndWMSizeMove() OVERRIDE;
@@ -228,6 +228,7 @@ class VIEWS_EXPORT NativeWidgetWin : public internal::NativeWidgetPrivate,
   virtual void HandleTooltipMouseMove(UINT message,
                                       WPARAM w_param,
                                       LPARAM l_param) OVERRIDE;
+  virtual void HandleMenuLoop(bool in_menu_loop) OVERRIDE;
   virtual bool PreHandleMSG(UINT message,
                             WPARAM w_param,
                             LPARAM l_param,

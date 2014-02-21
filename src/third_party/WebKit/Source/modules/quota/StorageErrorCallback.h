@@ -42,24 +42,24 @@ class DOMError;
 
 typedef int ExceptionCode;
 
-class StorageErrorCallback : public RefCounted<StorageErrorCallback> {
+class StorageErrorCallback {
 public:
     virtual ~StorageErrorCallback() { }
-    virtual bool handleEvent(DOMError*) = 0;
+    virtual void handleEvent(DOMError*) = 0;
 
-    class CallbackTask : public ExecutionContextTask {
+    class CallbackTask FINAL : public ExecutionContextTask {
     public:
-        static PassOwnPtr<CallbackTask> create(PassRefPtr<StorageErrorCallback> callback, ExceptionCode ec)
+        static PassOwnPtr<CallbackTask> create(PassOwnPtr<StorageErrorCallback> callback, ExceptionCode ec)
         {
             return adoptPtr(new CallbackTask(callback, ec));
         }
 
-        virtual void performTask(ExecutionContext*);
+        virtual void performTask(ExecutionContext*) OVERRIDE;
 
     private:
-        CallbackTask(PassRefPtr<StorageErrorCallback>, ExceptionCode);
+        CallbackTask(PassOwnPtr<StorageErrorCallback>, ExceptionCode);
 
-        RefPtr<StorageErrorCallback> m_callback;
+        OwnPtr<StorageErrorCallback> m_callback;
         ExceptionCode m_ec;
     };
 };

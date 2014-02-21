@@ -11,10 +11,11 @@
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "sync/engine/apply_control_data_updates.h"
-#include "sync/engine/apply_updates_and_resolve_conflicts_command.h"
 #include "sync/engine/commit.h"
+#include "sync/engine/commit_processor.h"
 #include "sync/engine/conflict_resolver.h"
 #include "sync/engine/download.h"
+#include "sync/engine/get_updates_processor.h"
 #include "sync/engine/net/server_connection_manager.h"
 #include "sync/engine/syncer_types.h"
 #include "sync/internal_api/public/base/cancelation_signal.h"
@@ -57,14 +58,18 @@ bool Syncer::NormalSyncShare(ModelTypeSet request_types,
                              const NudgeTracker& nudge_tracker,
                              SyncSession* session) {
   HandleCycleBegin(session);
+  GetUpdatesProcessor get_updates_processor(
+      session->context()->model_type_registry()->update_handler_map());
   VLOG(1) << "Downloading types " << ModelTypeSetToString(request_types);
-  if (nudge_tracker.IsGetUpdatesRequired() ||
+  if (nudge_tracker.IsGetUpdatesRequired(base::TimeTicks::Now()) ||
       session->context()->ShouldFetchUpdatesBeforeCommit()) {
     if (!DownloadAndApplyUpdates(
             request_types,
             session,
-            base::Bind(&BuildNormalDownloadUpdates,
+            &get_updates_processor,
+            base::Bind(&download::BuildNormalDownloadUpdates,
                        session,
+                       &get_updates_processor,
                        kCreateMobileBookmarksFolder,
                        request_types,
                        base::ConstRef(nudge_tracker)))) {
@@ -73,7 +78,10 @@ bool Syncer::NormalSyncShare(ModelTypeSet request_types,
   }
 
   VLOG(1) << "Committing from types " << ModelTypeSetToString(request_types);
-  SyncerError commit_result = BuildAndPostCommits(request_types, session);
+  CommitProcessor commit_processor(
+      session->context()->model_type_registry()->commit_contributor_map());
+  SyncerError commit_result =
+      BuildAndPostCommits(request_types, session, &commit_processor);
   session->mutable_status_controller()->set_commit_result(commit_result);
 
   return HandleCycleEnd(session, nudge_tracker.updates_source());
@@ -84,12 +92,16 @@ bool Syncer::ConfigureSyncShare(
     sync_pb::GetUpdatesCallerInfo::GetUpdatesSource source,
     SyncSession* session) {
   HandleCycleBegin(session);
+  GetUpdatesProcessor get_updates_processor(
+      session->context()->model_type_registry()->update_handler_map());
   VLOG(1) << "Configuring types " << ModelTypeSetToString(request_types);
   DownloadAndApplyUpdates(
       request_types,
       session,
-      base::Bind(&BuildDownloadUpdatesForConfigure,
+      &get_updates_processor,
+      base::Bind(&download::BuildDownloadUpdatesForConfigure,
                  session,
+                 &get_updates_processor,
                  kCreateMobileBookmarksFolder,
                  source,
                  request_types));
@@ -99,24 +111,47 @@ bool Syncer::ConfigureSyncShare(
 bool Syncer::PollSyncShare(ModelTypeSet request_types,
                            SyncSession* session) {
   HandleCycleBegin(session);
+  GetUpdatesProcessor get_updates_processor(
+      session->context()->model_type_registry()->update_handler_map());
   VLOG(1) << "Polling types " << ModelTypeSetToString(request_types);
   DownloadAndApplyUpdates(
       request_types,
       session,
-      base::Bind(&BuildDownloadUpdatesForPoll,
+      &get_updates_processor,
+      base::Bind(&download::BuildDownloadUpdatesForPoll,
                  session,
+                 &get_updates_processor,
                  kCreateMobileBookmarksFolder,
                  request_types));
   return HandleCycleEnd(session, sync_pb::GetUpdatesCallerInfo::PERIODIC);
 }
 
-void Syncer::ApplyUpdates(SyncSession* session) {
+bool Syncer::RetrySyncShare(ModelTypeSet request_types,
+                            SyncSession* session) {
+  HandleCycleBegin(session);
+  GetUpdatesProcessor get_updates_processor(
+      session->context()->model_type_registry()->update_handler_map());
+  VLOG(1) << "Retrying types " << ModelTypeSetToString(request_types);
+  DownloadAndApplyUpdates(
+      request_types,
+      session,
+      &get_updates_processor,
+      base::Bind(&download::BuildDownloadUpdatesForRetry,
+                 session,
+                 &get_updates_processor,
+                 kCreateMobileBookmarksFolder,
+                 request_types));
+  return HandleCycleEnd(session, sync_pb::GetUpdatesCallerInfo::RETRY);
+}
+
+void Syncer::ApplyUpdates(SyncSession* session,
+                          GetUpdatesProcessor* get_updates_processor) {
   TRACE_EVENT0("sync", "ApplyUpdates");
 
-  ApplyControlDataUpdates(session);
+  ApplyControlDataUpdates(session->context()->directory());
 
-  ApplyUpdatesAndResolveConflictsCommand apply_updates;
-  apply_updates.Execute(session);
+  get_updates_processor->ApplyUpdatesForAllTypes(
+      session->mutable_status_controller());
 
   session->context()->set_hierarchy_conflict_detected(
       session->status_controller().num_hierarchy_conflicts() > 0);
@@ -127,29 +162,36 @@ void Syncer::ApplyUpdates(SyncSession* session) {
 bool Syncer::DownloadAndApplyUpdates(
     ModelTypeSet request_types,
     SyncSession* session,
+    GetUpdatesProcessor* get_updates_processor,
     base::Callback<void(sync_pb::ClientToServerMessage*)> build_fn) {
-  while (!session->status_controller().ServerSaysNothingMoreToDownload()) {
+  SyncerError download_result = UNSET;
+  do {
     TRACE_EVENT0("sync", "DownloadUpdates");
     sync_pb::ClientToServerMessage msg;
     build_fn.Run(&msg);
-    SyncerError download_result =
-        ExecuteDownloadUpdates(request_types, session, &msg);
+    download_result = download::ExecuteDownloadUpdates(request_types,
+                                                       session,
+                                                       get_updates_processor,
+                                                       &msg);
     session->mutable_status_controller()->set_last_download_updates_result(
         download_result);
-    if (download_result != SYNCER_OK) {
-      return false;
-    }
-  }
+  } while (download_result == SERVER_MORE_TO_DOWNLOAD);
+
+  // Exit without applying if we're shutting down or an error was detected.
+  if (download_result != SYNCER_OK)
+    return false;
   if (ExitRequested())
     return false;
-  ApplyUpdates(session);
+
+  ApplyUpdates(session, get_updates_processor);
   if (ExitRequested())
     return false;
   return true;
 }
 
 SyncerError Syncer::BuildAndPostCommits(ModelTypeSet requested_types,
-                                        sessions::SyncSession* session) {
+                                        sessions::SyncSession* session,
+                                        CommitProcessor* commit_processor) {
   // The ExitRequested() check is unnecessary, since we should start getting
   // errors from the ServerConnectionManager if an exist has been requested.
   // However, it doesn't hurt to check it anyway.
@@ -157,10 +199,11 @@ SyncerError Syncer::BuildAndPostCommits(ModelTypeSet requested_types,
     scoped_ptr<Commit> commit(
         Commit::Init(
             requested_types,
+            session->context()->enabled_types(),
             session->context()->max_commit_batch_size(),
             session->context()->account_name(),
             session->context()->directory()->cache_guid(),
-            session->context()->commit_contributor_map(),
+            commit_processor,
             session->context()->extensions_activity()));
     if (!commit) {
       break;

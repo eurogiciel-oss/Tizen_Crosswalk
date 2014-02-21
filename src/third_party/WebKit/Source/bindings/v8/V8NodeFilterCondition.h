@@ -58,7 +58,7 @@ class ScriptState;
 //   v   |                        v   |                        v
 // NodeIterator  --HiddenValue--> NodeFilter --HiddenValue--> JS Callback
 // (V8)
-class V8NodeFilterCondition : public NodeFilterCondition {
+class V8NodeFilterCondition FINAL : public NodeFilterCondition {
 public:
     static PassRefPtr<V8NodeFilterCondition> create(v8::Handle<v8::Value> filter, v8::Handle<v8::Object> owner, v8::Isolate* isolate)
     {
@@ -67,7 +67,7 @@ public:
 
     virtual ~V8NodeFilterCondition();
 
-    virtual short acceptNode(ScriptState*, Node*) const;
+    virtual short acceptNode(ScriptState*, Node*) const OVERRIDE;
 
 private:
     // As the value |filter| is maintained by V8GC, the |owner| which references
@@ -75,7 +75,7 @@ private:
     // to hold a strong reference to |filter|.
     V8NodeFilterCondition(v8::Handle<v8::Value> filter, v8::Handle<v8::Object> owner, v8::Isolate*);
 
-    static void makeWeakCallback(v8::Isolate*, v8::Persistent<v8::Value>*, V8NodeFilterCondition*);
+    static void setWeakCallback(const v8::WeakCallbackData<v8::Value, V8NodeFilterCondition>&);
 
     ScopedPersistent<v8::Value> m_filter;
 };

@@ -11,6 +11,10 @@ testGridDefinitionsValues(document.getElementById("gridWithMinMax"), "minmax(10%
 testGridDefinitionsValues(document.getElementById("gridWithMinContent"), "min-content", "min-content");
 testGridDefinitionsValues(document.getElementById("gridWithMaxContent"), "max-content", "max-content");
 testGridDefinitionsValues(document.getElementById("gridWithFraction"), "1fr", "2fr");
+testGridDefinitionsValues(document.getElementById("gridWithCalc"), "150px", "75px");
+testGridDefinitionsValues(document.getElementById("gridWithCalcComplex"), "calc(50% + 150px)", "calc(65% + 75px)");
+testGridDefinitionsValues(document.getElementById("gridWithCalcInsideMinMax"), "minmax(10%, 15px)", "minmax(20px, 50%)");
+testGridDefinitionsValues(document.getElementById("gridWithCalcComplexInsideMinMax"), "minmax(10%, calc(50% + 15px))", "minmax(calc(20px + 10%), 50%)");
 
 debug("");
 debug("Test getting wrong values for grid-definition-columns and grid-definition-rows through CSS (they should resolve to the default: 'none')");
@@ -80,15 +84,15 @@ function testInherit()
 {
     var parentElement = document.createElement("div");
     document.body.appendChild(parentElement);
-    parentElement.style.gridDefinitionColumns = "50px 'last'";
-    parentElement.style.gridDefinitionRows = "'first' 101%";
+    parentElement.style.gridDefinitionColumns = "50px (last)";
+    parentElement.style.gridDefinitionRows = "(first) 101%";
 
     element = document.createElement("div");
     parentElement.appendChild(element);
     element.style.gridDefinitionColumns = "inherit";
     element.style.gridDefinitionRows = "inherit";
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'50px last'");
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'first 101%'");
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'50px (last)'");
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'(first) 101%'");
 
     document.body.removeChild(parentElement);
 }
@@ -100,10 +104,10 @@ function testInitial()
 {
     element = document.createElement("div");
     document.body.appendChild(element);
-    element.style.gridDefinitionColumns = "150% 'last'";
-    element.style.gridDefinitionRows = "'first' 1fr";
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'150% last'");
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'first 1fr'");
+    element.style.gridDefinitionColumns = "150% (last)";
+    element.style.gridDefinitionRows = "(first) 1fr";
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'150% (last)'");
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'(first) 1fr'");
 
     element.style.gridDefinitionColumns = "initial";
     element.style.gridDefinitionRows = "initial";

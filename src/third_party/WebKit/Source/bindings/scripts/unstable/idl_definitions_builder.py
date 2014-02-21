@@ -30,12 +30,12 @@
 
 import os
 
-from idl_definitions import IdlDefinitions, IdlInterface, IdlException, IdlOperation, IdlCallbackFunction, IdlArgument, IdlAttribute, IdlConstant, IdlEnum, IdlTypedef, IdlUnionType
+from idl_definitions import IdlDefinitions, IdlInterface, IdlException, IdlOperation, IdlCallbackFunction, IdlArgument, IdlAttribute, IdlConstant, IdlEnum, IdlUnionType
 
 SPECIAL_KEYWORD_LIST = ['GETTER', 'SETTER', 'DELETER']
 STANDARD_TYPEDEFS = {
     # http://www.w3.org/TR/WebIDL/#common-DOMTimeStamp
-    'DOMTimeStamp': IdlTypedef(idl_type='unsigned long long'),
+    'DOMTimeStamp': 'unsigned long long',
 }
 
 def build_idl_definitions_from_ast(node):
@@ -50,7 +50,6 @@ def build_idl_definitions_from_ast(node):
 def file_node_to_idl_definitions(node):
     callback_functions = {}
     enumerations = {}
-    exceptions = {}
     interfaces = {}
     typedefs = STANDARD_TYPEDEFS
 
@@ -65,10 +64,11 @@ def file_node_to_idl_definitions(node):
             interfaces[interface.name] = interface
         elif child_class == 'Exception':
             exception = exception_node_to_idl_exception(child)
-            exceptions[exception.name] = exception
+            # For simplicity, treat exceptions as interfaces
+            interfaces[exception.name] = exception
         elif child_class == 'Typedef':
             type_name = child.GetName()
-            typedefs[type_name] = typedef_node_to_idl_typedef(child)
+            typedefs[type_name] = typedef_node_to_type(child)
         elif child_class == 'Enum':
             enumeration = enum_node_to_idl_enum(child)
             enumerations[enumeration.name] = enumeration
@@ -81,7 +81,7 @@ def file_node_to_idl_definitions(node):
         else:
             raise ValueError('Unrecognized node class: %s' % child_class)
 
-    return IdlDefinitions(callback_functions=callback_functions, enumerations=enumerations, exceptions=exceptions, file_name=file_name, interfaces=interfaces, typedefs=typedefs)
+    return IdlDefinitions(callback_functions=callback_functions, enumerations=enumerations, file_name=file_name, interfaces=interfaces, typedefs=typedefs)
 
 # Constructors for Interface definitions and interface members
 
@@ -94,7 +94,7 @@ def interface_node_to_idl_interface(node):
     extended_attributes = None
     operations = []
     is_callback = node.GetProperty('CALLBACK') or False
-    # FIXME: uppercase 'Partial' in base IDL parser
+    # FIXME: uppercase 'Partial' => 'PARTIAL' in base IDL parser
     is_partial = node.GetProperty('Partial') or False
     name = node.GetName()
     parent = None
@@ -103,11 +103,7 @@ def interface_node_to_idl_interface(node):
     for child in children:
         child_class = child.GetClass()
         if child_class == 'Attribute':
-            attribute = attribute_node_to_idl_attribute(child)
-            # FIXME: This is a hack to support [CustomConstructor] for
-            # window.HTMLImageElement. Remove the hack.
-            clear_constructor_attributes(attribute.extended_attributes)
-            attributes.append(attribute)
+            attributes.append(attribute_node_to_idl_attribute(child))
         elif child_class == 'Const':
             constants.append(constant_node_to_idl_constant(child))
         elif child_class == 'ExtAttributes':
@@ -233,6 +229,8 @@ def argument_node_to_idl_argument(node):
         child_class = child.GetClass()
         if child_class == 'Type':
             idl_type = type_node_to_type(child)
+            # FIXME: Doesn't handle nullable arrays (Foo[]?), and arrays of
+            # nullable (Foo?[]) are treated as nullable arrays. No actual use.
             is_nullable = child.GetProperty('NULLABLE')
         elif child_class == 'ExtAttributes':
             extended_attributes = ext_attributes_node_to_extended_attributes(child)
@@ -323,22 +321,15 @@ def exception_node_to_idl_exception(node):
     return IdlException(name=name, attributes=attributes, constants=constants, extended_attributes=extended_attributes, operations=operations)
 
 
-def typedef_node_to_idl_typedef(node):
-    idl_type = None
-    extended_attributes = None
-
+def typedef_node_to_type(node):
     children = node.GetChildren()
-    for child in children:
-        child_class = child.GetClass()
-        if child_class == 'Type':
-            idl_type = type_node_to_type(child)
-        elif child_class == 'ExtAttributes':
-            extended_attributes = ext_attributes_node_to_extended_attributes(child)
-            raise ValueError('Extended attributes in a typedef are untested!')
-        else:
-            raise ValueError('Unrecognized node class: %s' % child_class)
-
-    return IdlTypedef(idl_type=idl_type, extended_attributes=extended_attributes)
+    if len(children) != 1:
+        raise ValueError('Typedef node with %s children, expected 1' % len(children))
+    child = children[0]
+    child_class = child.GetClass()
+    if child_class != 'Type':
+        raise ValueError('Unrecognized node class: %s' % child_class)
+    return type_node_to_type(child)
 
 # Extended attributes
 
@@ -361,40 +352,47 @@ def ext_attributes_node_to_extended_attributes(node):
     # overloading, and thus are stored in temporary lists.
     # However, Named Constructors cannot be overloaded, and thus do not have
     # a list.
-    # FIXME: Add overloading for Named Constructors and remove custom bindings
-    # for HTMLImageElement
+    # FIXME: move Constructor logic into separate function, instead of modifying
+    #        extended attributes in-place.
     constructors = []
     custom_constructors = []
     extended_attributes = {}
 
-    attribute_list = node.GetChildren()
-    for attribute in attribute_list:
-        name = attribute.GetName()
-        children = attribute.GetChildren()
-        if name in ['Constructor', 'CustomConstructor', 'NamedConstructor']:
-            child = None
-            child_class = None
-            if children:
-                if len(children) > 1:
-                    raise ValueError('ExtAttributes node with %s children, expected at most 1' % len(children))
-                child = children[0]
-                child_class = child.GetClass()
-            if name == 'Constructor':
-                if child_class and child_class != 'Arguments':
-                    raise ValueError('Constructor only supports Arguments as child, but has child of class: %s' % child_class)
-                constructors.append(child)
-            elif name == 'CustomConstructor':
-                if child_class and child_class != 'Arguments':
-                    raise ValueError('Custom Constructor only supports Arguments as child, but has child of class: %s' % child_class)
-                custom_constructors.append(child)
-            else:  # name == 'NamedConstructor'
-                if child_class and child_class != 'Call':
-                    raise ValueError('Named Constructor only supports Call as child, but has child of class: %s' % child_class)
-                extended_attributes[name] = child
-        elif children:
-            raise ValueError('Non-constructor ExtAttributes node with children: %s' % name)
+    def child_node(extended_attribute_node):
+        children = extended_attribute_node.GetChildren()
+        if not children:
+            return None
+        if len(children) > 1:
+            raise ValueError('ExtAttributes node with %s children, expected at most 1' % len(children))
+        return children[0]
+
+    extended_attribute_node_list = node.GetChildren()
+    for extended_attribute_node in extended_attribute_node_list:
+        name = extended_attribute_node.GetName()
+        child = child_node(extended_attribute_node)
+        child_class = child and child.GetClass()
+        if name == 'Constructor':
+            if child_class and child_class != 'Arguments':
+                raise ValueError('Constructor only supports Arguments as child, but has child of class: %s' % child_class)
+            constructors.append(child)
+        elif name == 'CustomConstructor':
+            if child_class and child_class != 'Arguments':
+                raise ValueError('[CustomConstructor] only supports Arguments as child, but has child of class: %s' % child_class)
+            custom_constructors.append(child)
+        elif name == 'NamedConstructor':
+            if child_class and child_class != 'Call':
+                raise ValueError('[NamedConstructor] only supports Call as child, but has child of class: %s' % child_class)
+            extended_attributes[name] = child
+        elif name == 'SetWrapperReferenceTo':
+            if not child:
+                raise ValueError('[SetWrapperReferenceTo] requires a child, but has none.')
+            if child_class != 'Arguments':
+                raise ValueError('[SetWrapperReferenceTo] only supports Arguments as child, but has child of class: %s' % child_class)
+            extended_attributes[name] = arguments_node_to_arguments(child)
+        elif child:
+            raise ValueError('ExtAttributes node with unexpected children: %s' % name)
         else:
-            value = attribute.GetProperty('VALUE')
+            value = extended_attribute_node.GetProperty('VALUE')
             extended_attributes[name] = value
 
     # Store constructors and custom constructors in special list attributes,
@@ -425,15 +423,6 @@ def extended_attributes_to_constructors(extended_attributes):
             constructors.append(constructor)
             overloaded_index += 1
 
-        # Prefix 'CallWith' and 'RaisesException' with 'Constructor'
-        # FIXME: Change extended attributes to include prefix explicitly.
-        if 'CallWith' in extended_attributes:
-            extended_attributes['ConstructorCallWith'] = extended_attributes['CallWith']
-            del extended_attributes['CallWith']
-        if 'RaisesException' in extended_attributes:
-            extended_attributes['ConstructorRaisesException'] = extended_attributes['RaisesException']
-            del extended_attributes['RaisesException']
-
     if 'CustomConstructors' in extended_attributes:
         custom_constructor_list = extended_attributes['CustomConstructors']
         # If not overloaded, have index 0, otherwise index from 1
@@ -456,6 +445,7 @@ def extended_attributes_to_constructors(extended_attributes):
         arguments_node = children[0]
         arguments = arguments_node_to_arguments(arguments_node)
         named_constructor = IdlOperation(name=name, extended_attributes=extended_attributes, overloaded_index=overloaded_index, arguments=arguments)
+        # FIXME: should return named_constructor separately; appended for Perl
         constructors.append(named_constructor)
 
     return constructors, custom_constructors

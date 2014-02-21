@@ -17,12 +17,14 @@
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/chromeos/boot_times_loader.h"
 #include "chrome/browser/chromeos/login/login_utils.h"
-#include "chrome/browser/chromeos/login/managed/locally_managed_user_login_flow.h"
+#include "chrome/browser/chromeos/login/managed/supervised_user_authentication.h"
+#include "chrome/browser/chromeos/login/managed/supervised_user_login_flow.h"
+#include "chrome/browser/chromeos/login/supervised_user_manager.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
+#include "chrome/browser/chromeos/policy/browser_policy_connector_chromeos.h"
 #include "chrome/browser/chromeos/policy/device_local_account_policy_service.h"
 #include "chrome/browser/chromeos/profiles/profile_helper.h"
 #include "chrome/browser/chromeos/settings/cros_settings.h"
-#include "chrome/browser/policy/browser_policy_connector.h"
 #include "chrome/common/pref_names.h"
 #include "chromeos/dbus/dbus_thread_manager.h"
 #include "chromeos/dbus/session_manager_client.h"
@@ -40,8 +42,8 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 
+using base::UserMetricsAction;
 using content::BrowserThread;
-using content::UserMetricsAction;
 
 namespace chromeos {
 
@@ -209,17 +211,39 @@ void LoginPerformer::LoginAsLocallyManagedUser(
     return;
   }
 
-  UserFlow* new_flow = new LocallyManagedUserLoginFlow(user_context.username);
+  SupervisedUserLoginFlow* new_flow =
+      new SupervisedUserLoginFlow(user_context.username);
   new_flow->set_host(
       UserManager::Get()->GetUserFlow(user_context.username)->host());
   UserManager::Get()->SetUserFlow(user_context.username, new_flow);
+
+  SupervisedUserAuthentication* authentication = UserManager::Get()->
+      GetSupervisedUserManager()->GetAuthentication();
+
+  if (authentication->PasswordNeedsMigration(user_context.username)) {
+    authentication->SchedulePasswordMigration(user_context.username,
+                                              user_context.password,
+                                              new_flow);
+  }
+
+  UserContext user_context_copy(
+     user_context.username,
+     user_context.password,
+     user_context.auth_code,
+     user_context.username_hash,
+     user_context.using_oauth,
+     user_context.auth_flow);
+
+  user_context_copy.password = authentication->TransformPassword(
+      user_context_copy.username,
+      user_context_copy.password);
 
   authenticator_ = LoginUtils::Get()->CreateAuthenticator(this);
   BrowserThread::PostTask(
       BrowserThread::UI, FROM_HERE,
       base::Bind(&Authenticator::LoginAsLocallyManagedUser,
                  authenticator_.get(),
-                 user_context));
+                 user_context_copy));
 }
 
 void LoginPerformer::LoginRetailMode() {
@@ -238,9 +262,10 @@ void LoginPerformer::LoginOffTheRecord() {
 
 void LoginPerformer::LoginAsPublicAccount(const std::string& username) {
   // Login is not allowed if policy could not be loaded for the account.
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
   policy::DeviceLocalAccountPolicyService* policy_service =
-      g_browser_process->browser_policy_connector()->
-          GetDeviceLocalAccountPolicyService();
+      connector->GetDeviceLocalAccountPolicyService();
   if (!policy_service || !policy_service->IsPolicyAvailableForUser(username)) {
     DCHECK(delegate_);
     if (delegate_)

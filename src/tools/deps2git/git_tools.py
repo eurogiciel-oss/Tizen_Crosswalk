@@ -7,6 +7,7 @@
 import os
 import re
 import subprocess
+import sys
 import threading
 
 
@@ -85,9 +86,11 @@ def Fetch(git_repo, git_url, is_mirror):
   Git(git_repo, 'fetch origin', is_mirror)
 
 
-def Ping(git_repo):
+def Ping(git_repo, verbose=False):
   """Confirm that a remote repository URL is valid."""
-  status, _ = GetStatusOutput('git ls-remote ' + git_repo)
+  status, stdout = GetStatusOutput('git ls-remote ' + git_repo)
+  if status != 0 and verbose:
+    print >> sys.stderr, stdout
   return status == 0
 
 

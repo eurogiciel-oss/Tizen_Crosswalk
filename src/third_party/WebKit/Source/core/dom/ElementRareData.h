@@ -75,6 +75,8 @@ public:
     bool isInTopLayer() const { return m_isInTopLayer; }
     void setIsInTopLayer(bool value) { m_isInTopLayer = value; }
 
+    bool childrenAffectedByFocus() const { return m_childrenAffectedByFocus; }
+    void setChildrenAffectedByFocus(bool value) { m_childrenAffectedByFocus = value; }
     bool childrenAffectedByHover() const { return m_childrenAffectedByHover; }
     void setChildrenAffectedByHover(bool value) { m_childrenAffectedByHover = value; }
     bool childrenAffectedByActive() const { return m_childrenAffectedByActive; }
@@ -94,6 +96,8 @@ public:
     void setChildrenAffectedByBackwardPositionalRules(bool value) { m_childrenAffectedByBackwardPositionalRules = value; }
     unsigned childIndex() const { return m_childIndex; }
     void setChildIndex(unsigned index) { m_childIndex = index; }
+
+    CSSStyleDeclaration* ensureInlineCSSStyleDeclaration(Element* ownerElement);
 
     void clearShadow() { m_shadow = nullptr; }
     ElementShadow* shadow() const { return m_shadow.get(); }
@@ -147,6 +151,7 @@ public:
     }
 
     bool hasPseudoElements() const;
+    void clearPseudoElements();
 
 private:
     short m_tabIndex;
@@ -158,6 +163,7 @@ private:
     unsigned m_containsFullScreenElement : 1;
     unsigned m_isInTopLayer : 1;
     unsigned m_hasPendingResources : 1;
+    unsigned m_childrenAffectedByFocus : 1;
     unsigned m_childrenAffectedByHover : 1;
     unsigned m_childrenAffectedByActive : 1;
     unsigned m_childrenAffectedByDrag : 1;
@@ -183,6 +189,7 @@ private:
     OwnPtr<NamedNodeMap> m_attributeMap;
     OwnPtr<InputMethodContext> m_inputMethodContext;
     OwnPtr<ActiveAnimations> m_activeAnimations;
+    OwnPtr<InlineCSSStyleDeclaration> m_cssomWrapper;
 
     RefPtr<PseudoElement> m_generatedBefore;
     RefPtr<PseudoElement> m_generatedAfter;
@@ -207,6 +214,7 @@ inline ElementRareData::ElementRareData(RenderObject* renderer)
     , m_containsFullScreenElement(false)
     , m_isInTopLayer(false)
     , m_hasPendingResources(false)
+    , m_childrenAffectedByFocus(false)
     , m_childrenAffectedByHover(false)
     , m_childrenAffectedByActive(false)
     , m_childrenAffectedByDrag(false)
@@ -232,6 +240,13 @@ inline ElementRareData::~ElementRareData()
 inline bool ElementRareData::hasPseudoElements() const
 {
     return m_generatedBefore || m_generatedAfter || m_backdrop;
+}
+
+inline void ElementRareData::clearPseudoElements()
+{
+    setPseudoElement(BEFORE, 0);
+    setPseudoElement(AFTER, 0);
+    setPseudoElement(BACKDROP, 0);
 }
 
 inline void ElementRareData::setPseudoElement(PseudoId pseudoId, PassRefPtr<PseudoElement> element)
@@ -273,13 +288,13 @@ inline PseudoElement* ElementRareData::pseudoElement(PseudoId pseudoId) const
 
 inline void ElementRareData::resetStyleState()
 {
-    setComputedStyle(0);
     setStyleAffectedByEmpty(false);
     setChildIndex(0);
 }
 
 inline void ElementRareData::resetDynamicRestyleObservations()
 {
+    setChildrenAffectedByFocus(false);
     setChildrenAffectedByHover(false);
     setChildrenAffectedByActive(false);
     setChildrenAffectedByDrag(false);

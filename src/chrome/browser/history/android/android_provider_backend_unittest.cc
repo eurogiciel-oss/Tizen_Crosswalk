@@ -32,6 +32,7 @@
 
 using base::Time;
 using base::TimeDelta;
+using base::UTF8ToUTF16;
 using content::BrowserThread;
 
 namespace history {
@@ -149,7 +150,7 @@ class AndroidProviderBackendTest : public testing::Test {
   void AddBookmark(const GURL& url) {
     const BookmarkNode* mobile_node = bookmark_model_->mobile_node();
     ASSERT_TRUE(mobile_node);
-    ASSERT_TRUE(bookmark_model_->AddURL(mobile_node, 0, string16(), url));
+    ASSERT_TRUE(bookmark_model_->AddURL(mobile_node, 0, base::string16(), url));
   }
 
   bool GetAndroidURLsRows(std::vector<AndroidURLRow>* rows,
@@ -227,7 +228,7 @@ TEST_F(AndroidProviderBackendTest, UpdateTables) {
 
   // Add a bookmark which is not in the history.
   GURL url3("http://www.bookmark.com");
-  string16 title3(UTF8ToUTF16("bookmark"));
+  base::string16 title3(UTF8ToUTF16("bookmark"));
   ASSERT_TRUE(bookmark_model_->AddURL(bookmark_model_->bookmark_bar_node(), 0,
                                       title3, url3));
   // Only use the HistoryBackend to generate the test data.
@@ -354,7 +355,7 @@ TEST_F(AndroidProviderBackendTest, UpdateTables) {
 TEST_F(AndroidProviderBackendTest, QueryHistoryAndBookmarks) {
   GURL url1("http://www.cnn.com");
   URLID url_id1 = 0;
-  const string16 title1(UTF8ToUTF16("cnn"));
+  const base::string16 title1(UTF8ToUTF16("cnn"));
   std::vector<VisitInfo> visits1;
   Time last_visited1 = Time::Now() - TimeDelta::FromDays(1);
   Time created1 = last_visited1 - TimeDelta::FromDays(20);
@@ -366,7 +367,7 @@ TEST_F(AndroidProviderBackendTest, QueryHistoryAndBookmarks) {
   GURL url2("http://www.example.com");
   URLID url_id2 = 0;
   std::vector<VisitInfo> visits2;
-  const string16 title2(UTF8ToUTF16("example"));
+  const base::string16 title2(UTF8ToUTF16("example"));
   Time last_visited2 = Time::Now();
   Time created2 = last_visited2 - TimeDelta::FromDays(10);
   visits2.push_back(VisitInfo(created2, content::PAGE_TRANSITION_LINK));
@@ -435,7 +436,7 @@ TEST_F(AndroidProviderBackendTest, QueryHistoryAndBookmarks) {
   projections.push_back(HistoryAndBookmarkRow::BOOKMARK);
 
   scoped_ptr<AndroidStatement> statement(backend->QueryHistoryAndBookmarks(
-      projections, std::string(), std::vector<string16>(),
+      projections, std::string(), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_TRUE(statement->statement()->Step());
   ASSERT_EQ(url1, GURL(statement->statement()->ColumnString(1)));
@@ -469,14 +470,14 @@ TEST_F(AndroidProviderBackendTest, QueryHistoryAndBookmarks) {
 
   // Query by bookmark
   statement.reset(backend->QueryHistoryAndBookmarks(projections, "bookmark=1",
-      std::vector<string16>(), std::string("url ASC")));
+      std::vector<base::string16>(), std::string("url ASC")));
   // Only URL1 is returned.
   ASSERT_TRUE(statement->statement()->Step());
   ASSERT_EQ(url1, GURL(statement->statement()->ColumnString(1)));
   EXPECT_FALSE(statement->statement()->Step());
 
   statement.reset(backend->QueryHistoryAndBookmarks(projections, "bookmark=0",
-      std::vector<string16>(), std::string("url ASC")));
+      std::vector<base::string16>(), std::string("url ASC")));
   // Only URL2 is returned.
   ASSERT_TRUE(statement->statement()->Step());
   ASSERT_EQ(url2, GURL(statement->statement()->ColumnString(1)));
@@ -554,7 +555,7 @@ TEST_F(AndroidProviderBackendTest, InsertHistoryAndBookmark) {
   projections.push_back(HistoryAndBookmarkRow::BOOKMARK);
 
   scoped_ptr<AndroidStatement> statement(backend->QueryHistoryAndBookmarks(
-      projections, std::string(), std::vector<string16>(),
+      projections, std::string(), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_TRUE(statement->statement()->Step());
   ASSERT_EQ(row1.raw_url(), statement->statement()->ColumnString(1));
@@ -629,7 +630,7 @@ TEST_F(AndroidProviderBackendTest, DeleteHistoryAndBookmarks) {
   EXPECT_EQ(row1.url(), child->url());
 
   // Delete the row1.
-  std::vector<string16> args;
+  std::vector<base::string16> args;
   int deleted_count = 0;
   delegate_.ResetDetails();
   ASSERT_TRUE(backend->DeleteHistoryAndBookmarks("Favicon IS NULL", args,
@@ -661,7 +662,7 @@ TEST_F(AndroidProviderBackendTest, DeleteHistoryAndBookmarks) {
   projections.push_back(HistoryAndBookmarkRow::BOOKMARK);
 
   scoped_ptr<AndroidStatement> statement(backend->QueryHistoryAndBookmarks(
-      projections, std::string(), std::vector<string16>(),
+      projections, std::string(), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_TRUE(statement->statement()->Step());
 
@@ -685,7 +686,7 @@ TEST_F(AndroidProviderBackendTest, DeleteHistoryAndBookmarks) {
   // Delete row2.
   delegate_.ResetDetails();
   ASSERT_TRUE(backend->DeleteHistoryAndBookmarks("bookmark = 0",
-                  std::vector<string16>(), &deleted_count));
+                  std::vector<base::string16>(), &deleted_count));
   // Verify notifications
   ASSERT_TRUE(delegate_.deleted_details());
   EXPECT_FALSE(delegate_.modified_details());
@@ -702,7 +703,7 @@ TEST_F(AndroidProviderBackendTest, DeleteHistoryAndBookmarks) {
 
   ASSERT_EQ(1, deleted_count);
   scoped_ptr<AndroidStatement> statement1(backend->QueryHistoryAndBookmarks(
-      projections, std::string(), std::vector<string16>(),
+      projections, std::string(), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_FALSE(statement1->statement()->Step());
 }
@@ -832,7 +833,7 @@ TEST_F(AndroidProviderBackendTest, UpdateURL) {
   ASSERT_EQ(1u, visits.size());
 
   int update_count;
-  std::vector<string16> update_args;
+  std::vector<base::string16> update_args;
   // Try to update the mutiple rows with the same URL, this should failed.
   HistoryAndBookmarkRow update_row1;
   update_row1.set_raw_url("newwebiste.com");
@@ -989,7 +990,7 @@ TEST_F(AndroidProviderBackendTest, UpdateVisitCount) {
   ASSERT_TRUE(id2);
 
   int update_count;
-  std::vector<string16> update_args;
+  std::vector<base::string16> update_args;
   // Update the visit_count to a value less than current one.
   HistoryAndBookmarkRow update_row1;
   update_row1.set_visit_count(5);
@@ -1069,7 +1070,7 @@ TEST_F(AndroidProviderBackendTest, UpdateLastVisitTime) {
   ASSERT_TRUE(id2);
 
   int update_count;
-  std::vector<string16> update_args;
+  std::vector<base::string16> update_args;
   // Update the last visit time to a value greater than current one.
   HistoryAndBookmarkRow update_row1;
   update_row1.set_last_visit_time(Time::Now());
@@ -1128,7 +1129,7 @@ TEST_F(AndroidProviderBackendTest, UpdateFavicon) {
   ASSERT_TRUE(id1);
 
   int update_count;
-  std::vector<string16> update_args;
+  std::vector<base::string16> update_args;
   // Update the last visit time to a value greater than current one.
   HistoryAndBookmarkRow update_row1;
 
@@ -1195,7 +1196,7 @@ TEST_F(AndroidProviderBackendTest, UpdateSearchTermTable) {
   row1.set_last_visit_time(Time::Now() - TimeDelta::FromDays(1));
   row1.set_title(UTF8ToUTF16("cnn"));
   ASSERT_TRUE(backend->InsertHistoryAndBookmark(row1));
-  string16 term = UTF8ToUTF16("Search term 1");
+  base::string16 term = UTF8ToUTF16("Search term 1");
   URLID url_id = history_db_.GetRowForURL(row1.url(), NULL);
   ASSERT_TRUE(url_id);
   ASSERT_TRUE(history_db_.SetKeywordSearchTermsForURL(url_id, 1, term));
@@ -1216,7 +1217,7 @@ TEST_F(AndroidProviderBackendTest, UpdateSearchTermTable) {
   ASSERT_TRUE(backend->InsertHistoryAndBookmark(row2));
   url_id = history_db_.GetRowForURL(row2.url(), NULL);
   ASSERT_TRUE(url_id);
-  string16 term2 = UTF8ToUTF16("Search term 2");
+  base::string16 term2 = UTF8ToUTF16("Search term 2");
   ASSERT_TRUE(history_db_.SetKeywordSearchTermsForURL(url_id, 1, term2));
   ASSERT_TRUE(backend->UpdateSearchTermTable());
   SearchTermID search_id1 = history_db_.GetSearchTerm(term,
@@ -1273,7 +1274,7 @@ TEST_F(AndroidProviderBackendTest, QuerySearchTerms) {
   row1.set_last_visit_time(Time::Now() - TimeDelta::FromDays(1));
   row1.set_title(UTF8ToUTF16("cnn"));
   ASSERT_TRUE(backend->InsertHistoryAndBookmark(row1));
-  string16 term = UTF8ToUTF16("Search term 1");
+  base::string16 term = UTF8ToUTF16("Search term 1");
   URLID url_id = history_db_.GetRowForURL(row1.url(), NULL);
   ASSERT_TRUE(url_id);
   ASSERT_TRUE(history_db_.SetKeywordSearchTermsForURL(url_id, 1, term));
@@ -1283,7 +1284,8 @@ TEST_F(AndroidProviderBackendTest, QuerySearchTerms) {
   projections.push_back(SearchRow::SEARCH_TERM);
   projections.push_back(SearchRow::SEARCH_TIME);
   scoped_ptr<AndroidStatement> statement(backend->QuerySearchTerms(
-      projections, std::string(), std::vector<string16>(), std::string()));
+      projections, std::string(), std::vector<base::string16>(),
+      std::string()));
   ASSERT_TRUE(statement.get());
   ASSERT_TRUE(statement->statement()->Step());
   EXPECT_TRUE(statement->statement()->ColumnInt64(0));
@@ -1306,7 +1308,7 @@ TEST_F(AndroidProviderBackendTest, UpdateSearchTerms) {
   row1.set_last_visit_time(Time::Now() - TimeDelta::FromDays(1));
   row1.set_title(UTF8ToUTF16("cnn"));
   ASSERT_TRUE(backend->InsertHistoryAndBookmark(row1));
-  string16 term = UTF8ToUTF16("Search term 1");
+  base::string16 term = UTF8ToUTF16("Search term 1");
   URLID url_id = history_db_.GetRowForURL(row1.url(), NULL);
   ASSERT_TRUE(url_id);
   ASSERT_TRUE(history_db_.SetKeywordSearchTermsForURL(url_id, 1, term));
@@ -1316,7 +1318,7 @@ TEST_F(AndroidProviderBackendTest, UpdateSearchTerms) {
   projections.push_back(SearchRow::ID);
   projections.push_back(SearchRow::SEARCH_TIME);
   projections.push_back(SearchRow::SEARCH_TERM);
-  std::vector<string16> args;
+  std::vector<base::string16> args;
   args.push_back(term);
   scoped_ptr<AndroidStatement> statement(backend->QuerySearchTerms(
       projections, "search = ?", args, std::string()));
@@ -1327,7 +1329,7 @@ TEST_F(AndroidProviderBackendTest, UpdateSearchTerms) {
   EXPECT_FALSE(statement->statement()->Step());
 
   // Update the search term and time.
-  string16 update_term = UTF8ToUTF16("Update search term");
+  base::string16 update_term = UTF8ToUTF16("Update search term");
   args.clear();
   args.push_back(term);
   SearchRow search_row;
@@ -1410,7 +1412,7 @@ TEST_F(AndroidProviderBackendTest, DeleteSearchTerms) {
   row1.set_last_visit_time(Time::Now() - TimeDelta::FromDays(1));
   row1.set_title(UTF8ToUTF16("cnn"));
   ASSERT_TRUE(backend->InsertHistoryAndBookmark(row1));
-  string16 term = UTF8ToUTF16("Search term 1");
+  base::string16 term = UTF8ToUTF16("Search term 1");
   URLID url_id = history_db_.GetRowForURL(row1.url(), NULL);
   ASSERT_TRUE(url_id);
   ASSERT_TRUE(history_db_.SetKeywordSearchTermsForURL(url_id, 1, term));
@@ -1420,7 +1422,7 @@ TEST_F(AndroidProviderBackendTest, DeleteSearchTerms) {
   projections.push_back(SearchRow::ID);
   projections.push_back(SearchRow::SEARCH_TIME);
   projections.push_back(SearchRow::SEARCH_TERM);
-  std::vector<string16> args;
+  std::vector<base::string16> args;
   args.push_back(term);
   scoped_ptr<AndroidStatement> statement(backend->QuerySearchTerms(
       projections, "search = ?", args, std::string()));
@@ -1437,7 +1439,7 @@ TEST_F(AndroidProviderBackendTest, DeleteSearchTerms) {
   row2.set_last_visit_time(Time::Now() - TimeDelta::FromDays(1));
   row2.set_title(UTF8ToUTF16("google"));
   ASSERT_TRUE(backend->InsertHistoryAndBookmark(row2));
-  string16 term2 = UTF8ToUTF16("Search term 2");
+  base::string16 term2 = UTF8ToUTF16("Search term 2");
   URLID url_id2 = history_db_.GetRowForURL(row2.url(), NULL);
   ASSERT_TRUE(url_id2);
   ASSERT_TRUE(history_db_.SetKeywordSearchTermsForURL(url_id2, 1, term2));
@@ -1522,7 +1524,7 @@ TEST_F(AndroidProviderBackendTest, InsertSearchTerm) {
   projections.push_back(SearchRow::ID);
   projections.push_back(SearchRow::SEARCH_TIME);
   projections.push_back(SearchRow::SEARCH_TERM);
-  std::vector<string16> args;
+  std::vector<base::string16> args;
   std::ostringstream oss;
   oss << id;
   args.push_back(UTF8ToUTF16(oss.str()));
@@ -1579,7 +1581,8 @@ TEST_F(AndroidProviderBackendTest, DeleteHistory) {
 
   // Delete history
   int deleted_count = 0;
-  ASSERT_TRUE(backend->DeleteHistory(std::string(), std::vector<string16>(),
+  ASSERT_TRUE(backend->DeleteHistory(std::string(),
+                                     std::vector<base::string16>(),
                                      &deleted_count));
   EXPECT_EQ(2, deleted_count);
   // The row2 was deleted.
@@ -1682,7 +1685,7 @@ TEST_F(AndroidProviderBackendTest, TestAndroidCTSComplianceForZeroVisitCount) {
   projections.push_back(HistoryAndBookmarkRow::BOOKMARK);
 
   scoped_ptr<AndroidStatement> statement(backend->QueryHistoryAndBookmarks(
-      projections, std::string(), std::vector<string16>(),
+      projections, std::string(), std::vector<base::string16>(),
       std::string("url ASC")));
 
   ASSERT_TRUE(statement->statement()->Step());
@@ -1733,7 +1736,7 @@ TEST_F(AndroidProviderBackendTest, AndroidCTSComplianceFolderColumnExists) {
   projections.push_back(HistoryAndBookmarkRow::URL);
 
   scoped_ptr<AndroidStatement> statement(backend->QueryHistoryAndBookmarks(
-      projections, std::string("folder=0"), std::vector<string16>(),
+      projections, std::string("folder=0"), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_TRUE(statement->statement()->Step());
   EXPECT_EQ(row1.raw_url(), statement->statement()->ColumnString(0));
@@ -1741,7 +1744,7 @@ TEST_F(AndroidProviderBackendTest, AndroidCTSComplianceFolderColumnExists) {
 
   // Query by folder=1, the row2 should returned.
   statement.reset(backend->QueryHistoryAndBookmarks(
-      projections, std::string("folder=1"), std::vector<string16>(),
+      projections, std::string("folder=1"), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_TRUE(statement->statement()->Step());
   EXPECT_EQ(row2.url(), GURL(statement->statement()->ColumnString(0)));
@@ -1751,7 +1754,7 @@ TEST_F(AndroidProviderBackendTest, AndroidCTSComplianceFolderColumnExists) {
 TEST_F(AndroidProviderBackendTest, QueryWithoutThumbnailDB) {
   GURL url1("http://www.cnn.com");
   URLID url_id1 = 0;
-  const string16 title1(UTF8ToUTF16("cnn"));
+  const base::string16 title1(UTF8ToUTF16("cnn"));
   std::vector<VisitInfo> visits1;
   Time last_visited1 = Time::Now() - TimeDelta::FromDays(1);
   Time created1 = last_visited1 - TimeDelta::FromDays(20);
@@ -1763,7 +1766,7 @@ TEST_F(AndroidProviderBackendTest, QueryWithoutThumbnailDB) {
   GURL url2("http://www.example.com");
   URLID url_id2 = 0;
   std::vector<VisitInfo> visits2;
-  const string16 title2(UTF8ToUTF16("example"));
+  const base::string16 title2(UTF8ToUTF16("example"));
   Time last_visited2 = Time::Now();
   Time created2 = last_visited2 - TimeDelta::FromDays(10);
   visits2.push_back(VisitInfo(created2, content::PAGE_TRANSITION_LINK));
@@ -1833,7 +1836,7 @@ TEST_F(AndroidProviderBackendTest, QueryWithoutThumbnailDB) {
   projections.push_back(HistoryAndBookmarkRow::BOOKMARK);
 
   scoped_ptr<AndroidStatement> statement(backend->QueryHistoryAndBookmarks(
-      projections, std::string(), std::vector<string16>(),
+      projections, std::string(), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_TRUE(statement->statement()->Step());
   ASSERT_EQ(url1, GURL(statement->statement()->ColumnString(1)));
@@ -1971,7 +1974,7 @@ TEST_F(AndroidProviderBackendTest, DeleteWithoutThumbnailDB) {
                                  NULL, bookmark_model_, &delegate_));
 
   // Delete all rows.
-  std::vector<string16> args;
+  std::vector<base::string16> args;
   int deleted_count = 0;
   delegate_.ResetDetails();
   ASSERT_TRUE(backend->DeleteHistoryAndBookmarks("Favicon IS NULL", args,
@@ -2001,7 +2004,7 @@ TEST_F(AndroidProviderBackendTest, DeleteWithoutThumbnailDB) {
   projections.push_back(HistoryAndBookmarkRow::BOOKMARK);
 
   scoped_ptr<AndroidStatement> statement1(backend->QueryHistoryAndBookmarks(
-      projections, std::string(), std::vector<string16>(),
+      projections, std::string(), std::vector<base::string16>(),
       std::string("url ASC")));
   ASSERT_FALSE(statement1->statement()->Step());
 }
@@ -2035,7 +2038,7 @@ TEST_F(AndroidProviderBackendTest, UpdateFaviconWithoutThumbnail) {
                                  bookmark_model_, &delegate_));
 
   int update_count;
-  std::vector<string16> update_args;
+  std::vector<base::string16> update_args;
   // Update the last visit time to a value greater than current one.
   HistoryAndBookmarkRow update_row1;
 

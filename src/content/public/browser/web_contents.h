@@ -18,14 +18,23 @@
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/save_page_type.h"
 #include "content/public/browser/web_ui.h"
+#include "content/public/common/stop_find_action.h"
 #include "ipc/ipc_sender.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/gfx/size.h"
 
+#if defined(OS_ANDROID)
+#include "base/android/scoped_java_ref.h"
+#endif
+
 namespace base {
 class TimeTicks;
+}
+
+namespace blink {
+struct WebFindOptions;
 }
 
 namespace gfx {
@@ -42,6 +51,7 @@ namespace content {
 class BrowserContext;
 class InterstitialPage;
 class PageState;
+class RenderFrameHost;
 class RenderProcessHost;
 class RenderViewHost;
 class RenderWidgetHostView;
@@ -117,17 +127,12 @@ class WebContents : public PageNavigator,
       const CreateParams& params,
       const SessionStorageNamespaceMap& session_storage_namespace_map);
 
-  // Adds/removes a callback called on creation of each new WebContents.
-  typedef base::Callback<void(WebContents*)> CreatedCallback;
-  CONTENT_EXPORT static void AddCreatedCallback(
-      const CreatedCallback& callback);
-  CONTENT_EXPORT static void RemoveCreatedCallback(
-      const CreatedCallback& callback);
-
   // Returns a WebContents that wraps the RenderViewHost, or NULL if the
   // render view host's delegate isn't a WebContents.
   CONTENT_EXPORT static WebContents* FromRenderViewHost(
       const RenderViewHost* rvh);
+
+  CONTENT_EXPORT static WebContents* FromRenderFrameHost(RenderFrameHost* rfh);
 
   virtual ~WebContents() {}
 
@@ -165,6 +170,17 @@ class WebContents : public PageNavigator,
   // Return the currently active RenderProcessHost and RenderViewHost. Each of
   // these may change over time.
   virtual RenderProcessHost* GetRenderProcessHost() const = 0;
+
+  // Returns the main frame for the currently active view.
+  virtual RenderFrameHost* GetMainFrame() = 0;
+
+  // Calls |on_frame| for each frame in the currently active view.
+  virtual void ForEachFrame(
+      const base::Callback<void(RenderFrameHost*)>& on_frame) = 0;
+
+  // Sends the given IPC to all frames in the currently active view. This is a
+  // convenience method instead of calling ForEach.
+  virtual void SendToAllFrames(IPC::Message* message) = 0;
 
   // Gets the current RenderViewHost for this tab.
   virtual RenderViewHost* GetRenderViewHost() const = 0;
@@ -219,7 +235,7 @@ class WebContents : public PageNavigator,
   virtual void SetUserAgentOverride(const std::string& override) = 0;
   virtual const std::string& GetUserAgentOverride() const = 0;
 
-#if defined(OS_WIN) && defined(USE_AURA)
+#if defined(OS_WIN)
   virtual void SetParentNativeViewAccessible(
       gfx::NativeViewAccessible accessible_parent) = 0;
 #endif
@@ -229,7 +245,7 @@ class WebContents : public PageNavigator,
   // Returns the current navigation properties, which if a navigation is
   // pending may be provisional (e.g., the navigation could result in a
   // download, in which case the URL would revert to what it was previously).
-  virtual const string16& GetTitle() const = 0;
+  virtual const base::string16& GetTitle() const = 0;
 
   // The max page ID for any page that the current SiteInstance has loaded in
   // this WebContents.  Page IDs are specific to a given SiteInstance and
@@ -257,7 +273,7 @@ class WebContents : public PageNavigator,
 
   // Return the current load state and the URL associated with it.
   virtual const net::LoadStateWithParam& GetLoadState() const = 0;
-  virtual const string16& GetLoadStateHost() const = 0;
+  virtual const base::string16& GetLoadStateHost() const = 0;
 
   // Return the upload progress.
   virtual uint64 GetUploadSize() const = 0;
@@ -464,6 +480,31 @@ class WebContents : public PageNavigator,
                             bool is_favicon,
                             uint32_t max_bitmap_size,
                             const ImageDownloadCallback& callback) = 0;
+
+  // Returns true if the WebContents is responsible for displaying a subframe
+  // in a different process from its parent page.
+  // TODO: this doesn't really belong here. With site isolation, this should be
+  // removed since we can then embed iframes in different processes.
+  virtual bool IsSubframe() const = 0;
+
+  // Sets the zoom level for the current page and all BrowserPluginGuests
+  // within the page.
+  virtual void SetZoomLevel(double level) = 0;
+
+  // Finds text on a page.
+  virtual void Find(int request_id,
+                    const base::string16& search_text,
+                    const blink::WebFindOptions& options) = 0;
+
+  // Notifies the renderer that the user has closed the FindInPage window
+  // (and what action to take regarding the selection).
+  virtual void StopFinding(StopFindAction action) = 0;
+
+#if defined(OS_ANDROID)
+  CONTENT_EXPORT static WebContents* FromJavaWebContents(
+      jobject jweb_contents_android);
+  virtual base::android::ScopedJavaLocalRef<jobject> GetJavaWebContents() = 0;
+#endif  // OS_ANDROID
 
  private:
   // This interface should only be implemented inside content.

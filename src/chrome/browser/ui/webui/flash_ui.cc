@@ -47,9 +47,10 @@
 #include "base/win/windows_version.h"
 #endif
 
+using base::ASCIIToUTF16;
+using base::UserMetricsAction;
 using content::GpuDataManager;
 using content::PluginService;
-using content::UserMetricsAction;
 using content::WebContents;
 using content::WebUIMessageHandler;
 
@@ -96,7 +97,7 @@ class FlashDOMHandler : public WebUIMessageHandler,
   virtual void OnGpuInfoUpdate() OVERRIDE;
 
   // Callback for the "requestFlashInfo" message.
-  void HandleRequestFlashInfo(const ListValue* args);
+  void HandleRequestFlashInfo(const base::ListValue* args);
 
   // Callback for the Flash plugin information.
   void OnGotPlugins(const std::vector<content::WebPluginInfo>& plugins);
@@ -180,18 +181,22 @@ void FlashDOMHandler::OnUploadListAvailable() {
   MaybeRespondToPage();
 }
 
-void AddPair(ListValue* list, const string16& key, const string16& value) {
-  DictionaryValue* results = new DictionaryValue();
+void AddPair(base::ListValue* list,
+             const base::string16& key,
+             const base::string16& value) {
+  base::DictionaryValue* results = new base::DictionaryValue();
   results->SetString("key", key);
   results->SetString("value", value);
   list->Append(results);
 }
 
-void AddPair(ListValue* list, const string16& key, const std::string& value) {
+void AddPair(base::ListValue* list,
+             const base::string16& key,
+             const std::string& value) {
   AddPair(list, key, ASCIIToUTF16(value));
 }
 
-void FlashDOMHandler::HandleRequestFlashInfo(const ListValue* args) {
+void FlashDOMHandler::HandleRequestFlashInfo(const base::ListValue* args) {
   page_has_requested_data_ = true;
   MaybeRespondToPage();
 }
@@ -234,7 +239,7 @@ void FlashDOMHandler::MaybeRespondToPage() {
   // Obtain the Chrome version info.
   chrome::VersionInfo version_info;
 
-  ListValue* list = new ListValue();
+  base::ListValue* list = new base::ListValue();
 
   // Chrome version information.
   AddPair(list,
@@ -275,7 +280,7 @@ void FlashDOMHandler::MaybeRespondToPage() {
         PluginPrefs::GetForProfile(Profile::FromWebUI(web_ui())).get();
     bool found_enabled = false;
     for (size_t i = 0; i < info_array.size(); ++i) {
-      string16 flash_version = info_array[i].version + ASCIIToUTF16(" ") +
+      base::string16 flash_version = info_array[i].version + ASCIIToUTF16(" ") +
                                info_array[i].path.LossyDisplayName();
       if (plugin_prefs->IsPluginEnabled(info_array[i])) {
         // If we have already found an enabled Flash version, this one
@@ -292,7 +297,7 @@ void FlashDOMHandler::MaybeRespondToPage() {
   }
 
   // Crash information.
-  AddPair(list, string16(), "--- Crash data ---");
+  AddPair(list, base::string16(), "--- Crash data ---");
   bool crash_reporting_enabled = CrashesUI::CrashReportingUIEnabled();
   if (crash_reporting_enabled) {
     std::vector<CrashUploadList::UploadInfo> crashes;
@@ -300,7 +305,7 @@ void FlashDOMHandler::MaybeRespondToPage() {
 
     for (std::vector<CrashUploadList::UploadInfo>::iterator i = crashes.begin();
          i != crashes.end(); ++i) {
-      string16 crash_string(ASCIIToUTF16(i->id));
+      base::string16 crash_string(ASCIIToUTF16(i->id));
       crash_string += ASCIIToUTF16(" ");
       crash_string += base::TimeFormatFriendlyDateAndTime(i->time);
       AddPair(list, ASCIIToUTF16("crash id"), crash_string);
@@ -313,7 +318,7 @@ void FlashDOMHandler::MaybeRespondToPage() {
   }
 
   // GPU information.
-  AddPair(list, string16(), "--- GPU information ---");
+  AddPair(list, base::string16(), "--- GPU information ---");
   gpu::GPUInfo gpu_info = GpuDataManager::GetInstance()->GetGPUInfo();
 
   std::string reason;
@@ -344,7 +349,7 @@ void FlashDOMHandler::MaybeRespondToPage() {
   }
 #endif
 
-  AddPair(list, string16(), "--- GPU driver, more information ---");
+  AddPair(list, base::string16(), "--- GPU driver, more information ---");
   AddPair(list,
           ASCIIToUTF16("Vendor Id"),
           base::StringPrintf("0x%04x", gpu_info.gpu.vendor_id));
@@ -366,7 +371,7 @@ void FlashDOMHandler::MaybeRespondToPage() {
   AddPair(list, ASCIIToUTF16("GL_VERSION"), gpu_info.gl_version_string);
   AddPair(list, ASCIIToUTF16("GL_EXTENSIONS"), gpu_info.gl_extensions);
 
-  DictionaryValue flashInfo;
+  base::DictionaryValue flashInfo;
   flashInfo.Set("flashInfo", list);
   web_ui()->CallJavascriptFunction("returnFlashInfo", flashInfo);
 }

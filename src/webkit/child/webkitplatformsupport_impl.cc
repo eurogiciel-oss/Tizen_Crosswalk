@@ -37,35 +37,37 @@
 #include "third_party/WebKit/public/platform/WebDiscardableMemory.h"
 #include "third_party/WebKit/public/platform/WebGestureCurve.h"
 #include "third_party/WebKit/public/platform/WebPluginListBuilder.h"
+#include "third_party/WebKit/public/platform/WebScreenInfo.h"
 #include "third_party/WebKit/public/platform/WebString.h"
 #include "third_party/WebKit/public/platform/WebURL.h"
 #include "third_party/WebKit/public/platform/WebVector.h"
 #include "third_party/WebKit/public/web/WebFrameClient.h"
 #include "third_party/WebKit/public/web/WebInputEvent.h"
-#include "third_party/WebKit/public/web/WebScreenInfo.h"
-#include "third_party/tcmalloc/chromium/src/gperftools/heap-profiler.h"
 #include "ui/base/layout.h"
 #include "webkit/child/webkit_child_helpers.h"
 #include "webkit/child/websocketstreamhandle_impl.h"
 #include "webkit/child/weburlloader_impl.h"
 #include "webkit/common/user_agent/user_agent.h"
-#include "webkit/glue/webkit_glue.h"
 
 #if defined(OS_ANDROID)
 #include "base/android/sys_utils.h"
 #endif
 
-using WebKit::WebAudioBus;
-using WebKit::WebCookie;
-using WebKit::WebData;
-using WebKit::WebLocalizedString;
-using WebKit::WebPluginListBuilder;
-using WebKit::WebString;
-using WebKit::WebSocketStreamHandle;
-using WebKit::WebURL;
-using WebKit::WebURLError;
-using WebKit::WebURLLoader;
-using WebKit::WebVector;
+#if !defined(NO_TCMALLOC) && defined(USE_TCMALLOC) && !defined(OS_WIN)
+#include "third_party/tcmalloc/chromium/src/gperftools/heap-profiler.h"
+#endif
+
+using blink::WebAudioBus;
+using blink::WebCookie;
+using blink::WebData;
+using blink::WebLocalizedString;
+using blink::WebPluginListBuilder;
+using blink::WebString;
+using blink::WebSocketStreamHandle;
+using blink::WebURL;
+using blink::WebURLError;
+using blink::WebURLLoader;
+using blink::WebVector;
 
 namespace {
 
@@ -163,10 +165,6 @@ static int ToMessageID(WebLocalizedString::Name name) {
       return IDS_AX_MEDIA_SLIDER;
     case WebLocalizedString::AXMediaSliderThumb:
       return IDS_AX_MEDIA_SLIDER_THUMB;
-    case WebLocalizedString::AXMediaRewindButton:
-      return IDS_AX_MEDIA_REWIND_BUTTON;
-    case WebLocalizedString::AXMediaReturnToRealTime:
-      return IDS_AX_MEDIA_RETURN_TO_REALTIME_BUTTON;
     case WebLocalizedString::AXMediaCurrentTimeDisplay:
       return IDS_AX_MEDIA_CURRENT_TIME_DISPLAY;
     case WebLocalizedString::AXMediaTimeRemainingDisplay:
@@ -177,10 +175,6 @@ static int ToMessageID(WebLocalizedString::Name name) {
       return IDS_AX_MEDIA_ENTER_FULL_SCREEN_BUTTON;
     case WebLocalizedString::AXMediaExitFullscreenButton:
       return IDS_AX_MEDIA_EXIT_FULL_SCREEN_BUTTON;
-  case WebLocalizedString::AXMediaSeekForwardButton:
-    return IDS_AX_MEDIA_SEEK_FORWARD_BUTTON;
-    case WebLocalizedString::AXMediaSeekBackButton:
-      return IDS_AX_MEDIA_SEEK_BACK_BUTTON;
     case WebLocalizedString::AXMediaShowClosedCaptionsButton:
       return IDS_AX_MEDIA_SHOW_CLOSED_CAPTIONS_BUTTON;
     case WebLocalizedString::AXMediaHideClosedCaptionsButton:
@@ -201,10 +195,6 @@ static int ToMessageID(WebLocalizedString::Name name) {
       return IDS_AX_MEDIA_SLIDER_HELP;
     case WebLocalizedString::AXMediaSliderThumbHelp:
       return IDS_AX_MEDIA_SLIDER_THUMB_HELP;
-    case WebLocalizedString::AXMediaRewindButtonHelp:
-      return IDS_AX_MEDIA_REWIND_BUTTON_HELP;
-    case WebLocalizedString::AXMediaReturnToRealTimeHelp:
-      return IDS_AX_MEDIA_RETURN_TO_REALTIME_BUTTON_HELP;
     case WebLocalizedString::AXMediaCurrentTimeDisplayHelp:
       return IDS_AX_MEDIA_CURRENT_TIME_DISPLAY_HELP;
     case WebLocalizedString::AXMediaTimeRemainingDisplayHelp:
@@ -215,10 +205,6 @@ static int ToMessageID(WebLocalizedString::Name name) {
       return IDS_AX_MEDIA_ENTER_FULL_SCREEN_BUTTON_HELP;
     case WebLocalizedString::AXMediaExitFullscreenButtonHelp:
       return IDS_AX_MEDIA_EXIT_FULL_SCREEN_BUTTON_HELP;
-  case WebLocalizedString::AXMediaSeekForwardButtonHelp:
-    return IDS_AX_MEDIA_SEEK_FORWARD_BUTTON_HELP;
-    case WebLocalizedString::AXMediaSeekBackButtonHelp:
-      return IDS_AX_MEDIA_SEEK_BACK_BUTTON_HELP;
     case WebLocalizedString::AXMediaShowClosedCaptionsButtonHelp:
       return IDS_AX_MEDIA_SHOW_CLOSED_CAPTIONS_BUTTON_HELP;
     case WebLocalizedString::AXMediaHideClosedCaptionsButtonHelp:
@@ -469,11 +455,11 @@ long* WebKitPlatformSupportImpl::getTraceSamplingState(
 }
 
 COMPILE_ASSERT(
-    sizeof(WebKit::Platform::TraceEventHandle) ==
+    sizeof(blink::Platform::TraceEventHandle) ==
         sizeof(base::debug::TraceEventHandle),
     TraceEventHandle_types_must_be_same_size);
 
-WebKit::Platform::TraceEventHandle WebKitPlatformSupportImpl::addTraceEvent(
+blink::Platform::TraceEventHandle WebKitPlatformSupportImpl::addTraceEvent(
     char phase,
     const unsigned char* category_group_enabled,
     const char* name,
@@ -486,16 +472,19 @@ WebKit::Platform::TraceEventHandle WebKitPlatformSupportImpl::addTraceEvent(
   base::debug::TraceEventHandle handle = TRACE_EVENT_API_ADD_TRACE_EVENT(
       phase, category_group_enabled, name, id,
       num_args, arg_names, arg_types, arg_values, NULL, flags);
-  WebKit::Platform::TraceEventHandle result;
+  blink::Platform::TraceEventHandle result;
   memcpy(&result, &handle, sizeof(result));
   return result;
 }
 
 void WebKitPlatformSupportImpl::updateTraceEventDuration(
+    const unsigned char* category_group_enabled,
+    const char* name,
     TraceEventHandle handle) {
   base::debug::TraceEventHandle traceEventHandle;
   memcpy(&traceEventHandle, &handle, sizeof(handle));
-  TRACE_EVENT_API_UPDATE_TRACE_EVENT_DURATION(traceEventHandle);
+  TRACE_EVENT_API_UPDATE_TRACE_EVENT_DURATION(
+      category_group_enabled, name, traceEventHandle);
 }
 
 namespace {
@@ -794,35 +783,35 @@ void WebKitPlatformSupportImpl::callOnMainThread(
 }
 
 base::PlatformFile WebKitPlatformSupportImpl::databaseOpenFile(
-    const WebKit::WebString& vfs_file_name, int desired_flags) {
+    const blink::WebString& vfs_file_name, int desired_flags) {
   return base::kInvalidPlatformFileValue;
 }
 
 int WebKitPlatformSupportImpl::databaseDeleteFile(
-    const WebKit::WebString& vfs_file_name, bool sync_dir) {
+    const blink::WebString& vfs_file_name, bool sync_dir) {
   return -1;
 }
 
 long WebKitPlatformSupportImpl::databaseGetFileAttributes(
-    const WebKit::WebString& vfs_file_name) {
+    const blink::WebString& vfs_file_name) {
   return 0;
 }
 
 long long WebKitPlatformSupportImpl::databaseGetFileSize(
-    const WebKit::WebString& vfs_file_name) {
+    const blink::WebString& vfs_file_name) {
   return 0;
 }
 
 long long WebKitPlatformSupportImpl::databaseGetSpaceAvailableForOrigin(
-    const WebKit::WebString& origin_identifier) {
+    const blink::WebString& origin_identifier) {
   return 0;
 }
 
-WebKit::WebString WebKitPlatformSupportImpl::signedPublicKeyAndChallengeString(
+blink::WebString WebKitPlatformSupportImpl::signedPublicKeyAndChallengeString(
     unsigned key_size_index,
-    const WebKit::WebString& challenge,
-    const WebKit::WebURL& url) {
-  return WebKit::WebString("");
+    const blink::WebString& challenge,
+    const blink::WebURL& url) {
+  return blink::WebString("");
 }
 
 static scoped_ptr<base::ProcessMetrics> CurrentProcessMetrics() {
@@ -859,8 +848,16 @@ size_t WebKitPlatformSupportImpl::actualMemoryUsageMB() {
   return getMemoryUsageMB(true);
 }
 
+size_t WebKitPlatformSupportImpl::physicalMemoryMB() {
+  return static_cast<size_t>(base::SysInfo::AmountOfPhysicalMemoryMB());
+}
+
+size_t WebKitPlatformSupportImpl::numberOfProcessors() {
+  return static_cast<size_t>(base::SysInfo::NumberOfProcessors());
+}
+
 void WebKitPlatformSupportImpl::startHeapProfiling(
-  const WebKit::WebString& prefix) {
+  const blink::WebString& prefix) {
   // FIXME(morrita): Make this built on windows.
 #if !defined(NO_TCMALLOC) && defined(USE_TCMALLOC) && !defined(OS_WIN)
   HeapProfilerStart(prefix.utf8().data());
@@ -874,7 +871,7 @@ void WebKitPlatformSupportImpl::stopHeapProfiling() {
 }
 
 void WebKitPlatformSupportImpl::dumpHeapProfiling(
-  const WebKit::WebString& reason) {
+  const blink::WebString& reason) {
 #if !defined(NO_TCMALLOC) && defined(USE_TCMALLOC) && !defined(OS_WIN)
   HeapProfilerDump(reason.utf8().data());
 #endif

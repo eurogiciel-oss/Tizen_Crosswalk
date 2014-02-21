@@ -7,13 +7,10 @@
 
 #include "base/basictypes.h"
 #include "base/memory/scoped_ptr.h"
+#include "ui/aura/root_window.h"
 
 namespace base {
 class MessageLoopForUI;
-}
-
-namespace gfx {
-class SurfaceFactoryOzone;
 }
 
 namespace ui {
@@ -22,7 +19,6 @@ class ScopedAnimationDurationScaleMode;
 }
 
 namespace aura {
-class RootWindow;
 class TestScreen;
 namespace client {
 class DefaultActivationClient;
@@ -41,7 +37,7 @@ class AuraTestHelper {
   ~AuraTestHelper();
 
   // Creates and initializes (shows and sizes) the RootWindow for use in tests.
-  void SetUp();
+  void SetUp(bool allow_test_contexts);
 
   // Clean up objects that are created for tests. This also deletes the Env
   // object.
@@ -50,7 +46,8 @@ class AuraTestHelper {
   // Flushes message loop.
   void RunAllPendingInMessageLoop();
 
-  RootWindow* root_window() { return root_window_.get(); }
+  Window* root_window() { return root_window_->window(); }
+  RootWindow* dispatcher() { return root_window_.get(); }
 
   TestScreen* test_screen() { return test_screen_.get(); }
 
@@ -67,10 +64,6 @@ class AuraTestHelper {
   scoped_ptr<client::FocusClient> focus_client_;
   scoped_ptr<TestScreen> test_screen_;
   scoped_ptr<ui::ScopedAnimationDurationScaleMode> zero_duration_mode_;
-
-#if defined(USE_OZONE)
-  scoped_ptr<gfx::SurfaceFactoryOzone> surface_factory_;
-#endif
 
   DISALLOW_COPY_AND_ASSIGN(AuraTestHelper);
 };

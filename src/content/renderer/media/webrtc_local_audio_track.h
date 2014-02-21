@@ -10,8 +10,10 @@
 
 #include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
+#include "content/renderer/media/media_stream_audio_track_sink.h"
+#include "content/renderer/media/tagged_list.h"
 #include "content/renderer/media/webrtc_audio_device_impl.h"
-#include "third_party/libjingle/source/talk/app/webrtc/mediaconstraintsinterface.h"
+#include "content/renderer/media/webrtc_local_audio_source_provider.h"
 #include "third_party/libjingle/source/talk/app/webrtc/mediastreaminterface.h"
 #include "third_party/libjingle/source/talk/app/webrtc/mediastreamtrack.h"
 #include "third_party/libjingle/source/talk/media/base/audiorenderer.h"
@@ -26,12 +28,14 @@ class AudioBus;
 
 namespace content {
 
+class MediaStreamAudioSink;
+class MediaStreamAudioSinkOwner;
+class PeerConnectionAudioSink;
 class WebAudioCapturerSource;
 class WebRtcAudioCapturer;
-class WebRtcAudioCapturerSinkOwner;
 
 // A WebRtcLocalAudioTrack instance contains the implementations of
-// MediaStreamTrack and WebRtcAudioCapturerSink.
+// MediaStreamTrack and MediaStreamAudioSink.
 // When an instance is created, it will register itself as a track to the
 // WebRtcAudioCapturer to get the captured data, and forward the data to
 // its |sinks_|. The data flow can be stopped by disabling the audio track.
@@ -44,17 +48,22 @@ class CONTENT_EXPORT WebRtcLocalAudioTrack
       const std::string& id,
       const scoped_refptr<WebRtcAudioCapturer>& capturer,
       WebAudioCapturerSource* webaudio_source,
-      webrtc::AudioSourceInterface* track_source,
-      const webrtc::MediaConstraintsInterface* constraints);
+      webrtc::AudioSourceInterface* track_source);
 
-  // Add a sink to the track. This function will trigger a SetCaptureFormat()
+  // Add a sink to the track. This function will trigger a OnSetFormat()
   // call on the |sink|.
   // Called on the main render thread.
-  void AddSink(WebRtcAudioCapturerSink* sink);
+  void AddSink(MediaStreamAudioSink* sink);
 
   // Remove a sink from the track.
   // Called on the main render thread.
-  void RemoveSink(WebRtcAudioCapturerSink* sink);
+  void RemoveSink(MediaStreamAudioSink* sink);
+
+  // Add/remove PeerConnection sink to/from the track.
+  // TODO(xians): Remove these two methods after PeerConnection can use the
+  // same sink interface as MediaStreamAudioSink.
+  void AddSink(PeerConnectionAudioSink* sink);
+  void RemoveSink(PeerConnectionAudioSink* sink);
 
   // Starts the local audio track. Called on the main render thread and
   // should be called only once when audio track is created.
@@ -65,28 +74,33 @@ class CONTENT_EXPORT WebRtcLocalAudioTrack
   void Stop();
 
   // Method called by the capturer to deliver the capture data.
-  void Capture(media::AudioBus* audio_source,
-               int audio_delay_milliseconds,
+  // Call on the capture audio thread.
+  void Capture(const int16* audio_data,
+               base::TimeDelta delay,
                int volume,
-               bool key_pressed);
+               bool key_pressed,
+               bool need_audio_processing);
 
   // Method called by the capturer to set the audio parameters used by source
   // of the capture data..
-  // Can be called on different user threads.
-  void SetCaptureFormat(const media::AudioParameters& params);
+  // Call on the capture audio thread.
+  void OnSetFormat(const media::AudioParameters& params);
+
+  blink::WebAudioSourceProvider* audio_source_provider() const {
+    return source_provider_.get();
+  }
 
  protected:
   WebRtcLocalAudioTrack(
       const std::string& label,
       const scoped_refptr<WebRtcAudioCapturer>& capturer,
       WebAudioCapturerSource* webaudio_source,
-      webrtc::AudioSourceInterface* track_source,
-      const webrtc::MediaConstraintsInterface* constraints);
+      webrtc::AudioSourceInterface* track_source);
 
   virtual ~WebRtcLocalAudioTrack();
 
  private:
-  typedef std::list<scoped_refptr<WebRtcAudioCapturerSinkOwner> > SinkList;
+  typedef TaggedList<MediaStreamAudioTrackSink> SinkList;
 
   // cricket::AudioCapturer implementation.
   virtual void AddChannel(int channel_id) OVERRIDE;
@@ -111,24 +125,30 @@ class CONTENT_EXPORT WebRtcLocalAudioTrack
   // TODO(xians): merge |track_source_| to |capturer_|.
   talk_base::scoped_refptr<webrtc::AudioSourceInterface> track_source_;
 
-  // A list of sinks that the audio data is fed to.
+  // A tagged list of sinks that the audio data is fed to. Tags
+  // indicate tracks that need to be notified that the audio format
+  // has changed.
   SinkList sinks_;
 
-  // Used to DCHECK that we are called on the correct thread.
-  base::ThreadChecker thread_checker_;
+  // Used to DCHECK that some methods are called on the main render thread.
+  base::ThreadChecker main_render_thread_checker_;
+
+  // Used to DCHECK that some methods are called on the capture audio thread.
+  base::ThreadChecker capture_thread_checker_;
 
   // Protects |params_| and |sinks_|.
   mutable base::Lock lock_;
 
-  // A vector of WebRtc VoE channels that the capturer sends datat to.
+  // A vector of WebRtc VoE channels that the capturer sends data to.
   std::vector<int> voe_channels_;
 
-  bool need_audio_processing_;
+  // Audio parameters of the audio capture stream.
+  // Accessed on only the audio capture thread.
+  media::AudioParameters audio_parameters_;
 
-  // Buffers used for temporary storage during capture callbacks.
-  // Allocated during initialization.
-  class ConfiguredBuffer;
-  scoped_refptr<ConfiguredBuffer> buffer_;
+  // The source provider to feed the track data to other clients like
+  // WebAudio.
+  scoped_ptr<WebRtcLocalAudioSourceProvider> source_provider_;
 
   DISALLOW_COPY_AND_ASSIGN(WebRtcLocalAudioTrack);
 };

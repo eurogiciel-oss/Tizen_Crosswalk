@@ -9,16 +9,17 @@
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
+#include "chrome/browser/drive/drive_uploader.h"
 #include "chrome/browser/drive/fake_drive_service.h"
-#include "chrome/browser/google_apis/gdata_wapi_parser.h"
 #include "chrome/browser/sync_file_system/drive_backend/drive_backend_constants.h"
 #include "chrome/browser/sync_file_system/drive_backend/drive_backend_util.h"
+#include "chrome/browser/sync_file_system/drive_backend/fake_drive_service_helper.h"
 #include "chrome/browser/sync_file_system/drive_backend/metadata_database.h"
 #include "chrome/browser/sync_file_system/drive_backend/metadata_database.pb.h"
 #include "chrome/browser/sync_file_system/drive_backend/sync_engine_context.h"
-#include "chrome/browser/sync_file_system/drive_backend_v1/fake_drive_service_helper.h"
 #include "chrome/browser/sync_file_system/sync_file_system_test_util.h"
 #include "content/public/test/test_browser_thread_bundle.h"
+#include "google_apis/drive/gdata_wapi_parser.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/leveldatabase/src/include/leveldb/db.h"
 #include "third_party/leveldatabase/src/include/leveldb/write_batch.h"
@@ -51,7 +52,8 @@ class RegisterAppTaskTest : public testing::Test,
         fake_drive_service_.get(), base::MessageLoopProxy::current()));
 
     fake_drive_service_helper_.reset(new FakeDriveServiceHelper(
-        fake_drive_service_.get(), drive_uploader_.get()));
+        fake_drive_service_.get(), drive_uploader_.get(),
+        kSyncRootFolderTitle));
 
     ASSERT_EQ(google_apis::HTTP_CREATED,
               fake_drive_service_helper_->AddOrphanedFolder(
@@ -67,8 +69,20 @@ class RegisterAppTaskTest : public testing::Test,
     return fake_drive_service_.get();
   }
 
+  virtual drive::DriveUploaderInterface* GetDriveUploader() OVERRIDE {
+    return NULL;
+  }
+
   virtual MetadataDatabase* GetMetadataDatabase() OVERRIDE {
     return metadata_database_.get();
+  }
+
+  virtual RemoteChangeProcessor* GetRemoteChangeProcessor() OVERRIDE {
+    return NULL;
+  }
+
+  virtual base::SequencedTaskRunner* GetBlockingTaskRunner() OVERRIDE {
+    return base::MessageLoopProxy::current();
   }
 
  protected:

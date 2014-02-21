@@ -22,6 +22,9 @@ namespace {
 #define EXECUTE_AND_VERIFY_SUBTREE_CHANGED(code_to_test)                       \
   root->ResetAllChangeTrackingForSubtree();                                    \
   code_to_test;                                                                \
+  EXPECT_TRUE(root->needs_push_properties());                                  \
+  EXPECT_FALSE(child->needs_push_properties());                                \
+  EXPECT_FALSE(grand_child->needs_push_properties());                          \
   EXPECT_TRUE(root->LayerPropertyChanged());                                   \
   EXPECT_TRUE(child->LayerPropertyChanged());                                  \
   EXPECT_TRUE(grand_child->LayerPropertyChanged());
@@ -29,6 +32,20 @@ namespace {
 #define EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(code_to_test)                \
   root->ResetAllChangeTrackingForSubtree();                                    \
   code_to_test;                                                                \
+  EXPECT_FALSE(root->needs_push_properties());                                 \
+  EXPECT_FALSE(child->needs_push_properties());                                \
+  EXPECT_FALSE(grand_child->needs_push_properties());                          \
+  EXPECT_FALSE(root->LayerPropertyChanged());                                  \
+  EXPECT_FALSE(child->LayerPropertyChanged());                                 \
+  EXPECT_FALSE(grand_child->LayerPropertyChanged());
+
+#define EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(   \
+      code_to_test)                                                            \
+  root->ResetAllChangeTrackingForSubtree();                                    \
+  code_to_test;                                                                \
+  EXPECT_TRUE(root->needs_push_properties());                                  \
+  EXPECT_FALSE(child->needs_push_properties());                                \
+  EXPECT_FALSE(grand_child->needs_push_properties());                          \
   EXPECT_FALSE(root->LayerPropertyChanged());                                  \
   EXPECT_FALSE(child->LayerPropertyChanged());                                 \
   EXPECT_FALSE(grand_child->LayerPropertyChanged());
@@ -36,9 +53,22 @@ namespace {
 #define EXECUTE_AND_VERIFY_ONLY_LAYER_CHANGED(code_to_test)                    \
   root->ResetAllChangeTrackingForSubtree();                                    \
   code_to_test;                                                                \
+  EXPECT_TRUE(root->needs_push_properties());                                  \
+  EXPECT_FALSE(child->needs_push_properties());                                \
+  EXPECT_FALSE(grand_child->needs_push_properties());                          \
   EXPECT_TRUE(root->LayerPropertyChanged());                                   \
   EXPECT_FALSE(child->LayerPropertyChanged());                                 \
   EXPECT_FALSE(grand_child->LayerPropertyChanged());
+
+#define EXECUTE_AND_VERIFY_ONLY_DESCENDANTS_CHANGED(code_to_test)              \
+  root->ResetAllChangeTrackingForSubtree();                                    \
+  code_to_test;                                                                \
+  EXPECT_TRUE(root->needs_push_properties());                                  \
+  EXPECT_FALSE(child->needs_push_properties());                                \
+  EXPECT_FALSE(grand_child->needs_push_properties());                          \
+  EXPECT_FALSE(root->LayerPropertyChanged());                                  \
+  EXPECT_TRUE(child->LayerPropertyChanged());                                  \
+  EXPECT_TRUE(grand_child->LayerPropertyChanged());
 
 #define VERIFY_NEEDS_UPDATE_DRAW_PROPERTIES(code_to_test)                      \
   root->ResetAllChangeTrackingForSubtree();                                    \
@@ -65,9 +95,24 @@ TEST(LayerImplTest, VerifyLayerChangesAreTrackedProperly) {
   FakeLayerTreeHostImpl host_impl(&proxy);
   EXPECT_TRUE(host_impl.InitializeRenderer(CreateFakeOutputSurface()));
   scoped_ptr<LayerImpl> root = LayerImpl::Create(host_impl.active_tree(), 1);
-  root->AddChild(LayerImpl::Create(host_impl.active_tree(), 2));
+
+  scoped_ptr<LayerImpl> scroll_parent =
+      LayerImpl::Create(host_impl.active_tree(), 2);
+  LayerImpl* scroll_child = LayerImpl::Create(host_impl.active_tree(), 3).get();
+  std::set<LayerImpl*>* scroll_children = new std::set<LayerImpl*>();
+  scroll_children->insert(scroll_child);
+  scroll_children->insert(root.get());
+
+  scoped_ptr<LayerImpl> clip_parent =
+      LayerImpl::Create(host_impl.active_tree(), 4);
+  LayerImpl* clip_child = LayerImpl::Create(host_impl.active_tree(), 5).get();
+  std::set<LayerImpl*>* clip_children = new std::set<LayerImpl*>();
+  clip_children->insert(clip_child);
+  clip_children->insert(root.get());
+
+  root->AddChild(LayerImpl::Create(host_impl.active_tree(), 6));
   LayerImpl* child = root->children()[0];
-  child->AddChild(LayerImpl::Create(host_impl.active_tree(), 3));
+  child->AddChild(LayerImpl::Create(host_impl.active_tree(), 7));
   LayerImpl* grand_child = child->children()[0];
 
   root->SetScrollable(true);
@@ -91,12 +136,13 @@ TEST(LayerImplTest, VerifyLayerChangesAreTrackedProperly) {
   arbitrary_transform.Scale3d(0.1f, 0.2f, 0.3f);
   FilterOperations arbitrary_filters;
   arbitrary_filters.Append(FilterOperation::CreateOpacityFilter(0.5f));
+  SkXfermode::Mode arbitrary_blend_mode = SkXfermode::kMultiply_Mode;
 
   // These properties are internal, and should not be considered "change" when
   // they are used.
-  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
-      root->set_update_rect(arbitrary_rect_f));
-  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->SetUpdateRect(arbitrary_rect_f));
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
       root->SetMaxScrollOffset(arbitrary_vector2d));
 
   // Changing these properties affects the entire subtree of layers.
@@ -105,11 +151,11 @@ TEST(LayerImplTest, VerifyLayerChangesAreTrackedProperly) {
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetFilters(arbitrary_filters));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetFilters(FilterOperations()));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(
-      root->SetMaskLayer(LayerImpl::Create(host_impl.active_tree(), 4)));
+      root->SetMaskLayer(LayerImpl::Create(host_impl.active_tree(), 8)));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetMasksToBounds(true));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetContentsOpaque(true));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(
-      root->SetReplicaLayer(LayerImpl::Create(host_impl.active_tree(), 5)));
+      root->SetReplicaLayer(LayerImpl::Create(host_impl.active_tree(), 9)));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetPosition(arbitrary_point_f));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetPreserves3d(true));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(
@@ -119,6 +165,7 @@ TEST(LayerImplTest, VerifyLayerChangesAreTrackedProperly) {
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetScrollOffset(arbitrary_vector2d));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetHideLayerAndSubtree(true));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetOpacity(arbitrary_number));
+  EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetBlendMode(arbitrary_blend_mode));
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetTransform(arbitrary_transform));
 
   // Changing these properties only affects the layer itself.
@@ -131,13 +178,10 @@ TEST(LayerImplTest, VerifyLayerChangesAreTrackedProperly) {
   EXECUTE_AND_VERIFY_ONLY_LAYER_CHANGED(
       root->SetBackgroundFilters(arbitrary_filters));
 
-  // Special case: check that sublayer transform changes all layer's
-  // descendants, but not the layer itself.
-  root->ResetAllChangeTrackingForSubtree();
-  root->SetSublayerTransform(arbitrary_transform);
-  EXPECT_FALSE(root->LayerPropertyChanged());
-  EXPECT_TRUE(child->LayerPropertyChanged());
-  EXPECT_TRUE(grand_child->LayerPropertyChanged());
+  // Changing these properties affects all layer's descendants,
+  // but not the layer itself.
+  EXECUTE_AND_VERIFY_ONLY_DESCENDANTS_CHANGED(
+      root->SetSublayerTransform(arbitrary_transform));
 
   // Special case: check that SetBounds changes behavior depending on
   // masksToBounds.
@@ -147,6 +191,25 @@ TEST(LayerImplTest, VerifyLayerChangesAreTrackedProperly) {
   // Should be a different size than previous call, to ensure it marks tree
   // changed.
   EXECUTE_AND_VERIFY_SUBTREE_CHANGED(root->SetBounds(arbitrary_size));
+
+  // Changing this property does not cause the layer to be marked as changed
+  // but does cause the layer to need to push properties.
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->SetIsRootForIsolatedGroup(true));
+
+  // Changing these properties should cause the layer to need to push properties
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->SetScrollParent(scroll_parent.get()));
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->SetScrollChildren(scroll_children));
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->RemoveScrollChild(scroll_child));
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->SetClipParent(clip_parent.get()));
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->SetClipChildren(clip_children));
+  EXECUTE_AND_VERIFY_NEEDS_PUSH_PROPERTIES_AND_SUBTREE_DID_NOT_CHANGE(
+      root->RemoveClipChild(clip_child));
 
   // After setting all these properties already, setting to the exact same
   // values again should not cause any change.
@@ -172,10 +235,22 @@ TEST(LayerImplTest, VerifyLayerChangesAreTrackedProperly) {
       root->SetContentsScale(arbitrary_number, arbitrary_number));
   EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(root->SetContentsOpaque(true));
   EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(root->SetOpacity(arbitrary_number));
+  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
+      root->SetBlendMode(arbitrary_blend_mode));
+  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
+      root->SetIsRootForIsolatedGroup(true));
   EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(root->SetDrawsContent(true));
   EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
       root->SetSublayerTransform(arbitrary_transform));
   EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(root->SetBounds(arbitrary_size));
+  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
+      root->SetScrollParent(scroll_parent.get()));
+  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
+      root->SetScrollChildren(scroll_children));
+  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
+      root->SetClipParent(clip_parent.get()));
+  EXECUTE_AND_VERIFY_SUBTREE_DID_NOT_CHANGE(
+      root->SetClipChildren(clip_children));
 }
 
 TEST(LayerImplTest, VerifyNeedsUpdateDrawProperties) {
@@ -199,6 +274,7 @@ TEST(LayerImplTest, VerifyNeedsUpdateDrawProperties) {
   arbitrary_transform.Scale3d(0.1f, 0.2f, 0.3f);
   FilterOperations arbitrary_filters;
   arbitrary_filters.Append(FilterOperation::CreateOpacityFilter(0.5f));
+  SkXfermode::Mode arbitrary_blend_mode = SkXfermode::kMultiply_Mode;
 
   // Related filter functions.
   VERIFY_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetFilters(arbitrary_filters));
@@ -243,6 +319,7 @@ TEST(LayerImplTest, VerifyNeedsUpdateDrawProperties) {
   VERIFY_NEEDS_UPDATE_DRAW_PROPERTIES(
       root->SetBackgroundFilters(arbitrary_filters));
   VERIFY_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetOpacity(arbitrary_number));
+  VERIFY_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetBlendMode(arbitrary_blend_mode));
   VERIFY_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetTransform(arbitrary_transform));
   VERIFY_NEEDS_UPDATE_DRAW_PROPERTIES(
       root->SetSublayerTransform(arbitrary_transform));
@@ -251,6 +328,7 @@ TEST(LayerImplTest, VerifyNeedsUpdateDrawProperties) {
   // Unrelated functions, set to the same values, no needs update.
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(
       root->SetAnchorPointZ(arbitrary_number));
+  VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetIsRootForIsolatedGroup(true));
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetFilters(arbitrary_filters));
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetMasksToBounds(true));
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetContentsOpaque(true));
@@ -268,6 +346,9 @@ TEST(LayerImplTest, VerifyNeedsUpdateDrawProperties) {
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(
       root->SetBackgroundFilters(arbitrary_filters));
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetOpacity(arbitrary_number));
+  VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(
+      root->SetBlendMode(arbitrary_blend_mode));
+  VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(root->SetIsRootForIsolatedGroup(true));
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(
       root->SetTransform(arbitrary_transform));
   VERIFY_NO_NEEDS_UPDATE_DRAW_PROPERTIES(
@@ -371,19 +452,20 @@ TEST_F(LayerImplScrollTest, ScrollByWithNonZeroOffset) {
 
 class ScrollDelegateIgnore : public LayerScrollOffsetDelegate {
  public:
-  virtual void SetMaxScrollOffset(gfx::Vector2dF max_scroll_offset) OVERRIDE {}
-  virtual void SetTotalScrollOffset(gfx::Vector2dF new_value) OVERRIDE {}
+  virtual void SetMaxScrollOffset(
+      const gfx::Vector2dF& max_scroll_offset) OVERRIDE {}
+  virtual void SetTotalScrollOffset(const gfx::Vector2dF& new_value) OVERRIDE {}
   virtual gfx::Vector2dF GetTotalScrollOffset() OVERRIDE {
     return fixed_offset_;
   }
   virtual bool IsExternalFlingActive() const OVERRIDE { return false; }
 
-  void set_fixed_offset(gfx::Vector2dF fixed_offset) {
+  void set_fixed_offset(const gfx::Vector2dF& fixed_offset) {
     fixed_offset_ = fixed_offset;
   }
 
   virtual void SetTotalPageScaleFactor(float page_scale_factor) OVERRIDE {}
-  virtual void SetScrollableSize(gfx::SizeF scrollable_size) OVERRIDE {}
+  virtual void SetScrollableSize(const gfx::SizeF& scrollable_size) OVERRIDE {}
 
  private:
   gfx::Vector2dF fixed_offset_;
@@ -426,8 +508,9 @@ TEST_F(LayerImplScrollTest, ScrollByWithIgnoringDelegate) {
 
 class ScrollDelegateAccept : public LayerScrollOffsetDelegate {
  public:
-  virtual void SetMaxScrollOffset(gfx::Vector2dF max_scroll_offset) OVERRIDE {}
-  virtual void SetTotalScrollOffset(gfx::Vector2dF new_value) OVERRIDE {
+  virtual void SetMaxScrollOffset(
+      const gfx::Vector2dF& max_scroll_offset) OVERRIDE {}
+  virtual void SetTotalScrollOffset(const gfx::Vector2dF& new_value) OVERRIDE {
     current_offset_ = new_value;
   }
   virtual gfx::Vector2dF GetTotalScrollOffset() OVERRIDE {
@@ -435,7 +518,7 @@ class ScrollDelegateAccept : public LayerScrollOffsetDelegate {
   }
   virtual bool IsExternalFlingActive() const OVERRIDE { return false; }
   virtual void SetTotalPageScaleFactor(float page_scale_factor) OVERRIDE {}
-  virtual void SetScrollableSize(gfx::SizeF scrollable_size) OVERRIDE {}
+  virtual void SetScrollableSize(const gfx::SizeF& scrollable_size) OVERRIDE {}
 
  private:
   gfx::Vector2dF current_offset_;

@@ -19,7 +19,6 @@ AudioParam
 AudioProcessingEvent
 AutocompleteErrorEvent
 BarProp
-BeforeLoadEvent
 BeforeUnloadEvent
 BiquadFilterNode
 Blob
@@ -27,7 +26,6 @@ Boolean
 CDATASection
 CSSCharsetRule
 CSSFontFaceRule
-CSSHostRule
 CSSImportRule
 CSSKeyframeRule
 CSSKeyframesRule
@@ -251,7 +249,6 @@ SVGAltGlyphDefElement
 SVGAltGlyphElement
 SVGAltGlyphItemElement
 SVGAngle
-SVGAnimateColorElement
 SVGAnimateElement
 SVGAnimateMotionElement
 SVGAnimateTransformElement
@@ -270,11 +267,11 @@ SVGAnimatedTransformList
 SVGAnimationElement
 SVGCircleElement
 SVGClipPathElement
-SVGColor
 SVGComponentTransferFunctionElement
 SVGCursorElement
 SVGDefsElement
 SVGDescElement
+SVGDiscardElement
 SVGDocument
 SVGElement
 SVGElementInstance
@@ -314,6 +311,7 @@ SVGFontFaceSrcElement
 SVGFontFaceUriElement
 SVGForeignObjectElement
 SVGGElement
+SVGGeometryElement
 SVGGlyphElement
 SVGGlyphRefElement
 SVGGradientElement
@@ -332,7 +330,6 @@ SVGMetadataElement
 SVGMissingGlyphElement
 SVGNumber
 SVGNumberList
-SVGPaint
 SVGPathElement
 SVGPathSeg
 SVGPathSegArcAbs
@@ -389,10 +386,11 @@ SVGViewSpec
 SVGZoomEvent
 Screen
 ScriptProcessorNode
-SecurityPolicy
 Selection
 SharedWorker
 SpeechInputEvent
+SpeechSynthesisEvent
+SpeechSynthesisUtterance
 Storage
 StorageEvent
 String
@@ -421,6 +419,7 @@ Uint16Array
 Uint32Array
 Uint8Array
 Uint8ClampedArray
+VTTCue
 ValidityState
 WaveShaperNode
 WebGLActiveInfo
@@ -438,7 +437,6 @@ WebKitAnimationEvent
 WebKitCSSFilterRule
 WebKitCSSFilterValue
 WebKitCSSMatrix
-WebKitCSSMixFunctionValue
 WebKitCSSTransformValue
 WebKitMediaSource
 WebKitMutationObserver

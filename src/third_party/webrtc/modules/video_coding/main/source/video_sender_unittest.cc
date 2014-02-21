@@ -12,7 +12,6 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/common.h"
-#include "webrtc/common_video/test/frame_generator.h"
 #include "webrtc/modules/video_coding/codecs/interface/mock/mock_video_codec_interface.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8_common_types.h"
 #include "webrtc/modules/video_coding/codecs/vp8/temporal_layers.h"
@@ -22,6 +21,7 @@
 #include "webrtc/modules/video_coding/main/test/test_util.h"
 #include "webrtc/system_wrappers/interface/clock.h"
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
+#include "webrtc/test/frame_generator.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/testsupport/gtest_disable.h"
 
@@ -70,7 +70,7 @@ MATCHER_P(MatchesVp8StreamInfo, expected, "") {
 
 class EmptyFrameGenerator : public FrameGenerator {
  public:
-  virtual I420VideoFrame& NextFrame() OVERRIDE { return frame_; }
+  I420VideoFrame* NextFrame() OVERRIDE { frame_.ResetSize(); return &frame_; }
 
  private:
   I420VideoFrame frame_;
@@ -173,18 +173,19 @@ class TestVideoSender : public ::testing::Test {
   TestVideoSender() : clock_(1000), packetization_callback_(&clock_) {}
 
   virtual void SetUp() {
-    sender_.reset(new VideoSender(0, &clock_));
+    sender_.reset(new VideoSender(0, &clock_, &post_encode_callback_));
     EXPECT_EQ(0, sender_->InitializeSender());
     EXPECT_EQ(0, sender_->RegisterTransportCallback(&packetization_callback_));
   }
 
   void AddFrame() {
     assert(generator_.get());
-    sender_->AddVideoFrame(generator_->NextFrame(), NULL, NULL);
+    sender_->AddVideoFrame(*generator_->NextFrame(), NULL, NULL);
   }
 
   SimulatedClock clock_;
   PacketizationCallback packetization_callback_;
+  MockEncodedImageCallback post_encode_callback_;
   scoped_ptr<VideoSender> sender_;
   scoped_ptr<FrameGenerator> generator_;
 };

@@ -255,6 +255,7 @@ bool SkPNGImageDecoder::onDecodeInit(SkStream* sk_stream, png_structp *png_ptrp,
     * set up your own error handlers in the png_create_read_struct() earlier.
     */
     if (setjmp(png_jmpbuf(png_ptr))) {
+        png_destroy_read_struct(&png_ptr, &info_ptr, png_infopp_NULL);
         return false;
     }
 
@@ -309,11 +310,11 @@ bool SkPNGImageDecoder::onDecode(SkStream* sk_stream, SkBitmap* decodedBitmap,
         return false;
     }
 
+    PNGAutoClean autoClean(png_ptr, info_ptr);
+
     if (setjmp(png_jmpbuf(png_ptr))) {
         return false;
     }
-
-    PNGAutoClean autoClean(png_ptr, info_ptr);
 
     png_uint_32 origWidth, origHeight;
     int bitDepth, colorType, interlaceType;
@@ -606,13 +607,9 @@ bool SkPNGImageDecoder::getBitmapConfig(png_structp png_ptr, png_infop info_ptr,
 
     // sanity check for size
     {
-        Sk64 size;
-        size.setMul(origWidth, origHeight);
-        if (size.isNeg() || !size.is32()) {
-            return false;
-        }
+        int64_t size = sk_64_mul(origWidth, origHeight);
         // now check that if we are 4-bytes per pixel, we also don't overflow
-        if (size.get32() > (0x7FFFFFFF >> 2)) {
+        if (size < 0 || size > (0x7FFFFFFF >> 2)) {
             return false;
         }
     }

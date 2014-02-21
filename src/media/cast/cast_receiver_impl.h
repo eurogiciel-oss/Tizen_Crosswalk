@@ -11,7 +11,7 @@
 #include "media/cast/cast_config.h"
 #include "media/cast/cast_environment.h"
 #include "media/cast/cast_receiver.h"
-#include "media/cast/pacing/paced_sender.h"
+#include "media/cast/transport/pacing/paced_sender.h"
 #include "media/cast/video_receiver/video_receiver.h"
 
 namespace media {
@@ -25,23 +25,23 @@ class CastReceiverImpl : public CastReceiver {
   CastReceiverImpl(scoped_refptr<CastEnvironment> cast_environment,
                    const AudioReceiverConfig& audio_config,
                    const VideoReceiverConfig& video_config,
-                   PacketSender* const packet_sender);
+                   transport::PacketSender* const packet_sender);
 
   virtual ~CastReceiverImpl();
 
   // All received RTP and RTCP packets for the call should be inserted to this
   // PacketReceiver.
-  virtual scoped_refptr<PacketReceiver> packet_receiver() OVERRIDE;
+  virtual scoped_refptr<transport::PacketReceiver> packet_receiver() OVERRIDE;
 
   // Interface to get audio and video frames from the CastReceiver.
   virtual scoped_refptr<FrameReceiver> frame_receiver() OVERRIDE;
 
  private:
-  PacedSender pacer_;
+  transport::PacedSender pacer_;
   AudioReceiver audio_receiver_;
   VideoReceiver video_receiver_;
   scoped_refptr<FrameReceiver> frame_receiver_;
-  scoped_refptr<PacketReceiver> packet_receiver_;
+  scoped_refptr<transport::PacketReceiver> packet_receiver_;
 };
 
 }  // namespace cast

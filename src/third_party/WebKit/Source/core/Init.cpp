@@ -37,12 +37,14 @@
 #include "FetchInitiatorTypeNames.h"
 #include "FontFamilyNames.h"
 #include "HTMLNames.h"
+#include "InputTypeNames.h"
 #include "MathMLNames.h"
 #include "SVGNames.h"
 #include "XLinkNames.h"
 #include "XMLNSNames.h"
 #include "XMLNames.h"
 #include "core/css/MediaFeatureNames.h"
+#include "heap/Heap.h"
 #include "platform/EventTracer.h"
 #include "platform/Partitions.h"
 #include "platform/PlatformThreadData.h"
@@ -71,6 +73,7 @@ void init()
     EventTypeNames::init();
     FetchInitiatorTypeNames::init();
     FontFamilyNames::init();
+    InputTypeNames::init();
     MediaFeatureNames::init();
     WTF::StringStatics::init();
     QualifiedName::init();

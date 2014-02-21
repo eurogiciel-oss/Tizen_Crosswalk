@@ -31,17 +31,16 @@ namespace WebCore {
 class HTMLBRElement FINAL : public HTMLElement {
 public:
     static PassRefPtr<HTMLBRElement> create(Document&);
-    static PassRefPtr<HTMLBRElement> create(const QualifiedName&, Document&);
 
-    virtual bool canContainRangeEndPoint() const { return false; }
+    virtual bool canContainRangeEndPoint() const OVERRIDE { return false; }
 
 private:
-    HTMLBRElement(const QualifiedName&, Document&);
+    explicit HTMLBRElement(Document&);
 
     virtual bool isPresentationAttribute(const QualifiedName&) const OVERRIDE;
     virtual void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStylePropertySet*) OVERRIDE;
 
-    virtual RenderObject* createRenderer(RenderStyle*);
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
 };
 
 } // namespace

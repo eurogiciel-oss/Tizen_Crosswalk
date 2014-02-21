@@ -30,6 +30,11 @@ const std::vector<AutofillProfile*>& TestPersonalDataManager::GetProfiles()
   return profiles_;
 }
 
+const std::vector<AutofillProfile*>& TestPersonalDataManager::web_profiles()
+    const {
+  return profiles_;
+}
+
 const std::vector<CreditCard*>& TestPersonalDataManager::
     GetCreditCards() const {
   return credit_cards_;
@@ -45,6 +50,11 @@ std::string TestPersonalDataManager::SaveImportedCreditCard(
     const CreditCard& imported_credit_card) {
   imported_credit_card_ = imported_credit_card;
   return imported_credit_card.guid();
+}
+
+std::string TestPersonalDataManager::CountryCodeForCurrentTimezone()
+    const {
+  return timezone_country_code_;
 }
 
 }  // namespace autofill

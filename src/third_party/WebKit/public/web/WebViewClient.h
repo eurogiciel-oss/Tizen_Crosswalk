@@ -39,13 +39,14 @@
 #include "WebDragOperation.h"
 #include "WebFileChooserCompletion.h"
 #include "WebFileChooserParams.h"
+#include "WebNavigatorContentUtilsClient.h"
 #include "WebPageVisibilityState.h"
 #include "WebPopupType.h"
 #include "WebTextAffinity.h"
 #include "WebTextDirection.h"
 #include "WebWidgetClient.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebAXObject;
 class WebColorChooser;
@@ -79,6 +80,7 @@ class WebURLRequest;
 class WebUserMediaClient;
 class WebView;
 class WebWidget;
+struct WebColorSuggestion;
 struct WebConsoleMessage;
 struct WebContextMenuData;
 struct WebDateTimeChooserParams;
@@ -106,7 +108,8 @@ public:
                                 const WebURLRequest& request,
                                 const WebWindowFeatures& features,
                                 const WebString& name,
-                                WebNavigationPolicy policy) {
+                                WebNavigationPolicy policy,
+                                bool suppressOpener) {
         return 0;
     }
 
@@ -152,7 +155,7 @@ public:
     // Navigational --------------------------------------------------------
 
     // These notifications bracket any loading that occurs in the WebView.
-    virtual void didStartLoading() { }
+    virtual void didStartLoading(bool toDifferentDocument) { }
     virtual void didStopLoading() { }
 
     // Notification that some progress was made loading the current page.
@@ -183,9 +186,17 @@ public:
     // This method opens the color chooser and returns a new WebColorChooser
     // instance. If there is a WebColorChooser already from the last time this
     // was called, it ends the color chooser by calling endChooser, and replaces
-    // it with the new one.
+    // it with the new one. The given list of suggestions can be used to show a
+    // simple interface with a limited set of choices.
+
+    // FIXME: Should be removed when the chromium side change lands.
     virtual WebColorChooser* createColorChooser(WebColorChooserClient*,
                                                 const WebColor&) { return 0; }
+
+    virtual WebColorChooser* createColorChooser(
+        WebColorChooserClient*,
+        const WebColor&,
+        const WebVector<WebColorSuggestion>&) { return 0; }
 
     // This method returns immediately after showing the dialog. When the
     // dialog is closed, it should call the WebFileChooserCompletion to
@@ -341,11 +352,41 @@ public:
     // action that wasn't initiated by the client.
     virtual void zoomLevelChanged() { }
 
+    // Navigator Content Utils  --------------------------------------------
+
     // Registers a new URL handler for the given protocol.
     virtual void registerProtocolHandler(const WebString& scheme,
-                                         const WebString& baseUrl,
-                                         const WebString& url,
-                                         const WebString& title) { }
+        const WebURL& baseUrl,
+        const WebURL& url,
+        const WebString& title)
+    {
+        registerProtocolHandler(scheme, baseUrl.string(), url.string(), title);
+    }
+
+    // Unregisters a given URL handler for the given protocol.
+    virtual void unregisterProtocolHandler(const WebString& scheme, const WebURL& baseUrl, const WebURL& url)
+    {
+        unregisterProtocolHandler(scheme, baseUrl.string(), url.string());
+    }
+
+    // Check if a given URL handler is registered for the given protocol.
+    virtual WebCustomHandlersState isProtocolHandlerRegistered(const WebString& scheme, const WebURL& baseUrl, const WebURL& url)
+    {
+        return isProtocolHandlerRegistered(scheme, baseUrl.string(), url.string());
+    }
+
+    // These old version APIs need to be removed after synching with chrome side.
+    virtual void registerProtocolHandler(const WebString& scheme,
+        const WebString& baseUrl,
+        const WebString& url,
+        const WebString& title) { }
+
+    virtual void unregisterProtocolHandler(const WebString& scheme, const WebString& baseUrl, const WebString& url) { }
+
+    virtual WebCustomHandlersState isProtocolHandlerRegistered(const WebString& scheme, const WebString& baseUrl, const WebString& url)
+    {
+        return WebCustomHandlersNew;
+    }
 
     // Visibility -----------------------------------------------------------
 
@@ -386,6 +427,6 @@ protected:
     ~WebViewClient() { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

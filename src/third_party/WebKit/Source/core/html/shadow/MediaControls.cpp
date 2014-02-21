@@ -34,7 +34,7 @@ namespace WebCore {
 static const double timeWithoutMouseMovementBeforeHidingFullscreenControls = 3;
 
 MediaControls::MediaControls(Document& document)
-    : HTMLDivElement(HTMLNames::divTag, document)
+    : HTMLDivElement(document)
     , m_mediaController(0)
     , m_panel(0)
     , m_textDisplayContainer(0)
@@ -87,16 +87,10 @@ void MediaControls::reset()
 
     updateCurrentTimeDisplay();
 
-    double duration = m_mediaController->duration();
-    if (std::isfinite(duration) || RenderTheme::theme().hasOwnDisabledStateHandlingFor(MediaSliderPart)) {
-        m_timeline->setDuration(duration);
-        m_timeline->setPosition(m_mediaController->currentTime());
-    }
+    m_timeline->setDuration(m_mediaController->duration());
+    m_timeline->setPosition(m_mediaController->currentTime());
 
-    if (m_mediaController->hasAudio() || RenderTheme::theme().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart))
-        m_panelMuteButton->show();
-    else
-        m_panelMuteButton->hide();
+    m_panelMuteButton->show();
 
     if (m_volumeSlider) {
         if (!m_mediaController->hasAudio())
@@ -110,36 +104,13 @@ void MediaControls::reset()
     refreshClosedCaptionsButtonVisibility();
 
     if (m_fullScreenButton) {
-        if (m_mediaController->supportsFullscreen() && m_mediaController->hasVideo())
+        if (m_mediaController->hasVideo())
             m_fullScreenButton->show();
         else
             m_fullScreenButton->hide();
     }
 
     makeOpaque();
-}
-
-void MediaControls::reportedError()
-{
-    Page* page = document().page();
-    if (!page)
-        return;
-
-    if (!RenderTheme::theme().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart)) {
-        m_panelMuteButton->hide();
-        m_volumeSlider->hide();
-    }
-
-    if (m_toggleClosedCaptionsButton && !RenderTheme::theme().hasOwnDisabledStateHandlingFor(MediaToggleClosedCaptionsButtonPart))
-        m_toggleClosedCaptionsButton->hide();
-
-    if (m_fullScreenButton && !RenderTheme::theme().hasOwnDisabledStateHandlingFor(MediaEnterFullscreenButtonPart))
-        m_fullScreenButton->hide();
-}
-
-void MediaControls::loadedMetadata()
-{
-    reset();
 }
 
 void MediaControls::show()
@@ -331,7 +302,7 @@ void MediaControls::stopHideFullscreenControlsTimer()
     m_hideFullscreenControlsTimer.stop();
 }
 
-const AtomicString& MediaControls::part() const
+const AtomicString& MediaControls::shadowPseudoId() const
 {
     DEFINE_STATIC_LOCAL(AtomicString, id, ("-webkit-media-controls"));
     return id;

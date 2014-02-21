@@ -9,12 +9,21 @@
 
 #include "base/basictypes.h"
 #include "base/strings/string16.h"
+#include "base/values.h"
 
 class PrefRegistrySimple;
 
 namespace chromeos {
 
 class User;
+class SupervisedUserAuthentication;
+
+// Keys in dictionary with supervised password information.
+extern const char kSchemaVersion[];
+extern const char kPasswordRevision[];
+extern const char kSalt[];
+extern const char kEncryptedPassword[];
+extern const int kMinPasswordRevision;
 
 // Base class for SupervisedUserManagerImpl - provides a mechanism for getting
 // and setting specific values for supervised users, as well as additional
@@ -37,14 +46,15 @@ class SupervisedUserManager {
       const std::string& manager_id,
       const std::string& local_user_id,
       const std::string& sync_user_id,
-      const string16& display_name) = 0;
+      const base::string16& display_name) = 0;
 
   // Generates unique user ID for supervised user.
   virtual std::string GenerateUserId() = 0;
 
   // Returns the supervised user with the given |display_name| if found in
   // the persistent list. Returns |NULL| otherwise.
-  virtual const User* FindByDisplayName(const string16& display_name) const = 0;
+  virtual const User* FindByDisplayName(
+      const base::string16& display_name) const = 0;
 
   // Returns the supervised user with the given |sync_id| if found in
   // the persistent list. Returns |NULL| otherwise.
@@ -57,7 +67,8 @@ class SupervisedUserManager {
   // Returns the display name for manager of user |user_id| if it is known
   // (was previously set by a |SaveUserDisplayName| call).
   // Otherwise, returns a manager id.
-  virtual string16 GetManagerDisplayName(const std::string& user_id) const = 0;
+  virtual base::string16 GetManagerDisplayName(
+      const std::string& user_id) const = 0;
 
   // Returns the user id for manager of user |user_id| if it is known (user is
   // actually a managed user).
@@ -71,13 +82,27 @@ class SupervisedUserManager {
       const = 0;
 
   // Create a record about starting supervised user creation transaction.
-  virtual void StartCreationTransaction(const string16& display_name) = 0;
+  virtual void StartCreationTransaction(const base::string16& display_name) = 0;
 
   // Add user id to supervised user creation transaction record.
   virtual void SetCreationTransactionUserId(const std::string& user_id) = 0;
 
   // Remove locally managed user creation transaction record.
   virtual void CommitCreationTransaction() = 0;
+
+  // Return object that handles specifics of supervised user authentication.
+  virtual SupervisedUserAuthentication* GetAuthentication() = 0;
+
+  // Fill |result| with public password-specific data for |user_id| from Local
+  // State.
+  virtual void GetPasswordInformation(const std::string& user_id,
+                                      base::DictionaryValue* result) = 0;
+
+  // Stores public password-specific data from |password_info| for |user_id| in
+  // Local State.
+  virtual void SetPasswordInformation(
+      const std::string& user_id,
+      const base::DictionaryValue* password_info) = 0;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(SupervisedUserManager);

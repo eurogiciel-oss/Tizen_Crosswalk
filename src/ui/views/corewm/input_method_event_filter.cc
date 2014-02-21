@@ -49,12 +49,7 @@ void InputMethodEventFilter::OnKeyEvent(ui::KeyEvent* event) {
     aura::Window* target = static_cast<aura::Window*>(event->target());
     target_dispatcher_ = target->GetRootWindow()->GetDispatcher();
     DCHECK(target_dispatcher_);
-    bool handled = false;
-    if (event->HasNativeEvent())
-      handled = input_method_->DispatchKeyEvent(event->native_event());
-    else
-      handled = input_method_->DispatchFabricatedKeyEvent(*event);
-    if (handled)
+    if (input_method_->DispatchKeyEvent(*event))
       event->StopPropagation();
   }
 }
@@ -68,7 +63,7 @@ bool InputMethodEventFilter::DispatchKeyEventPostIME(
   DCHECK(event.message != WM_CHAR);
 #endif
   ui::TranslatedKeyEvent aura_event(event, false /* is_char */);
-  return target_dispatcher_->AsRootWindowHostDelegate()->OnHostKeyEvent(
+  return target_dispatcher_->AsWindowTreeHostDelegate()->OnHostKeyEvent(
       &aura_event);
 }
 
@@ -78,7 +73,7 @@ bool InputMethodEventFilter::DispatchFabricatedKeyEventPostIME(
     int flags) {
   ui::TranslatedKeyEvent aura_event(type == ui::ET_KEY_PRESSED, key_code,
                                     flags);
-  return target_dispatcher_->AsRootWindowHostDelegate()->OnHostKeyEvent(
+  return target_dispatcher_->AsWindowTreeHostDelegate()->OnHostKeyEvent(
       &aura_event);
 }
 

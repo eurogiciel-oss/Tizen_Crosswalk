@@ -5,152 +5,57 @@
 #ifndef OZONE_IMPL_OZONE_DISPLAY_H_
 #define OZONE_IMPL_OZONE_DISPLAY_H_
 
-#include "base/compiler_specific.h"
-#include "base/message_loop/message_loop.h"
-#include "ozone/platform/ozone_export_wayland.h"
-#include "ui/gfx/ozone/surface_factory_ozone.h"
+#include "ozone/ui/events/output_change_observer.h"
+#include "ui/gfx/native_widget_types.h"
+
+namespace gfx {
+class Screen;
+}
 
 namespace ozonewayland {
 
 class DesktopScreenWayland;
-class EventFactoryWayland;
-class OzoneProcessObserver;
+class EventConverterOzoneWayland;
 class OzoneDisplayChannel;
 class OzoneDisplayChannelHost;
 class WaylandDisplay;
 class WaylandWindow;
-class WaylandDispatcher;
-class WaylandScreen;
-class WindowChangeObserver;
 
-class OZONE_WAYLAND_EXPORT OzoneDisplay
-    : public gfx::SurfaceFactoryOzone,
-      public base::MessageLoop::DestructionObserver {
+class OzoneDisplay : public OutputChangeObserver {
  public:
-  enum {
-    Create = 1,  // Create a new Widget
-    Show = 2,  // Widget is visible.
-    Hide = 3,  // Widget is hidden.
-    FullScreen = 4,  // Widget is in fullscreen mode.
-    Maximized = 5,  // Widget is maximized,
-    Minimized = 6,  // Widget is minimized.
-    Restore = 7,  // Restore Widget.
-    Active = 8,  // Widget is Activated.
-    InActive = 9,  // Widget is DeActivated.
-    Resize = 10,  // Widget is Resized.
-    Destroyed = 11  // Widget is Destroyed.
-  };
-
-  typedef unsigned WidgetState;
-
-  enum {
-    Window = 1,  // A decorated Window.
-    WindowFrameLess = 2,  // An undecorated Window.
-    Transient = 3  // An undecorated Window, with transient properties
-                   // specialized to menus.
-  };
-
-  typedef unsigned WidgetType;
-
   static OzoneDisplay* GetInstance();
 
   OzoneDisplay();
   virtual ~OzoneDisplay();
 
-  virtual const char* DefaultDisplaySpec() OVERRIDE;
-  virtual gfx::Screen* CreateDesktopScreen() OVERRIDE;
-  virtual SurfaceFactoryOzone::HardwareState InitializeHardware() OVERRIDE;
-  virtual intptr_t GetNativeDisplay() OVERRIDE;
-  virtual void ShutdownHardware() OVERRIDE;
-  // GetAcceleratedWidget return's a opaque handle associated with a accelerated
-  // widget.
-  virtual gfx::AcceleratedWidget GetAcceleratedWidget() OVERRIDE;
-  // RealizeAcceleratedWidget takes opaque handle as parameter and returns
-  // eglwindow assosicated with it.
-  virtual gfx::AcceleratedWidget RealizeAcceleratedWidget(
-    gfx::AcceleratedWidget w) OVERRIDE;
-  virtual bool LoadEGLGLES2Bindings(
-    gfx::SurfaceFactoryOzone::AddGLLibraryCallback add_gl_library,
-    gfx::SurfaceFactoryOzone::SetGLGetProcAddressProcCallback
-        proc_address) OVERRIDE;
-  // Returns true if resizing of eglwindow associated with opaque handle was
-  // successful else returns false.
-  virtual bool AttemptToResizeAcceleratedWidget(
-      gfx::AcceleratedWidget w, const gfx::Rect& bounds) OVERRIDE;
-  virtual gfx::VSyncProvider* GetVSyncProvider(
-      gfx::AcceleratedWidget w) OVERRIDE;
-  virtual bool SchedulePageFlip(gfx::AcceleratedWidget w) OVERRIDE;
-  virtual const int32* GetEGLSurfaceProperties(
-      const int32* desired_list) OVERRIDE;
+  const char* DefaultDisplaySpec();
+  bool InitializeHardware();
+  void ShutdownHardware();
+  intptr_t GetNativeDisplay();
 
-  // MessageLoop::DestructionObserver overrides.
-  virtual void WillDestroyCurrentMessageLoop() OVERRIDE;
+  gfx::Screen* CreateDesktopScreen();
+  const DesktopScreenWayland* GetPrimaryScreen() const;
 
-  DesktopScreenWayland* GetPrimaryScreen() const;
+  gfx::AcceleratedWidget GetAcceleratedWidget();
+  gfx::AcceleratedWidget RealizeAcceleratedWidget(gfx::AcceleratedWidget w);
 
-  void SetWidgetState(gfx::AcceleratedWidget w,
-                      WidgetState state,
-                      unsigned width = 0,
-                      unsigned height = 0);
-  void OnWidgetStateChanged(gfx::AcceleratedWidget w,
-                            WidgetState state,
-                            unsigned width,
-                            unsigned height);
-  void SetWidgetTitle(gfx::AcceleratedWidget w, const string16& title);
-  void OnWidgetTitleChanged(gfx::AcceleratedWidget w, const string16& title);
-  void SetWidgetAttributes(gfx::AcceleratedWidget widget,
-                           gfx::AcceleratedWidget parent,
-                           unsigned x,
-                           unsigned y,
-                           WidgetType type);
-  void OnWidgetAttributesChanged(gfx::AcceleratedWidget widget,
-                                 gfx::AcceleratedWidget parent,
-                                 unsigned x,
-                                 unsigned y,
-                                 WidgetType type);
-  void SetWindowChangeObserver(WindowChangeObserver* observer);
+  // OutputChangeObserver overrides.
+  virtual void OnOutputSizeChanged(unsigned width, unsigned height) OVERRIDE;
 
  private:
-  enum State {
-    UnInitialized = 0x00,
-    Initialized = 0x01,
-    ChannelConnected = 0x02
-  };
-
-  typedef unsigned CurrentState;
-
-  void EstablishChannel();
-  void OnChannelEstablished();
-  void OnChannelHostDestroyed();
-  void OnOutputSizeChanged(WaylandScreen* screen, int width, int height);
-  void OnOutputSizeChanged(unsigned width, unsigned height);
-  WaylandWindow* CreateWidget(unsigned w);
   WaylandWindow* GetWidget(gfx::AcceleratedWidget w);
-
   void Terminate();
-  void InitializeDispatcher(int fd = 0);
   void LookAheadOutputGeometry();
 
   static void DelayedInitialization(OzoneDisplay* display);
 
-  CurrentState state_;
-  gfx::SurfaceFactoryOzone::HardwareState initialized_state_;
-  const int kMaxDisplaySize_;
-
   DesktopScreenWayland* desktop_screen_;
-  WaylandDispatcher* dispatcher_;
   WaylandDisplay* display_;
-  OzoneProcessObserver* child_process_observer_;
   OzoneDisplayChannel* channel_;
   OzoneDisplayChannelHost* host_;
-  EventFactoryWayland* e_factory_;
+  EventConverterOzoneWayland* event_converter_;
   char* spec_;
   static OzoneDisplay* instance_;
-
-  friend class OzoneProcessObserver;
-  friend class OzoneDisplayChannelHost;
-  friend class OzoneDisplayChannel;
-  friend class WaylandScreen;
   DISALLOW_COPY_AND_ASSIGN(OzoneDisplay);
 };
 

@@ -44,8 +44,8 @@ static gfx::RectF NormalizedRect(float x,
                     height / total_height);
 }
 
-void NinePatchLayerImpl::SetLayout(gfx::Rect aperture,
-                                   gfx::Rect border,
+void NinePatchLayerImpl::SetLayout(const gfx::Rect& aperture,
+                                   const gfx::Rect& border,
                                    bool fill_center) {
   // This check imposes an ordering on the call sequence.  An UIResource must
   // exist before SetLayout can be called.
@@ -354,7 +354,11 @@ base::DictionaryValue* NinePatchLayerImpl::LayerTreeAsJson() const {
   list->AppendInteger(image_aperture_.size().height());
   result->Set("ImageAperture", list);
 
-  result->Set("ImageBounds", MathUtil::AsValue(image_bounds_).release());
+  list = new base::ListValue;
+  list->AppendInteger(image_bounds_.width());
+  list->AppendInteger(image_bounds_.height());
+  result->Set("ImageBounds", list);
+
   result->Set("Border", MathUtil::AsValue(border_).release());
 
   base::FundamentalValue* fill_center =

@@ -12,6 +12,7 @@
 #define WEBRTC_MODULES_AUDIO_PROCESSING_INCLUDE_AUDIO_PROCESSING_H_
 
 #include <stddef.h>  // size_t
+#include <stdio.h>  // FILE
 
 #include "webrtc/common.h"
 #include "webrtc/modules/interface/module.h"
@@ -88,11 +89,6 @@ struct DelayCorrection {
 //
 // Usage example, omitting error checking:
 // AudioProcessing* apm = AudioProcessing::Create(0);
-// apm->set_sample_rate_hz(32000); // Super-wideband processing.
-//
-// // Mono capture and stereo render.
-// apm->set_num_channels(1, 1);
-// apm->set_num_reverse_channels(2);
 //
 // apm->high_pass_filter()->Enable(true);
 //
@@ -144,22 +140,27 @@ class AudioProcessing : public Module {
   // Initializes internal states, while retaining all user settings. This
   // should be called before beginning to process a new audio stream. However,
   // it is not necessary to call before processing the first stream after
-  // creation.
-  //
-  // set_sample_rate_hz(), set_num_channels() and set_num_reverse_channels()
-  // will trigger a full initialization if the settings are changed from their
-  // existing values. Otherwise they are no-ops.
+  // creation. It is also not necessary to call if the audio parameters (sample
+  // rate and number of channels) have changed. Passing updated parameters
+  // directly to |ProcessStream()| and |AnalyzeReverseStream()| is permissible.
   virtual int Initialize() = 0;
 
   // Pass down additional options which don't have explicit setters. This
   // ensures the options are applied immediately.
   virtual void SetExtraOptions(const Config& config) = 0;
 
+  virtual int EnableExperimentalNs(bool enable) = 0;
+  virtual bool experimental_ns_enabled() const = 0;
+
+  // DEPRECATED: It is now possible to modify the sample rate directly in a call
+  // to |ProcessStream|.
   // Sets the sample |rate| in Hz for both the primary and reverse audio
   // streams. 8000, 16000 or 32000 Hz are permitted.
   virtual int set_sample_rate_hz(int rate) = 0;
   virtual int sample_rate_hz() const = 0;
 
+  // DEPRECATED: It is now possible to modify the number of channels directly in
+  // a call to |ProcessStream|.
   // Sets the number of channels for the primary audio stream. Input frames must
   // contain a number of channels given by |input_channels|, while output frames
   // will be returned with number of channels given by |output_channels|.
@@ -167,6 +168,8 @@ class AudioProcessing : public Module {
   virtual int num_input_channels() const = 0;
   virtual int num_output_channels() const = 0;
 
+  // DEPRECATED: It is now possible to modify the number of channels directly in
+  // a call to |AnalyzeReverseStream|.
   // Sets the number of channels for the reverse audio stream. Input frames must
   // contain a number of channels given by |channels|.
   virtual int set_num_reverse_channels(int channels) = 0;
@@ -180,8 +183,8 @@ class AudioProcessing : public Module {
   // with the stream_ tag which is needed should be called after processing.
   //
   // The |sample_rate_hz_|, |num_channels_|, and |samples_per_channel_|
-  // members of |frame| must be valid, and correspond to settings supplied
-  // to APM.
+  // members of |frame| must be valid. If changed from the previous call to this
+  // method, it will trigger an initialization.
   virtual int ProcessStream(AudioFrame* frame) = 0;
 
   // Analyzes a 10 ms |frame| of the reverse direction audio stream. The frame
@@ -195,7 +198,8 @@ class AudioProcessing : public Module {
   // chances are you don't need to use it.
   //
   // The |sample_rate_hz_|, |num_channels_|, and |samples_per_channel_|
-  // members of |frame| must be valid.
+  // members of |frame| must be valid. |sample_rate_hz_| must correspond to
+  // |sample_rate_hz()|
   //
   // TODO(ajm): add const to input; requires an implementation fix.
   virtual int AnalyzeReverseStream(AudioFrame* frame) = 0;
@@ -230,6 +234,10 @@ class AudioProcessing : public Module {
   // An already existing file will be overwritten without warning.
   static const size_t kMaxFilenameSize = 1024;
   virtual int StartDebugRecording(const char filename[kMaxFilenameSize]) = 0;
+
+  // Same as above but uses an existing file handle. Takes ownership
+  // of |handle| and closes it at StopDebugRecording().
+  virtual int StartDebugRecording(FILE* handle) = 0;
 
   // Stops recording debugging information, and closes the file. Recording
   // cannot be resumed in the same file (without overwriting it).

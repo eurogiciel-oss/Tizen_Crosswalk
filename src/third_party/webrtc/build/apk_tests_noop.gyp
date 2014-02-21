@@ -22,10 +22,6 @@
       'type': 'none',
     },
     {
-      'target_name': 'metrics_unittests',
-      'type': 'none',
-    },
-    {
       'target_name': 'modules_tests_apk',
       'type': 'none',
     },
@@ -59,6 +55,10 @@
     },
     {
       'target_name': 'voice_engine_unittests_apk',
+      'type': 'none',
+    },
+    {
+      'target_name': 'webrtc_perf_tests_apk',
       'type': 'none',
     },
   ],

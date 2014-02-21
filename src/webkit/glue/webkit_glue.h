@@ -7,10 +7,10 @@
 
 #include <string>
 
-#include "base/platform_file.h"
+#include "base/files/file.h"
 #include "webkit/glue/webkit_glue_export.h"
 
-namespace WebKit {
+namespace blink {
 struct WebFileInfo;
 }
 
@@ -19,9 +19,9 @@ namespace webkit_glue {
 WEBKIT_GLUE_EXPORT void SetJavaScriptFlags(const std::string& flags);
 
 // File info conversion
-WEBKIT_GLUE_EXPORT void PlatformFileInfoToWebFileInfo(
-    const base::PlatformFileInfo& file_info,
-    WebKit::WebFileInfo* web_file_info);
+WEBKIT_GLUE_EXPORT void FileInfoToWebFileInfo(
+    const base::File::Info& file_info,
+    blink::WebFileInfo* web_file_info);
 
 }  // namespace webkit_glue
 

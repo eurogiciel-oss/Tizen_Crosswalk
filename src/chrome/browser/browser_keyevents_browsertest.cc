@@ -27,7 +27,6 @@
 #include "content/public/test/browser_test_utils.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "ui/events/keycodes/keyboard_codes.h"
-#include "ui/views/controls/textfield/textfield.h"
 
 // TODO(kbr): remove: http://crbug.com/222296
 #if defined(OS_MACOSX)
@@ -211,7 +210,7 @@ class BrowserKeyEventsTest : public InProcessBrowserTest {
         browser()->tab_strip_model()->GetWebContentsAt(tab_index),
         kGetFocusedElementJS,
         &actual));
-    ASSERT_EQ(WideToUTF8(focused), actual);
+    ASSERT_EQ(base::WideToUTF8(focused), actual);
   }
 
   void SetFocusedElement(int tab_index, const wchar_t* focused) {
@@ -232,7 +231,7 @@ class BrowserKeyEventsTest : public InProcessBrowserTest {
         browser()->tab_strip_model()->GetWebContentsAt(tab_index),
         base::StringPrintf(kGetTextBoxValueJS, id),
         &actual));
-    ASSERT_EQ(WideToUTF8(value), actual);
+    ASSERT_EQ(base::WideToUTF8(value), actual);
   }
 
   void SetTextBoxValue(int tab_index, const wchar_t* id,
@@ -243,7 +242,7 @@ class BrowserKeyEventsTest : public InProcessBrowserTest {
         browser()->tab_strip_model()->GetWebContentsAt(tab_index),
         base::StringPrintf(kSetTextBoxValueJS, id, value),
         &actual));
-    ASSERT_EQ(WideToUTF8(value), actual);
+    ASSERT_EQ(base::WideToUTF8(value), actual);
   }
 
   void StartTest(int tab_index, int result_length) {

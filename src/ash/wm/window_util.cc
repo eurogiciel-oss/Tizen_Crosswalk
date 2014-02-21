@@ -7,8 +7,10 @@
 #include <vector>
 
 #include "ash/ash_constants.h"
+#include "ash/screen_util.h"
 #include "ash/shell.h"
 #include "ash/wm/window_properties.h"
+#include "ash/wm/window_state.h"
 #include "ui/aura/client/activation_client.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/root_window.h"
@@ -55,11 +57,25 @@ bool IsWindowMinimized(aura::Window* window) {
 }
 
 void CenterWindow(aura::Window* window) {
+  wm::WindowState* window_state = wm::GetWindowState(window);
+  if (!window_state->IsNormalShowState())
+    return;
   const gfx::Display display =
       Shell::GetScreen()->GetDisplayNearestWindow(window);
   gfx::Rect center = display.work_area();
-  center.ClampToCenteredSize(window->bounds().size());
-  window->SetBoundsInScreen(center, display);
+  gfx::Size size = window->bounds().size();
+  if (window_state->IsSnapped()) {
+    if (window_state->HasRestoreBounds())
+      size = window_state->GetRestoreBoundsInScreen().size();
+    center.ClampToCenteredSize(size);
+    window_state->SetRestoreBoundsInScreen(center);
+    window_state->Restore();
+  } else {
+    center = ScreenUtil::ConvertRectFromScreen(window->parent(),
+        center);
+    center.ClampToCenteredSize(size);
+    window->SetBounds(center);
+  }
 }
 
 void AdjustBoundsToEnsureMinimumWindowVisibility(const gfx::Rect& visible_area,
@@ -78,18 +94,18 @@ void AdjustBoundsToEnsureWindowVisibility(const gfx::Rect& visible_area,
   min_width = std::min(min_width, visible_area.width());
   min_height = std::min(min_height, visible_area.height());
 
-  if (bounds->x() + min_width > visible_area.right()) {
+  if (bounds->right() < visible_area.x() + min_width) {
+    bounds->set_x(visible_area.x() + min_width - bounds->width());
+  } else if (bounds->x() > visible_area.right() - min_width) {
     bounds->set_x(visible_area.right() - min_width);
-  } else if (bounds->right() - min_width < 0) {
-    bounds->set_x(min_width - bounds->width());
   }
-  if (bounds->y() + min_height > visible_area.bottom()) {
+  if (bounds->bottom() < visible_area.y() + min_height) {
+    bounds->set_y(visible_area.y() + min_height - bounds->height());
+  } else if (bounds->y() > visible_area.bottom() - min_height) {
     bounds->set_y(visible_area.bottom() - min_height);
-  } else if (bounds->bottom() - min_height < 0) {
-    bounds->set_y(min_height - bounds->height());
   }
-  if (bounds->y() < 0)
-    bounds->set_y(0);
+  if (bounds->y() < visible_area.y())
+    bounds->set_y(visible_area.y());
 }
 
 bool MoveWindowToEventRoot(aura::Window* window, const ui::Event& event) {
@@ -107,16 +123,25 @@ bool MoveWindowToEventRoot(aura::Window* window, const ui::Event& event) {
   return true;
 }
 
-void ReparentChildWithTransientChildren(aura::Window* window,
-                                        aura::Window* child) {
-  window->AddChild(child);
-  ReparentTransientChildrenOfChild(window, child);
+void ReparentChildWithTransientChildren(aura::Window* child,
+                                        aura::Window* old_parent,
+                                        aura::Window* new_parent) {
+  if (child->parent() == old_parent)
+    new_parent->AddChild(child);
+  ReparentTransientChildrenOfChild(child, old_parent, new_parent);
 }
 
-void ReparentTransientChildrenOfChild(aura::Window* window,
-                                      aura::Window* child) {
-  for (size_t i = 0; i < child->transient_children().size(); ++i)
-    ReparentChildWithTransientChildren(window, child->transient_children()[i]);
+void ReparentTransientChildrenOfChild(aura::Window* child,
+                                      aura::Window* old_parent,
+                                      aura::Window* new_parent) {
+  for (size_t i = 0;
+       i < views::corewm::GetTransientChildren(child).size();
+       ++i) {
+    ReparentChildWithTransientChildren(
+        views::corewm::GetTransientChildren(child)[i],
+        old_parent,
+        new_parent);
+  }
 }
 
 }  // namespace wm

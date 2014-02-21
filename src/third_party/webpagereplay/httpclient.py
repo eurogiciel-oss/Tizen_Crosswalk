@@ -21,10 +21,18 @@ import httplib
 import logging
 import os
 import platformsettings
+import random
 import re
 import script_injector
+import StringIO
 import util
 
+# PIL isn't always available, but we still want to be able to run without
+# the image scrambling functionality in this case.
+try:
+  import Image
+except ImportError:
+  Image = None
 
 TIMER = platformsettings.timer
 
@@ -57,6 +65,43 @@ def _InjectScripts(response, inject_script):
       response.set_data(text)
   return response
 
+def _ScrambleImages(response):
+  """If the |response| is an image, attempt to scramble it.
+
+  Copies |response| if it is modified.
+
+  Args:
+    response: an ArchivedHttpResponse
+  Returns:
+    an ArchivedHttpResponse
+  """
+
+  assert Image, '--scramble_images requires the PIL module to be installed.'
+
+  content_type = response.get_header('content-type')
+  if content_type and content_type.startswith('image/'):
+    try:
+      image_data = response.response_data[0]
+      image_data.decode(encoding='base64')
+      im = Image.open(StringIO.StringIO(image_data))
+
+      pixel_data = list(im.getdata())
+      random.shuffle(pixel_data)
+
+      scrambled_image = im.copy()
+      scrambled_image.putdata(pixel_data)
+
+      output_image_io = StringIO.StringIO()
+      scrambled_image.save(output_image_io, im.format)
+      output_image_data = output_image_io.getvalue()
+      output_image_data.encode(encoding='base64')
+
+      response = copy.deepcopy(response)
+      response.set_data(output_image_data)
+    except Exception, err:
+      pass
+
+  return response
 
 class DetailedHTTPResponse(httplib.HTTPResponse):
   """Preserve details relevant to replaying responses.
@@ -326,7 +371,7 @@ class ReplayHttpArchiveFetch(object):
 
   def __init__(self, http_archive, real_dns_lookup, inject_script,
                use_diff_on_unknown_requests=False, cache_misses=None,
-               use_closest_match=False):
+               use_closest_match=False, scramble_images=False):
     """Initialize ReplayHttpArchiveFetch.
 
     Args:
@@ -345,6 +390,7 @@ class ReplayHttpArchiveFetch(object):
     self.use_diff_on_unknown_requests = use_diff_on_unknown_requests
     self.cache_misses = cache_misses
     self.use_closest_match = use_closest_match
+    self.scramble_images = scramble_images
     self.real_http_fetch = RealHttpFetch(real_dns_lookup,
                                          http_archive.get_server_rtt)
 
@@ -385,6 +431,8 @@ class ReplayHttpArchiveFetch(object):
       logging.warning('Could not replay: %s', reason)
     else:
       response = _InjectScripts(response, self.inject_script)
+      if self.scramble_images:
+        response = _ScrambleImages(response)
     return response
 
 
@@ -393,7 +441,8 @@ class ControllableHttpArchiveFetch(object):
 
   def __init__(self, http_archive, real_dns_lookup,
                inject_script, use_diff_on_unknown_requests,
-               use_record_mode, cache_misses, use_closest_match):
+               use_record_mode, cache_misses, use_closest_match,
+               scramble_images):
     """Initialize HttpArchiveFetch.
 
     Args:
@@ -412,7 +461,8 @@ class ControllableHttpArchiveFetch(object):
         cache_misses)
     self.replay_fetch = ReplayHttpArchiveFetch(
         http_archive, real_dns_lookup, inject_script,
-        use_diff_on_unknown_requests, cache_misses, use_closest_match)
+        use_diff_on_unknown_requests, cache_misses,
+        use_closest_match, scramble_images)
     if use_record_mode:
       self.SetRecordMode()
     else:

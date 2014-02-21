@@ -31,28 +31,15 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-inline HTMLParagraphElement::HTMLParagraphElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+inline HTMLParagraphElement::HTMLParagraphElement(Document& document)
+    : HTMLElement(pTag, document)
 {
-    ASSERT(hasTagName(pTag));
     ScriptWrappable::init(this);
 }
 
 PassRefPtr<HTMLParagraphElement> HTMLParagraphElement::create(Document& document)
 {
-    return adoptRef(new HTMLParagraphElement(pTag, document));
-}
-
-PassRefPtr<HTMLParagraphElement> HTMLParagraphElement::create(const QualifiedName& tagName, Document& document)
-{
-    return adoptRef(new HTMLParagraphElement(tagName, document));
-}
-
-bool HTMLParagraphElement::isPresentationAttribute(const QualifiedName& name) const
-{
-    if (name == alignAttr)
-        return true;
-    return HTMLElement::isPresentationAttribute(name);
+    return adoptRef(new HTMLParagraphElement(document));
 }
 
 void HTMLParagraphElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStylePropertySet* style)

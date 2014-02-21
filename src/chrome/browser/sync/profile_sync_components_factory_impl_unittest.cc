@@ -58,8 +58,12 @@ class ProfileSyncComponentsFactoryImplTest : public testing::Test {
     datatypes.push_back(syncer::FAVICON_TRACKING);
     datatypes.push_back(syncer::FAVICON_IMAGES);
     datatypes.push_back(syncer::SYNCED_NOTIFICATIONS);
+    datatypes.push_back(syncer::MANAGED_USERS);
+    // TODO(bauerb): Enable once the Sync server has been updated to know about
+    // this data type.
+    // datatypes.push_back(syncer::MANAGED_USER_SHARED_SETTINGS);
 
-  return datatypes;
+    return datatypes;
   }
 
   // Returns the number of default datatypes.

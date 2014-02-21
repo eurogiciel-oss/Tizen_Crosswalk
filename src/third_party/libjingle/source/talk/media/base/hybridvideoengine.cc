@@ -183,9 +183,12 @@ bool HybridVideoMediaChannel::SetSendRtpHeaderExtensions(
       active_channel_->SetSendRtpHeaderExtensions(extensions);
 }
 
-bool HybridVideoMediaChannel::SetSendBandwidth(bool autobw, int bps) {
-  return active_channel_ &&
-      active_channel_->SetSendBandwidth(autobw, bps);
+bool HybridVideoMediaChannel::SetStartSendBandwidth(int bps) {
+  return active_channel_ && active_channel_->SetStartSendBandwidth(bps);
+}
+
+bool HybridVideoMediaChannel::SetMaxSendBandwidth(int bps) {
+  return active_channel_ && active_channel_->SetMaxSendBandwidth(bps);
 }
 
 bool HybridVideoMediaChannel::SetSend(bool send) {
@@ -276,19 +279,21 @@ bool HybridVideoMediaChannel::GetStats(VideoMediaInfo* info) {
       active_channel_->GetStats(info);
 }
 
-void HybridVideoMediaChannel::OnPacketReceived(talk_base::Buffer* packet) {
+void HybridVideoMediaChannel::OnPacketReceived(
+    talk_base::Buffer* packet, const talk_base::PacketTime& packet_time) {
   // Eat packets until we have an active channel;
   if (active_channel_) {
-    active_channel_->OnPacketReceived(packet);
+    active_channel_->OnPacketReceived(packet, packet_time);
   } else {
     LOG(LS_INFO) << "HybridVideoChannel: Eating early RTP packet";
   }
 }
 
-void HybridVideoMediaChannel::OnRtcpReceived(talk_base::Buffer* packet) {
+void HybridVideoMediaChannel::OnRtcpReceived(
+    talk_base::Buffer* packet, const talk_base::PacketTime& packet_time) {
   // Eat packets until we have an active channel;
   if (active_channel_) {
-    active_channel_->OnRtcpReceived(packet);
+    active_channel_->OnRtcpReceived(packet, packet_time);
   } else {
     LOG(LS_INFO) << "HybridVideoChannel: Eating early RTCP packet";
   }

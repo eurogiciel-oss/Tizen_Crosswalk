@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="./resources/document-register-fuzz.js"></script>
 </head>
 <body>
 <div id="container"></div>
 <script>
-description("Fuzzing document.register() through getters. PASS uless crash.");
+description("Fuzzing document.registerElement() through getters. PASS uless crash.");
 
 setupObjectHooks({
     prototypeGet: function() { },

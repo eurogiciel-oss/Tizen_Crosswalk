@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import json
 import logging
@@ -15,11 +15,11 @@ import unittest
 from xml.dom import minidom
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT_DIR)
+sys.path.insert(0, os.path.dirname(ROOT_DIR))
 sys.path.append(os.path.join(ROOT_DIR, 'tests', 'gtest_fake'))
 
 import gtest_fake_base
-import run_test_cases
+from googletest import run_test_cases
 
 
 def RunTest(arguments):
@@ -657,6 +657,9 @@ class RunTestCases(unittest.TestCase):
          get_footer_re(2)) + [
       re.escape('OMG I crashed'),
       re.escape('Here\'s a stack trace'),
+
+      # TODO(maruel): This test has a race condition.
+      # It got '[2/4]   0.04s ' at index 29 when it expected the first retry.
 
       # Now resume normal retries.
       r'\[3/4\]   \d\.\d\ds Foo\.Bar1 \(\d+\.\d+s\) \- retry \#1',

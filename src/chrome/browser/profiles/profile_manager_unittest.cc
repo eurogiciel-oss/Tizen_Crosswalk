@@ -46,6 +46,7 @@
 #include "chromeos/chromeos_switches.h"
 #endif
 
+using base::ASCIIToUTF16;
 using content::BrowserThread;
 
 namespace {
@@ -63,7 +64,7 @@ class UnittestProfileManager : public ::ProfileManagerWithoutInit {
   virtual Profile* CreateProfileHelper(
       const base::FilePath& file_path) OVERRIDE {
     if (!base::PathExists(file_path)) {
-      if (!file_util::CreateDirectory(file_path))
+      if (!base::CreateDirectory(file_path))
         return NULL;
     }
     return new TestingProfile(file_path, NULL);
@@ -74,7 +75,7 @@ class UnittestProfileManager : public ::ProfileManagerWithoutInit {
     // This is safe while all file operations are done on the FILE thread.
     BrowserThread::PostTask(
         BrowserThread::FILE, FROM_HERE,
-        base::Bind(base::IgnoreResult(&file_util::CreateDirectory), path));
+        base::Bind(base::IgnoreResult(&base::CreateDirectory), path));
 
     return new TestingProfile(path, this);
   }
@@ -119,8 +120,8 @@ class ProfileManagerTest : public testing::Test {
         temp_dir_.path().AppendASCII(name),
         base::Bind(&MockObserver::OnProfileCreated,
                    base::Unretained(mock_observer)),
-        UTF8ToUTF16(name),
-        string16(),
+        base::UTF8ToUTF16(name),
+        base::string16(),
         std::string());
   }
 
@@ -300,11 +301,64 @@ TEST_F(ProfileManagerTest, GetGuestProfilePath) {
   EXPECT_EQ(expected_path, guest_path);
 }
 
+#if defined(OS_CHROMEOS)
+class UnittestGuestProfileManager : public UnittestProfileManager {
+ public:
+  explicit UnittestGuestProfileManager(const base::FilePath& user_data_dir)
+      : UnittestProfileManager(user_data_dir) {}
+
+ protected:
+  virtual Profile* CreateProfileHelper(
+      const base::FilePath& file_path) OVERRIDE {
+    TestingProfile* testing_profile = new TestingProfile(file_path, NULL);
+
+    TestingProfile::Builder builder;
+    builder.SetIncognito();
+    builder.SetGuestSession();
+    builder.SetPath(ProfileManager::GetGuestProfilePath());
+    testing_profile->SetOffTheRecordProfile(builder.Build().PassAs<Profile>());
+
+    return testing_profile;
+  }
+};
+
+class ProfileManagerGuestTest : public ProfileManagerTest {
+ protected:
+  virtual void SetUp() {
+    // Create a new temporary directory, and store the path
+    ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
+    TestingBrowserProcess::GetGlobal()->SetProfileManager(
+        new UnittestGuestProfileManager(temp_dir_.path()));
+
+    CommandLine* cl = CommandLine::ForCurrentProcess();
+    cl->AppendSwitch(switches::kTestType);
+    cl->AppendSwitchASCII(chromeos::switches::kLoginProfile, "user");
+    cl->AppendSwitch(chromeos::switches::kGuestSession);
+    cl->AppendSwitch(::switches::kIncognito);
+
+    chromeos::UserManager::Get()->UserLoggedIn(
+        chromeos::UserManager::kGuestUserName,
+        chromeos::UserManager::kGuestUserName,
+        false);
+  }
+};
+
+TEST_F(ProfileManagerGuestTest, GuestProfileIngonito) {
+  Profile* primary_profile = ProfileManager::GetPrimaryUserProfile();
+  EXPECT_TRUE(primary_profile->IsOffTheRecord());
+
+  Profile* active_profile = ProfileManager::GetActiveUserProfile();
+  EXPECT_TRUE(active_profile->IsOffTheRecord());
+
+  EXPECT_TRUE(active_profile->IsSameProfile(primary_profile));
+}
+#endif
+
 TEST_F(ProfileManagerTest, AutoloadProfilesWithBackgroundApps) {
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   ProfileInfoCache& cache = profile_manager->GetProfileInfoCache();
   local_state_.Get()->SetUserPref(prefs::kBackgroundModeEnabled,
-                                  Value::CreateBooleanValue(true));
+                                  base::Value::CreateBooleanValue(true));
 
   // Setting a pref which is not applicable to a system (i.e., Android in this
   // case) does not necessarily create it. Don't bother continuing with the
@@ -315,11 +369,14 @@ TEST_F(ProfileManagerTest, AutoloadProfilesWithBackgroundApps) {
 
   EXPECT_EQ(0u, cache.GetNumberOfProfiles());
   cache.AddProfileToCache(cache.GetUserDataDir().AppendASCII("path_1"),
-                          ASCIIToUTF16("name_1"), string16(), 0, std::string());
+                          ASCIIToUTF16("name_1"), base::string16(), 0,
+                          std::string());
   cache.AddProfileToCache(cache.GetUserDataDir().AppendASCII("path_2"),
-                          ASCIIToUTF16("name_2"), string16(), 0, std::string());
+                          ASCIIToUTF16("name_2"), base::string16(), 0,
+                          std::string());
   cache.AddProfileToCache(cache.GetUserDataDir().AppendASCII("path_3"),
-                          ASCIIToUTF16("name_3"), string16(), 0, std::string());
+                          ASCIIToUTF16("name_3"), base::string16(), 0,
+                          std::string());
   cache.SetBackgroundStatusOfProfileAtIndex(0, true);
   cache.SetBackgroundStatusOfProfileAtIndex(2, true);
   EXPECT_EQ(3u, cache.GetNumberOfProfiles());
@@ -333,13 +390,15 @@ TEST_F(ProfileManagerTest, DoNotAutoloadProfilesIfBackgroundModeOff) {
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   ProfileInfoCache& cache = profile_manager->GetProfileInfoCache();
   local_state_.Get()->SetUserPref(prefs::kBackgroundModeEnabled,
-                                  Value::CreateBooleanValue(false));
+                                  base::Value::CreateBooleanValue(false));
 
   EXPECT_EQ(0u, cache.GetNumberOfProfiles());
   cache.AddProfileToCache(cache.GetUserDataDir().AppendASCII("path_1"),
-                          ASCIIToUTF16("name_1"), string16(), 0, std::string());
+                          ASCIIToUTF16("name_1"), base::string16(), 0,
+                          std::string());
   cache.AddProfileToCache(cache.GetUserDataDir().AppendASCII("path_2"),
-                          ASCIIToUTF16("name_2"), string16(), 0, std::string());
+                          ASCIIToUTF16("name_2"), base::string16(), 0,
+                          std::string());
   cache.SetBackgroundStatusOfProfileAtIndex(0, false);
   cache.SetBackgroundStatusOfProfileAtIndex(1, true);
   EXPECT_EQ(2u, cache.GetNumberOfProfiles());
@@ -395,7 +454,7 @@ TEST_F(ProfileManagerTest, InitProfileInfoCacheForAProfile) {
 
   // Check if the profile prefs are the same as the cache prefs
   EXPECT_EQ(profile_name,
-            UTF16ToUTF8(cache.GetNameOfProfileAtIndex(profile_index)));
+            base::UTF16ToUTF8(cache.GetNameOfProfileAtIndex(profile_index)));
   EXPECT_EQ(avatar_index,
             cache.GetAvatarIconIndexOfProfileAtIndex(profile_index));
 }
@@ -780,7 +839,7 @@ TEST_F(ProfileManagerTest, ActiveProfileDeletedNeedsToLoadNextProfile) {
   // Track the profile, but don't load it.
   ProfileInfoCache& cache = profile_manager->GetProfileInfoCache();
   cache.AddProfileToCache(dest_path2, ASCIIToUTF16(profile_name2),
-                          string16(), 0, std::string());
+                          base::string16(), 0, std::string());
   base::RunLoop().RunUntilIdle();
 
   EXPECT_EQ(1u, profile_manager->GetLoadedProfiles().size());

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,8 @@
 #include "base/version.h"
 #include "url/gurl.h"
 
+class ComponentsUI;
+
 namespace base {
 class DictionaryValue;
 class FilePath;
@@ -21,9 +23,15 @@ class URLRequestContextGetter;
 class URLRequest;
 }
 
+namespace component_updater {
+class OnDemandTester;
+}
+
 namespace content {
 class ResourceThrottle;
 }
+
+namespace component_updater {
 
 class ComponentPatcher;
 
@@ -103,9 +111,6 @@ struct CrxComponent {
   ~CrxComponent();
 };
 
-// This convenience function returns component id of given CrxComponent.
-std::string GetCrxComponentID(const CrxComponent& component);
-
 // Convenience structure to use with component listing / enumeration.
 struct CrxComponentInfo {
   // |id| is currently derived from |CrxComponent.pk_hash|, see rest of the
@@ -164,7 +169,7 @@ class ComponentUpdateService {
     // pings are disabled.
     virtual GURL PingUrl() = 0;
     // Parameters added to each url request. It can be null if none are needed.
-    virtual const char* ExtraRequestParams() = 0;
+    virtual std::string ExtraRequestParams() = 0;
     // How big each update request can be. Don't go above 2000.
     virtual size_t UrlSizeLimit() = 0;
     // The source of contexts for all the url requests.
@@ -176,6 +181,9 @@ class ComponentUpdateService {
     virtual ComponentPatcher* CreateComponentPatcher() = 0;
     // True means that this client can handle delta updates.
     virtual bool DeltasEnabled() const = 0;
+    // True means that the background downloader can be used for downloading
+    // non on-demand components.
+    virtual bool UseBackgroundDownloader() const = 0;
   };
 
   // Start doing update checks and installing new versions of registered
@@ -201,7 +209,7 @@ class ComponentUpdateService {
 
   virtual ~ComponentUpdateService() {}
 
-  friend class ComponentsUI;
+  friend class ::ComponentsUI;
   friend class OnDemandTester;
 
  private:
@@ -218,5 +226,7 @@ class ComponentUpdateService {
 // the heap which the component updater will own.
 ComponentUpdateService* ComponentUpdateServiceFactory(
     ComponentUpdateService::Configurator* config);
+
+}  // namespace component_updater
 
 #endif  // CHROME_BROWSER_COMPONENT_UPDATER_COMPONENT_UPDATER_SERVICE_H_

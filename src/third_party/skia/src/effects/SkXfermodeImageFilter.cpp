@@ -33,7 +33,7 @@ SkXfermodeImageFilter::~SkXfermodeImageFilter() {
 }
 
 SkXfermodeImageFilter::SkXfermodeImageFilter(SkFlattenableReadBuffer& buffer)
-  : INHERITED(buffer) {
+  : INHERITED(2, buffer) {
     fMode = buffer.readXfermode();
 }
 
@@ -61,18 +61,22 @@ bool SkXfermodeImageFilter::onFilterImage(Proxy* proxy,
         return false;
     }
 
-    SkIRect bounds;
+    SkIRect bounds, foregroundBounds;
     background.getBounds(&bounds);
+    bounds.offset(backgroundOffset);
+    foreground.getBounds(&foregroundBounds);
+    foregroundBounds.offset(foregroundOffset);
+    bounds.join(foregroundBounds);
     if (!applyCropRect(&bounds, ctm)) {
         return false;
     }
-    backgroundOffset.fX -= bounds.left();
-    backgroundOffset.fY -= bounds.top();
-    foregroundOffset.fX -= bounds.left();
-    foregroundOffset.fY -= bounds.top();
 
     SkAutoTUnref<SkBaseDevice> device(proxy->createDevice(bounds.width(), bounds.height()));
+    if (NULL == device.get()) {
+        return false;
+    }
     SkCanvas canvas(device);
+    canvas.translate(SkIntToScalar(-bounds.left()), SkIntToScalar(-bounds.top()));
     SkPaint paint;
     paint.setXfermodeMode(SkXfermode::kSrc_Mode);
     canvas.drawBitmap(background, SkIntToScalar(backgroundOffset.fX),
@@ -80,9 +84,12 @@ bool SkXfermodeImageFilter::onFilterImage(Proxy* proxy,
     paint.setXfermode(fMode);
     canvas.drawBitmap(foreground, SkIntToScalar(foregroundOffset.fX),
                       SkIntToScalar(foregroundOffset.fY), &paint);
+    canvas.clipRect(SkRect::Make(foregroundBounds), SkRegion::kDifference_Op);
+    paint.setColor(SK_ColorTRANSPARENT);
+    canvas.drawPaint(paint);
     *dst = device->accessBitmap(false);
-    offset->fX += bounds.left();
-    offset->fY += bounds.top();
+    offset->fX = bounds.left();
+    offset->fY = bounds.top();
     return true;
 }
 
@@ -150,8 +157,8 @@ bool SkXfermodeImageFilter::filterImageGPU(Proxy* proxy,
         foregroundPaint.addColorTextureEffect(foregroundTex, foregroundMatrix);
         context->drawRect(foregroundPaint, srcRect);
     }
-    offset->fX += backgroundOffset.fX;
-    offset->fY += backgroundOffset.fY;
+    offset->fX = backgroundOffset.fX;
+    offset->fY = backgroundOffset.fY;
     return SkImageFilterUtils::WrapTexture(dst, src.width(), src.height(), result);
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import hashlib
 import json
@@ -17,11 +17,12 @@ import unittest
 GOOGLETEST_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT_DIR = os.path.dirname(GOOGLETEST_DIR)
 
-sys.path.insert(0, GOOGLETEST_DIR)
 sys.path.insert(0, ROOT_DIR)
+sys.path.insert(0, os.path.join(GOOGLETEST_DIR, '..', 'tests'))
 
 import isolate
-import trace_test_cases
+import trace_test_util
+from googletest import trace_test_cases
 from utils import file_path
 
 
@@ -66,6 +67,7 @@ class IsolateTestCases(unittest.TestCase):
         os.path.join(root, relpath),
         os.path.join(self.tempdir, relpath))
 
+  @trace_test_util.check_can_trace
   def test_simple(self):
     # Create a directory and re-use tests/gtest_fake/gtest_fake_pass.isolate.
     # Warning: we need to copy the files around, since the original .isolate
@@ -94,7 +96,7 @@ class IsolateTestCases(unittest.TestCase):
     cmd = [
       sys.executable, 'isolate.py',
       'check',
-      '--variable', 'FLAG', 'run',
+      '--extra-variable', 'FLAG', 'run',
       '--isolate', os.path.join(self.tempdir, gtest_fake_pass_isolate),
       '--isolated', isolated,
     ]
@@ -121,7 +123,7 @@ class IsolateTestCases(unittest.TestCase):
       },
       u'os': unicode(isolate.get_flavor()),
       u'relative_cwd': u'isolate_test_cases',
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     if sys.platform == 'win32':
       expected_isolated['files'][rel_gtest_fake_pass_py].pop('m')

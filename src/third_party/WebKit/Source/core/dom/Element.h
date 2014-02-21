@@ -82,11 +82,6 @@ public:
     static PassRefPtr<Element> create(const QualifiedName&, Document*);
     virtual ~Element();
 
-    String innerHTML() const;
-    String outerHTML() const;
-    void setInnerHTML(const String&, ExceptionState&);
-    void setOuterHTML(const String&, ExceptionState&);
-
     DEFINE_ATTRIBUTE_EVENT_LISTENER(beforecopy);
     DEFINE_ATTRIBUTE_EVENT_LISTENER(beforecut);
     DEFINE_ATTRIBUTE_EVENT_LISTENER(beforepaste);
@@ -105,8 +100,11 @@ public:
 
     bool hasAttribute(const QualifiedName&) const;
     const AtomicString& getAttribute(const QualifiedName&) const;
+
+    // Passing nullAtom as the second parameter removes the attribute when calling either of these set methods.
     void setAttribute(const QualifiedName&, const AtomicString& value);
     void setSynchronizedLazyAttribute(const QualifiedName&, const AtomicString& value);
+
     void removeAttribute(const QualifiedName&);
 
     // Typed getters and setters for language bindings.
@@ -114,6 +112,8 @@ public:
     void setIntegralAttribute(const QualifiedName& attributeName, int value);
     unsigned getUnsignedIntegralAttribute(const QualifiedName& attributeName) const;
     void setUnsignedIntegralAttribute(const QualifiedName& attributeName, unsigned value);
+    double getFloatingPointAttribute(const QualifiedName& attributeName, double fallbackValue = std::numeric_limits<double>::quiet_NaN()) const;
+    void setFloatingPointAttribute(const QualifiedName& attributeName, double value);
 
     // Call this to get the value of an attribute that is known not to be the style
     // attribute or one of the SVG animatable attributes.
@@ -175,8 +175,8 @@ public:
     int offsetHeight();
 
     // FIXME: Replace uses of offsetParent in the platform with calls
-    // to the render layer and merge bindingsOffsetParent and offsetParent.
-    Element* bindingsOffsetParent();
+    // to the render layer and merge offsetParentForBindings and offsetParent.
+    Element* offsetParentForBindings();
 
     Element* offsetParent();
     int clientLeft();
@@ -222,17 +222,22 @@ public:
     String tagName() const { return nodeName(); }
     bool hasTagName(const QualifiedName& tagName) const { return m_tagName.matches(tagName); }
 
+    // Should be called only by Document::createElementNS to fix up m_tagName immediately after construction.
+    void setTagNameForCreateElementNS(const QualifiedName&);
+
     // A fast function for checking the local name against another atomic string.
     bool hasLocalName(const AtomicString& other) const { return m_tagName.localName() == other; }
     bool hasLocalName(const QualifiedName& other) const { return m_tagName.localName() == other.localName(); }
 
-    virtual const AtomicString& localName() const OVERRIDE { return m_tagName.localName(); }
-    virtual const AtomicString& prefix() const OVERRIDE { return m_tagName.prefix(); }
-    virtual const AtomicString& namespaceURI() const OVERRIDE { return m_tagName.namespaceURI(); }
+    virtual const AtomicString& localName() const OVERRIDE FINAL { return m_tagName.localName(); }
+    const AtomicString& prefix() const { return m_tagName.prefix(); }
+    virtual const AtomicString& namespaceURI() const OVERRIDE FINAL { return m_tagName.namespaceURI(); }
+
+    const AtomicString& locateNamespacePrefix(const AtomicString& namespaceURI) const;
 
     virtual KURL baseURI() const OVERRIDE FINAL;
 
-    virtual String nodeName() const;
+    virtual String nodeName() const OVERRIDE;
 
     PassRefPtr<Element> cloneElementWithChildren();
     PassRefPtr<Element> cloneElementWithoutChildren();
@@ -301,6 +306,8 @@ public:
     virtual bool rendererIsNeeded(const RenderStyle&);
     void recalcStyle(StyleRecalcChange, Text* nextTextSibling = 0);
     void didAffectSelector(AffectedSelectorMask);
+    void setAnimationStyleChange(bool);
+    void setNeedsAnimationStyleRecalc();
 
     bool supportsStyleSharing() const;
 
@@ -308,17 +315,19 @@ public:
     ElementShadow& ensureShadow();
     PassRefPtr<ShadowRoot> createShadowRoot(ExceptionState&);
     ShadowRoot* shadowRoot() const;
+    ShadowRoot* youngestShadowRoot() const;
 
     bool hasAuthorShadowRoot() const { return shadowRoot(); }
     virtual void didAddShadowRoot(ShadowRoot&);
     ShadowRoot* userAgentShadowRoot() const;
-    ShadowRoot* ensureUserAgentShadowRoot();
-    const AtomicString& shadowPseudoId() const;
+    ShadowRoot& ensureUserAgentShadowRoot();
+    bool isInDescendantTreeOf(const Element* shadowHost) const;
 
     RenderStyle* computedStyle(PseudoId = NOPSEUDO);
 
     // Methods for indicating the style is affected by dynamic updates (e.g., children changing, our position changing in our sibling list, etc.)
     bool styleAffectedByEmpty() const { return hasRareData() && rareDataStyleAffectedByEmpty(); }
+    bool childrenAffectedByFocus() const { return hasRareData() && rareDataChildrenAffectedByFocus(); }
     bool childrenAffectedByHover() const { return hasRareData() && rareDataChildrenAffectedByHover(); }
     bool childrenAffectedByActive() const { return hasRareData() && rareDataChildrenAffectedByActive(); }
     bool childrenAffectedByDrag() const { return hasRareData() && rareDataChildrenAffectedByDrag(); }
@@ -333,9 +342,10 @@ public:
     bool childrenSupportStyleSharing() const;
 
     void setStyleAffectedByEmpty();
-    void setChildrenAffectedByHover(bool);
-    void setChildrenAffectedByActive(bool);
-    void setChildrenAffectedByDrag(bool);
+    void setChildrenAffectedByFocus();
+    void setChildrenAffectedByHover();
+    void setChildrenAffectedByActive();
+    void setChildrenAffectedByDrag();
     void setChildrenAffectedByFirstChildRules();
     void setChildrenAffectedByLastChildRules();
     void setChildrenAffectedByDirectAdjacentRules();
@@ -347,7 +357,7 @@ public:
     bool isInCanvasSubtree() const;
 
     bool isUpgradedCustomElement() { return customElementState() == Upgraded; }
-    bool isUnresolvedCustomElement() { return isCustomElement() && !isUpgradedCustomElement(); }
+    bool isUnresolvedCustomElement() { return customElementState() == WaitingForUpgrade; }
 
     void setIsInsideRegion(bool);
     bool isInsideRegion() const;
@@ -367,7 +377,6 @@ public:
     KURL getNonEmptyURLAttribute(const QualifiedName&) const;
 
     virtual const AtomicString imageSourceURL() const;
-    virtual String target() const { return String(); }
     virtual Image* imageContents() { return 0; }
 
     virtual void focus(bool restorePreviousSelection = true, FocusDirection = FocusDirectionNone);
@@ -389,14 +398,18 @@ public:
 
     String innerText();
     String outerText();
+    String innerHTML() const;
+    String outerHTML() const;
+    void setInnerHTML(const String&, ExceptionState&);
+    void setOuterHTML(const String&, ExceptionState&);
+    void insertAdjacentHTML(const String& where, const String& html, ExceptionState&);
 
     String textFromChildren();
 
     virtual String title() const { return String(); }
 
-    const AtomicString& pseudo() const;
-    virtual const AtomicString& part() const;
-    void setPart(const AtomicString&);
+    virtual const AtomicString& shadowPseudoId() const;
+    void setShadowPseudoId(const AtomicString&);
 
     LayoutSize minimumSizeForResizing() const;
     void setMinimumSizeForResizing(const LayoutSize&);
@@ -404,16 +417,25 @@ public:
     virtual void didBecomeFullscreenElement() { }
     virtual void willStopBeingFullscreenElement() { }
 
+    // FIXME: Pick one name and remove the other method.
     bool isFinishedParsingChildren() const { return isParsingChildrenFinished(); }
+
+    // Called by the parser when this element's close tag is reached,
+    // signaling that all child tags have been parsed and added.
+    // This is needed for <applet> and <object> elements, which can't lay themselves out
+    // until they know all of their nested <param>s. [Radar 3603191, 4040848].
+    // Also used for script elements and some SVG elements for similar purposes,
+    // but making parsing a special case in this respect should be avoided if possible.
     virtual void finishParsingChildren();
-    virtual void beginParsingChildren() OVERRIDE FINAL;
+
+    void beginParsingChildren() { setIsParsingChildrenFinished(false); }
 
     PseudoElement* pseudoElement(PseudoId) const;
     RenderObject* pseudoElementRenderer(PseudoId) const;
 
     virtual bool matchesReadOnlyPseudoClass() const { return false; }
     virtual bool matchesReadWritePseudoClass() const { return false; }
-    bool webkitMatchesSelector(const String& selectors, ExceptionState&);
+    bool matches(const String& selectors, ExceptionState&);
     virtual bool shouldAppearIndeterminate() const { return false; }
 
     DOMTokenList* classList();
@@ -445,7 +467,7 @@ public:
     virtual bool isPasswordGeneratorButtonElement() const { return false; }
     virtual bool isClearButtonElement() const { return false; }
 
-    virtual bool canContainRangeEndPoint() const { return true; }
+    virtual bool canContainRangeEndPoint() const OVERRIDE { return true; }
 
     virtual const AtomicString& formControlType() const { return nullAtom; }
 
@@ -458,9 +480,6 @@ public:
     // to event listeners, and prevents DOMActivate events from being sent at all.
     virtual bool isDisabledFormControl() const { return false; }
 
-    virtual bool shouldBeReparentedUnderRenderView(const RenderStyle*) const { return isInTopLayer(); }
-
-    virtual bool childShouldCreateRenderer(const Node& child) const;
     bool hasPendingResources() const;
     void setHasPendingResources();
     void clearHasPendingResources();
@@ -486,11 +505,10 @@ public:
 
     bool isSpellCheckingEnabled() const;
 
+    // FIXME: public for RenderTreeBuilder, we shouldn't expose this though.
     PassRefPtr<RenderStyle> styleForRenderer();
-    PassRefPtr<RenderStyle> originalStyleForRenderer();
 
     RenderRegion* renderRegion() const;
-    virtual bool shouldMoveToFlowThread(RenderStyle*) const;
     const AtomicString& webkitRegionOverset() const;
     Vector<RefPtr<Range> > webkitGetRegionFlowRanges() const;
 
@@ -508,7 +526,12 @@ public:
     InputMethodContext* inputMethodContext();
     bool hasInputMethodContext() const;
 
-    virtual void setPrefix(const AtomicString&, ExceptionState&) OVERRIDE FINAL;
+    void setPrefix(const AtomicString&, ExceptionState&);
+
+    void synchronizeAttribute(const AtomicString& localName) const;
+
+    MutableStylePropertySet* ensureMutableInlineStyle();
+    void clearMutableInlineStyleIfEmpty();
 
 protected:
     Element(const QualifiedName& tagName, Document* document, ConstructionType type)
@@ -521,8 +544,6 @@ protected:
     void addPropertyToPresentationAttributeStyle(MutableStylePropertySet*, CSSPropertyID, CSSValueID identifier);
     void addPropertyToPresentationAttributeStyle(MutableStylePropertySet*, CSSPropertyID, double value, CSSPrimitiveValue::UnitTypes);
     void addPropertyToPresentationAttributeStyle(MutableStylePropertySet*, CSSPropertyID, const String& value);
-
-    virtual void addSubresourceAttributeURLs(ListHashSet<KURL>&) const;
 
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void removedFrom(ContainerNode*) OVERRIDE;
@@ -553,6 +574,10 @@ protected:
     // svgAttributeChanged (called when element.className.baseValue is set)
     void classAttributeChanged(const AtomicString& newClassString);
 
+    PassRefPtr<RenderStyle> originalStyleForRenderer();
+
+    Node* insertAdjacent(const String& where, Node* newChild, ExceptionState&);
+
 private:
     void styleAttributeChanged(const AtomicString& newStyleString, AttributeModificationReason);
 
@@ -561,20 +586,23 @@ private:
     void inlineStyleChanged();
     PropertySetCSSStyleDeclaration* inlineStyleCSSOMWrapper();
     void setInlineStyleFromString(const AtomicString&);
-    MutableStylePropertySet* ensureMutableInlineStyle();
 
     StyleRecalcChange recalcOwnStyle(StyleRecalcChange);
     void recalcChildStyle(StyleRecalcChange);
 
+    // FIXME: These methods should all be renamed to something better than "check",
+    // since it's not clear that they alter the style bits of siblings and children.
+    void checkForChildrenAdjacentRuleChanges();
+    void checkForSiblingStyleChanges(bool finishedParsingCallback, Node* beforeChange, Node* afterChange, int childCountDelta);
+    inline void checkForEmptyStyleChange(RenderStyle*);
+
     void updatePseudoElement(PseudoId, StyleRecalcChange);
 
     inline void createPseudoElementIfNeeded(PseudoId);
-    inline bool needsPseudoElement(PseudoId) const;
-    void createPseudoElement(PseudoId);
 
     // FIXME: Everyone should allow author shadows.
     virtual bool areAuthorShadowsAllowed() const { return true; }
-    virtual void didAddUserAgentShadowRoot(ShadowRoot*) { }
+    virtual void didAddUserAgentShadowRoot(ShadowRoot&) { }
     virtual bool alwaysCreateUserAgentShadowRoot() const { return false; }
 
     // FIXME: Remove the need for Attr to call willModifyAttribute/didModifyAttribute.
@@ -588,7 +616,6 @@ private:
     void didRemoveAttribute(const QualifiedName&);
 
     void synchronizeAttribute(const QualifiedName&) const;
-    void synchronizeAttribute(const AtomicString& localName) const;
 
     void updateId(const AtomicString& oldId, const AtomicString& newId);
     void updateId(TreeScope&, const AtomicString& oldId, const AtomicString& newId);
@@ -606,16 +633,18 @@ private:
     void attributeChangedFromParserOrByCloning(const QualifiedName&, const AtomicString&, AttributeModificationReason);
 
 #ifndef NDEBUG
-    virtual void formatForDebugger(char* buffer, unsigned length) const;
+    virtual void formatForDebugger(char* buffer, unsigned length) const OVERRIDE;
 #endif
 
     bool pseudoStyleCacheIsInvalid(const RenderStyle* currentStyle, RenderStyle* newStyle);
 
     void cancelFocusAppearanceUpdate();
 
-    virtual RenderStyle* virtualComputedStyle(PseudoId pseudoElementSpecifier = NOPSEUDO) { return computedStyle(pseudoElementSpecifier); }
+    virtual RenderStyle* virtualComputedStyle(PseudoId pseudoElementSpecifier = NOPSEUDO) OVERRIDE { return computedStyle(pseudoElementSpecifier); }
 
-    void updateCallbackSelectors(RenderStyle* oldStyle, RenderStyle* newStyle);
+    inline void updateCallbackSelectors(RenderStyle* oldStyle, RenderStyle* newStyle);
+    inline void removeCallbackSelectors();
+    inline void addCallbackSelectors();
 
     // cloneNode is private so that non-virtual cloneElementWithChildren and cloneElementWithoutChildren
     // are used instead.
@@ -624,6 +653,7 @@ private:
 
     QualifiedName m_tagName;
     bool rareDataStyleAffectedByEmpty() const;
+    bool rareDataChildrenAffectedByFocus() const;
     bool rareDataChildrenAffectedByHover() const;
     bool rareDataChildrenAffectedByActive() const;
     bool rareDataChildrenAffectedByDrag() const;
@@ -718,27 +748,18 @@ inline const AtomicString& Element::idForStyleResolution() const
     return elementData()->idForStyleResolution();
 }
 
-inline const AtomicString& Element::shadowPseudoId() const
-{
-    // FIXME: We should remove both part() and pseudo(), neither are in the new spec.
-    const AtomicString& part = this->part();
-    if (!part.isEmpty())
-        return part;
-    return pseudo();
-}
-
 inline bool Element::isIdAttributeName(const QualifiedName& attributeName) const
 {
     // FIXME: This check is probably not correct for the case where the document has an id attribute
     // with a non-null namespace, because it will return false, a false negative, if the prefixes
     // don't match but the local name and namespace both do. However, since this has been like this
     // for a while and the code paths may be hot, we'll have to measure performance if we fix it.
-    return attributeName == document().idAttributeName();
+    return attributeName == HTMLNames::idAttr;
 }
 
 inline const AtomicString& Element::getIdAttribute() const
 {
-    return hasID() ? fastGetAttribute(document().idAttributeName()) : nullAtom;
+    return hasID() ? fastGetAttribute(HTMLNames::idAttr) : nullAtom;
 }
 
 inline const AtomicString& Element::getNameAttribute() const
@@ -762,7 +783,7 @@ inline bool Element::shouldIgnoreAttributeCase() const
 
 inline void Element::setIdAttribute(const AtomicString& value)
 {
-    setAttribute(document().idAttributeName(), value);
+    setAttribute(HTMLNames::idAttr, value);
 }
 
 inline const SpaceSplitString& Element::classNames() const
@@ -835,7 +856,7 @@ inline void Node::removedFrom(ContainerNode* insertionPoint)
     ASSERT(insertionPoint->inDocument() || isContainerNode());
     if (insertionPoint->inDocument())
         clearFlag(InDocumentFlag);
-    if (isInShadowTree() && !treeScope().rootNode()->isShadowRoot())
+    if (isInShadowTree() && !treeScope().rootNode().isShadowRoot())
         clearFlag(IsInShadowTreeFlag);
 }
 
@@ -854,6 +875,14 @@ inline const StylePropertySet* Element::presentationAttributeStyle()
     // Need to call elementData() again since updatePresentationAttributeStyle()
     // might swap it with a UniqueElementData.
     return elementData()->presentationAttributeStyle();
+}
+
+inline void Element::setTagNameForCreateElementNS(const QualifiedName& tagName)
+{
+    // We expect this method to be called only to reset the prefix.
+    ASSERT(tagName.localName() == m_tagName.localName());
+    ASSERT(tagName.namespaceURI() == m_tagName.namespaceURI());
+    m_tagName = tagName;
 }
 
 inline bool isShadowHost(const Node* node)

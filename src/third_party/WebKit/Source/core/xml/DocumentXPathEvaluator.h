@@ -28,25 +28,25 @@
 
 #include "core/dom/DocumentSupplementable.h"
 #include "core/xml/XPathEvaluator.h"
+#include "core/xml/XPathNSResolver.h"
 
 namespace WebCore {
 
 class ExceptionState;
 class XPathExpression;
-class XPathNSResolver;
 class XPathResult;
 
-class DocumentXPathEvaluator : public DocumentSupplement {
+class DocumentXPathEvaluator FINAL : public DocumentSupplement {
 public:
     virtual ~DocumentXPathEvaluator();
 
     static DocumentXPathEvaluator* from(DocumentSupplementable*);
 
     static PassRefPtr<XPathExpression> createExpression(DocumentSupplementable*,
-        const String& expression, XPathNSResolver*, ExceptionState&);
+        const String& expression, PassRefPtr<XPathNSResolver>, ExceptionState&);
     static PassRefPtr<XPathNSResolver> createNSResolver(DocumentSupplementable*, Node* nodeResolver);
     static PassRefPtr<XPathResult> evaluate(DocumentSupplementable*,
-        const String& expression, Node* contextNode, XPathNSResolver*,
+        const String& expression, Node* contextNode, PassRefPtr<XPathNSResolver>,
         unsigned short type, XPathResult*, ExceptionState&);
 
 private:

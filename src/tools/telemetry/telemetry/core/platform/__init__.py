@@ -124,6 +124,104 @@ class Platform(object):
     """Returns whether the platform can launch the given application."""
     return self._platform_backend.CanLaunchApplication(application)
 
+  def InstallApplication(self, application):
+    """Installs the given application."""
+    return self._platform_backend.InstallApplication(application)
+
+  def CanCaptureVideo(self):
+    """Returns a bool indicating whether the platform supports video capture."""
+    return self._platform_backend.CanCaptureVideo()
+
+  def StartVideoCapture(self, min_bitrate_mbps):
+    """Starts capturing video.
+
+    Outer framing may be included (from the OS, browser window, and webcam).
+
+    Args:
+      min_bitrate_mbps: The minimum capture bitrate in MegaBits Per Second.
+          The platform is free to deliver a higher bitrate if it can do so
+          without increasing overhead.
+
+    Raises:
+      ValueError if the required |min_bitrate_mbps| can't be achieved.
+    """
+    return self._platform_backend.StartVideoCapture(min_bitrate_mbps)
+
+  def StopVideoCapture(self):
+    """Stops capturing video.
+
+    Yields:
+      (time_ms, bitmap) tuples representing each video keyframe. Only the first
+      frame in a run of sequential duplicate bitmaps is included.
+        time_ms is milliseconds relative to the first frame.
+        bitmap is a telemetry.core.Bitmap.
+    """
+    for t in self._platform_backend.StopVideoCapture():
+      yield t
+
+  def CanMonitorPowerSync(self):
+    """Returns True iff power can be monitored synchronously via
+    MonitorPowerSync().
+    """
+    return self._platform_backend.CanMonitorPowerSync()
+
+  def MonitorPowerSync(self, duration_ms):
+    """Synchronously monitors power for |duration_ms|.
+
+    Returns:
+      A dict of power utilization statistics containing: {
+        # The instantaneous power (voltage * current) reading in milliwatts at
+        # each sample.
+        'power_samples_mw': [mw0, mw1, ..., mwN],
+
+        # The total energy consumption during the sampling period in milliwatt
+        # hours. May be estimated by integrating power samples or may be exact
+        # on supported hardware.
+        'energy_consumption_mwh': mwh,
+
+        # A platform-specific dictionary of additional details about the
+        # utilization of individual hardware components.
+        hw_component_utilization: {
+           ...
+        }
+      }
+    """
+    return self._platform_backend.MonitorPowerSync(duration_ms)
+
+  def CanMonitorPowerAsync(self):
+    """Returns True iff power can be monitored asynchronously via
+    StartMonitoringPowerAsync() and StopMonitoringPowerAsync().
+    """
+    return self._platform_backend.CanMonitorPowerAsync()
+
+  def StartMonitoringPowerAsync(self):
+    """Starts monitoring power utilization statistics."""
+    assert self._platform_backend.CanMonitorPowerAsync()
+    self._platform_backend.StartMonitoringPowerAsync()
+
+  def StopMonitoringPowerAsync(self):
+    """Stops monitoring power utilization and returns collects stats
+
+    Returns:
+      A dict of power utilization statistics containing: {
+        # The instantaneous power (voltage * current) reading in milliwatts at
+        # each sample.
+        'power_samples_mw':  [mw0, mw1, ..., mwN],
+
+        # The total energy consumption during the sampling period in milliwatt
+        # hours. May be estimated by integrating power samples or may be exact
+        # on supported hardware.
+        'energy_consumption_mwh': mwh,
+
+        # A platform-specific dictionary of additional details about the
+        # utilization of individual hardware components.
+        hw_component_utilization: {
+           ...
+        }
+      }
+    """
+    return self._platform_backend.StopMonitoringPowerAsync()
+
 
 def CreatePlatformBackendForCurrentOS():
   if sys.platform.startswith('linux'):

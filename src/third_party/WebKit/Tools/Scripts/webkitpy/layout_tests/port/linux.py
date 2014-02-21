@@ -30,6 +30,8 @@ import logging
 import re
 
 from webkitpy.common.webkit_finder import WebKitFinder
+from webkitpy.layout_tests.breakpad.dump_reader_multipart import DumpReaderLinux
+from webkitpy.layout_tests.models import test_run_results
 from webkitpy.layout_tests.port import base
 from webkitpy.layout_tests.port import win
 from webkitpy.layout_tests.port import config
@@ -98,12 +100,13 @@ class LinuxPort(base.Port):
         assert port_name in ('linux', 'linux-x86', 'linux-x86_64')
         self._version = 'lucid'  # We only support lucid right now.
         self._architecture = arch
+        if not self.get_option('disable_breakpad'):
+            self._dump_reader = DumpReaderLinux(host, self._build_path())
 
     def additional_drt_flag(self):
         flags = super(LinuxPort, self).additional_drt_flag()
-        # FIXME: Temporarily disable the sandbox on Linux until we can get
-        # stacktraces via breakpad. http://crbug.com/247431
-        flags += ['--no-sandbox']
+        if not self.get_option('disable_breakpad'):
+            flags += ['--enable-crash-reporter', '--crash-dumps-dir=%s' % self._dump_reader.crash_dumps_directory()]
         return flags
 
     def default_baseline_search_path(self):
@@ -115,11 +118,21 @@ class LinuxPort(base.Port):
 
     def check_build(self, needs_http, printer):
         result = super(LinuxPort, self).check_build(needs_http, printer)
+
         if result:
             _log.error('For complete Linux build requirements, please see:')
             _log.error('')
             _log.error('    http://code.google.com/p/chromium/wiki/LinuxBuildInstructions')
         return result
+
+    def look_for_new_crash_logs(self, crashed_processes, start_time):
+        if self.get_option('disable_breakpad'):
+            return None
+        return self._dump_reader.look_for_new_crash_logs(crashed_processes, start_time)
+
+    def clobber_old_port_specific_results(self):
+        if not self.get_option('disable_breakpad'):
+            self._dump_reader.clobber_old_results()
 
     def operating_system(self):
         return 'linux'

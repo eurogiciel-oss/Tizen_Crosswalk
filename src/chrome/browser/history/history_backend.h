@@ -37,8 +37,6 @@ class AndroidProviderBackend;
 #endif
 
 class CommitLaterTask;
-class HistoryPublisher;
-class PageCollector;
 class VisitFilter;
 struct DownloadRow;
 
@@ -145,8 +143,8 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
 
   // |request.time| must be unique with high probability.
   void AddPage(const HistoryAddPageArgs& request);
-  virtual void SetPageTitle(const GURL& url, const string16& title);
-  void AddPageNoVisitForBookmark(const GURL& url, const string16& title);
+  virtual void SetPageTitle(const GURL& url, const base::string16& title);
+  void AddPageNoVisitForBookmark(const GURL& url, const base::string16& title);
 
   // Updates the database backend with a page's ending time stamp information.
   // The page can be identified by the combination of the pointer to
@@ -158,11 +156,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
                              int32 page_id,
                              const GURL& url,
                              base::Time end_ts);
-
-
-  // Indexing ------------------------------------------------------------------
-
-  void SetPageContents(const GURL& url, const string16& contents);
 
   // Querying ------------------------------------------------------------------
 
@@ -179,7 +172,7 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
                 const GURL& url,
                 bool want_visits);
   void QueryHistory(scoped_refptr<QueryHistoryRequest> request,
-                    const string16& text_query,
+                    const base::string16& text_query,
                     const QueryOptions& options);
   void QueryRedirectsFrom(scoped_refptr<QueryRedirectsRequest> request,
                           const GURL& url);
@@ -303,29 +296,24 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
                          int max_result_count);
   void DeleteOldSegmentData();
 
-  void IncreaseSegmentDuration(const GURL& url,
-                               base::Time time,
-                               base::TimeDelta delta);
-
-  void QuerySegmentDuration(scoped_refptr<QuerySegmentUsageRequest> request,
-                            const base::Time from_time,
-                            int max_result_count);
-
   // Keyword search terms ------------------------------------------------------
 
   void SetKeywordSearchTermsForURL(const GURL& url,
                                    TemplateURLID keyword_id,
-                                   const string16& term);
+                                   const base::string16& term);
 
   void DeleteAllSearchTermsForKeyword(TemplateURLID keyword_id);
 
   void GetMostRecentKeywordSearchTerms(
       scoped_refptr<GetMostRecentKeywordSearchTermsRequest> request,
       TemplateURLID keyword_id,
-      const string16& prefix,
+      const base::string16& prefix,
       int max_count);
 
   void DeleteKeywordSearchTermForURL(const GURL& url);
+
+  void DeleteMatchingURLsForKeyword(TemplateURLID keyword_id,
+                                    const base::string16& term);
 
 #if defined(OS_ANDROID)
   // Android Provider ---------------------------------------------------------
@@ -338,21 +326,23 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
       scoped_refptr<QueryRequest> request,
       const std::vector<HistoryAndBookmarkRow::ColumnID>& projections,
       const std::string& selection,
-      const std::vector<string16>& selection_args,
+      const std::vector<base::string16>& selection_args,
       const std::string& sort_order);
 
-  void UpdateHistoryAndBookmarks(scoped_refptr<UpdateRequest> request,
-                                 const HistoryAndBookmarkRow& row,
-                                 const std::string& selection,
-                                 const std::vector<string16>& selection_args);
+  void UpdateHistoryAndBookmarks(
+      scoped_refptr<UpdateRequest> request,
+      const HistoryAndBookmarkRow& row,
+      const std::string& selection,
+      const std::vector<base::string16>& selection_args);
 
-  void DeleteHistoryAndBookmarks(scoped_refptr<DeleteRequest> request,
-                                 const std::string& selection,
-                                 const std::vector<string16>& selection_args);
+  void DeleteHistoryAndBookmarks(
+      scoped_refptr<DeleteRequest> request,
+      const std::string& selection,
+      const std::vector<base::string16>& selection_args);
 
   void DeleteHistory(scoped_refptr<DeleteRequest> request,
                      const std::string& selection,
-                     const std::vector<string16>& selection_args);
+                     const std::vector<base::string16>& selection_args);
 
   // Statement ----------------------------------------------------------------
   // Move the statement's current position.
@@ -371,16 +361,16 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   void UpdateSearchTerms(scoped_refptr<UpdateRequest> request,
                          const SearchRow& row,
                          const std::string& selection,
-                         const std::vector<string16> selection_args);
+                         const std::vector<base::string16> selection_args);
 
   void DeleteSearchTerms(scoped_refptr<DeleteRequest> request,
                          const std::string& selection,
-                         const std::vector<string16> selection_args);
+                         const std::vector<base::string16> selection_args);
 
   void QuerySearchTerms(scoped_refptr<QueryRequest> request,
                         const std::vector<SearchRow::ColumnID>& projections,
                         const std::string& selection,
-                        const std::vector<string16>& selection_args,
+                        const std::vector<base::string16>& selection_args,
                         const std::string& sort_order);
 
 #endif  // defined(OS_ANDROID)
@@ -627,7 +617,7 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
                          const QueryOptions& options, QueryResults* result);
   void QueryHistoryText(URLDatabase* url_db,
                         VisitDatabase* visit_db,
-                        const string16& text_query,
+                        const base::string16& text_query,
                         const QueryOptions& options,
                         QueryResults* result);
 
@@ -846,9 +836,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // Stores old history in a larger, slower database.
   scoped_ptr<ArchivedDatabase> archived_db_;
 
-  // Helper to collect page data for vending to history_publisher_.
-  scoped_ptr<PageCollector> page_collector_;
-
   // Manages expiration between the various databases.
   ExpireHistoryBackend expirer_;
 
@@ -894,10 +881,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // Use GetBookmarkService to access this, which makes sure the service is
   // loaded.
   BookmarkService* bookmark_service_;
-
-  // Publishes the history to all indexers which are registered to receive
-  // history data from us. Can be NULL if there are no listeners.
-  scoped_ptr<HistoryPublisher> history_publisher_;
 
 #if defined(OS_ANDROID)
   // Used to provide the Android ContentProvider APIs.

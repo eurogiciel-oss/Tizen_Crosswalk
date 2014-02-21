@@ -23,6 +23,7 @@ class MediaBrowserTest : public InProcessBrowserTest {
 
   // Common test results.
   static const char kEnded[];
+  // TODO(xhwang): Report detailed errors, e.g. "ERROR-3".
   static const char kError[];
   static const char kFailed[];
 
@@ -39,7 +40,7 @@ class MediaBrowserTest : public InProcessBrowserTest {
 
   // Opens a URL and waits for the document title to match either one of the
   // default strings or the expected string.
-  string16 RunTest(const GURL& gurl, const char* expected);
+  base::string16 RunTest(const GURL& gurl, const char* expected);
 
   virtual void AddWaitForTitles(content::TitleWatcher* title_watcher);
 };

@@ -32,7 +32,7 @@
 
 namespace WebCore {
 
-void CanvasPattern::parseRepetitionType(const String& type, bool& repeatX, bool& repeatY, ExceptionState& es)
+void CanvasPattern::parseRepetitionType(const String& type, bool& repeatX, bool& repeatY, ExceptionState& exceptionState)
 {
     if (type.isEmpty() || type == "repeat") {
         repeatX = true;
@@ -54,7 +54,7 @@ void CanvasPattern::parseRepetitionType(const String& type, bool& repeatX, bool&
         repeatY = true;
         return;
     }
-    es.throwUninformativeAndGenericDOMException(SyntaxError);
+    exceptionState.throwDOMException(SyntaxError, "The provided type ('" + type + "') is not one of 'repeat', 'no-repeat', 'repeat-x', or 'repeat-y'.");
 }
 
 CanvasPattern::CanvasPattern(PassRefPtr<Image> image, bool repeatX, bool repeatY, bool originClean)

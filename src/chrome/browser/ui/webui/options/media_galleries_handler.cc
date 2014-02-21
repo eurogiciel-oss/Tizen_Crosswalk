@@ -36,7 +36,7 @@ MediaGalleriesHandler::~MediaGalleriesHandler() {
     preferences->RemoveGalleryChangeObserver(this);
 }
 
-void MediaGalleriesHandler::GetLocalizedValues(DictionaryValue* values) {
+void MediaGalleriesHandler::GetLocalizedValues(base::DictionaryValue* values) {
   DCHECK(values);
 
   static OptionsStringResource resources[] = {
@@ -84,15 +84,15 @@ void MediaGalleriesHandler::OnGalleryInfoUpdated(
 void MediaGalleriesHandler::OnGalleriesChanged(
     MediaGalleriesPreferences* pref) {
   DCHECK(pref->IsInitialized());
-  ListValue list;
+  base::ListValue list;
   const MediaGalleriesPrefInfoMap& galleries = pref->known_galleries();
   for (MediaGalleriesPrefInfoMap::const_iterator iter = galleries.begin();
        iter != galleries.end(); ++iter) {
     const MediaGalleryPrefInfo& gallery = iter->second;
-    if (gallery.type == MediaGalleryPrefInfo::kBlackListed)
+    if (gallery.IsBlackListedType())
       continue;
 
-    DictionaryValue* dict = new DictionaryValue();
+    base::DictionaryValue* dict = new base::DictionaryValue();
     dict->SetString("displayName", gallery.GetGalleryDisplayName());
     dict->SetString("path", gallery.AbsolutePath().LossyDisplayName());
     dict->SetString("id", base::Uint64ToString(gallery.pref_id));
@@ -109,7 +109,7 @@ void MediaGalleriesHandler::HandleAddNewGallery(const base::ListValue* args) {
       new ChromeSelectFilePolicy(web_ui()->GetWebContents()));
   select_file_dialog_->SelectFile(
       ui::SelectFileDialog::SELECT_FOLDER,
-      string16(),  // TODO(estade): a name for the dialog?
+      base::string16(),  // TODO(estade): a name for the dialog?
       base::FilePath(),
       NULL, 0,
       base::FilePath::StringType(),
@@ -153,7 +153,7 @@ void MediaGalleriesHandler::FileSelected(const base::FilePath& path,
   MediaGalleriesPreferences* preferences =
       g_browser_process->media_file_system_registry()->GetPreferences(
           Profile::FromWebUI(web_ui()));
-  preferences->AddGalleryByPath(path);
+  preferences->AddGalleryByPath(path, MediaGalleryPrefInfo::kUserAdded);
 }
 
 void MediaGalleriesHandler::PreferencesInitialized() {

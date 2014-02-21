@@ -17,20 +17,28 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chromeos/input_method/input_method_util.h"
+#include "chrome/browser/extensions/extension_service.h"
+#include "chrome/browser/extensions/extension_system.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
+#include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/extensions/manifest_url_handler.h"
 #include "chromeos/ime/component_extension_ime_manager.h"
+#include "chromeos/ime/extension_ime_util.h"
 #include "chromeos/ime/input_method_manager.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/user_metrics.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/common/extension.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
 #include "ui/base/l10n/l10n_util.h"
 
-using content::UserMetricsAction;
+using base::UserMetricsAction;
 
 namespace {
 // TODO(zork): Remove this blacklist when fonts are added to Chrome OS.
@@ -58,7 +66,7 @@ CrosLanguageOptionsHandler::~CrosLanguageOptionsHandler() {
 }
 
 void CrosLanguageOptionsHandler::GetLocalizedValues(
-    DictionaryValue* localized_strings) {
+    base::DictionaryValue* localized_strings) {
   ::options::LanguageOptionsHandlerCommon::GetLocalizedValues(
       localized_strings);
 
@@ -121,7 +129,7 @@ void CrosLanguageOptionsHandler::GetLocalizedValues(
     // If component extension IME manager is not ready for use, it will be
     // added in |InitializePage()|.
     localized_strings->Set("componentExtensionImeList",
-                           new ListValue());
+                           new base::ListValue());
   }
 }
 
@@ -142,12 +150,12 @@ void CrosLanguageOptionsHandler::RegisterMessages() {
                  base::Unretained(this)));
 }
 
-ListValue* CrosLanguageOptionsHandler::GetInputMethodList(
+base::ListValue* CrosLanguageOptionsHandler::GetInputMethodList(
     const input_method::InputMethodDescriptors& descriptors) {
   input_method::InputMethodManager* manager =
       input_method::InputMethodManager::Get();
 
-  ListValue* input_method_list = new ListValue();
+  base::ListValue* input_method_list = new base::ListValue();
 
   for (size_t i = 0; i < descriptors.size(); ++i) {
     const input_method::InputMethodDescriptor& descriptor =
@@ -155,13 +163,13 @@ ListValue* CrosLanguageOptionsHandler::GetInputMethodList(
     const std::string display_name =
         manager->GetInputMethodUtil()->GetInputMethodDisplayNameFromId(
             descriptor.id());
-    DictionaryValue* dictionary = new DictionaryValue();
+    base::DictionaryValue* dictionary = new base::DictionaryValue();
     dictionary->SetString("id", descriptor.id());
     dictionary->SetString("displayName", display_name);
 
     // One input method can be associated with multiple languages, hence
     // we use a dictionary here.
-    DictionaryValue* languages = new DictionaryValue();
+    base::DictionaryValue* languages = new base::DictionaryValue();
     for (size_t i = 0; i < descriptor.language_codes().size(); ++i) {
       languages->SetBoolean(descriptor.language_codes().at(i), true);
     }
@@ -174,7 +182,7 @@ ListValue* CrosLanguageOptionsHandler::GetInputMethodList(
 }
 
 // static
-ListValue* CrosLanguageOptionsHandler::GetLanguageListInternal(
+base::ListValue* CrosLanguageOptionsHandler::GetLanguageListInternal(
     const input_method::InputMethodDescriptors& descriptors,
     const std::vector<std::string>& base_language_codes) {
   const std::string app_locale = g_browser_process->GetApplicationLocale();
@@ -193,11 +201,11 @@ ListValue* CrosLanguageOptionsHandler::GetLanguageListInternal(
   // In theory, we should be able to create a map that is sorted by
   // display names using ICU comparator, but doing it is hard, thus we'll
   // use an auxiliary vector to achieve the same result.
-  typedef std::pair<std::string, string16> LanguagePair;
-  typedef std::map<string16, LanguagePair> LanguageMap;
+  typedef std::pair<std::string, base::string16> LanguagePair;
+  typedef std::map<base::string16, LanguagePair> LanguageMap;
   LanguageMap language_map;
   // The auxiliary vector mentioned above.
-  std::vector<string16> display_names;
+  std::vector<base::string16> display_names;
 
   // Build the list of display names, and build the language map.
   for (std::set<std::string>::const_iterator iter = language_codes.begin();
@@ -210,9 +218,9 @@ ListValue* CrosLanguageOptionsHandler::GetLanguageListInternal(
       continue;
     }
 
-    const string16 display_name =
+    const base::string16 display_name =
         l10n_util::GetDisplayNameForLocale(*iter, app_locale, true);
-    const string16 native_display_name =
+    const base::string16 native_display_name =
         l10n_util::GetDisplayNameForLocale(*iter, *iter, true);
 
     display_names.push_back(display_name);
@@ -232,10 +240,10 @@ ListValue* CrosLanguageOptionsHandler::GetLanguageListInternal(
     if (IsBlacklisted(base_language_codes[i]))
       continue;
 
-    string16 display_name =
+    base::string16 display_name =
         l10n_util::GetDisplayNameForLocale(
             base_language_codes[i], app_locale, false);
-    string16 native_display_name =
+    base::string16 native_display_name =
         l10n_util::GetDisplayNameForLocale(
             base_language_codes[i], base_language_codes[i], false);
     display_names.push_back(display_name);
@@ -247,10 +255,10 @@ ListValue* CrosLanguageOptionsHandler::GetLanguageListInternal(
   l10n_util::SortStrings16(app_locale, &display_names);
 
   // Build the language list from the language map.
-  ListValue* language_list = new ListValue();
+  base::ListValue* language_list = new base::ListValue();
   for (size_t i = 0; i < display_names.size(); ++i) {
     // Sets the directionality of the display language name.
-    string16 display_name(display_names[i]);
+    base::string16 display_name(display_names[i]);
     bool markup_removal =
         base::i18n::UnadjustStringForLocaleDirection(&display_name);
     DCHECK(markup_removal);
@@ -258,7 +266,7 @@ ListValue* CrosLanguageOptionsHandler::GetLanguageListInternal(
     std::string directionality = has_rtl_chars ? "rtl" : "ltr";
 
     const LanguagePair& pair = language_map[display_names[i]];
-    DictionaryValue* dictionary = new DictionaryValue();
+    base::DictionaryValue* dictionary = new base::DictionaryValue();
     dictionary->SetString("code", pair.first);
     dictionary->SetString("displayName", display_names[i]);
     dictionary->SetString("textDirection", directionality);
@@ -289,14 +297,15 @@ base::ListValue* CrosLanguageOptionsHandler::GetUILanguageList(
 base::ListValue*
     CrosLanguageOptionsHandler::ConvertInputMethodDescriptosToIMEList(
         const input_method::InputMethodDescriptors& descriptors) {
-  scoped_ptr<ListValue> ime_ids_list(new ListValue());
+  scoped_ptr<base::ListValue> ime_ids_list(new base::ListValue());
   for (size_t i = 0; i < descriptors.size(); ++i) {
     const input_method::InputMethodDescriptor& descriptor = descriptors[i];
-    scoped_ptr<DictionaryValue> dictionary(new DictionaryValue());
+    scoped_ptr<base::DictionaryValue> dictionary(new base::DictionaryValue());
     dictionary->SetString("id", descriptor.id());
     dictionary->SetString("displayName", descriptor.name());
     dictionary->SetString("optionsPage", descriptor.options_page_url().spec());
-    scoped_ptr<DictionaryValue> language_codes(new DictionaryValue());
+    scoped_ptr<base::DictionaryValue> language_codes(
+        new base::DictionaryValue());
     for (size_t i = 0; i < descriptor.language_codes().size(); ++i)
       language_codes->SetBoolean(descriptor.language_codes().at(i), true);
     dictionary->Set("languageCodeSet", language_codes.release());
@@ -305,7 +314,7 @@ base::ListValue*
   return ime_ids_list.release();
 }
 
-string16 CrosLanguageOptionsHandler::GetProductName() {
+base::string16 CrosLanguageOptionsHandler::GetProductName() {
   return l10n_util::GetStringUTF16(IDS_SHORT_PRODUCT_OS_NAME);
 }
 
@@ -315,13 +324,13 @@ void CrosLanguageOptionsHandler::SetApplicationLocale(
       language_code, Profile::APP_LOCALE_CHANGED_VIA_SETTINGS);
 }
 
-void CrosLanguageOptionsHandler::RestartCallback(const ListValue* args) {
+void CrosLanguageOptionsHandler::RestartCallback(const base::ListValue* args) {
   content::RecordAction(UserMetricsAction("LanguageOptions_SignOut"));
   chrome::AttemptUserExit();
 }
 
 void CrosLanguageOptionsHandler::InputMethodDisableCallback(
-    const ListValue* args) {
+    const base::ListValue* args) {
   const std::string input_method_id = UTF16ToASCII(ExtractStringValue(args));
   const std::string action = base::StringPrintf(
       "LanguageOptions_DisableInputMethod_%s", input_method_id.c_str());
@@ -329,7 +338,7 @@ void CrosLanguageOptionsHandler::InputMethodDisableCallback(
 }
 
 void CrosLanguageOptionsHandler::InputMethodEnableCallback(
-    const ListValue* args) {
+    const base::ListValue* args) {
   const std::string input_method_id = UTF16ToASCII(ExtractStringValue(args));
   const std::string action = base::StringPrintf(
       "LanguageOptions_EnableInputMethod_%s", input_method_id.c_str());
@@ -337,11 +346,35 @@ void CrosLanguageOptionsHandler::InputMethodEnableCallback(
 }
 
 void CrosLanguageOptionsHandler::InputMethodOptionsOpenCallback(
-    const ListValue* args) {
+    const base::ListValue* args) {
   const std::string input_method_id = UTF16ToASCII(ExtractStringValue(args));
   const std::string action = base::StringPrintf(
       "InputMethodOptions_Open_%s", input_method_id.c_str());
   content::RecordComputedAction(action);
+
+  const std::string extension_id =
+      extension_ime_util::GetExtensionIDFromInputMethodID(input_method_id);
+  if (extension_id.empty())
+    return;
+
+  const input_method::InputMethodDescriptor* ime =
+      input_method::InputMethodManager::Get()->GetInputMethodFromId(
+          input_method_id);
+  if (!ime)
+    return;
+
+  Browser* browser = chrome::FindBrowserWithWebContents(
+      web_ui()->GetWebContents());
+  content::OpenURLParams params(ime->options_page_url(),
+      content::Referrer(),
+      SINGLETON_TAB,
+      content::PAGE_TRANSITION_LINK,
+      false);
+  browser->OpenURL(params);
+  browser->window()->Show();
+  content::WebContents* web_contents =
+      browser->tab_strip_model()->GetActiveWebContents();
+  web_contents->GetDelegate()->ActivateContents(web_contents);
 }
 
 void CrosLanguageOptionsHandler::OnInitialized() {
@@ -356,7 +389,7 @@ void CrosLanguageOptionsHandler::OnInitialized() {
           ->GetComponentExtensionIMEManager();
 
   DCHECK(manager->IsInitialized());
-  scoped_ptr<ListValue> ime_list(
+  scoped_ptr<base::ListValue> ime_list(
       ConvertInputMethodDescriptosToIMEList(
           manager->GetAllIMEAsInputMethodDescriptor()));
   web_ui()->CallJavascriptFunction(
@@ -379,7 +412,7 @@ void CrosLanguageOptionsHandler::InitializePage() {
     return;
   }
 
-  scoped_ptr<ListValue> ime_list(
+  scoped_ptr<base::ListValue> ime_list(
       ConvertInputMethodDescriptosToIMEList(
           component_extension_manager->GetAllIMEAsInputMethodDescriptor()));
   web_ui()->CallJavascriptFunction(

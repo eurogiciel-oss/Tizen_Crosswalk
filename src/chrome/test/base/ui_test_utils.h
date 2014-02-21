@@ -74,7 +74,7 @@ enum BrowserTestWaitFlags {
 };
 
 // Puts the current tab title in |title|. Returns true on success.
-bool GetCurrentTabTitle(const Browser* browser, string16* title);
+bool GetCurrentTabTitle(const Browser* browser, base::string16* title);
 
 // Opens |url| in an incognito browser window with the incognito profile of
 // |profile|, blocking until the navigation finishes. This will create a new
@@ -86,6 +86,10 @@ Browser* OpenURLOffTheRecord(Profile* profile, const GURL& url);
 // finishes. May change the params in some cases (i.e. if the navigation
 // opens a new browser window). Uses chrome::Navigate.
 void NavigateToURL(chrome::NavigateParams* params);
+
+// Navigates the selected tab of |browser| to |url|, blocking until the
+// navigation finishes. Simulates a POST and uses chrome::Navigate.
+void NavigateToURLWithPost(Browser* browser, const GURL& url);
 
 // Navigates the selected tab of |browser| to |url|, blocking until the
 // navigation finishes. Uses Browser::OpenURL --> chrome::Navigate.
@@ -130,7 +134,7 @@ AppModalDialog* WaitForAppModalDialog();
 // of the current match. |selection_rect| is an optional parameter which is set
 // to the location of the current match.
 int FindInPage(content::WebContents* tab,
-               const string16& search_string,
+               const base::string16& search_string,
                bool forward,
                bool case_sensitive,
                int* ordinal,

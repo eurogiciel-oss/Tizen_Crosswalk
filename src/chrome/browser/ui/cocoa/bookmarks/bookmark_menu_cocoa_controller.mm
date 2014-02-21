@@ -19,9 +19,9 @@
 #import "ui/base/cocoa/cocoa_event_utils.h"
 #import "ui/base/cocoa/menu_controller.h"
 
+using base::UserMetricsAction;
 using content::OpenURLParams;
 using content::Referrer;
-using content::UserMetricsAction;
 
 namespace {
 
@@ -34,7 +34,7 @@ const NSUInteger kMaximumMenuPixelsWide = 300;
 @implementation BookmarkMenuCocoaController
 
 + (NSString*)menuTitleForNode:(const BookmarkNode*)node {
-  string16 title = [MenuController elideMenuTitle:node->GetTitle()
+  base::string16 title = [MenuController elideMenuTitle:node->GetTitle()
                                           toWidth:kMaximumMenuPixelsWide];
   return base::SysUTF16ToNSString(title);
 }

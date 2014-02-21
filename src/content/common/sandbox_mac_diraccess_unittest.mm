@@ -99,13 +99,14 @@ TEST_F(MacDirAccessSandboxTest, RegexEscape) {
     EXPECT_TRUE(Sandbox::QuoteStringForRegex("}", &out));   // } == 0x7D == 125
     EXPECT_FALSE(Sandbox::QuoteStringForRegex("~", &out));  // ~ == 0x7E == 126
     EXPECT_FALSE(
-        Sandbox::QuoteStringForRegex(WideToUTF8(L"^\u2135.\u2136$"), &out));
+        Sandbox::QuoteStringForRegex(base::WideToUTF8(L"^\u2135.\u2136$"),
+                                     &out));
   }
 
   {
     for (size_t i = 0; i < ARRAYSIZE_UNSAFE(regex_cases); ++i) {
       std::string out;
-      std::string in = WideToUTF8(regex_cases[i].to_escape);
+      std::string in = base::WideToUTF8(regex_cases[i].to_escape);
       EXPECT_TRUE(Sandbox::QuoteStringForRegex(in, &out));
       std::string expected("^");
       expected.append(regex_cases[i].escaped);
@@ -145,10 +146,11 @@ typedef scoped_ptr_malloc<base::FilePath, ScopedDirectoryDelete>
     ScopedDirectory;
 
 TEST_F(MacDirAccessSandboxTest, SandboxAccess) {
-  using file_util::CreateDirectory;
+  using base::CreateDirectory;
 
   base::FilePath tmp_dir;
-  ASSERT_TRUE(file_util::CreateNewTempDirectory("", &tmp_dir));
+  ASSERT_TRUE(base::CreateNewTempDirectory(base::FilePath::StringType(),
+                                           &tmp_dir));
   // This step is important on OS X since the sandbox only understands "real"
   // paths and the paths CreateNewTempDirectory() returns are empirically in
   // /var which is a symlink to /private/var .

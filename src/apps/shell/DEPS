@@ -1,9 +1,17 @@
 include_rules = [
-  "-chrome",
-  "+ui/shell",
+  "+chromeos",
+  "+components/user_prefs",
+  "+sync/api",
   "+webkit/common/user_agent/user_agent_util.h",
 
-  # Pieces of content_shell reused in app_shell.
   # TODO(jamescook): Remove these. http://crbug.com/305404
+  # Chrome pieces for bring-up.
+  "+chrome/browser/extensions/extension_protocols.h",
+  "+chrome/browser/extensions/extension_resource_protocols.h",
+  "+chrome/common/chrome_paths.h",
+  "+chrome/common/extensions/extension_file_util.h",
+  "+chrome/common/extensions/features/base_feature_provider.h",
+
+  # Pieces of content_shell reused in app_shell.
   "+content/shell/browser/shell_browser_context.h",
 ]

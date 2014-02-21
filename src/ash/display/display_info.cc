@@ -16,7 +16,8 @@
 #include "ui/gfx/size_f.h"
 
 #if defined(OS_WIN)
-#include "ui/aura/root_window_host.h"
+#include "ui/aura/window_tree_host.h"
+#include "ui/gfx/win/dpi.h"
 #endif
 
 namespace ash {
@@ -45,7 +46,7 @@ DisplayInfo DisplayInfo::CreateFromSpecWithID(const std::string& spec,
   static int64 synthesized_display_id = 2200000000LL;
 
 #if defined(OS_WIN)
-  gfx::Rect bounds_in_native(aura::RootWindowHost::GetNativeScreenSize());
+  gfx::Rect bounds_in_native(aura::WindowTreeHost::GetNativeScreenSize());
 #else
   gfx::Rect bounds_in_native(kDefaultHostWindowX, kDefaultHostWindowY,
                              kDefaultHostWindowWidth, kDefaultHostWindowHeight);
@@ -95,6 +96,12 @@ DisplayInfo DisplayInfo::CreateFromSpecWithID(const std::string& spec,
       sscanf(main_spec.c_str(), "%d+%d-%dx%d*%f", &x, &y, &width, &height,
              &device_scale_factor) >= 4) {
     bounds_in_native.SetRect(x, y, width, height);
+  } else {
+#if defined(OS_WIN)
+    if (gfx::IsHighDPIEnabled()) {
+      device_scale_factor = gfx::GetModernUIScale();
+    }
+#endif
   }
 
   std::vector<Resolution> resolutions;
@@ -116,7 +123,7 @@ DisplayInfo DisplayInfo::CreateFromSpecWithID(const std::string& spec,
       id, base::StringPrintf("Display-%d", static_cast<int>(id)), has_overscan);
   display_info.set_device_scale_factor(device_scale_factor);
   display_info.set_rotation(rotation);
-  display_info.set_ui_scale(ui_scale);
+  display_info.set_configured_ui_scale(ui_scale);
   display_info.SetBounds(bounds_in_native);
   display_info.set_resolutions(resolutions);
 
@@ -140,7 +147,7 @@ DisplayInfo::DisplayInfo()
       touch_support_(gfx::Display::TOUCH_SUPPORT_UNKNOWN),
       device_scale_factor_(1.0f),
       overscan_insets_in_dip_(0, 0, 0, 0),
-      ui_scale_(1.0f),
+      configured_ui_scale_(1.0f),
       native_(false) {
 }
 
@@ -154,7 +161,7 @@ DisplayInfo::DisplayInfo(int64 id,
       touch_support_(gfx::Display::TOUCH_SUPPORT_UNKNOWN),
       device_scale_factor_(1.0f),
       overscan_insets_in_dip_(0, 0, 0, 0),
-      ui_scale_(1.0f),
+      configured_ui_scale_(1.0f),
       native_(false) {
 }
 
@@ -185,7 +192,7 @@ void DisplayInfo::Copy(const DisplayInfo& native_info) {
   // DisplayChangeObserver.
   if (!native_info.native()) {
     rotation_ = native_info.rotation_;
-    ui_scale_ = native_info.ui_scale_;
+    configured_ui_scale_ = native_info.configured_ui_scale_;
   }
   // Don't copy insets as it may be given by preference.  |rotation_|
   // is treated as a native so that it can be specified in
@@ -196,6 +203,12 @@ void DisplayInfo::SetBounds(const gfx::Rect& new_bounds_in_native) {
   bounds_in_native_ = new_bounds_in_native;
   size_in_pixel_ = new_bounds_in_native.size();
   UpdateDisplaySize();
+}
+
+float DisplayInfo::GetEffectiveUIScale() const {
+  if (device_scale_factor_ == 2.0f && configured_ui_scale_ == 2.0f)
+    return 1.0f;
+  return configured_ui_scale_;
 }
 
 void DisplayInfo::UpdateDisplaySize() {
@@ -212,7 +225,7 @@ void DisplayInfo::UpdateDisplaySize() {
       rotation_ == gfx::Display::ROTATE_270)
     size_in_pixel_.SetSize(size_in_pixel_.height(), size_in_pixel_.width());
   gfx::SizeF size_f(size_in_pixel_);
-  size_f.Scale(ui_scale_);
+  size_f.Scale(GetEffectiveUIScale());
   size_in_pixel_ = gfx::ToFlooredSize(size_f);
 }
 
@@ -235,7 +248,7 @@ std::string DisplayInfo::ToString() const {
       device_scale_factor_,
       overscan_insets_in_dip_.ToString().c_str(),
       rotation_degree,
-      ui_scale_,
+      configured_ui_scale_,
       touch_support_ == gfx::Display::TOUCH_SUPPORT_AVAILABLE ? "yes" :
       touch_support_ == gfx::Display::TOUCH_SUPPORT_UNAVAILABLE ? "no" :
       "unknown");

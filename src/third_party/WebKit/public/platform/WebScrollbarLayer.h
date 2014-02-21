@@ -34,7 +34,7 @@ namespace WebCore {
 class Scrollbar;
 }
 
-namespace WebKit {
+namespace blink {
 
 class WebScrollbarLayer {
 public:
@@ -43,8 +43,10 @@ public:
     virtual WebLayer* layer() = 0;
 
     virtual void setScrollLayer(WebLayer*) = 0;
+    // TODO(wjmaclean) Make this pure virtual once https://codereview.chromium.org/23983047 lands.
+    virtual void setClipLayer(WebLayer*) { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // WebScrollbarLayer_h

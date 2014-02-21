@@ -28,13 +28,13 @@
 #include "SVGNames.h"
 #include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
 #include "core/rendering/HitTestResult.h"
 #include "core/rendering/svg/SVGRenderingContext.h"
 #include "core/rendering/svg/SVGResources.h"
 #include "core/rendering/svg/SVGResourcesCache.h"
 #include "core/svg/SVGUseElement.h"
 #include "platform/graphics/DisplayList.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 #include "wtf/TemporaryChange.h"
 
 namespace WebCore {
@@ -75,6 +75,8 @@ bool RenderSVGResourceClipper::applyStatefulResource(RenderObject* object, Graph
 {
     ASSERT(object);
     ASSERT(context);
+
+    clearInvalidationMask();
 
     return applyClippingToContext(object, object->objectBoundingBox(), object->repaintRectInLocalCoordinates(), context, clipperContext);
 }
@@ -146,6 +148,7 @@ bool RenderSVGResourceClipper::applyClippingToContext(RenderObject* target, cons
     const FloatRect& repaintRect, GraphicsContext* context, ClipperContext& clipperContext)
 {
     ASSERT(target);
+    ASSERT(target->node());
     ASSERT(context);
     ASSERT(clipperContext.state == ClipperContext::NotAppliedState);
     ASSERT_WITH_SECURITY_IMPLICATION(!needsLayout());
@@ -154,8 +157,17 @@ bool RenderSVGResourceClipper::applyClippingToContext(RenderObject* target, cons
         return false;
     TemporaryChange<bool> inClipExpansionChange(m_inClipExpansion, true);
 
-    // First, try to apply the clip as a clipPath.
     AffineTransform animatedLocalTransform = toSVGClipPathElement(element())->animatedLocalTransform();
+    // When drawing a clip for non-SVG elements, the CTM does not include the zoom factor.
+    // In this case, we need to apply the zoom scale explicitly - but only for clips with
+    // userSpaceOnUse units (the zoom is accounted for objectBoundingBox-resolved lengths).
+    if (!target->node()->isSVGElement()
+        && toSVGClipPathElement(element())->clipPathUnitsCurrentValue() == SVGUnitTypes::SVG_UNIT_TYPE_USERSPACEONUSE) {
+        ASSERT(style());
+        animatedLocalTransform.scale(style()->effectiveZoom());
+    }
+
+    // First, try to apply the clip as a clipPath.
     if (tryPathOnlyClipping(context, animatedLocalTransform, targetBoundingBox)) {
         clipperContext.state = ClipperContext::AppliedPathState;
         return true;
@@ -246,7 +258,10 @@ PassRefPtr<DisplayList> RenderSVGResourceClipper::asDisplayList(GraphicsContext*
     ASSERT(context);
     ASSERT(frame());
 
-    context->beginRecording(repaintRectInLocalCoordinates());
+    // Using strokeBoundingBox (instead of repaintRectInLocalCoordinates) to avoid the intersection
+    // with local clips/mask, which may yield incorrect results when mixing objectBoundingBox and
+    // userSpaceOnUse units (http://crbug.com/294900).
+    context->beginRecording(strokeBoundingBox());
 
     // Switch to a paint behavior where all children of this <clipPath> will be rendered using special constraints:
     // - fill-opacity/stroke-opacity/opacity set to 1
@@ -341,7 +356,7 @@ bool RenderSVGResourceClipper::hitTestClipContent(const FloatRect& objectBoundin
     return false;
 }
 
-FloatRect RenderSVGResourceClipper::resourceBoundingBox(RenderObject* object)
+FloatRect RenderSVGResourceClipper::resourceBoundingBox(const RenderObject* object)
 {
     // Resource was not layouted yet. Give back the boundingBox of the object.
     if (selfNeedsLayout())

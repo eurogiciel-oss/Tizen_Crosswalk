@@ -1,6 +1,6 @@
 <html>
 <head>
-<script src="../js/resources/js-test-pre.js"></script>
+<script src="../../resources/js-test.js"></script>
 <style id="style" media="screen">
 .non-existent-class {
     color: rgb(0, 0, 0);
@@ -79,24 +79,24 @@ function runTest()
     debug('');
 
     test("document.createAttribute()", "Attr");
-    test("document.createComment()", "Comment");
+    test("document.createComment('')", "Comment");
     test("document.createDocumentFragment()", "DocumentFragment");
     test("document.implementation", "DOMImplementation");
     test("root.attributes", "NamedNodeMap");
     test("document.createNodeIterator(root, 0, null, false)", "NodeIterator");
     test("document.getElementsByTagName('div')", "NodeList");
     test("document.createRange()", "Range");
-    test("document.createTextNode()", "Text");
+    test("document.createTextNode('')", "Text");
     test("document.createTreeWalker(root, 0, null, false)", "TreeWalker");
 
     debug('');
     debug('XML');
     debug('');
 
-    test("xmlDocument", "Document");
+    test("xmlDocument", "XMLDocument");
     test("xmlDocument.createCDATASection()", "CDATASection");
     test("xmlDocument.createElementNS('x', 'x', 'x')", "Element");
-    test("xmlDocument.createProcessingInstruction()", "ProcessingInstruction");
+    test("xmlDocument.createProcessingInstruction('x', '')", "ProcessingInstruction");
 
     debug('');
     debug('Events');

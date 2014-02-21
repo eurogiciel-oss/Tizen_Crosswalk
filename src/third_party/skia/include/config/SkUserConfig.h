@@ -37,22 +37,6 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-/*  Scalars (the fractional value type in skia) can be implemented either as
-    floats or 16.16 integers (fixed). Exactly one of these two symbols must be
-    defined.
-*/
-//#define SK_SCALAR_IS_FLOAT
-//#define SK_SCALAR_IS_FIXED
-
-
-/*  For some performance-critical scalar operations, skia will optionally work
-    around the standard float operators if it knows that the CPU does not have
-    native support for floats. If your environment uses software floating point,
-    define this flag.
- */
-//#define SK_SOFTWARE_FLOAT
-
-
 /*  Skia has lots of debug-only code. Often this is just null checks or other
     parameter checking, but sometimes it can be quite intrusive (e.g. check that
     each 32bit pixel is in premultiplied form). This code can be very useful
@@ -102,12 +86,6 @@
 */
 //#define SK_UINT8_BITFIELD_BENDIAN
 //#define SK_UINT8_BITFIELD_LENDIAN
-
-
-/*  Some compilers don't support long long for 64bit integers. If yours does
-    not, define this to the appropriate type.
- */
-//#define SkLONGLONG int64_t
 
 
 /*  To write debug messages to a console, skia will call SkDebugf(...) following
@@ -201,5 +179,14 @@
  * define should be removed entirely.
  */
 //#define SK_PDF_USE_PATHOPS
+
+/* Skia uses these defines as the target of include preprocessor directives.
+ * The header files pointed to by these defines provide declarations and
+ * possibly inline implementations of threading primitives.
+ *
+ * See SkThread.h for documentation on what these includes must contain.
+ */
+//#define SK_ATOMICS_PLATFORM_H "SkAtomics_xxx.h"
+//#define SK_MUTEX_PLATFORM_H "SkMutex_xxx.h"
 
 #endif

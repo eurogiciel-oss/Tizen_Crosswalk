@@ -35,24 +35,21 @@
 //
 // WebView (for the toplevel frame only)
 //    O
-//    |
+//    |           WebFrame
+//    |              O
+//    |              |
 //   Page O------- Frame (m_mainFrame) O-------O FrameView
 //                   ||
 //                   ||
-//               FrameLoader O-------- WebFrame (via FrameLoaderClient)
+//               FrameLoader
 //
 // FrameLoader and Frame are formerly one object that was split apart because
 // it got too big. They basically have the same lifetime, hence the double line.
 //
-// WebFrame is refcounted and has one ref on behalf of the FrameLoader/Frame.
-// This is not a normal reference counted pointer because that would require
-// changing WebKit code that we don't control. Instead, it is created with this
-// ref initially and it is removed when the FrameLoader is getting destroyed.
-//
-// WebFrames are created in two places, first in WebViewImpl when the root
-// frame is created, and second in WebFrame::createChildFrame when sub-frames
-// are created. WebKit will hook up this object to the FrameLoader/Frame
-// and the refcount will be correct.
+// From the perspective of the embedder, WebFrame is simply an object that it
+// allocates by calling WebFrame::create() and must be freed by calling close().
+// Internally, WebFrame is actually refcounted and it holds a reference to its
+// corresponding Frame in WebCore.
 //
 // How frames are destroyed
 // ------------------------
@@ -61,12 +58,13 @@
 // and a reference to the main frame is kept by the Page.
 //
 // When frame content is replaced, all subframes are destroyed. This happens
-// in FrameLoader::detachFromParent for each subframe.
-//
-// Frame going away causes the FrameLoader to get deleted. In FrameLoader's
-// destructor, it notifies its client with frameLoaderDestroyed. This derefs
-// the WebFrame and will cause it to be deleted (unless an external someone
-// is also holding a reference).
+// in FrameLoader::detachFromParent for each subframe in a pre-order depth-first
+// traversal. Note that child node order may not match DOM node order!
+// detachFromParent() calls FrameLoaderClient::detachedFromParent(), which calls
+// WebFrame::frameDetached(). This triggers WebFrame to clear its reference to
+// Frame, and also notifies the embedder via WebFrameClient that the frame is
+// detached. Most embedders will invoke close() on the WebFrame at this point,
+// triggering its deletion unless something else is still retaining a reference.
 //
 // Thie client is expected to be set whenever the WebFrameImpl is attached to
 // the DOM.
@@ -81,6 +79,7 @@
 #include "FindInPageCoordinates.h"
 #include "HTMLNames.h"
 #include "PageOverlay.h"
+#include "SharedWorkerRepositoryClientImpl.h"
 #include "V8DOMFileSystem.h"
 #include "V8DirectoryEntry.h"
 #include "V8FileEntry.h"
@@ -133,14 +132,12 @@
 #include "core/frame/Console.h"
 #include "core/frame/DOMWindow.h"
 #include "core/frame/FrameView.h"
-#include "core/history/HistoryItem.h"
 #include "core/html/HTMLCollection.h"
 #include "core/html/HTMLFormElement.h"
 #include "core/html/HTMLFrameOwnerElement.h"
 #include "core/html/HTMLHeadElement.h"
 #include "core/html/HTMLInputElement.h"
 #include "core/html/HTMLLinkElement.h"
-#include "core/html/HTMLTextAreaElement.h"
 #include "core/html/PluginDocument.h"
 #include "core/inspector/InspectorController.h"
 #include "core/inspector/ScriptCallStack.h"
@@ -148,7 +145,7 @@
 #include "core/loader/FormState.h"
 #include "core/loader/FrameLoadRequest.h"
 #include "core/loader/FrameLoader.h"
-#include "core/loader/IconController.h"
+#include "core/loader/HistoryItem.h"
 #include "core/loader/SubstituteData.h"
 #include "core/page/Chrome.h"
 #include "core/page/EventHandler.h"
@@ -156,12 +153,7 @@
 #include "core/page/FrameTree.h"
 #include "core/page/Page.h"
 #include "core/page/PrintContext.h"
-#include "core/page/Settings.h"
-#include "core/platform/ScrollbarTheme.h"
-#include "core/platform/graphics/FontCache.h"
-#include "core/platform/graphics/GraphicsContext.h"
-#include "core/platform/graphics/GraphicsLayerClient.h"
-#include "core/platform/graphics/skia/SkiaUtils.h"
+#include "core/frame/Settings.h"
 #include "core/rendering/HitTestResult.h"
 #include "core/rendering/RenderBox.h"
 #include "core/rendering/RenderFrame.h"
@@ -180,27 +172,32 @@
 #include "platform/TraceEvent.h"
 #include "platform/UserGestureIndicator.h"
 #include "platform/clipboard/ClipboardUtilities.h"
+#include "platform/fonts/FontCache.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/graphics/GraphicsLayerClient.h"
+#include "platform/graphics/skia/SkiaUtils.h"
 #include "platform/network/ResourceRequest.h"
+#include "platform/scroll/ScrollbarTheme.h"
 #include "platform/scroll/ScrollTypes.h"
+#include "platform/weborigin/KURL.h"
+#include "platform/weborigin/SchemeRegistry.h"
+#include "platform/weborigin/SecurityPolicy.h"
 #include "public/platform/Platform.h"
 #include "public/platform/WebFileSystem.h"
-#include "public/platform/WebFileSystemType.h"
 #include "public/platform/WebFloatPoint.h"
 #include "public/platform/WebFloatRect.h"
+#include "public/platform/WebLayer.h"
 #include "public/platform/WebPoint.h"
 #include "public/platform/WebRect.h"
 #include "public/platform/WebSize.h"
 #include "public/platform/WebURLError.h"
 #include "public/platform/WebVector.h"
-#include "weborigin/KURL.h"
-#include "weborigin/SchemeRegistry.h"
-#include "weborigin/SecurityPolicy.h"
 #include "wtf/CurrentTime.h"
 #include "wtf/HashMap.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 static int frameCount = 0;
 
@@ -222,10 +219,10 @@ static void frameContentAsPlainText(size_t maxChars, Frame* frame, StringBuilder
 
     // Select the document body.
     RefPtr<Range> range(document->createRange());
-    TrackExceptionState es;
-    range->selectNodeContents(document->body(), es);
+    TrackExceptionState exceptionState;
+    range->selectNodeContents(document->body(), exceptionState);
 
-    if (!es.hadException()) {
+    if (!exceptionState.hadException()) {
         // The text iterator will walk nodes giving us text. This is similar to
         // the plainText() function in core/editing/TextIterator.h, but we implement the maximum
         // size and also copy the results directly into a wstring, avoiding the
@@ -275,7 +272,7 @@ WebPluginContainerImpl* WebFrameImpl::pluginContainerFromFrame(Frame* frame)
     if (!frame->document() || !frame->document()->isPluginDocument())
         return 0;
     PluginDocument* pluginDocument = toPluginDocument(frame->document());
-    return toPluginContainerImpl(pluginDocument->pluginWidget());
+    return toWebPluginContainerImpl(pluginDocument->pluginWidget());
 }
 
 WebPluginContainerImpl* WebFrameImpl::pluginContainerFromNode(WebCore::Frame* frame, const WebNode& node)
@@ -283,7 +280,7 @@ WebPluginContainerImpl* WebFrameImpl::pluginContainerFromNode(WebCore::Frame* fr
     WebPluginContainerImpl* pluginContainer = pluginContainerFromFrame(frame);
     if (pluginContainer)
         return pluginContainer;
-    return toPluginContainerImpl(node.pluginContainer());
+    return toWebPluginContainerImpl(node.pluginContainer());
 }
 
 // Simple class to override some of PrintContext behavior. Some of the methods
@@ -506,7 +503,7 @@ int WebFrame::instanceCount()
 
 WebFrame* WebFrame::frameForCurrentContext()
 {
-    v8::Handle<v8::Context> context = v8::Context::GetCurrent();
+    v8::Handle<v8::Context> context = v8::Isolate::GetCurrent()->GetCurrentContext();
     if (context.IsEmpty())
         return 0;
     return frameForContext(context);
@@ -553,8 +550,31 @@ WebVector<WebIconURL> WebFrameImpl::iconURLs(int iconTypesMask) const
     // The URL to the icon may be in the header. As such, only
     // ask the loader for the icon if it's finished loading.
     if (frame()->loader().state() == FrameStateComplete)
-        return frame()->loader().icon()->urlsForTypes(iconTypesMask);
+        return frame()->document()->iconURLs(iconTypesMask);
     return WebVector<WebIconURL>();
+}
+
+void WebFrameImpl::setRemoteWebLayer(WebLayer* webLayer)
+{
+    if (!frame())
+        return;
+
+    if (frame()->remotePlatformLayer())
+        GraphicsLayer::unregisterContentsLayer(frame()->remotePlatformLayer());
+    if (webLayer)
+        GraphicsLayer::registerContentsLayer(webLayer);
+    frame()->setRemotePlatformLayer(webLayer);
+    frame()->ownerElement()->setNeedsStyleRecalc(WebCore::SubtreeStyleChange, WebCore::StyleChangeFromRenderer);
+}
+
+void WebFrameImpl::setPermissionClient(WebPermissionClient* permissionClient)
+{
+    m_permissionClient = permissionClient;
+}
+
+void WebFrameImpl::setSharedWorkerRepositoryClient(WebSharedWorkerRepositoryClient* client)
+{
+    m_sharedWorkerRepositoryClient = SharedWorkerRepositoryClientImpl::create(client);
 }
 
 WebSize WebFrameImpl::scrollOffset() const
@@ -919,17 +939,12 @@ void WebFrameImpl::loadRequest(const WebURLRequest& request)
     frame()->loader().load(FrameLoadRequest(0, resourceRequest));
 }
 
-void WebFrameImpl::loadHistoryItem(const WebHistoryItem& item)
+void WebFrameImpl::loadHistoryItem(const WebHistoryItem& item, WebURLRequest::CachePolicy cachePolicy)
 {
     ASSERT(frame());
     RefPtr<HistoryItem> historyItem = PassRefPtr<HistoryItem>(item);
     ASSERT(historyItem);
-
-    frame()->loader().prepareForHistoryNavigation();
-    RefPtr<HistoryItem> currentItem = frame()->loader().history()->currentItem();
-    m_inSameDocumentHistoryLoad = currentItem && currentItem->shouldDoSameDocumentNavigationTo(historyItem.get());
-    frame()->page()->goToItem(historyItem.get());
-    m_inSameDocumentHistoryLoad = false;
+    frame()->page()->historyController().goToItem(historyItem.get(), static_cast<ResourceRequestCachePolicy>(cachePolicy));
 }
 
 void WebFrameImpl::loadData(const WebData& data, const WebString& mimeType, const WebString& textEncoding, const WebURL& baseURL, const WebURL& unreachableURL, bool replace)
@@ -943,8 +958,8 @@ void WebFrameImpl::loadData(const WebData& data, const WebString& mimeType, cons
     // unreachableURL informs FrameLoader::reload to load unreachableURL
     // instead of the currently loaded URL.
     ResourceRequest request;
-    if (replace && !unreachableURL.isEmpty())
-        request = frame()->loader().originalRequest();
+    if (replace && !unreachableURL.isEmpty() && frame()->loader().provisionalDocumentLoader())
+        request = frame()->loader().provisionalDocumentLoader()->originalRequest();
     request.setURL(baseURL);
 
     FrameLoadRequest frameRequest(0, request, SubstituteData(data, mimeType, textEncoding, unreachableURL));
@@ -1000,7 +1015,7 @@ WebHistoryItem WebFrameImpl::previousHistoryItem() const
     // only get saved to history when it becomes the previous item.  The caller
     // is expected to query the history item after a navigation occurs, after
     // the desired history item has become the previous entry.
-    return WebHistoryItem(frame()->loader().history()->previousItem());
+    return WebHistoryItem(frame()->page()->historyController().previousItemForExport());
 }
 
 WebHistoryItem WebFrameImpl::currentHistoryItem() const
@@ -1008,7 +1023,7 @@ WebHistoryItem WebFrameImpl::currentHistoryItem() const
     ASSERT(frame());
 
     // We're shutting down.
-    if (!frame()->loader().activeDocumentLoader())
+    if (!frame()->loader().documentLoader())
         return WebHistoryItem();
 
     // If we are still loading, then we don't want to clobber the current
@@ -1016,13 +1031,10 @@ WebHistoryItem WebFrameImpl::currentHistoryItem() const
     // document state.  However, it is OK for new navigations.
     // FIXME: Can we make this a plain old getter, instead of worrying about
     // clobbering here?
-    if (!m_inSameDocumentHistoryLoad && (frame()->loader().loadType() == FrameLoadTypeStandard
-        || !frame()->loader().activeDocumentLoader()->isLoadingInAPISense()))
-        frame()->loader().history()->saveDocumentAndScrollState();
+    if (frame()->loader().loadType() == FrameLoadTypeStandard || !frame()->loader().documentLoader()->isLoadingInAPISense())
+        frame()->loader().saveDocumentAndScrollState();
 
-    if (HistoryItem* item = frame()->loader().history()->provisionalItem())
-        return WebHistoryItem(item);
-    return WebHistoryItem(frame()->page()->mainFrame()->loader().history()->currentItem());
+    return WebHistoryItem(frame()->page()->historyController().currentItemForExport());
 }
 
 void WebFrameImpl::enableViewSourceMode(bool enable)
@@ -1040,7 +1052,7 @@ bool WebFrameImpl::isViewSourceModeEnabled() const
 
 void WebFrameImpl::setReferrerForRequest(WebURLRequest& request, const WebURL& referrerURL)
 {
-    String referrer = referrerURL.isEmpty() ? frame()->loader().outgoingReferrer() : String(referrerURL.spec().utf16());
+    String referrer = referrerURL.isEmpty() ? frame()->document()->outgoingReferrer() : String(referrerURL.spec().utf16());
     referrer = SecurityPolicy::generateReferrerHeader(frame()->document()->referrerPolicy(), request.url(), referrer);
     if (referrer.isEmpty())
         return;
@@ -1061,11 +1073,6 @@ WebURLLoader* WebFrameImpl::createAssociatedURLLoader(const WebURLLoaderOptions&
 unsigned WebFrameImpl::unloadListenerCount() const
 {
     return frame()->domWindow()->pendingUnloadEventListeners();
-}
-
-bool WebFrameImpl::willSuppressOpenerInNewFrame() const
-{
-    return frame()->loader().suppressOpenerInNewFrame();
 }
 
 void WebFrameImpl::replaceSelection(const WebString& text)
@@ -1194,10 +1201,10 @@ bool WebFrameImpl::executeCommand(const WebString& name, const WebString& value,
 
     // moveToBeginningOfDocument and moveToEndfDocument are only handled by WebKit for editable nodes.
     if (!frame()->editor().canEdit() && webName == "moveToBeginningOfDocument")
-        return viewImpl()->propagateScroll(ScrollUp, ScrollByDocument);
+        return viewImpl()->bubblingScroll(ScrollUp, ScrollByDocument);
 
     if (!frame()->editor().canEdit() && webName == "moveToEndOfDocument")
-        return viewImpl()->propagateScroll(ScrollDown, ScrollByDocument);
+        return viewImpl()->bubblingScroll(ScrollDown, ScrollByDocument);
 
     if (webName == "showGuessPanel") {
         frame()->spellChecker().showSpellingGuessPanel();
@@ -1331,11 +1338,6 @@ void WebFrameImpl::selectRange(const WebRange& webRange)
         frame()->selection().setSelectedRange(range.get(), WebCore::VP_DEFAULT_AFFINITY, false);
 }
 
-void WebFrameImpl::moveCaretSelectionTowardsWindowPoint(const WebPoint& point)
-{
-    moveCaretSelection(point);
-}
-
 void WebFrameImpl::moveRangeSelection(const WebPoint& base, const WebPoint& extent)
 {
     VisiblePosition basePosition = visiblePositionForWindowPoint(base);
@@ -1383,7 +1385,7 @@ int WebFrameImpl::printBegin(const WebPrintParams& printParams, const WebNode& c
         pluginContainer = pluginContainerFromFrame(frame());
     } else {
         // We only support printing plugin nodes for now.
-        pluginContainer = toPluginContainerImpl(constrainToNode.pluginContainer());
+        pluginContainer = toWebPluginContainerImpl(constrainToNode.pluginContainer());
     }
 
     if (pluginContainer && pluginContainer->supportsPaginatedPrint())
@@ -1429,7 +1431,7 @@ void WebFrameImpl::printEnd()
 
 bool WebFrameImpl::isPrintScalingDisabledForPlugin(const WebNode& node)
 {
-    WebPluginContainerImpl* pluginContainer =  node.isNull() ? pluginContainerFromFrame(frame()) : toPluginContainerImpl(node.pluginContainer());
+    WebPluginContainerImpl* pluginContainer =  node.isNull() ? pluginContainerFromFrame(frame()) : toWebPluginContainerImpl(node.pluginContainer());
 
     if (!pluginContainer || !pluginContainer->supportsPaginatedPrint())
         return false;
@@ -1607,13 +1609,13 @@ void WebFrameImpl::scopeStringMatches(int identifier, const WebString& searchTex
     Node* originalEndContainer = searchRange->endContainer();
     int originalEndOffset = searchRange->endOffset();
 
-    TrackExceptionState es, es2;
+    TrackExceptionState exceptionState, exceptionState2;
     if (m_resumeScopingFromRange) {
         // This is a continuation of a scoping operation that timed out and didn't
         // complete last time around, so we should start from where we left off.
-        searchRange->setStart(m_resumeScopingFromRange->startContainer(), m_resumeScopingFromRange->startOffset(es2) + 1, es);
-        if (es.hadException() || es2.hadException()) {
-            if (es2.hadException()) // A non-zero |es| happens when navigating during search.
+        searchRange->setStart(m_resumeScopingFromRange->startContainer(), m_resumeScopingFromRange->startOffset(exceptionState2) + 1, exceptionState);
+        if (exceptionState.hadException() || exceptionState2.hadException()) {
+            if (exceptionState2.hadException()) // A non-zero |exceptionState| happens when navigating during search.
                 ASSERT_NOT_REACHED();
             return;
         }
@@ -1636,13 +1638,13 @@ void WebFrameImpl::scopeStringMatches(int identifier, const WebString& searchTex
         RefPtr<Range> resultRange(findPlainText(searchRange.get(),
                                                 searchText,
                                                 options.matchCase ? 0 : CaseInsensitive));
-        if (resultRange->collapsed(es)) {
+        if (resultRange->collapsed(exceptionState)) {
             if (!resultRange->startContainer()->isInShadowTree())
                 break;
 
             searchRange->setStartAfter(
-                resultRange->startContainer()->deprecatedShadowAncestorNode(), es);
-            searchRange->setEnd(originalEndContainer, originalEndOffset, es);
+                resultRange->startContainer()->deprecatedShadowAncestorNode(), exceptionState);
+            searchRange->setEnd(originalEndContainer, originalEndOffset, exceptionState);
             continue;
         }
 
@@ -1687,11 +1689,11 @@ void WebFrameImpl::scopeStringMatches(int identifier, const WebString& searchTex
         // result range. There is no need to use a VisiblePosition here,
         // since findPlainText will use a TextIterator to go over the visible
         // text nodes.
-        searchRange->setStart(resultRange->endContainer(es), resultRange->endOffset(es), es);
+        searchRange->setStart(resultRange->endContainer(exceptionState), resultRange->endOffset(exceptionState), exceptionState);
 
         Node* shadowTreeRoot = searchRange->shadowRoot();
-        if (searchRange->collapsed(es) && shadowTreeRoot)
-            searchRange->setEnd(shadowTreeRoot, shadowTreeRoot->childNodeCount(), es);
+        if (searchRange->collapsed(exceptionState) && shadowTreeRoot)
+            searchRange->setEnd(shadowTreeRoot, shadowTreeRoot->childNodeCount(), exceptionState);
 
         m_resumeScopingFromRange = resultRange;
         timedOut = (currentTime() - startTime) >= maxScopingDuration;
@@ -1804,10 +1806,8 @@ void WebFrameImpl::resetMatchCount()
 
 void WebFrameImpl::sendOrientationChangeEvent(int orientation)
 {
-#if ENABLE(ORIENTATION_EVENTS)
     if (frame())
         frame()->sendOrientationChangeEvent(orientation);
-#endif
 }
 
 void WebFrameImpl::dispatchMessageEventWithOriginCheck(const WebSecurityOrigin& intendedTargetOrigin, const WebDOMEvent& event)
@@ -2095,9 +2095,9 @@ WebFrameImpl* WebFrameImpl::create(WebFrameClient* client, long long embedderIde
 }
 
 WebFrameImpl::WebFrameImpl(WebFrameClient* client, long long embedderIdentifier)
-    : FrameDestructionObserver(0)
-    , m_frameInit(WebFrameInit::create(this, embedderIdentifier))
+    : m_frameInit(WebFrameInit::create(this, embedderIdentifier))
     , m_client(client)
+    , m_permissionClient(0)
     , m_currentActiveMatchFrame(0)
     , m_activeMatchIndexInCurrentFrame(-1)
     , m_locatingActiveRect(false)
@@ -2111,80 +2111,50 @@ WebFrameImpl::WebFrameImpl(WebFrameClient* client, long long embedderIdentifier)
     , m_nextInvalidateAfter(0)
     , m_findMatchMarkersVersion(0)
     , m_findMatchRectsAreValid(false)
-    , m_inSameDocumentHistoryLoad(false)
     , m_inputEventsScaleFactorForEmulation(1)
 {
-    WebKit::Platform::current()->incrementStatsCounter(webFrameActiveCount);
+    blink::Platform::current()->incrementStatsCounter(webFrameActiveCount);
     frameCount++;
 }
 
 WebFrameImpl::~WebFrameImpl()
 {
-    WebKit::Platform::current()->decrementStatsCounter(webFrameActiveCount);
+    blink::Platform::current()->decrementStatsCounter(webFrameActiveCount);
     frameCount--;
 
     cancelPendingScopingEffort();
 }
 
-void WebFrameImpl::setWebCoreFrame(WebCore::Frame* frame)
+void WebFrameImpl::setWebCoreFrame(PassRefPtr<WebCore::Frame> frame)
 {
-    ASSERT(frame);
-    observeFrame(frame);
+    m_frame = frame;
 }
 
 void WebFrameImpl::initializeAsMainFrame(WebCore::Page* page)
 {
-    m_frameInit->setPage(page);
-    RefPtr<Frame> mainFrame = Frame::create(m_frameInit);
-    setWebCoreFrame(mainFrame.get());
-
-    // Add reference on behalf of FrameLoader. See comments in
-    // WebFrameLoaderClient::frameLoaderDestroyed for more info.
-    ref();
+    m_frameInit->setFrameHost(&page->frameHost());
+    setWebCoreFrame(Frame::create(m_frameInit));
 
     // We must call init() after m_frame is assigned because it is referenced
     // during init().
-    frame()->init();
+    m_frame->init();
 }
 
 PassRefPtr<Frame> WebFrameImpl::createChildFrame(const FrameLoadRequest& request, HTMLFrameOwnerElement* ownerElement)
 {
     ASSERT(m_client);
     WebFrameImpl* webframe = toWebFrameImpl(m_client->createChildFrame(this, request.frameName()));
+    if (!webframe)
+        return 0;
 
-    // If the embedder is returning 0 from createChildFrame(), it has not been
-    // updated to the new ownership semantics where the embedder creates the
-    // WebFrame. In that case, fall back to the old logic where the
-    // WebFrameImpl is created here and published back to the embedder. To
-    // bridge between the two ownership semantics, webframeLifetimeHack is
-    // needeed to balance out the refcounting.
-    //
-    // FIXME: Remove once all embedders return non-null from createChildFrame().
-    RefPtr<WebFrameImpl> webframeLifetimeHack;
-    bool mustCallDidCreateFrame = false;
-    if (!webframe) {
-        mustCallDidCreateFrame = true;
-        webframeLifetimeHack = adoptRef(WebFrameImpl::create(m_client));
-        webframe = webframeLifetimeHack.get();
-    }
-
-    // Add an extra ref on behalf of the page/FrameLoader, which references the
-    // WebFrame via the FrameLoaderClient interface. See the comment at the top
-    // of this file for more info.
-    webframe->ref();
-
-    webframe->m_frameInit->setPage(frame()->page());
+    webframe->m_frameInit->setFrameHost(frame()->host());
     webframe->m_frameInit->setOwnerElement(ownerElement);
     RefPtr<Frame> childFrame = Frame::create(webframe->m_frameInit);
-    webframe->setWebCoreFrame(childFrame.get());
+    webframe->setWebCoreFrame(childFrame);
 
     childFrame->tree().setName(request.frameName());
 
     frame()->tree().appendChild(childFrame);
-
-    // FIXME: Remove once all embedders return non-null from createChildFrame().
-    if (mustCallDidCreateFrame)
-        m_client->didCreateFrame(this, webframe);
 
     // Frame::init() can trigger onload event in the parent frame,
     // which may detach this frame and trigger a null-pointer access
@@ -2200,12 +2170,11 @@ PassRefPtr<Frame> WebFrameImpl::createChildFrame(const FrameLoadRequest& request
     if (!childFrame->tree().parent())
         return 0;
 
-    HistoryItem* parentItem = frame()->loader().history()->currentItem();
-    HistoryItem* childItem = 0;
     // If we're moving in the back/forward list, we might want to replace the content
     // of this child frame with whatever was there at that point.
-    if (parentItem && parentItem->children().size() && isBackForwardLoadType(frame()->loader().loadType()) && !frame()->document()->loadEventFinished())
-        childItem = parentItem->childItemWithTarget(childFrame->tree().uniqueName());
+    HistoryItem* childItem = 0;
+    if (isBackForwardLoadType(frame()->loader().loadType()) && !frame()->document()->loadEventFinished())
+        childItem = frame()->page()->historyController().itemForNewChildFrame(childFrame.get());
 
     if (childItem)
         childFrame->loader().loadHistoryItem(childItem);
@@ -2300,7 +2269,7 @@ void WebFrameImpl::setFindEndstateFocusAndSelection()
         Node* node = m_activeMatch->firstNode();
         if (node && node->isInShadowTree()) {
             Node* host = node->deprecatedShadowAncestorNode();
-            if (host->hasTagName(HTMLNames::inputTag) || isHTMLTextAreaElement(host))
+            if (host->hasTagName(HTMLNames::inputTag) || host->hasTagName(HTMLNames::textareaTag))
                 node = host;
         }
         for (; node; node = node->parentNode()) {
@@ -2320,7 +2289,7 @@ void WebFrameImpl::setFindEndstateFocusAndSelection()
         // This, for example, sets focus to the first link if you search for
         // text and text that is within one or more links.
         node = m_activeMatch->firstNode();
-        for (; node && node != m_activeMatch->pastLastNode(); node = NodeTraversal::next(node)) {
+        for (; node && node != m_activeMatch->pastLastNode(); node = NodeTraversal::next(*node)) {
             if (!node->isElementNode())
                 continue;
             Element* element = toElement(node);
@@ -2512,11 +2481,8 @@ void WebFrameImpl::loadJavaScriptURL(const KURL& url)
         frame()->document()->loader()->replaceDocument(scriptResult, ownerDocument.get());
 }
 
-void WebFrameImpl::willDetachPage()
+void WebFrameImpl::willDetachParent()
 {
-    if (!frame() || !frame()->page())
-        return;
-
     // Do not expect string scoping results from any frames that got detached
     // in the middle of the operation.
     if (m_scopingInProgress) {
@@ -2529,4 +2495,4 @@ void WebFrameImpl::willDetachPage()
     }
 }
 
-} // namespace WebKit
+} // namespace blink

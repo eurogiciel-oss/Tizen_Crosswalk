@@ -6,6 +6,7 @@
 
 #include "ash/shell.h"
 #include "base/command_line.h"
+#include "base/debug/leak_annotations.h"
 #include "base/i18n/rtl.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/themes/theme_service.h"
@@ -27,7 +28,7 @@
 #include "ui/aura/window.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/theme_provider.h"
-#include "ui/gfx/font.h"
+#include "ui/gfx/font_list.h"
 #include "ui/gfx/screen.h"
 #include "ui/views/controls/menu/menu_runner.h"
 #include "ui/views/widget/native_widget.h"
@@ -69,14 +70,15 @@ BrowserFrame::~BrowserFrame() {
 }
 
 // static
-const gfx::Font& BrowserFrame::GetTitleFont() {
+const gfx::FontList& BrowserFrame::GetTitleFontList() {
 #if !defined(OS_WIN) || defined(USE_AURA)
-  static gfx::Font* title_font = new gfx::Font;
+  static const gfx::FontList* title_font_list = new gfx::FontList();
 #else
-  static gfx::Font* title_font =
-      new gfx::Font(views::NativeWidgetWin::GetWindowTitleFont());
+  static const gfx::FontList* title_font_list =
+      new gfx::FontList(views::NativeWidgetWin::GetWindowTitleFontList());
 #endif
-  return *title_font;
+  ANNOTATE_LEAKING_OBJECT_PTR(title_font_list);
+  return *title_font_list;
 }
 
 void BrowserFrame::InitBrowserFrame() {
@@ -124,6 +126,13 @@ void BrowserFrame::InitBrowserFrame() {
         command_line.GetSwitchValueNative(switches::kUserDataDir);
     params.wm_class_name += " (" + user_data_dir + ")";
   }
+  const char kX11WindowRoleBrowser[] = "browser";
+  const char kX11WindowRolePopup[] = "pop-up";
+  params.wm_role_name = browser_view_->browser()->is_type_tabbed() ?
+      std::string(kX11WindowRoleBrowser) : std::string(kX11WindowRolePopup);
+
+  params.remove_standard_frame =
+      !command_line.HasSwitch(switches::kUseSystemTitleBar);
 #endif  // defined(OS_LINUX)
 
   Init(params);
@@ -147,9 +156,8 @@ gfx::Rect BrowserFrame::GetBoundsForTabStrip(views::View* tabstrip) const {
   return browser_frame_view_->GetBoundsForTabStrip(tabstrip);
 }
 
-BrowserNonClientFrameView::TabStripInsets BrowserFrame::GetTabStripInsets(
-    bool force_restored) const {
-  return browser_frame_view_->GetTabStripInsets(force_restored);
+int BrowserFrame::GetTopInset() const {
+  return browser_frame_view_->GetTopInset();
 }
 
 int BrowserFrame::GetThemeBackgroundXInset() const {
@@ -162,15 +170,6 @@ void BrowserFrame::UpdateThrobber(bool running) {
 
 views::View* BrowserFrame::GetFrameView() const {
   return browser_frame_view_;
-}
-
-void BrowserFrame::TabStripDisplayModeChanged() {
-  if (GetRootView()->has_children()) {
-    // Make sure the child of the root view gets Layout again.
-    GetRootView()->child_at(0)->InvalidateLayout();
-  }
-  GetRootView()->Layout();
-  native_browser_frame_->TabStripDisplayModeChanged();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

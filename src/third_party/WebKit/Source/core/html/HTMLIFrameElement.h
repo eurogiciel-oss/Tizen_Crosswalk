@@ -30,12 +30,10 @@ namespace WebCore {
 
 class HTMLIFrameElement FINAL : public HTMLFrameElementBase {
 public:
-    static PassRefPtr<HTMLIFrameElement> create(const QualifiedName&, Document&);
-
-    bool shouldDisplaySeamlessly() const;
+    static PassRefPtr<HTMLIFrameElement> create(Document&);
 
 private:
-    HTMLIFrameElement(const QualifiedName&, Document&);
+    explicit HTMLIFrameElement(Document&);
 
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
     virtual bool isPresentationAttribute(const QualifiedName&) const OVERRIDE;
@@ -44,8 +42,8 @@ private:
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void removedFrom(ContainerNode*) OVERRIDE;
 
-    virtual bool rendererIsNeeded(const RenderStyle&);
-    virtual RenderObject* createRenderer(RenderStyle*);
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE;
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
 
     virtual void didRecalcStyle(StyleRecalcChange) OVERRIDE;
 

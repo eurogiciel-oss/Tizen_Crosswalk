@@ -22,7 +22,6 @@
 
 #include "core/svg/SVGEllipseElement.h"
 
-#include "SVGNames.h"
 #include "core/rendering/svg/RenderSVGEllipse.h"
 #include "core/rendering/svg/RenderSVGResource.h"
 #include "core/svg/SVGElementInstance.h"
@@ -31,44 +30,35 @@
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_LENGTH(SVGEllipseElement, SVGNames::cxAttr, Cx, cx)
-DEFINE_ANIMATED_LENGTH(SVGEllipseElement, SVGNames::cyAttr, Cy, cy)
-DEFINE_ANIMATED_LENGTH(SVGEllipseElement, SVGNames::rxAttr, Rx, rx)
-DEFINE_ANIMATED_LENGTH(SVGEllipseElement, SVGNames::ryAttr, Ry, ry)
-DEFINE_ANIMATED_BOOLEAN(SVGEllipseElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
-
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGEllipseElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(cx)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(cy)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(rx)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(ry)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGGraphicsElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGEllipseElement::SVGEllipseElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
-    , m_cx(LengthModeWidth)
-    , m_cy(LengthModeHeight)
-    , m_rx(LengthModeWidth)
-    , m_ry(LengthModeHeight)
+inline SVGEllipseElement::SVGEllipseElement(Document& document)
+    : SVGGeometryElement(SVGNames::ellipseTag, document)
+    , m_cx(SVGAnimatedLength::create(this, SVGNames::cxAttr, SVGLength::create(LengthModeWidth)))
+    , m_cy(SVGAnimatedLength::create(this, SVGNames::cyAttr, SVGLength::create(LengthModeHeight)))
+    , m_rx(SVGAnimatedLength::create(this, SVGNames::rxAttr, SVGLength::create(LengthModeWidth)))
+    , m_ry(SVGAnimatedLength::create(this, SVGNames::ryAttr, SVGLength::create(LengthModeHeight)))
 {
-    ASSERT(hasTagName(SVGNames::ellipseTag));
     ScriptWrappable::init(this);
+
+    addToPropertyMap(m_cx);
+    addToPropertyMap(m_cy);
+    addToPropertyMap(m_rx);
+    addToPropertyMap(m_ry);
     registerAnimatedPropertiesForSVGEllipseElement();
 }
 
-PassRefPtr<SVGEllipseElement> SVGEllipseElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGEllipseElement> SVGEllipseElement::create(Document& document)
 {
-    return adoptRef(new SVGEllipseElement(tagName, document));
+    return adoptRef(new SVGEllipseElement(document));
 }
 
 bool SVGEllipseElement::isSupportedAttribute(const QualifiedName& attrName)
 {
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
     if (supportedAttributes.isEmpty()) {
-        SVGLangSpace::addSupportedAttributes(supportedAttributes);
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
         supportedAttributes.add(SVGNames::cxAttr);
         supportedAttributes.add(SVGNames::cyAttr);
         supportedAttributes.add(SVGNames::rxAttr);
@@ -82,18 +72,16 @@ void SVGEllipseElement::parseAttribute(const QualifiedName& name, const AtomicSt
     SVGParsingError parseError = NoError;
 
     if (!isSupportedAttribute(name))
-        SVGGraphicsElement::parseAttribute(name, value);
+        SVGGeometryElement::parseAttribute(name, value);
     else if (name == SVGNames::cxAttr)
-        setCxBaseValue(SVGLength::construct(LengthModeWidth, value, parseError));
+        m_cx->setBaseValueAsString(value, AllowNegativeLengths, parseError);
     else if (name == SVGNames::cyAttr)
-        setCyBaseValue(SVGLength::construct(LengthModeHeight, value, parseError));
+        m_cy->setBaseValueAsString(value, AllowNegativeLengths, parseError);
     else if (name == SVGNames::rxAttr)
-        setRxBaseValue(SVGLength::construct(LengthModeWidth, value, parseError, ForbidNegativeLengths));
+        m_rx->setBaseValueAsString(value, ForbidNegativeLengths, parseError);
     else if (name == SVGNames::ryAttr)
-        setRyBaseValue(SVGLength::construct(LengthModeHeight, value, parseError, ForbidNegativeLengths));
-    else if (SVGLangSpace::parseAttribute(name, value)
-             || SVGExternalResourcesRequired::parseAttribute(name, value)) {
-    } else
+        m_ry->setBaseValueAsString(value, ForbidNegativeLengths, parseError);
+    else
         ASSERT_NOT_REACHED();
 
     reportAttributeParsingError(parseError, name, value);
@@ -102,7 +90,7 @@ void SVGEllipseElement::parseAttribute(const QualifiedName& name, const AtomicSt
 void SVGEllipseElement::svgAttributeChanged(const QualifiedName& attrName)
 {
     if (!isSupportedAttribute(attrName)) {
-        SVGGraphicsElement::svgAttributeChanged(attrName);
+        SVGGeometryElement::svgAttributeChanged(attrName);
         return;
     }
 
@@ -126,20 +114,15 @@ void SVGEllipseElement::svgAttributeChanged(const QualifiedName& attrName)
         return;
     }
 
-    if (SVGLangSpace::isKnownAttribute(attrName) || SVGExternalResourcesRequired::isKnownAttribute(attrName)) {
-        RenderSVGResource::markForLayoutAndParentResourceInvalidation(renderer);
-        return;
-    }
-
     ASSERT_NOT_REACHED();
 }
 
 bool SVGEllipseElement::selfHasRelativeLengths() const
 {
-    return cxCurrentValue().isRelative()
-        || cyCurrentValue().isRelative()
-        || rxCurrentValue().isRelative()
-        || ryCurrentValue().isRelative();
+    return m_cx->currentValue()->isRelative()
+        || m_cy->currentValue()->isRelative()
+        || m_rx->currentValue()->isRelative()
+        || m_ry->currentValue()->isRelative();
 }
 
 RenderObject* SVGEllipseElement::createRenderer(RenderStyle*)

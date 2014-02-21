@@ -723,7 +723,15 @@ class NotificationBridge
 }
 
 - (NSPoint)bookmarkBubblePoint {
-  return locationBarView_->GetBookmarkBubblePoint();
+  if (locationBarView_->IsStarEnabled())
+    return locationBarView_->GetBookmarkBubblePoint();
+
+  // Grab bottom middle of hotdogs.
+  NSRect frame = wrenchButton_.frame;
+  NSPoint point = NSMakePoint(NSMidX(frame), NSMinY(frame));
+  // Inset to account for the whitespace around the hotdogs.
+  point.y += wrench_menu_controller::kWrenchBubblePointOffsetY;
+  return [self.view convertPoint:point toView:nil];
 }
 
 - (CGFloat)desiredHeightForCompression:(CGFloat)compressByHeight {
@@ -775,8 +783,8 @@ class NotificationBridge
       base::SysNSStringToUTF8([urls objectAtIndex:0]), std::string()));
 
   if (url.SchemeIs(content::kJavaScriptScheme)) {
-    browser_->window()->GetLocationBar()->GetLocationEntry()->SetUserText(
-          OmniboxView::StripJavascriptSchemas(UTF8ToUTF16(url.spec())));
+    browser_->window()->GetLocationBar()->GetOmniboxView()->SetUserText(
+          OmniboxView::StripJavascriptSchemas(base::UTF8ToUTF16(url.spec())));
   }
   OpenURLParams params(
       url, Referrer(), CURRENT_TAB, content::PAGE_TRANSITION_TYPED, false);

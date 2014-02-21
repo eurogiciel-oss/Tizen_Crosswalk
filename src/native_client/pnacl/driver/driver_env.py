@@ -23,6 +23,7 @@ INITIAL_ENV = {
   # Set by DriverMain
   'DRIVER_PATH'     : '', # Absolute path to this driver invocation
   'DRIVER_BIN'      : '', # PNaCl driver bin/ directory
+  'DRIVER_REV_FILE' : '${DRIVER_BIN}/REV',
 
   'BASE_NACL'       : '${@FindBaseNaCl}',      # Absolute path of native_client/
   'BASE_TOOLCHAIN'  : '${@FindBaseToolchain}', # Absolute path to toolchain/
@@ -31,9 +32,9 @@ INITIAL_ENV = {
   'BUILD_ARCH'      : '${@GetBuildArch}',      # "x86_64" or "i686" or "i386"
 
   # Directories
-  'BASE_HOST'       : '${BASE}/host_${HOST_ARCH}',
-  'BASE_LLVM'       : '${BASE_HOST}',
-  'BASE_BINUTILS'   : '${BASE_HOST}',
+  'BPREFIXES'       : '', # Prefixes specified using the -B flag.
+  'BASE_LLVM'       : '${@FindBaseHost:clang}',
+  'BASE_BINUTILS'   : '${@FindBaseHost:le32-nacl-ar}',
 
   'BASE_LIB_NATIVE' : '${BASE}/lib-',
 
@@ -67,15 +68,12 @@ INITIAL_ENV = {
                           # currently needed while compiling newlib,
                           # and some scons tests.
   'DRY_RUN'     : '0',
-  'DEBUG'       : '0',    # Print out internal actions
-  'RECURSE'     : '0',    # In a recursive driver call
   'SAVE_TEMPS'  : '0',    # Do not clean up temporary files
   'SANDBOXED'   : '0',    # Use sandboxed toolchain for this arch. (main switch)
   'HAS_FRONTEND': '',     # Set by ReadConfig().  '1' if the driver install
                           # has support for front-end bitcode tools, or '0'
                           # if it only has the backend translator.
 
-  'FORCE_INTERMEDIATE_S': '0',
   'USE_EMULATOR'        : '0',
   'USE_BOOTSTRAP'       : '${BUILD_OS==linux ? 1 : 0}',
   # Args passed from one driver invocation to another
@@ -83,13 +81,9 @@ INITIAL_ENV = {
 
   'BCLIB_ARCH'          : '',
   # Logging settings
-  'LOGGING'            : '0', # True if logging is enabled.
   'LOG_VERBOSE'        : '0', # Log to stdout (--pnacl-driver-verbose)
-  'LOG_TO_FILE'        : '0', # Log to file (--pnacl-driver-log-to-file)
-  'LOG_FILENAME'       : '${BASE}/driver.log',
-  'LOG_FILE_SIZE_LIMIT': str(20 * 1024 * 1024),
 
-   # Conventions
+  # Conventions
   'SO_EXT'          : '${SO_EXT_%BUILD_OS%}',
   'SO_EXT_darwin'   : '.dylib',
   'SO_EXT_linux'    : '.so',
@@ -100,11 +94,6 @@ INITIAL_ENV = {
   'SO_DIR_linux'    : 'lib',
   'SO_DIR_windows'  : 'bin',  # On Windows, DLLs are placed in bin/
                               # because the dynamic loader searches %PATH%
-
-  'SO_PREFIX'        : '${SO_PREFIX_%BUILD_OS%}',
-  'SO_PREFIX_darwin' : 'lib',
-  'SO_PREFIX_linux'  : 'lib',
-  'SO_PREFIX_windows': 'cyg',
 
   'EXEC_EXT'        : '${EXEC_EXT_%BUILD_OS%}',
   'EXEC_EXT_darwin' : '',
@@ -117,7 +106,7 @@ INITIAL_ENV = {
   'SCONS_OS_windows'    : 'win',
 
   # llvm goldplugin
-  'GOLD_PLUGIN_SO'  : '${BASE_LLVM}/${SO_DIR}/${SO_PREFIX}LLVMgold${SO_EXT}',
+  'GOLD_PLUGIN_SO'  : '${BASE_LLVM}/${SO_DIR}/LLVMgold${SO_EXT}',
 
   'SCONS_STAGING'       : '${SCONS_STAGING_%ARCH%}',
   'SCONS_STAGING_X8632' : '${SCONS_OUT}/opt-${SCONS_OS}-x86-32/staging',
@@ -161,7 +150,6 @@ INITIAL_ENV = {
   'LLVM_NM'       : '${BASE_LLVM_BIN}/llvm-nm${EXEC_EXT}',
   # llvm-as compiles llvm assembly (.ll) to bitcode (.bc/.po)
   'LLVM_AS'       : '${BASE_LLVM_BIN}/llvm-as${EXEC_EXT}',
-  'LLVM_BCWRAP'   : '${BASE_LLVM_BIN}/bc-wrap${EXEC_EXT}',
   'PNACL_ABICHECK': '${BASE_LLVM_BIN}/pnacl-abicheck${EXEC_EXT}',
 
   # Native LLVM tools

@@ -5,7 +5,34 @@
 {
   'targets': [
     {
-      'target_name': 'translate_common',
+      'target_name': 'translate_core_browser',
+      'type': 'static_library',
+      'dependencies': [
+        'language_usage_metrics',
+        'translate_core_common',
+        '../base/base.gyp:base',
+        '../url/url.gyp:url_lib',
+      ],
+      'include_dirs': [
+        '..',
+      ],
+      'sources': [
+        'translate/core/browser/language_state.cc',
+        'translate/core/browser/language_state.h',
+        'translate/core/browser/page_translated_details.h',
+        'translate/core/browser/translate_browser_metrics.cc',
+        'translate/core/browser/translate_browser_metrics.h',
+        'translate/core/browser/translate_delegate.h',
+        'translate/core/browser/translate_driver.h',
+        'translate/core/browser/translate_error_details.h',
+        'translate/core/browser/translate_event_details.cc',
+        'translate/core/browser/translate_event_details.h',
+        'translate/core/browser/translate_url_fetcher.cc',
+        'translate/core/browser/translate_url_fetcher.h',
+       ],
+    },
+    {
+      'target_name': 'translate_core_common',
       'type': 'static_library',
       'dependencies': [
         '../base/base.gyp:base',
@@ -15,21 +42,24 @@
         '..',
       ],
       'sources': [
-        'translate/common/translate_constants.cc',
-        'translate/common/translate_constants.h',
-        'translate/common/translate_metrics.cc',
-        'translate/common/translate_metrics.h',
-        'translate/common/translate_switches.cc',
-        'translate/common/translate_switches.h',
-        'translate/common/translate_util.cc',
-        'translate/common/translate_util.h',
+        'translate/core/common/translate_constants.cc',
+        'translate/core/common/translate_constants.h',
+        'translate/core/common/translate_errors.h',
+        'translate/core/common/translate_metrics.cc',
+        'translate/core/common/translate_metrics.h',
+        'translate/core/common/translate_switches.cc',
+        'translate/core/common/translate_switches.h',
+        'translate/core/common/translate_util.cc',
+        'translate/core/common/translate_util.h',
+        'translate/core/common/language_detection_details.cc',
+        'translate/core/common/language_detection_details.h',
       ],
     },
     {
       'target_name': 'translate_language_detection',
       'type': 'static_library',
       'dependencies': [
-        'translate_common',
+        'translate_core_common',
         '../base/base.gyp:base',
         '../url/url.gyp:url_lib',
       ],
@@ -53,5 +83,27 @@
         }],
       ],
     },
+  ],
+  'conditions': [
+    ['OS != "ios"', {
+      'targets': [
+        {
+          'target_name': 'translate_content_browser',
+          'type': 'static_library',
+          'dependencies': [
+            'translate_core_browser',
+            '../base/base.gyp:base',
+            '../content/content.gyp:content_browser',
+          ],
+          'include_dirs': [
+            '..',
+          ],
+          'sources': [
+            'translate/content/browser/content_translate_driver.cc',
+            'translate/content/browser/content_translate_driver.h',
+           ],
+        },
+      ],
+    }],
   ],
 }

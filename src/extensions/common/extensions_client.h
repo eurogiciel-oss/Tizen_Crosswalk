@@ -9,11 +9,14 @@
 #include <string>
 #include <vector>
 
+class GURL;
+
 namespace extensions {
 
 class APIPermissionSet;
 class Extension;
 class FeatureProvider;
+class ManifestPermissionSet;
 class PermissionMessage;
 class PermissionMessageProvider;
 class PermissionsProvider;
@@ -24,6 +27,8 @@ class URLPatternSet;
 class ExtensionsClient {
  public:
   typedef std::vector<std::string> ScriptingWhitelist;
+
+  virtual ~ExtensionsClient() {}
 
   // Initializes global state. Not done in the constructor because unit tests
   // can create additional ExtensionsClients because the utility thread runs
@@ -62,6 +67,9 @@ class ExtensionsClient {
   virtual URLPatternSet GetPermittedChromeSchemeHosts(
       const Extension* extension,
       const APIPermissionSet& api_permissions) const = 0;
+
+  // Returns false if content scripts are forbidden from running on |url|.
+  virtual bool IsScriptableURL(const GURL& url, std::string* error) const = 0;
 
   // Return the extensions client.
   static ExtensionsClient* Get();

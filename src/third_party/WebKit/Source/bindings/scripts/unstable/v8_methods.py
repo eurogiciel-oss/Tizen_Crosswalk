@@ -35,83 +35,178 @@ Until then, please work on the Perl IDL compiler.
 For details, see bug http://crbug.com/239771
 """
 
+from v8_globals import includes
 import v8_types
 import v8_utilities
+from v8_utilities import has_extended_attribute_value
 
 
-def generate_method(method):
+def generate_method(interface, method):
     arguments = method.arguments
+    extended_attributes = method.extended_attributes
+    idl_type = method.idl_type
+    is_static = method.is_static
+    name = method.name
+
+    this_cpp_value = cpp_value(interface, method, len(arguments))
+
+    def function_template():
+        if is_static:
+            return 'functionTemplate'
+        if 'Unforgeable' in extended_attributes:
+            return 'instanceTemplate'
+        return 'prototypeTemplate'
+
+    is_call_with_script_arguments = has_extended_attribute_value(method, 'CallWith', 'ScriptArguments')
+    if is_call_with_script_arguments:
+        includes.update(['bindings/v8/ScriptCallStackFactory.h',
+                         'core/inspector/ScriptArguments.h'])
+    is_call_with_script_state = has_extended_attribute_value(method, 'CallWith', 'ScriptState')
+    if is_call_with_script_state:
+        includes.add('bindings/v8/ScriptState.h')
+    is_check_security_for_node = 'CheckSecurity' in extended_attributes
+    if is_check_security_for_node:
+        includes.add('bindings/v8/BindingSecurity.h')
+    is_custom_element_callbacks = 'CustomElementCallbacks' in extended_attributes
+    if is_custom_element_callbacks:
+        includes.add('core/dom/custom/CustomElementCallbackDispatcher.h')
+
+    is_check_security_for_frame = (
+        'CheckSecurity' in interface.extended_attributes and
+        'DoNotCheckSecurity' not in extended_attributes)
+    is_raises_exception = 'RaisesException' in extended_attributes
+
     contents = {
-        'arguments': [generate_argument(method, argument, index)
+        'activity_logging_world_list': v8_utilities.activity_logging_world_list(method),  # [ActivityLogging]
+        'arguments': [generate_argument(interface, method, argument, index)
                       for index, argument in enumerate(arguments)],
-        'cpp_method': cpp_method(method, len(arguments)),
-        'custom_signature': custom_signature(arguments),
-        'idl_type': method.idl_type,
-        'name': method.name,
+        'conditional_string': v8_utilities.conditional_string(method),
+        'cpp_type': v8_types.cpp_type(idl_type),
+        'cpp_value': this_cpp_value,
+        'deprecate_as': v8_utilities.deprecate_as(method),  # [DeprecateAs]
+        'do_not_check_signature': not(is_static or
+            v8_utilities.has_extended_attribute(method,
+                ['DoNotCheckSecurity', 'DoNotCheckSignature', 'NotEnumerable',
+                 'ReadOnly', 'RuntimeEnabled', 'Unforgeable'])),
+        'function_template': function_template(),
+        'idl_type': idl_type,
+        'has_exception_state':
+            is_raises_exception or
+            is_check_security_for_frame or
+            any(argument for argument in arguments
+                if argument.idl_type == 'SerializedScriptValue' or
+                   v8_types.is_integer_type(argument.idl_type)) or
+            name in ['addEventListener', 'removeEventListener'],
+        'is_call_with_execution_context': has_extended_attribute_value(method, 'CallWith', 'ExecutionContext'),
+        'is_call_with_script_arguments': is_call_with_script_arguments,
+        'is_call_with_script_state': is_call_with_script_state,
+        'is_check_security_for_frame': is_check_security_for_frame,
+        'is_check_security_for_node': is_check_security_for_node,
+        'is_custom': 'Custom' in extended_attributes,
+        'is_custom_element_callbacks': is_custom_element_callbacks,
+        'is_do_not_check_security': 'DoNotCheckSecurity' in extended_attributes,
+        'is_per_world_bindings': 'PerWorldBindings' in extended_attributes,
+        'is_raises_exception': is_raises_exception,
+        'is_read_only': 'ReadOnly' in extended_attributes,
+        'is_static': is_static,
+        'is_strict_type_checking':
+            'StrictTypeChecking' in extended_attributes or
+            'StrictTypeChecking' in interface.extended_attributes,
+        'is_variadic': arguments and arguments[-1].is_variadic,
+        'measure_as': v8_utilities.measure_as(method),  # [MeasureAs]
+        'name': name,
+        'number_of_arguments': len(arguments),
         'number_of_required_arguments': len([
             argument for argument in arguments
             if not (argument.is_optional or argument.is_variadic)]),
         'number_of_required_or_variadic_arguments': len([
             argument for argument in arguments
             if not argument.is_optional]),
+        'per_context_enabled_function': v8_utilities.per_context_enabled_function_name(method),  # [PerContextEnabled]
+        'property_attributes': property_attributes(method),
+        'runtime_enabled_function': v8_utilities.runtime_enabled_function_name(method),  # [RuntimeEnabled]
+        'signature': 'v8::Local<v8::Signature>()' if is_static or 'DoNotCheckSignature' in extended_attributes else 'defaultSignature',
+        'v8_set_return_value': v8_set_return_value(interface.name, method, this_cpp_value),
+        'world_suffixes': ['', 'ForMainWorld'] if 'PerWorldBindings' in extended_attributes else [''],  # [PerWorldBindings]
     }
     return contents
 
 
-def generate_argument(method, argument, index):
+def generate_argument(interface, method, argument, index):
     extended_attributes = argument.extended_attributes
     idl_type = argument.idl_type
+    this_cpp_value = cpp_value(interface, method, index)
     return {
-        'cpp_method': cpp_method(method, index),
         'cpp_type': v8_types.cpp_type(idl_type),
+        'cpp_value': this_cpp_value,
         'enum_validation_expression': v8_utilities.enum_validation_expression(idl_type),
         'has_default': 'Default' in extended_attributes,
-        'idl_type': argument.idl_type,
+        'idl_type': idl_type,
         'index': index,
         'is_clamp': 'Clamp' in extended_attributes,
+        'is_callback_interface': v8_types.is_callback_interface(idl_type),
+        'is_nullable': argument.is_nullable,
         'is_optional': argument.is_optional,
+        'is_strict_type_checking': 'StrictTypeChecking' in extended_attributes,
         'is_variadic_wrapper_type': argument.is_variadic and v8_types.is_wrapper_type(idl_type),
+        'is_wrapper_type': v8_types.is_wrapper_type(idl_type),
         'name': argument.name,
+        'v8_set_return_value': v8_set_return_value(interface.name, method, this_cpp_value),
         'v8_value_to_local_cpp_value': v8_value_to_local_cpp_value(argument, index),
     }
 
 
-def cpp_method(method, number_of_arguments):
+def cpp_value(interface, method, number_of_arguments):
     def cpp_argument(argument):
-        if argument.idl_type in ['NodeFilter', 'XPathNSResolver']:
+        idl_type = argument.idl_type
+        if (v8_types.is_callback_interface(idl_type) or
+            idl_type in ['NodeFilter', 'XPathNSResolver']):
             # FIXME: remove this special case
-            return '%s.get()' % argument.name
+            return '%s.release()' % argument.name
         return argument.name
 
     # Truncate omitted optional arguments
     arguments = method.arguments[:number_of_arguments]
-    cpp_arguments = [cpp_argument(argument) for argument in arguments]
-    cpp_value = 'imp->%s(%s)' % (method.name, ', '.join(cpp_arguments))
+    cpp_arguments = v8_utilities.call_with_arguments(method)
+    if ('ImplementedBy' in method.extended_attributes and
+        not method.is_static):
+        cpp_arguments.append('imp')
+    cpp_arguments.extend(cpp_argument(argument) for argument in arguments)
+    if 'RaisesException' in method.extended_attributes:
+        cpp_arguments.append('exceptionState')
 
+    cpp_method_name = v8_utilities.scoped_name(interface, method, v8_utilities.cpp_name(method))
+    return '%s(%s)' % (cpp_method_name, ', '.join(cpp_arguments))
+
+
+def v8_set_return_value(interface_name, method, cpp_value):
     idl_type = method.idl_type
+    extended_attributes = method.extended_attributes
     if idl_type == 'void':
-        return cpp_value
-    return v8_types.v8_set_return_value(idl_type, cpp_value)
-
-
-def custom_signature(arguments):
-    def argument_template(argument):
-        idl_type = argument.idl_type
-        if (v8_types.is_wrapper_type(idl_type) and
-            not v8_types.is_typed_array_type(idl_type) and
-            # Compatibility: all other browsers accepts a callable for
-            # XPathNSResolver, despite it being against spec.
-            not idl_type == 'XPathNSResolver'):
-            return 'V8PerIsolateData::from(isolate)->rawTemplate(&V8{idl_type}::wrapperTypeInfo, currentWorldType)'.format(idl_type=idl_type)
-        return 'v8::Handle<v8::FunctionTemplate>()'
-
-    if (any(argument.is_optional and
-            'Default' not in argument.extended_attributes
-            for argument in arguments) or
-        all(not v8_types.is_wrapper_type(argument.idl_type)
-            for argument in arguments)):
         return None
-    return ', '.join([argument_template(argument) for argument in arguments])
+    # [CallWith=ScriptState], [RaisesException]
+    if (has_extended_attribute_value(method, 'CallWith', 'ScriptState') or
+        'RaisesException' in extended_attributes):
+        # use local variable for value
+        if v8_types.is_interface_type(idl_type):
+            cpp_value = 'result.release()'
+        else:
+            cpp_value = 'result'
+    script_wrappable = 'imp' if v8_types.inherits_interface(interface_name, 'Node') else ''
+    return v8_types.v8_set_return_value(idl_type, cpp_value, extended_attributes, script_wrappable=script_wrappable)
+
+
+# [NotEnumerable]
+def property_attributes(method):
+    extended_attributes = method.extended_attributes
+    property_attributes_list = []
+    if 'NotEnumerable' in extended_attributes:
+        property_attributes_list.append('v8::DontEnum')
+    if 'ReadOnly' in extended_attributes:
+        property_attributes_list.append('v8::ReadOnly')
+    if property_attributes_list:
+        property_attributes_list.insert(0, 'v8::DontDelete')
+    return property_attributes_list
 
 
 def v8_value_to_local_cpp_value(argument, index):
@@ -121,6 +216,7 @@ def v8_value_to_local_cpp_value(argument, index):
     if argument.is_variadic:
         return 'V8TRYCATCH_VOID(Vector<{cpp_type}>, {name}, toNativeArguments<{cpp_type}>(info, {index}))'.format(
                 cpp_type=v8_types.cpp_type(idl_type), name=name, index=index)
+    # [Default=NullString]
     if (argument.is_optional and idl_type == 'DOMString' and
         extended_attributes.get('Default') == 'NullString'):
         v8_value = 'argumentOrNull(info, %s)' % index

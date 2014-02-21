@@ -42,205 +42,15 @@
     },
     'includes': [
         '../../Source/build/features.gypi',
-        '../../Source/testing/runner/runner.gypi',
         '../../Source/testing/plugin/plugin.gypi',
     ],
     'targets': [
-        {
-            'target_name': 'TestRunner',
-            'type': '<(component)',
-            'defines': [
-                'WEBTESTRUNNER_IMPLEMENTATION=1',
-            ],
-            'dependencies': [
-                'TestRunner_resources',
-                '../../public/blink.gyp:blink',
-                '<(source_dir)/web/web.gyp:webkit_test_support',
-            ],
-            'export_dependent_settings': [
-                '../../public/blink.gyp:blink',
-            ],
-            'direct_dependent_settings': {
-                'include_dirs': [
-                    '../..',
-                ],
-            },
-            'sources': [
-                '<@(test_runner_files)',
-            ],
-            'conditions': [
-                ['component=="shared_library"', {
-                    'defines': [
-                        'WEBTESTRUNNER_DLL',
-                        'WEBTESTRUNNER_IMPLEMENTATION=1',
-                    ],
-                    'dependencies': [
-                        '<(DEPTH)/base/base.gyp:base',
-                        '<(DEPTH)/skia/skia.gyp:skia',
-                        '<(DEPTH)/url/url.gyp:url_lib',
-                        '<(DEPTH)/v8/tools/gyp/v8.gyp:v8',
-                    ],
-                    'direct_dependent_settings': {
-                        'defines': [
-                            'WEBTESTRUNNER_DLL',
-                        ],
-                    },
-                    'export_dependent_settings': [
-                        '<(DEPTH)/url/url.gyp:url_lib',
-                        '<(DEPTH)/v8/tools/gyp/v8.gyp:v8',
-                    ],
-                    'msvs_settings': {
-                        'VCLinkerTool': {
-                            'conditions': [
-                                ['incremental_chrome_dll==1', {
-                                    'UseLibraryDependencyInputs': 'true',
-                                }],
-                            ],
-                        },
-                    },
-                }],
-                ['toolkit_uses_gtk == 1', {
-                    'dependencies': [
-                        '<(DEPTH)/build/linux/system.gyp:gtk',
-                    ],
-                    'include_dirs': [
-                        '../../../public/web/gtk',
-                    ],
-                }],
-                ['OS!="win"', {
-                    'sources/': [
-                        ['exclude', 'Win\\.cpp$'],
-                    ],
-                }],
-                ['OS=="mac"', {
-                  'link_settings': {
-                    'libraries': [
-                      '$(SDKROOT)/System/Library/Frameworks/AppKit.framework',
-                      '$(SDKROOT)/System/Library/Frameworks/ApplicationServices.framework',
-                      '$(SDKROOT)/System/Library/Frameworks/Carbon.framework',
-                      '$(SDKROOT)/System/Library/Frameworks/Foundation.framework',
-                    ],
-                  },
-                }],
-            ],
-            # Disable c4267 warnings until we fix size_t to int truncations.
-            'msvs_disabled_warnings': [ 4267, ],
-        },
-        {
-            # FIXME: This is only used by webkit_unit_tests now, move it to WebKitUnitTests.gyp.
-            'target_name': 'DumpRenderTree_resources',
-            'type': 'none',
-            'dependencies': [
-                '<(DEPTH)/net/net.gyp:net_resources',
-                '<(DEPTH)/ui/ui.gyp:ui_resources',
-                '<(DEPTH)/webkit/webkit_resources.gyp:webkit_resources',
-                '<(DEPTH)/webkit/webkit_resources.gyp:webkit_strings',
-            ],
-            'actions': [{
-                'action_name': 'repack_local',
-                'variables': {
-                    'repack_path': '<(DEPTH)/tools/grit/grit/format/repack.py',
-                    'pak_inputs': [
-                        '<(SHARED_INTERMEDIATE_DIR)/net/net_resources.pak',
-                        '<(SHARED_INTERMEDIATE_DIR)/ui/ui_resources/ui_resources_100_percent.pak',
-                        '<(SHARED_INTERMEDIATE_DIR)/webkit/blink_resources.pak',
-                        '<(SHARED_INTERMEDIATE_DIR)/webkit/webkit_strings_en-US.pak',
-                        '<(SHARED_INTERMEDIATE_DIR)/webkit/webkit_resources_100_percent.pak',
-                ]},
-                'inputs': [
-                    '<(repack_path)',
-                    '<@(pak_inputs)',
-                ],
-                'outputs': [
-                    '<(PRODUCT_DIR)/DumpRenderTree.pak',
-                ],
-                'action': ['python', '<(repack_path)', '<@(_outputs)', '<@(pak_inputs)'],
-            }],
-            'conditions': [
-                ['OS=="mac"', {
-                    'all_dependent_settings': {
-                        'mac_bundle_resources': [
-                            '<(PRODUCT_DIR)/DumpRenderTree.pak',
-                        ],
-                    },
-                }],
-            ]
-        },
-        {
-            'target_name': 'TestRunner_resources',
-            'type': 'none',
-            'dependencies': [
-                'copy_TestNetscapePlugIn',
-            ],
-            'conditions': [
-                ['OS=="win"', {
-                    'dependencies': [
-                        'LayoutTestHelper',
-                    ],
-                    'copies': [{
-                        'destination': '<(PRODUCT_DIR)',
-                        'files': ['<(ahem_path)'],
-                    }],
-                }],
-                ['OS=="mac"', {
-                    'dependencies': [
-                        'LayoutTestHelper',
-                    ],
-                    'all_dependent_settings': {
-                        'mac_bundle_resources': [
-                            '<(ahem_path)',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher100.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher200.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher300.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher400.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher500.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher600.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher700.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher800.ttf',
-                            '<(source_dir)/testing/data/fonts/WebKitWeightWatcher900.ttf',
-                            '<(SHARED_INTERMEDIATE_DIR)/webkit/missingImage.png',
-                            '<(SHARED_INTERMEDIATE_DIR)/webkit/textAreaResizeCorner.png',
-                        ],
-                    },
-                }],
-                # The test plugin relies on X11.
-                ['OS=="linux" and use_x11==0', {
-                    'dependencies!': [
-                        'copy_TestNetscapePlugIn',
-                    ],
-                }],
-                ['use_x11 == 1', {
-                    'dependencies': [
-                        '<(DEPTH)/tools/xdisplaycheck/xdisplaycheck.gyp:xdisplaycheck',
-                    ],
-                    'copies': [{
-                        'destination': '<(PRODUCT_DIR)',
-                        'files': [
-                            '<(ahem_path)',
-                            '<(source_dir)/testing/data/fonts/fonts.conf',
-                        ]
-                    }],
-                }],
-                ['OS=="android"', {
-                    'dependencies!': [
-                        'copy_TestNetscapePlugIn',
-                    ],
-                    'copies': [{
-                        'destination': '<(PRODUCT_DIR)',
-                        'files': [
-                            '<(ahem_path)',
-                            '<(source_dir)/testing/data/fonts/android_main_fonts.xml',
-                            '<(source_dir)/testing/data/fonts/android_fallback_fonts.xml',
-                        ]
-                    }],
-                }],
-            ],
-        },
         {
             'target_name': 'TestNetscapePlugIn',
             'type': 'loadable_module',
             'sources': [ '<@(test_plugin_files)' ],
             'dependencies': [
+                '../config.gyp:unittest_config',
                 '<(DEPTH)/third_party/npapi/npapi.gyp:npapi',
             ],
             'include_dirs': [
@@ -314,25 +124,6 @@
         },
     ], # targets
     'conditions': [
-        ['OS=="win"', {
-            'targets': [{
-                'target_name': 'LayoutTestHelper',
-                'type': 'executable',
-                'sources': ['helper/LayoutTestHelperWin.cpp'],
-            }],
-        }],
-        ['OS=="mac"', {
-            'targets': [{
-                'target_name': 'LayoutTestHelper',
-                'type': 'executable',
-                'sources': ['helper/LayoutTestHelperMac.mm'],
-                'link_settings': {
-                    'libraries': [
-                        '$(SDKROOT)/System/Library/Frameworks/AppKit.framework',
-                    ],
-                },
-            }],
-        }],
         ['gcc_version>=46', {
             'target_defaults': {
                 # Disable warnings about c++0x compatibility, as some names (such
@@ -343,10 +134,6 @@
         ['clang==1', {
             'target_defaults': {
                 # FIXME: Add -Wglobal-constructors after fixing existing bugs.
-                'cflags': ['-Wunused-parameter'],
-                'xcode_settings': {
-                    'WARNING_CFLAGS': ['-Wunused-parameter'],
-                },
             },
         }],
     ], # conditions

@@ -9,10 +9,10 @@
   'sources': [
     '<(skia_src_path)/effects/Sk1DPathEffect.cpp',
     '<(skia_src_path)/effects/Sk2DPathEffect.cpp',
+    '<(skia_src_path)/effects/SkAlphaThresholdFilter.cpp',
     '<(skia_src_path)/effects/SkArithmeticMode.cpp',
     '<(skia_src_path)/effects/SkAvoidXfermode.cpp',
     '<(skia_src_path)/effects/SkBicubicImageFilter.cpp',
-    '<(skia_src_path)/effects/SkBitmapAlphaThresholdShader.cpp',
     '<(skia_src_path)/effects/SkBitmapSource.cpp',
     '<(skia_src_path)/effects/SkBlurDrawLooper.cpp',
     '<(skia_src_path)/effects/SkBlurMask.cpp',
@@ -48,9 +48,11 @@
     '<(skia_src_path)/effects/SkOffsetImageFilter.cpp',
     '<(skia_src_path)/effects/SkPaintFlagsDrawFilter.cpp',
     '<(skia_src_path)/effects/SkPerlinNoiseShader.cpp',
+    '<(skia_src_path)/effects/SkPictureImageFilter.cpp',
     '<(skia_src_path)/effects/SkPixelXorXfermode.cpp',
     '<(skia_src_path)/effects/SkPorterDuff.cpp',
     '<(skia_src_path)/effects/SkRectShaderImageFilter.cpp',
+    '<(skia_src_path)/effects/SkResizeImageFilter.cpp',
     '<(skia_src_path)/effects/SkStippleMaskFilter.cpp',
     '<(skia_src_path)/effects/SkTableColorFilter.cpp',
     '<(skia_src_path)/effects/SkTableMaskFilter.cpp',
@@ -80,9 +82,9 @@
     '<(skia_include_path)/effects/Sk1DPathEffect.h',
     '<(skia_include_path)/effects/Sk2DPathEffect.h',
     '<(skia_include_path)/effects/SkXfermodeImageFilter.h',
+    '<(skia_include_path)/effects/SkAlphaThresholdFilter.h',
     '<(skia_include_path)/effects/SkArithmeticMode.h',
     '<(skia_include_path)/effects/SkAvoidXfermode.h',
-    '<(skia_include_path)/effects/SkBitmapAlphaThresholdShader.h',
     '<(skia_include_path)/effects/SkBitmapSource.h',
     '<(skia_include_path)/effects/SkBlurDrawLooper.h',
     '<(skia_include_path)/effects/SkBlurImageFilter.h',
@@ -119,9 +121,3 @@
     '<(skia_include_path)/effects/SkMagnifierImageFilter.h',
   ],
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

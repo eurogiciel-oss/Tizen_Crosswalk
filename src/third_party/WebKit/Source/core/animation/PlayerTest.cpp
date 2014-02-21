@@ -31,19 +31,20 @@
 #include "config.h"
 #include "core/animation/Player.h"
 
+#include "core/animation/ActiveAnimations.h"
 #include "core/animation/Animation.h"
 #include "core/animation/AnimationClock.h"
 #include "core/animation/DocumentTimeline.h"
 #include "core/dom/Document.h"
 #include "core/dom/QualifiedName.h"
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
 #include <gtest/gtest.h>
 
 using namespace WebCore;
 
 namespace {
 
-class CoreAnimationPlayerTest : public ::testing::Test {
+class AnimationPlayerTest : public ::testing::Test {
 protected:
     virtual void SetUp()
     {
@@ -51,6 +52,7 @@ protected:
         document->animationClock().resetTimeForTesting();
         timeline = DocumentTimeline::create(document.get());
         player = Player::create(*timeline, 0);
+        player->setStartTime(0);
         timeline->setZeroTime(0);
     }
 
@@ -66,7 +68,7 @@ protected:
     RefPtr<Player> player;
 };
 
-TEST_F(CoreAnimationPlayerTest, InitialState)
+TEST_F(AnimationPlayerTest, InitialState)
 {
     EXPECT_EQ(0, timeline->currentTime());
     EXPECT_EQ(0, player->currentTime());
@@ -76,16 +78,7 @@ TEST_F(CoreAnimationPlayerTest, InitialState)
     EXPECT_EQ(0, player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, CreatePlayerAfterTimelineStarted)
-{
-    updateTimeline(1234);
-    EXPECT_EQ(1234, timeline->currentTime());
-    RefPtr<Player> player = Player::create(*timeline, 0);
-    EXPECT_EQ(1234, player->startTime());
-    EXPECT_EQ(0, player->currentTime());
-}
-
-TEST_F(CoreAnimationPlayerTest, PauseUnpause)
+TEST_F(AnimationPlayerTest, PauseUnpause)
 {
     updateTimeline(200);
     player->setPaused(true);
@@ -104,7 +97,7 @@ TEST_F(CoreAnimationPlayerTest, PauseUnpause)
     EXPECT_EQ(200, player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, PauseBeforeTimelineStarted)
+TEST_F(AnimationPlayerTest, PauseBeforeTimelineStarted)
 {
     player->setPaused(true);
     EXPECT_TRUE(player->paused());
@@ -127,7 +120,27 @@ TEST_F(CoreAnimationPlayerTest, PauseBeforeTimelineStarted)
     EXPECT_EQ(100, player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetCurrentTime)
+TEST_F(AnimationPlayerTest, PauseBeforeStartTimeSet)
+{
+    player = Player::create(*timeline, 0);
+    updateTimeline(100);
+    EXPECT_EQ(0, player->currentTime());
+
+    player->setPaused(true);
+    updateTimeline(200);
+    EXPECT_EQ(0, player->currentTime());
+
+    player->setStartTime(150);
+    EXPECT_EQ(0, player->currentTime());
+
+    player->setPaused(false);
+    EXPECT_EQ(0, player->currentTime());
+
+    updateTimeline(300);
+    EXPECT_EQ(100, player->currentTime());
+}
+
+TEST_F(AnimationPlayerTest, SetCurrentTime)
 {
     updateTimeline(0);
     player->setCurrentTime(250);
@@ -135,7 +148,26 @@ TEST_F(CoreAnimationPlayerTest, SetCurrentTime)
     EXPECT_EQ(-250, player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetCurrentTimeBeforeTimelineStarted)
+TEST_F(AnimationPlayerTest, SetStartTime)
+{
+    updateTimeline(0);
+    player = Player::create(*timeline, 0);
+    EXPECT_FALSE(player->hasStartTime());
+    EXPECT_TRUE(isNull(player->startTime()));
+    EXPECT_EQ(0, player->currentTime());
+
+    updateTimeline(100);
+    player->setStartTime(50);
+    EXPECT_TRUE(player->hasStartTime());
+    EXPECT_EQ(50, player->startTime());
+    EXPECT_EQ(50, player->currentTime());
+
+    updateTimeline(200);
+    EXPECT_EQ(150, player->currentTime());
+}
+
+
+TEST_F(AnimationPlayerTest, SetCurrentTimeBeforeTimelineStarted)
 {
     player->setCurrentTime(250);
     EXPECT_EQ(250, player->currentTime());
@@ -145,7 +177,21 @@ TEST_F(CoreAnimationPlayerTest, SetCurrentTimeBeforeTimelineStarted)
     EXPECT_EQ(250, player->currentTime());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetPlaybackRate)
+TEST_F(AnimationPlayerTest, SetCurrentTimeBeforeStartTimeSet)
+{
+    updateTimeline(0);
+    player = Player::create(*timeline, 0);
+
+    player->setCurrentTime(250);
+    EXPECT_EQ(250, player->currentTime());
+    EXPECT_EQ(-250, player->timeDrift());
+
+    updateTimeline(100);
+    player->setStartTime(50);
+    EXPECT_EQ(300, player->currentTime());
+}
+
+TEST_F(AnimationPlayerTest, SetPlaybackRate)
 {
     updateTimeline(0);
     player->setPlaybackRate(2);
@@ -158,7 +204,7 @@ TEST_F(CoreAnimationPlayerTest, SetPlaybackRate)
     EXPECT_EQ(0, player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetPlaybackRateBeforeTimelineStarted)
+TEST_F(AnimationPlayerTest, SetPlaybackRateBeforeTimelineStarted)
 {
     player->setPlaybackRate(2);
     EXPECT_EQ(0, player->currentTime());
@@ -169,7 +215,7 @@ TEST_F(CoreAnimationPlayerTest, SetPlaybackRateBeforeTimelineStarted)
     EXPECT_EQ(0, player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetPlaybackRateWhilePaused)
+TEST_F(AnimationPlayerTest, SetPlaybackRateWhilePaused)
 {
     updateTimeline(100);
     player->setPaused(true);
@@ -187,7 +233,7 @@ TEST_F(CoreAnimationPlayerTest, SetPlaybackRateWhilePaused)
     EXPECT_EQ(300, player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetPlaybackRateNaN)
+TEST_F(AnimationPlayerTest, SetPlaybackRateNaN)
 {
     updateTimeline(0);
     player->setPlaybackRate(nullValue());
@@ -200,7 +246,7 @@ TEST_F(CoreAnimationPlayerTest, SetPlaybackRateNaN)
     EXPECT_TRUE(isNull(player->timeDrift()));
 }
 
-TEST_F(CoreAnimationPlayerTest, SetPlaybackRateInfinity)
+TEST_F(AnimationPlayerTest, SetPlaybackRateInfinity)
 {
     updateTimeline(0);
     player->setPlaybackRate(std::numeric_limits<double>::infinity());
@@ -213,7 +259,7 @@ TEST_F(CoreAnimationPlayerTest, SetPlaybackRateInfinity)
     EXPECT_TRUE(isNull(player->timeDrift()));
 }
 
-TEST_F(CoreAnimationPlayerTest, SetPlaybackRateMax)
+TEST_F(AnimationPlayerTest, SetPlaybackRateMax)
 {
     updateTimeline(0);
     player->setPlaybackRate(std::numeric_limits<double>::max());
@@ -225,7 +271,7 @@ TEST_F(CoreAnimationPlayerTest, SetPlaybackRateMax)
     EXPECT_EQ(std::numeric_limits<double>::infinity(), player->currentTime());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetCurrentTimeNan)
+TEST_F(AnimationPlayerTest, SetCurrentTimeNan)
 {
     updateTimeline(0);
     player->setCurrentTime(nullValue());
@@ -237,7 +283,7 @@ TEST_F(CoreAnimationPlayerTest, SetCurrentTimeNan)
     EXPECT_TRUE(isNull(player->timeDrift()));
 }
 
-TEST_F(CoreAnimationPlayerTest, SetCurrentTimeInfinity)
+TEST_F(AnimationPlayerTest, SetCurrentTimeInfinity)
 {
     updateTimeline(0);
     player->setCurrentTime(std::numeric_limits<double>::infinity());
@@ -249,7 +295,7 @@ TEST_F(CoreAnimationPlayerTest, SetCurrentTimeInfinity)
     EXPECT_EQ(-std::numeric_limits<double>::infinity(), player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, SetCurrentTimeMax)
+TEST_F(AnimationPlayerTest, SetCurrentTimeMax)
 {
     updateTimeline(0);
     player->setCurrentTime(std::numeric_limits<double>::max());
@@ -261,7 +307,7 @@ TEST_F(CoreAnimationPlayerTest, SetCurrentTimeMax)
     EXPECT_EQ(-std::numeric_limits<double>::max(), player->timeDrift());
 }
 
-TEST_F(CoreAnimationPlayerTest, EmptyPlayersDontUpdateEffects)
+TEST_F(AnimationPlayerTest, EmptyPlayersDontUpdateEffects)
 {
     double timeToNextEffect;
     updateTimeline(0, &timeToNextEffect);
@@ -272,7 +318,7 @@ TEST_F(CoreAnimationPlayerTest, EmptyPlayersDontUpdateEffects)
     EXPECT_EQ(std::numeric_limits<double>::infinity(), timeToNextEffect);
 }
 
-TEST_F(CoreAnimationPlayerTest, PlayersReturnTimeToNextEffect)
+TEST_F(AnimationPlayerTest, PlayersReturnTimeToNextEffect)
 {
     Timing timing;
     timing.startDelay = 1;
@@ -280,6 +326,7 @@ TEST_F(CoreAnimationPlayerTest, PlayersReturnTimeToNextEffect)
     timing.hasIterationDuration = true;
     RefPtr<Animation> animation = Animation::create(0, 0, timing);
     player = Player::create(*timeline, animation.get());
+    player->setStartTime(0);
 
     double timeToNextEffect;
     updateTimeline(0, &timeToNextEffect);
@@ -299,6 +346,19 @@ TEST_F(CoreAnimationPlayerTest, PlayersReturnTimeToNextEffect)
 
     updateTimeline(3, &timeToNextEffect);
     EXPECT_EQ(std::numeric_limits<double>::infinity(), timeToNextEffect);
+}
+
+TEST_F(AnimationPlayerTest, AttachedPlayers)
+{
+    RefPtr<Element> element = document->createElement("foo", ASSERT_NO_EXCEPTION);
+
+    Timing timing;
+    RefPtr<Animation> animation = Animation::create(element, 0, timing);
+    RefPtr<Player> player = Player::create(*timeline, animation.get());
+    EXPECT_EQ(1U, element->activeAnimations()->players().find(player.get())->value);
+
+    player.release();
+    EXPECT_TRUE(element->activeAnimations()->players().isEmpty());
 }
 
 }

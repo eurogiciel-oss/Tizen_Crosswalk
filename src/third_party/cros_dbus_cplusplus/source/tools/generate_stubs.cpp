@@ -265,8 +265,6 @@ void generate_stubs(Xml::Document &doc, const char *filename,
 
 		if_dict->SetValue("CLASS_NAME", ifaceclass);
 
-		cerr << "generating code for interface " << ifacename << "..." << endl;
-
 		// this loop generates all properties
 		for (Xml::Nodes::iterator pi = properties.begin ();
 		     pi != properties.end (); ++pi)

@@ -42,7 +42,7 @@ namespace WTF {
 
 ALWAYS_INLINE void spinLockLock(int volatile* lock)
 {
-    while (atomicTestAndSetToOne(lock)) {
+    while (UNLIKELY(atomicTestAndSetToOne(lock))) {
         while (*lock) { } // Spin without spamming locked instructions.
     }
 }
@@ -57,4 +57,4 @@ ALWAYS_INLINE void spinLockUnlock(int volatile* lock)
 using WTF::spinLockLock;
 using WTF::spinLockUnlock;
 
-#endif // WTF_PartitionAlloc_h
+#endif // WTF_SpinLock_h

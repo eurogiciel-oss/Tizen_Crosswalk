@@ -34,8 +34,9 @@
 
 #include "WebNavigationPolicy.h"
 #include "core/page/ChromeClient.h"
-#include "core/platform/PopupMenu.h"
 #include "modules/navigatorcontentutils/NavigatorContentUtilsClient.h"
+#include "platform/PopupMenu.h"
+#include "platform/weborigin/KURL.h"
 #include "public/platform/WebColor.h"
 #include "wtf/PassOwnPtr.h"
 
@@ -46,6 +47,8 @@ class ColorChooserClient;
 class Element;
 class FileChooser;
 class GraphicsLayerFactory;
+class HTMLInputElement;
+class KeyboardEvent;
 class PopupContainer;
 class PopupMenuClient;
 class RenderBox;
@@ -55,7 +58,7 @@ class DateTimeChooserClient;
 struct WindowFeatures;
 }
 
-namespace WebKit {
+namespace blink {
 class WebColorChooser;
 class WebColorChooserClient;
 class WebViewImpl;
@@ -63,102 +66,103 @@ struct WebCursorInfo;
 struct WebPopupMenuInfo;
 
 // Handles window-level notifications from WebCore on behalf of a WebView.
-class ChromeClientImpl : public WebCore::ChromeClient {
+class ChromeClientImpl FINAL : public WebCore::ChromeClient {
 public:
     explicit ChromeClientImpl(WebViewImpl* webView);
     virtual ~ChromeClientImpl();
 
-    virtual void* webView() const;
+    virtual void* webView() const OVERRIDE;
 
     // ChromeClient methods:
-    virtual void chromeDestroyed();
-    virtual void setWindowRect(const WebCore::FloatRect&);
-    virtual WebCore::FloatRect windowRect();
-    virtual WebCore::FloatRect pageRect();
-    virtual void focus();
-    virtual void unfocus();
-    virtual bool canTakeFocus(WebCore::FocusDirection);
-    virtual void takeFocus(WebCore::FocusDirection);
-    virtual void focusedNodeChanged(WebCore::Node*);
+    virtual void chromeDestroyed() OVERRIDE;
+    virtual void setWindowRect(const WebCore::FloatRect&) OVERRIDE;
+    virtual WebCore::FloatRect windowRect() OVERRIDE;
+    virtual WebCore::FloatRect pageRect() OVERRIDE;
+    virtual void focus() OVERRIDE;
+    virtual void unfocus() OVERRIDE;
+    virtual bool canTakeFocus(WebCore::FocusDirection) OVERRIDE;
+    virtual void takeFocus(WebCore::FocusDirection) OVERRIDE;
+    virtual void focusedNodeChanged(WebCore::Node*) OVERRIDE;
     virtual WebCore::Page* createWindow(
-        WebCore::Frame*, const WebCore::FrameLoadRequest&, const WebCore::WindowFeatures&, WebCore::NavigationPolicy);
-    virtual void show(WebCore::NavigationPolicy);
-    virtual bool canRunModal();
-    virtual void runModal();
-    virtual void setToolbarsVisible(bool);
-    virtual bool toolbarsVisible();
-    virtual void setStatusbarVisible(bool);
-    virtual bool statusbarVisible();
-    virtual void setScrollbarsVisible(bool);
-    virtual bool scrollbarsVisible();
-    virtual void setMenubarVisible(bool);
-    virtual bool menubarVisible();
-    virtual void setResizable(bool);
-    virtual bool shouldReportDetailedMessageForSource(const WTF::String&);
+        WebCore::Frame*, const WebCore::FrameLoadRequest&, const WebCore::WindowFeatures&, WebCore::NavigationPolicy, WebCore::ShouldSendReferrer) OVERRIDE;
+    virtual void show(WebCore::NavigationPolicy) OVERRIDE;
+    virtual bool canRunModal() OVERRIDE;
+    virtual void runModal() OVERRIDE;
+    virtual void setToolbarsVisible(bool) OVERRIDE;
+    virtual bool toolbarsVisible() OVERRIDE;
+    virtual void setStatusbarVisible(bool) OVERRIDE;
+    virtual bool statusbarVisible() OVERRIDE;
+    virtual void setScrollbarsVisible(bool) OVERRIDE;
+    virtual bool scrollbarsVisible() OVERRIDE;
+    virtual void setMenubarVisible(bool) OVERRIDE;
+    virtual bool menubarVisible() OVERRIDE;
+    virtual void setResizable(bool) OVERRIDE;
+    virtual bool shouldReportDetailedMessageForSource(const WTF::String&) OVERRIDE;
     virtual void addMessageToConsole(
         WebCore::MessageSource, WebCore::MessageLevel,
         const WTF::String& message, unsigned lineNumber,
-        const WTF::String& sourceID, const WTF::String& stackTrace);
-    virtual bool canRunBeforeUnloadConfirmPanel();
+        const WTF::String& sourceID, const WTF::String& stackTrace) OVERRIDE;
+    virtual bool canRunBeforeUnloadConfirmPanel() OVERRIDE;
     virtual bool runBeforeUnloadConfirmPanel(
-        const WTF::String& message, WebCore::Frame*);
-    virtual void closeWindowSoon();
-    virtual void runJavaScriptAlert(WebCore::Frame*, const WTF::String&);
-    virtual bool runJavaScriptConfirm(WebCore::Frame*, const WTF::String&);
+        const WTF::String& message, WebCore::Frame*) OVERRIDE;
+    virtual void closeWindowSoon() OVERRIDE;
+    virtual void runJavaScriptAlert(WebCore::Frame*, const WTF::String&) OVERRIDE;
+    virtual bool runJavaScriptConfirm(WebCore::Frame*, const WTF::String&) OVERRIDE;
     virtual bool runJavaScriptPrompt(
         WebCore::Frame*, const WTF::String& message,
-        const WTF::String& defaultValue, WTF::String& result);
-    virtual void setStatusbarText(const WTF::String& message);
-    virtual bool tabsToLinks();
-    virtual WebCore::IntRect windowResizerRect() const;
-    virtual void invalidateContentsAndRootView(const WebCore::IntRect&);
-    virtual void invalidateContentsForSlowScroll(const WebCore::IntRect&);
-    virtual void scheduleAnimation();
+        const WTF::String& defaultValue, WTF::String& result) OVERRIDE;
+    virtual void setStatusbarText(const WTF::String& message) OVERRIDE;
+    virtual bool tabsToLinks() OVERRIDE;
+    virtual WebCore::IntRect windowResizerRect() const OVERRIDE;
+    virtual void invalidateContentsAndRootView(const WebCore::IntRect&) OVERRIDE;
+    virtual void invalidateContentsForSlowScroll(const WebCore::IntRect&) OVERRIDE;
+    virtual void scheduleAnimation() OVERRIDE;
     virtual void scroll(
         const WebCore::IntSize& scrollDelta, const WebCore::IntRect& rectToScroll,
-        const WebCore::IntRect& clipRect);
-    virtual WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) const;
-    virtual WebCore::IntRect rootViewToScreen(const WebCore::IntRect&) const;
-    virtual WebScreenInfo screenInfo() const;
-    virtual void contentsSizeChanged(WebCore::Frame*, const WebCore::IntSize&) const;
-    virtual void deviceOrPageScaleFactorChanged() const;
-    virtual void layoutUpdated(WebCore::Frame*) const;
+        const WebCore::IntRect& clipRect) OVERRIDE;
+    virtual WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) const OVERRIDE;
+    virtual WebCore::IntRect rootViewToScreen(const WebCore::IntRect&) const OVERRIDE;
+    virtual WebScreenInfo screenInfo() const OVERRIDE;
+    virtual void contentsSizeChanged(WebCore::Frame*, const WebCore::IntSize&) const OVERRIDE;
+    virtual void deviceOrPageScaleFactorChanged() const OVERRIDE;
+    virtual void layoutUpdated(WebCore::Frame*) const OVERRIDE;
     virtual void mouseDidMoveOverElement(
-        const WebCore::HitTestResult& result, unsigned modifierFlags);
-    virtual void setToolTip(const WTF::String& tooltipText, WebCore::TextDirection);
-    virtual void dispatchViewportPropertiesDidChange(const WebCore::ViewportDescription&) const;
-    virtual void print(WebCore::Frame*);
-    virtual void annotatedRegionsChanged();
-    virtual bool paintCustomOverhangArea(WebCore::GraphicsContext*, const WebCore::IntRect&, const WebCore::IntRect&, const WebCore::IntRect&);
+        const WebCore::HitTestResult&, unsigned modifierFlags) OVERRIDE;
+    virtual void setToolTip(const WTF::String& tooltipText, WebCore::TextDirection) OVERRIDE;
+    virtual void dispatchViewportPropertiesDidChange(const WebCore::ViewportDescription&) const OVERRIDE;
+    virtual void print(WebCore::Frame*) OVERRIDE;
+    virtual void annotatedRegionsChanged() OVERRIDE;
+    virtual bool paintCustomOverhangArea(WebCore::GraphicsContext*, const WebCore::IntRect&, const WebCore::IntRect&, const WebCore::IntRect&) OVERRIDE;
     virtual PassOwnPtr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient*, const WebCore::Color&) OVERRIDE;
-    PassOwnPtr<WebColorChooser> createWebColorChooser(WebColorChooserClient*, const WebColor&);
     virtual PassRefPtr<WebCore::DateTimeChooser> openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&) OVERRIDE;
-    virtual void runOpenPanel(WebCore::Frame*, PassRefPtr<WebCore::FileChooser>);
-    virtual void enumerateChosenDirectory(WebCore::FileChooser*);
-    virtual void setCursor(const WebCore::Cursor&);
-    virtual void formStateDidChange(const WebCore::Node*);
+    virtual void openTextDataListChooser(WebCore::HTMLInputElement&) OVERRIDE;
+    virtual void runOpenPanel(WebCore::Frame*, PassRefPtr<WebCore::FileChooser>) OVERRIDE;
+    virtual void enumerateChosenDirectory(WebCore::FileChooser*) OVERRIDE;
+    virtual void setCursor(const WebCore::Cursor&) OVERRIDE;
+    virtual void formStateDidChange(const WebCore::Node*) OVERRIDE;
     virtual void needTouchEvents(bool needTouchEvents) OVERRIDE;
+    virtual void setTouchAction(WebCore::TouchAction) OVERRIDE;
 
     virtual WebCore::GraphicsLayerFactory* graphicsLayerFactory() const OVERRIDE;
 
     // Pass 0 as the GraphicsLayer to detatch the root layer.
-    virtual void attachRootGraphicsLayer(WebCore::Frame*, WebCore::GraphicsLayer*);
+    virtual void attachRootGraphicsLayer(WebCore::Frame*, WebCore::GraphicsLayer*) OVERRIDE;
 
     // Sets a flag to specify that the view needs to be updated, so we need
     // to do an eager layout before the drawing.
-    virtual void scheduleCompositingLayerFlush();
+    virtual void scheduleCompositingLayerFlush() OVERRIDE;
 
-    virtual CompositingTriggerFlags allowedCompositingTriggers() const;
+    virtual CompositingTriggerFlags allowedCompositingTriggers() const OVERRIDE;
 
-    virtual void enterFullScreenForElement(WebCore::Element*);
-    virtual void exitFullScreenForElement(WebCore::Element*);
+    virtual void enterFullScreenForElement(WebCore::Element*) OVERRIDE;
+    virtual void exitFullScreenForElement(WebCore::Element*) OVERRIDE;
 
     // ChromeClient methods:
     virtual void popupOpened(WebCore::PopupContainer* popupContainer,
-                             const WebCore::IntRect& bounds,
-                             bool handleExternally);
-    virtual void popupClosed(WebCore::PopupContainer* popupContainer);
-    virtual void postAccessibilityNotification(WebCore::AXObject*, WebCore::AXObjectCache::AXNotification);
+        const WebCore::IntRect& bounds,
+        bool handleExternally) OVERRIDE;
+    virtual void popupClosed(WebCore::PopupContainer*) OVERRIDE;
+    virtual void postAccessibilityNotification(WebCore::AXObject*, WebCore::AXObjectCache::AXNotification) OVERRIDE;
     virtual String acceptLanguages() OVERRIDE;
 
     // ChromeClientImpl:
@@ -166,7 +170,7 @@ public:
     void setNewWindowNavigationPolicy(WebNavigationPolicy);
 
     virtual bool hasOpenedPopup() const OVERRIDE;
-    virtual PassRefPtr<WebCore::PopupMenu> createPopupMenu(WebCore::Frame&, WebCore::PopupMenuClient*) const;
+    virtual PassRefPtr<WebCore::PopupMenu> createPopupMenu(WebCore::Frame&, WebCore::PopupMenuClient*) const OVERRIDE;
     virtual WebCore::PagePopup* openPagePopup(WebCore::PagePopupClient*, const WebCore::IntRect&) OVERRIDE;
     virtual void closePagePopup(WebCore::PagePopup*) OVERRIDE;
     virtual void setPagePopupDriver(WebCore::PagePopupDriver*) OVERRIDE;
@@ -175,16 +179,22 @@ public:
     virtual bool isPasswordGenerationEnabled() const OVERRIDE;
     virtual void openPasswordGenerator(WebCore::HTMLInputElement*) OVERRIDE;
 
-    virtual bool shouldRunModalDialogDuringPageDismissal(const DialogType&, const String& dialogMessage, WebCore::Document::PageDismissalType) const;
+    virtual bool shouldRunModalDialogDuringPageDismissal(const DialogType&, const String& dialogMessage, WebCore::Document::PageDismissalType) const OVERRIDE;
 
-    virtual bool shouldRubberBandInDirection(WebCore::ScrollDirection) const;
-    virtual void numWheelEventHandlersChanged(unsigned);
+    virtual bool shouldRubberBandInDirection(WebCore::ScrollDirection) const OVERRIDE;
+    virtual void numWheelEventHandlersChanged(unsigned) OVERRIDE;
 
-    virtual bool requestPointerLock();
-    virtual void requestPointerUnlock();
-    virtual bool isPointerLocked();
+    virtual bool requestPointerLock() OVERRIDE;
+    virtual void requestPointerUnlock() OVERRIDE;
+    virtual bool isPointerLocked() OVERRIDE;
 
     virtual void didAssociateFormControls(const Vector<RefPtr<WebCore::Element> >&) OVERRIDE;
+    virtual void didChangeValueInTextField(WebCore::HTMLInputElement&) OVERRIDE;
+    virtual void didEndEditingOnTextField(WebCore::HTMLInputElement&) OVERRIDE;
+    virtual void handleKeyboardEventOnTextField(WebCore::HTMLInputElement&, WebCore::KeyboardEvent&) OVERRIDE;
+
+    virtual void didCancelCompositionOnSelectionChange() OVERRIDE;
+    virtual void willSetInputMethodState() OVERRIDE;
 
 private:
     virtual bool isChromeClientImpl() const OVERRIDE { return true; }
@@ -203,27 +213,23 @@ private:
     WebCore::PagePopupDriver* m_pagePopupDriver;
 };
 
-#if ENABLE(NAVIGATOR_CONTENT_UTILS)
-class NavigatorContentUtilsClientImpl : public WebCore::NavigatorContentUtilsClient {
+class NavigatorContentUtilsClientImpl FINAL : public WebCore::NavigatorContentUtilsClient {
 public:
     static PassOwnPtr<NavigatorContentUtilsClientImpl> create(WebViewImpl*);
-    ~NavigatorContentUtilsClientImpl() { }
+    virtual ~NavigatorContentUtilsClientImpl() { }
 
-    virtual void registerProtocolHandler(const String& scheme, const String& baseURL, const String& url, const String& title) OVERRIDE;
+    virtual void registerProtocolHandler(const String& scheme, const WebCore::KURL& baseURL, const WebCore::KURL&, const String& title) OVERRIDE;
+    virtual CustomHandlersState isProtocolHandlerRegistered(const String& scheme, const WebCore::KURL& baseURL, const WebCore::KURL&) OVERRIDE;
+    virtual void unregisterProtocolHandler(const String& scheme, const WebCore::KURL& baseURL, const WebCore::KURL&) OVERRIDE;
 
 private:
     explicit NavigatorContentUtilsClientImpl(WebViewImpl*);
 
     WebViewImpl* m_webView;
 };
-#endif
 
-inline ChromeClientImpl* toChromeClientImpl(WebCore::ChromeClient& client)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(client.isChromeClientImpl());
-    return static_cast<ChromeClientImpl*>(&client);
-}
+DEFINE_TYPE_CASTS(ChromeClientImpl, WebCore::ChromeClient, client, client->isChromeClientImpl(), client.isChromeClientImpl());
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

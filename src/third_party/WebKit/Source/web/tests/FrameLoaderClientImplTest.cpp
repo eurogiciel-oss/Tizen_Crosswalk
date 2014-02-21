@@ -36,12 +36,13 @@
 #include "WebFrameImpl.h"
 #include "WebView.h"
 #include "core/loader/FrameLoader.h"
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
+#include "wtf/text/CString.h"
 #include "wtf/text/WTFString.h"
 
 #include <gtest/gtest.h>
 
-using namespace WebKit;
+using namespace blink;
 
 namespace {
 

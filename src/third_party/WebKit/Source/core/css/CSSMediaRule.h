@@ -30,7 +30,7 @@ namespace WebCore {
 
 class StyleRuleMedia;
 
-class CSSMediaRule : public CSSGroupingRule {
+class CSSMediaRule FINAL : public CSSGroupingRule {
 public:
     static PassRefPtr<CSSMediaRule> create(StyleRuleMedia* rule, CSSStyleSheet* sheet) { return adoptRef(new CSSMediaRule(rule, sheet)); }
 
@@ -49,6 +49,8 @@ private:
 
     mutable RefPtr<MediaList> m_mediaCSSOMWrapper;
 };
+
+DEFINE_CSS_RULE_TYPE_CASTS(CSSMediaRule, MEDIA_RULE);
 
 } // namespace WebCore
 

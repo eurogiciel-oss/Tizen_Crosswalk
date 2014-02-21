@@ -117,11 +117,11 @@ class MessageCenterNotificationsTest : public InProcessBrowserTest {
 
     return Notification(GURL("chrome-test://testing/"),
                         GURL(),
-                        ASCIIToUTF16("title"),
-                        ASCIIToUTF16("message"),
-                        WebKit::WebTextDirectionDefault,
-                        UTF8ToUTF16("chrome-test://testing/"),
-                        UTF8ToUTF16("REPLACE-ME"),
+                        base::ASCIIToUTF16("title"),
+                        base::ASCIIToUTF16("message"),
+                        blink::WebTextDirectionDefault,
+                        base::UTF8ToUTF16("chrome-test://testing/"),
+                        base::UTF8ToUTF16("REPLACE-ME"),
                         new_delegate);
   }
 
@@ -137,15 +137,15 @@ class MessageCenterNotificationsTest : public InProcessBrowserTest {
 
     return Notification(message_center::NOTIFICATION_TYPE_BASE_FORMAT,
                         GURL("chrome-test://testing/"),
-                        ASCIIToUTF16("title"),
-                        ASCIIToUTF16("message"),
+                        base::ASCIIToUTF16("title"),
+                        base::ASCIIToUTF16("message"),
                         gfx::Image(),
-                        WebKit::WebTextDirectionDefault,
+                        blink::WebTextDirectionDefault,
                         message_center::NotifierId(
                             message_center::NotifierId::APPLICATION,
                             "extension_id"),
-                        UTF8ToUTF16("chrome-test://testing/"),
-                        UTF8ToUTF16("REPLACE-ME"),
+                        base::UTF8ToUTF16("chrome-test://testing/"),
+                        base::UTF8ToUTF16("REPLACE-ME"),
                         data,
                         new_delegate);
   }
@@ -287,11 +287,13 @@ IN_PROC_BROWSER_TEST_F(MessageCenterNotificationsTest,
   message_center()->SetVisibility(message_center::VISIBILITY_MESSAGE_CENTER);
   manager()->Add(CreateTestNotification("n2", &delegate2), profile());
 
-  EXPECT_EQ("add-n", observer.log());
+  // 'update-n' should happen since SetVisibility updates is_read status of n.
+  // TODO(mukai): fix event handling to happen update-n just once.
+  EXPECT_EQ("add-n_update-n_update-n", observer.log());
 
   message_center()->SetVisibility(message_center::VISIBILITY_TRANSIENT);
 
-  EXPECT_EQ("add-n_add-n2", observer.log());
+  EXPECT_EQ("add-n_update-n_update-n_add-n2", observer.log());
 
   delegate->Release();
   delegate2->Release();
@@ -326,7 +328,7 @@ IN_PROC_BROWSER_TEST_F(MessageCenterNotificationsTest,
   message_center()->ClickOnNotification("n");
   message_center()->SetVisibility(message_center::VISIBILITY_MESSAGE_CENTER);
   observer.reset_log();
-  notification.set_title(ASCIIToUTF16("title2"));
+  notification.set_title(base::ASCIIToUTF16("title2"));
   manager()->Update(notification, profile());
 
   // Expect that the notification update is not done.

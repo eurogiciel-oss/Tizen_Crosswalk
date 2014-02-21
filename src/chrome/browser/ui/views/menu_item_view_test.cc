@@ -17,6 +17,8 @@
 #include "ui/views/widget/root_view.h"
 #include "ui/views/widget/widget.h"
 
+using base::ASCIIToUTF16;
+
 // This is a convenience base class for all tests to provide some
 // common functionality.  It sets up a MenuButton and a MenuItemView
 // and clicks the MenuButton.
@@ -208,8 +210,8 @@ class MenuItemViewTestInsert : public MenuItemViewTestBase {
     inserted_item_ = menu_->AddMenuItemAt(INSERT_INDEX,
                                           1000,
                                           ASCIIToUTF16("inserted item"),
-                                          string16(),
-                                          string16(),
+                                          base::string16(),
+                                          base::string16(),
                                           gfx::ImageSkia(),
                                           views::MenuItemView::NORMAL,
                                           ui::NORMAL_SEPARATOR);
@@ -306,8 +308,8 @@ class MenuItemViewTestInsertWithSubmenu : public MenuItemViewTestBase {
     inserted_item_ = menu_->AddMenuItemAt(INSERT_INDEX,
                                           1000,
                                           ASCIIToUTF16("inserted item"),
-                                          string16(),
-                                          string16(),
+                                          base::string16(),
+                                          base::string16(),
                                           gfx::ImageSkia(),
                                           views::MenuItemView::NORMAL,
                                           ui::NORMAL_SEPARATOR);

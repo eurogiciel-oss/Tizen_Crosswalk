@@ -39,7 +39,8 @@ class TestingOAuth2TokenServiceConsumer : public OAuth2TokenService::Consumer {
 };
 
 TestingOAuth2TokenServiceConsumer::TestingOAuth2TokenServiceConsumer()
-    : number_of_successful_tokens_(0),
+    : OAuth2TokenService::Consumer("test"),
+      number_of_successful_tokens_(0),
       last_error_(GoogleServiceAuthError::AuthErrorNone()),
       number_of_errors_(0) {
 }
@@ -104,9 +105,8 @@ TEST_F(ProfileOAuth2TokenServiceRequestTest,
   EXPECT_EQ(1, consumer_.number_of_errors_);
 }
 
-TEST_F(ProfileOAuth2TokenServiceRequestTest,
-       Success) {
-  oauth2_service_->IssueRefreshToken(kRefreshToken);
+TEST_F(ProfileOAuth2TokenServiceRequestTest, Success) {
+  oauth2_service_->UpdateCredentials(kAccountId, kRefreshToken);
   scoped_ptr<ProfileOAuth2TokenServiceRequest> request(
       ProfileOAuth2TokenServiceRequest::CreateAndStart(
           profile_.get(),
@@ -123,7 +123,7 @@ TEST_F(ProfileOAuth2TokenServiceRequestTest,
 
 TEST_F(ProfileOAuth2TokenServiceRequestTest,
        RequestDeletionBeforeServiceComplete) {
-  oauth2_service_->IssueRefreshToken(kRefreshToken);
+  oauth2_service_->UpdateCredentials(kAccountId, kRefreshToken);
   scoped_ptr<ProfileOAuth2TokenServiceRequest> request(
       ProfileOAuth2TokenServiceRequest::CreateAndStart(
           profile_.get(),
@@ -140,7 +140,7 @@ TEST_F(ProfileOAuth2TokenServiceRequestTest,
 
 TEST_F(ProfileOAuth2TokenServiceRequestTest,
        RequestDeletionAfterServiceComplete) {
-  oauth2_service_->IssueRefreshToken(kRefreshToken);
+  oauth2_service_->UpdateCredentials(kAccountId, kRefreshToken);
   scoped_ptr<ProfileOAuth2TokenServiceRequest> request(
       ProfileOAuth2TokenServiceRequest::CreateAndStart(
           profile_.get(),

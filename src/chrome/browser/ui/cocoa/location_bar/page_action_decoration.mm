@@ -68,8 +68,6 @@ PageActionDecoration::PageActionDecoration(
       content::Source<Profile>(browser_->profile()));
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_COMMAND_PAGE_ACTION_MAC,
       content::Source<Profile>(browser_->profile()));
-  registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_COMMAND_SCRIPT_BADGE_MAC,
-      content::Source<Profile>(browser_->profile()));
 
   // We set the owner last of all so that we can determine whether we are in
   // the process of initializing this class or not.
@@ -142,12 +140,6 @@ bool PageActionDecoration::ActivatePageAction(NSRect frame) {
       // mouse button through to the LocationBarController.
       NOTREACHED();
       break;
-
-    case LocationBarController::ACTION_SHOW_SCRIPT_POPUP:
-      ShowPopup(
-          frame,
-          extensions::ExtensionInfoUI::GetURL(page_action_->extension_id()));
-      break;
   }
 
   return true;
@@ -166,7 +158,8 @@ void PageActionDecoration::UpdateVisibility(WebContents* contents,
                                             const GURL& url) {
   // Save this off so we can pass it back to the extension when the action gets
   // executed. See PageActionDecoration::OnMousePressed.
-  current_tab_id_ = contents ? ExtensionTabUtil::GetTabId(contents) : -1;
+  current_tab_id_ =
+      contents ? extensions::ExtensionTabUtil::GetTabId(contents) : -1;
   current_url_ = url;
 
   bool visible = contents &&
@@ -274,8 +267,7 @@ void PageActionDecoration::Observe(
 
       break;
     }
-    case chrome::NOTIFICATION_EXTENSION_COMMAND_PAGE_ACTION_MAC:
-    case chrome::NOTIFICATION_EXTENSION_COMMAND_SCRIPT_BADGE_MAC: {
+    case chrome::NOTIFICATION_EXTENSION_COMMAND_PAGE_ACTION_MAC: {
       std::pair<const std::string, gfx::NativeWindow>* payload =
       content::Details<std::pair<const std::string, gfx::NativeWindow> >(
           details).ptr();

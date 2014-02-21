@@ -39,7 +39,7 @@ PassRefPtr<Comment> Comment::create(Document& document, const String& text)
 
 String Comment::nodeName() const
 {
-    return commentAtom.string();
+    return "#comment";
 }
 
 Node::NodeType Comment::nodeType() const
@@ -50,11 +50,6 @@ Node::NodeType Comment::nodeType() const
 PassRefPtr<Node> Comment::cloneNode(bool /*deep*/)
 {
     return create(document(), data());
-}
-
-bool Comment::childTypeAllowed(NodeType) const
-{
-    return false;
 }
 
 } // namespace WebCore

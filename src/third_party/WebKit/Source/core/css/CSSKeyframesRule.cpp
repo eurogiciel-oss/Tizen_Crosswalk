@@ -27,9 +27,10 @@
 #include "core/css/CSSKeyframesRule.h"
 
 #include "core/css/CSSKeyframeRule.h"
-#include "core/css/CSSParser.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/CSSRuleList.h"
 #include "core/css/CSSStyleSheet.h"
+#include "core/frame/UseCounter.h"
 #include "wtf/text/StringBuilder.h"
 
 namespace WebCore {
@@ -115,7 +116,7 @@ void CSSKeyframesRule::insertRule(const String& ruleText)
     ASSERT(m_childRuleCSSOMWrappers.size() == m_keyframesRule->keyframes().size());
 
     CSSStyleSheet* styleSheet = parentStyleSheet();
-    CSSParser parser(parserContext(), UseCounter::getFrom(styleSheet));
+    BisonCSSParser parser(parserContext(), UseCounter::getFrom(styleSheet));
     RefPtr<StyleKeyframe> keyframe = parser.parseKeyframeRule(styleSheet ? styleSheet->contents() : 0, ruleText);
     if (!keyframe)
         return;
@@ -198,8 +199,7 @@ CSSRuleList* CSSKeyframesRule::cssRules()
 void CSSKeyframesRule::reattach(StyleRuleBase* rule)
 {
     ASSERT(rule);
-    ASSERT_WITH_SECURITY_IMPLICATION(rule->isKeyframesRule());
-    m_keyframesRule = static_cast<StyleRuleKeyframes*>(rule);
+    m_keyframesRule = toStyleRuleKeyframes(rule);
 }
 
 } // namespace WebCore

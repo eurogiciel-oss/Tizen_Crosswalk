@@ -23,38 +23,37 @@
 #ifndef RawResource_h
 #define RawResource_h
 
-#include "core/fetch/Resource.h"
 #include "core/fetch/ResourceClient.h"
+#include "core/fetch/ResourcePtr.h"
 
 namespace WebCore {
 class RawResourceCallback;
 class RawResourceClient;
 
-class RawResource : public Resource {
+class RawResource FINAL : public Resource {
 public:
+    typedef RawResourceClient ClientType;
+
     RawResource(const ResourceRequest&, Type);
 
     // FIXME: AssociatedURLLoader shouldn't be a DocumentThreadableLoader and therefore shouldn't
     // use RawResource. However, it is, and it needs to be able to defer loading.
     // This can be fixed by splitting CORS preflighting out of DocumentThreacableLoader.
-    virtual void setDefersLoading(bool);
+    void setDefersLoading(bool);
 
-    virtual void setDataBufferingPolicy(DataBufferingPolicy);
-
-    void clear();
-
-    virtual bool canReuse(const ResourceRequest&) const;
+    virtual bool canReuse(const ResourceRequest&) const OVERRIDE;
 
 private:
-    virtual void didAddClient(ResourceClient*);
+    virtual void didAddClient(ResourceClient*) OVERRIDE;
     virtual void appendData(const char*, int) OVERRIDE;
 
-    virtual bool shouldIgnoreHTTPStatusCodeErrors() const { return true; }
+    virtual bool shouldIgnoreHTTPStatusCodeErrors() const OVERRIDE { return true; }
 
-    virtual void willSendRequest(ResourceRequest&, const ResourceResponse&);
-    virtual void responseReceived(const ResourceResponse&);
-    virtual void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent);
-    virtual void didDownloadData(int);
+    virtual void willSendRequest(ResourceRequest&, const ResourceResponse&) OVERRIDE;
+    virtual void updateRequest(const ResourceRequest&) OVERRIDE;
+    virtual void responseReceived(const ResourceResponse&) OVERRIDE;
+    virtual void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) OVERRIDE;
+    virtual void didDownloadData(int) OVERRIDE;
 
     struct RedirectPair {
     public:
@@ -71,17 +70,30 @@ private:
     Vector<RedirectPair> m_redirectChain;
 };
 
+#ifdef SECURITY_ASSERT_ENABLED
+inline bool isRawResource(const Resource& resource)
+{
+    Resource::Type type = resource.type();
+    return type == Resource::MainResource || type == Resource::Raw || type == Resource::TextTrack || type == Resource::ImportResource;
+}
+#endif
+inline RawResource* toRawResource(const ResourcePtr<Resource>& resource)
+{
+    ASSERT_WITH_SECURITY_IMPLICATION(!resource || isRawResource(*resource.get()));
+    return static_cast<RawResource*>(resource.get());
+}
 
 class RawResourceClient : public ResourceClient {
 public:
     virtual ~RawResourceClient() { }
     static ResourceClientType expectedType() { return RawResourceType; }
-    virtual ResourceClientType resourceClientType() const { return expectedType(); }
+    virtual ResourceClientType resourceClientType() const OVERRIDE FINAL { return expectedType(); }
 
     virtual void dataSent(Resource*, unsigned long long /* bytesSent */, unsigned long long /* totalBytesToBeSent */) { }
     virtual void responseReceived(Resource*, const ResourceResponse&) { }
     virtual void dataReceived(Resource*, const char* /* data */, int /* length */) { }
     virtual void redirectReceived(Resource*, ResourceRequest&, const ResourceResponse&) { }
+    virtual void updateRequest(Resource*, const ResourceRequest&) { }
     virtual void dataDownloaded(Resource*, int) { }
 };
 

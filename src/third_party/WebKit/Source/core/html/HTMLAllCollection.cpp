@@ -31,12 +31,12 @@
 
 namespace WebCore {
 
-PassRefPtr<HTMLAllCollection> HTMLAllCollection::create(Node* node, CollectionType type)
+PassRefPtr<HTMLAllCollection> HTMLAllCollection::create(ContainerNode* node, CollectionType type)
 {
     return adoptRef(new HTMLAllCollection(node, type));
 }
 
-HTMLAllCollection::HTMLAllCollection(Node* node, CollectionType type)
+HTMLAllCollection::HTMLAllCollection(ContainerNode* node, CollectionType type)
     : HTMLCollection(node, type, DoesNotOverrideItemAfter)
 {
     ScriptWrappable::init(this);
@@ -84,7 +84,7 @@ void HTMLAllCollection::anonymousNamedGetter(const AtomicString& name, bool& ret
     returnValue0 = NamedNodesCollection::create(namedItems);
 }
 
-PassRefPtr<NodeList> HTMLAllCollection::tags(const String& name)
+PassRefPtr<NodeList> HTMLAllCollection::tags(const AtomicString& name)
 {
     return ownerNode()->getElementsByTagName(name);
 }

@@ -13,10 +13,10 @@
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
+#include "chrome/browser/chromeos/policy/browser_policy_connector_chromeos.h"
 #include "chrome/browser/chromeos/profiles/profile_helper.h"
 #include "chrome/browser/chromeos/proxy_cros_settings_parser.h"
 #include "chrome/browser/chromeos/settings/cros_settings.h"
-#include "chrome/browser/policy/browser_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/chromeos/ui_account_tweaks.h"
 #include "chrome/browser/ui/webui/options/chromeos/accounts_options_handler.h"
@@ -54,7 +54,7 @@ bool IsLoggedInOwner(const std::string& username) {
 base::DictionaryValue* CreateUserInfo(const std::string& username,
                                       const std::string& display_email,
                                       const std::string& display_name) {
-  base::DictionaryValue* user_dict = new DictionaryValue;
+  base::DictionaryValue* user_dict = new base::DictionaryValue;
   user_dict->SetString("username", username);
   user_dict->SetString("name", display_email);
   user_dict->SetString("email", display_name);
@@ -145,12 +145,14 @@ base::Value* CoreChromeOSOptionsHandler::FetchPref(
 
   // Decorate pref value as CoreOptionsHandler::CreateValueForPref() does.
   // TODO(estade): seems that this should replicate CreateValueForPref less.
-  DictionaryValue* dict = new DictionaryValue;
+  base::DictionaryValue* dict = new base::DictionaryValue;
   if (pref_name == kAccountsPrefUsers)
     dict->Set("value", CreateUsersWhitelist(pref_value));
   else
     dict->Set("value", pref_value->DeepCopy());
-  if (g_browser_process->browser_policy_connector()->IsEnterpriseManaged())
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
+  if (connector->IsEnterpriseManaged())
     dict->SetString("controlledBy", "policy");
   bool disabled_by_owner = IsSettingOwnerOnly(pref_name) &&
       !UserManager::Get()->IsCurrentUserOwner();
@@ -208,7 +210,7 @@ void CoreChromeOSOptionsHandler::StopObservingPref(const std::string& path) {
 }
 
 void CoreChromeOSOptionsHandler::GetLocalizedValues(
-    DictionaryValue* localized_strings) {
+    base::DictionaryValue* localized_strings) {
   DCHECK(localized_strings);
   CoreOptionsHandler::GetLocalizedValues(localized_strings);
 

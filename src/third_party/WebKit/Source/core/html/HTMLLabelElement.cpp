@@ -35,25 +35,24 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-static bool supportsLabels(Element* element)
+static bool supportsLabels(const Element& element)
 {
-    if (!element || !element->isHTMLElement())
+    if (!element.isHTMLElement())
         return false;
-    if (!toHTMLElement(element)->isLabelable())
+    if (!toHTMLElement(element).isLabelable())
         return false;
-    return toLabelableElement(element)->supportLabels();
+    return toLabelableElement(element).supportLabels();
 }
 
-inline HTMLLabelElement::HTMLLabelElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+inline HTMLLabelElement::HTMLLabelElement(Document& document)
+    : HTMLElement(labelTag, document)
 {
-    ASSERT(hasTagName(labelTag));
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<HTMLLabelElement> HTMLLabelElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<HTMLLabelElement> HTMLLabelElement::create(Document& document)
 {
-    return adoptRef(new HTMLLabelElement(tagName, document));
+    return adoptRef(new HTMLLabelElement(document));
 }
 
 bool HTMLLabelElement::rendererIsFocusable() const
@@ -62,16 +61,15 @@ bool HTMLLabelElement::rendererIsFocusable() const
     return that->isContentEditable();
 }
 
-LabelableElement* HTMLLabelElement::control()
+LabelableElement* HTMLLabelElement::control() const
 {
     const AtomicString& controlId = getAttribute(forAttr);
     if (controlId.isNull()) {
         // Search the children and descendants of the label element for a form element.
         // per http://dev.w3.org/html5/spec/Overview.html#the-label-element
         // the form element must be "labelable form-associated element".
-        Element* element = this;
-        while ((element = ElementTraversal::next(element, this))) {
-            if (!supportsLabels(element))
+        for (Element* element = ElementTraversal::next(*this, this); element; element = ElementTraversal::next(*element, this)) {
+            if (!supportsLabels(*element))
                 continue;
             return toLabelableElement(element);
         }
@@ -79,29 +77,29 @@ LabelableElement* HTMLLabelElement::control()
     }
 
     if (Element* element = treeScope().getElementById(controlId)) {
-        if (supportsLabels(element))
+        if (supportsLabels(*element))
             return toLabelableElement(element);
     }
 
     return 0;
 }
 
-HTMLFormElement* HTMLLabelElement::form() const
+HTMLFormElement* HTMLLabelElement::formOwner() const
 {
-    return FormAssociatedElement::findAssociatedForm(this, 0);
+    return FormAssociatedElement::findAssociatedForm(this);
 }
 
-void HTMLLabelElement::setActive(bool down, bool pause)
+void HTMLLabelElement::setActive(bool down)
 {
     if (down == active())
         return;
 
     // Update our status first.
-    HTMLElement::setActive(down, pause);
+    HTMLElement::setActive(down);
 
     // Also update our corresponding control.
     if (HTMLElement* element = control())
-        element->setActive(down, pause);
+        element->setActive(down);
 }
 
 void HTMLLabelElement::setHovered(bool over)

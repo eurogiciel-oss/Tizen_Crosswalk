@@ -14,6 +14,7 @@
 #include "content/browser/android/in_process/synchronous_compositor_impl.h"
 #include "content/public/browser/browser_thread.h"
 #include "gpu/command_buffer/client/gl_in_process_context.h"
+#include "gpu/command_buffer/client/gles2_interface.h"
 #include "gpu/command_buffer/common/gpu_memory_allocation.h"
 #include "third_party/skia/include/core/SkBitmapDevice.h"
 #include "third_party/skia/include/core/SkCanvas.h"
@@ -36,7 +37,7 @@ CreateWebGraphicsContext3D(scoped_refptr<gfx::GLSurface> surface) {
 
   const gfx::GpuPreference gpu_preference = gfx::PreferDiscreteGpu;
 
-  WebKit::WebGraphicsContext3D::Attributes attributes;
+  blink::WebGraphicsContext3D::Attributes attributes;
   attributes.antialias = false;
   attributes.shareResources = true;
   attributes.noAutomaticFlushes = true;
@@ -77,7 +78,7 @@ class SynchronousCompositorOutputSurface::SoftwareDevice
   virtual void Resize(gfx::Size size) OVERRIDE {
     // Intentional no-op: canvas size is controlled by the embedder.
   }
-  virtual SkCanvas* BeginPaint(gfx::Rect damage_rect) OVERRIDE {
+  virtual SkCanvas* BeginPaint(const gfx::Rect& damage_rect) OVERRIDE {
     if (!surface_->current_sw_canvas_) {
       NOTREACHED() << "BeginPaint with no canvas set";
       return &null_canvas_;
@@ -88,7 +89,7 @@ class SynchronousCompositorOutputSurface::SoftwareDevice
   }
   virtual void EndPaint(cc::SoftwareFrameData* frame_data) OVERRIDE {
   }
-  virtual void CopyToBitmap(gfx::Rect rect, SkBitmap* output) OVERRIDE {
+  virtual void CopyToBitmap(const gfx::Rect& rect, SkBitmap* output) OVERRIDE {
     NOTIMPLEMENTED();
   }
 
@@ -174,7 +175,7 @@ void SynchronousCompositorOutputSurface::SwapBuffers(
   DCHECK(CalledOnValidThread());
   if (!ForcedDrawToSoftwareDevice()) {
     DCHECK(context_provider_);
-    context_provider_->Context3d()->shallowFlushCHROMIUM();
+    context_provider_->ContextGL()->ShallowFlushCHROMIUM();
   }
   SynchronousCompositorOutputSurfaceDelegate* delegate = GetDelegate();
   if (delegate)

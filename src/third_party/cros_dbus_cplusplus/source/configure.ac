@@ -64,7 +64,7 @@ if test -n "$vtest"; then
 	AC_MSG_RESULT(yes)
 
 	AC_DEFINE(GCC_HASCLASSVISIBILITY, 1, [to enable hidden symbols])
-	CXXFLAGS="-fvisibility=hidden"
+	CXXFLAGS="$CXXFLAGS -fvisibility=hidden"
 else
 	AC_MSG_RESULT(no)
 fi 
@@ -143,10 +143,10 @@ if test x"$acx_pthread_ok" = xyes; then
 fi
 
 if test "$enable_debug" = "yes" ; then
-	CXXFLAGS="$CXXFLAGS -Wall -ggdb -O0"
+	CXXFLAGS="$CXXFLAGS -Wall -ggdb"
 	AC_DEFINE(DEBUG, 1, [Define to enable debug build])
 else
-	CXXFLAGS="$CXXFLAGS -Wall -O3"
+	CXXFLAGS="$CXXFLAGS -Wall"
 fi
 
 # Doxygen Documentation

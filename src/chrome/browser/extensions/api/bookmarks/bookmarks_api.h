@@ -14,7 +14,7 @@
 #include "chrome/browser/bookmarks/base_bookmark_model_observer.h"
 #include "chrome/browser/extensions/api/profile_keyed_api_factory.h"
 #include "chrome/browser/extensions/chrome_extension_function.h"
-#include "chrome/browser/extensions/event_router.h"
+#include "extensions/browser/event_router.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 
 class Profile;
@@ -34,7 +34,8 @@ class BookmarkEventRouter : public BookmarkModelObserver {
   virtual ~BookmarkEventRouter();
 
   // BookmarkModelObserver:
-  virtual void Loaded(BookmarkModel* model, bool ids_reassigned) OVERRIDE;
+  virtual void BookmarkModelLoaded(BookmarkModel* model,
+                                   bool ids_reassigned) OVERRIDE;
   virtual void BookmarkModelBeingDeleted(BookmarkModel* model) OVERRIDE;
   virtual void BookmarkNodeMoved(BookmarkModel* model,
                                  const BookmarkNode* old_parent,
@@ -114,6 +115,11 @@ class BookmarksFunction : public ChromeAsyncExtensionFunction,
   // as an int64. In case of error, doesn't change id and returns false.
   bool GetBookmarkIdAsInt64(const std::string& id_string, int64* id);
 
+  // Helper to get the bookmark node from a given string id.
+  // If the given id can't be parsed or doesn't refer to a valid node, sets
+  // error_ and returns NULL.
+  const BookmarkNode* GetBookmarkNodeFromId(const std::string& id_string);
+
   // Helper that checks if bookmark editing is enabled. If it's not, this sets
   // error_ to the appropriate error string.
   bool EditBookmarksEnabled();
@@ -121,7 +127,8 @@ class BookmarksFunction : public ChromeAsyncExtensionFunction,
  private:
   // BaseBookmarkModelObserver:
   virtual void BookmarkModelChanged() OVERRIDE;
-  virtual void Loaded(BookmarkModel* model, bool ids_reassigned) OVERRIDE;
+  virtual void BookmarkModelLoaded(BookmarkModel* model,
+                                   bool ids_reassigned) OVERRIDE;
 };
 
 class BookmarksGetFunction : public BookmarksFunction {

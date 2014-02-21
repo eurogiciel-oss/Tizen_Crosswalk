@@ -21,6 +21,7 @@
 #define SVGAltGlyphItemElement_h
 
 #if ENABLE(SVG_FONTS)
+#include "SVGNames.h"
 #include "core/svg/SVGElement.h"
 #include "wtf/Vector.h"
 
@@ -28,15 +29,17 @@ namespace WebCore {
 
 class SVGAltGlyphItemElement FINAL : public SVGElement {
 public:
-    static PassRefPtr<SVGAltGlyphItemElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGAltGlyphItemElement> create(Document&);
 
-    bool hasValidGlyphElements(Vector<String>& glyphNames) const;
+    bool hasValidGlyphElements(Vector<AtomicString>& glyphNames) const;
 
 private:
-    SVGAltGlyphItemElement(const QualifiedName&, Document&);
+    explicit SVGAltGlyphItemElement(Document&);
 
     virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE { return false; }
 };
+
+DEFINE_NODE_TYPE_CASTS(SVGAltGlyphItemElement, hasTagName(SVGNames::altGlyphItemTag));
 
 }
 

@@ -23,20 +23,20 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/api/identity/oauth2_manifest_handler.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/extension_icon_set.h"
-#include "chrome/common/extensions/feature_switch.h"
 #include "chrome/common/extensions/manifest_handlers/icons_handler.h"
-#include "chrome/common/extensions/permissions/permissions_data.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_view.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/extension_resource.h"
+#include "extensions/common/feature_switch.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/permissions/permission_message_provider.h"
 #include "extensions/common/permissions/permission_set.h"
+#include "extensions/common/permissions/permissions_data.h"
 #include "extensions/common/url_pattern.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
@@ -205,12 +205,12 @@ ExtensionInstallPrompt::Prompt::~Prompt() {
 }
 
 void ExtensionInstallPrompt::Prompt::SetPermissions(
-    const std::vector<string16>& permissions) {
+    const std::vector<base::string16>& permissions) {
   permissions_ = permissions;
 }
 
 void ExtensionInstallPrompt::Prompt::SetPermissionsDetails(
-    const std::vector<string16>& details) {
+    const std::vector<base::string16>& details) {
   details_ = details;
   is_showing_details_for_permissions_.clear();
   for (size_t i = 0; i < details.size(); ++i)
@@ -246,7 +246,7 @@ void ExtensionInstallPrompt::Prompt::SetOAuthIssueAdvice(
 void ExtensionInstallPrompt::Prompt::SetUserNameFromProfile(Profile* profile) {
   // |profile| can be NULL in unit tests.
   if (profile) {
-    oauth_user_name_ = UTF8ToUTF16(profile->GetPrefs()->GetString(
+    oauth_user_name_ = base::UTF8ToUTF16(profile->GetPrefs()->GetString(
         prefs::kGoogleServicesUsername));
   } else {
     oauth_user_name_.clear();
@@ -265,7 +265,7 @@ void ExtensionInstallPrompt::Prompt::SetInlineInstallWebstoreData(
   rating_count_ = rating_count;
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetDialogTitle() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetDialogTitle() const {
   int resource_id = kTitleIds[type_];
 
   if (type_ == INSTALL_PROMPT) {
@@ -277,15 +277,15 @@ string16 ExtensionInstallPrompt::Prompt::GetDialogTitle() const {
       resource_id = IDS_EXTENSION_INSTALL_EXTENSION_PROMPT_TITLE;
   } else if (type_ == EXTERNAL_INSTALL_PROMPT) {
     return l10n_util::GetStringFUTF16(
-        resource_id, UTF8ToUTF16(extension_->name()));
+        resource_id, base::UTF8ToUTF16(extension_->name()));
   }
 
   return l10n_util::GetStringUTF16(resource_id);
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetHeading() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetHeading() const {
   if (type_ == INLINE_INSTALL_PROMPT) {
-    return UTF8ToUTF16(extension_->name());
+    return base::UTF8ToUTF16(extension_->name());
   } else if (type_ == BUNDLE_INSTALL_PROMPT) {
     return bundle_->GetHeadingTextFor(BundleInstaller::Item::STATE_PENDING);
   } else if (type_ == EXTERNAL_INSTALL_PROMPT) {
@@ -299,7 +299,7 @@ string16 ExtensionInstallPrompt::Prompt::GetHeading() const {
     return l10n_util::GetStringUTF16(resource_id);
   } else {
     return l10n_util::GetStringFUTF16(
-        kHeadingIds[type_], UTF8ToUTF16(extension_->name()));
+        kHeadingIds[type_], base::UTF8ToUTF16(extension_->name()));
   }
 }
 
@@ -312,6 +312,11 @@ int ExtensionInstallPrompt::Prompt::GetDialogButtons() const {
   return kButtons[type_];
 }
 
+bool ExtensionInstallPrompt::Prompt::ShouldShowExplanationText() const {
+   return type_ == INSTALL_PROMPT &&
+       extension_->is_extension() && experiment_ && experiment_->text_only();
+}
+
 bool ExtensionInstallPrompt::Prompt::HasAcceptButtonLabel() const {
   if (kAcceptButtonIds[type_] == 0)
     return false;
@@ -322,7 +327,7 @@ bool ExtensionInstallPrompt::Prompt::HasAcceptButtonLabel() const {
   return true;
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetAcceptButtonLabel() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetAcceptButtonLabel() const {
   if (type_ == EXTERNAL_INSTALL_PROMPT) {
     int id = -1;
     if (extension_->is_app())
@@ -333,27 +338,33 @@ string16 ExtensionInstallPrompt::Prompt::GetAcceptButtonLabel() const {
       id = IDS_EXTENSION_EXTERNAL_INSTALL_PROMPT_ACCEPT_BUTTON_EXTENSION;
     return l10n_util::GetStringUTF16(id);
   }
+  if (ShouldShowExplanationText())
+    return experiment_->GetOkButtonText();
   return l10n_util::GetStringUTF16(kAcceptButtonIds[type_]);
 }
 
 bool ExtensionInstallPrompt::Prompt::HasAbortButtonLabel() const {
+  if (ShouldShowExplanationText())
+    return true;
   return kAbortButtonIds[type_] > 0;
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetAbortButtonLabel() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetAbortButtonLabel() const {
   CHECK(HasAbortButtonLabel());
+  if (ShouldShowExplanationText())
+    return experiment_->GetCancelButtonText();
   return l10n_util::GetStringUTF16(kAbortButtonIds[type_]);
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetPermissionsHeading() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetPermissionsHeading() const {
   return l10n_util::GetStringUTF16(kPermissionsHeaderIds[type_]);
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetOAuthHeading() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetOAuthHeading() const {
   return l10n_util::GetStringFUTF16(kOAuthHeaderIds[type_], oauth_user_name_);
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetRetainedFilesHeading() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetRetainedFilesHeading() const {
   const int kRetainedFilesMessageIDs[6] = {
       IDS_EXTENSION_PROMPT_RETAINED_FILES_DEFAULT,
       IDS_EXTENSION_PROMPT_RETAINED_FILE_SINGULAR,
@@ -402,13 +413,13 @@ void ExtensionInstallPrompt::Prompt::AppendRatingStars(
   }
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetRatingCount() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetRatingCount() const {
   CHECK_EQ(INLINE_INSTALL_PROMPT, type_);
   return l10n_util::GetStringFUTF16(IDS_EXTENSION_RATING_COUNT,
                                     base::IntToString16(rating_count_));
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetUserCount() const {
+base::string16 ExtensionInstallPrompt::Prompt::GetUserCount() const {
   CHECK_EQ(INLINE_INSTALL_PROMPT, type_);
 
   if (show_user_count_) {
@@ -426,12 +437,13 @@ size_t ExtensionInstallPrompt::Prompt::GetPermissionsDetailsCount() const {
   return details_.size();
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetPermission(size_t index) const {
+base::string16 ExtensionInstallPrompt::Prompt::GetPermission(size_t index)
+    const {
   CHECK_LT(index, permissions_.size());
   return permissions_[index];
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetPermissionsDetails(
+base::string16 ExtensionInstallPrompt::Prompt::GetPermissionsDetails(
     size_t index) const {
   CHECK_LT(index, details_.size());
   return details_[index];
@@ -466,7 +478,8 @@ size_t ExtensionInstallPrompt::Prompt::GetRetainedFileCount() const {
   return retained_files_.size();
 }
 
-string16 ExtensionInstallPrompt::Prompt::GetRetainedFile(size_t index) const {
+base::string16 ExtensionInstallPrompt::Prompt::GetRetainedFile(size_t index)
+    const {
   CHECK_LT(index, retained_files_.size());
   return retained_files_[index].AsUTF16Unsafe();
 }
@@ -492,13 +505,13 @@ ExtensionInstallPrompt::ShowParams::ShowParams(
 // static
 scoped_refptr<Extension>
     ExtensionInstallPrompt::GetLocalizedExtensionForDisplay(
-    const DictionaryValue* manifest,
+    const base::DictionaryValue* manifest,
     int flags,
     const std::string& id,
     const std::string& localized_name,
     const std::string& localized_description,
     std::string* error) {
-  scoped_ptr<DictionaryValue> localized_manifest;
+  scoped_ptr<base::DictionaryValue> localized_manifest;
   if (!localized_name.empty() || !localized_description.empty()) {
     localized_manifest.reset(manifest->DeepCopy());
     if (!localized_name.empty()) {
@@ -522,7 +535,8 @@ scoped_refptr<Extension>
 
 ExtensionInstallPrompt::ExtensionInstallPrompt(
     content::WebContents* contents)
-    : record_oauth2_grant_(false),
+    : OAuth2TokenService::Consumer("extensions_install"),
+      record_oauth2_grant_(false),
       ui_loop_(base::MessageLoop::current()),
       extension_(NULL),
       install_ui_(ExtensionInstallUI::Create(ProfileForWebContents(contents))),
@@ -536,7 +550,8 @@ ExtensionInstallPrompt::ExtensionInstallPrompt(
     Profile* profile,
     gfx::NativeWindow native_window,
     content::PageNavigator* navigator)
-    : record_oauth2_grant_(false),
+    : OAuth2TokenService::Consumer("extensions_install"),
+      record_oauth2_grant_(false),
       ui_loop_(base::MessageLoop::current()),
       extension_(NULL),
       install_ui_(ExtensionInstallUI::Create(profile)),
@@ -623,7 +638,8 @@ void ExtensionInstallPrompt::ConfirmReEnable(Delegate* delegate,
   extension_ = extension;
   permissions_ = extension->GetActivePermissions();
   delegate_ = delegate;
-  prompt_.set_type(RE_ENABLE_PROMPT);
+  prompt_.set_type(extension->is_ephemeral() ? LAUNCH_PROMPT :
+                                               RE_ENABLE_PROMPT);
 
   LoadImageIfNeeded();
 }
@@ -781,6 +797,11 @@ void ExtensionInstallPrompt::OnMintTokenFailure(
 }
 
 void ExtensionInstallPrompt::ShowConfirmation() {
+  if (prompt_.type() == INSTALL_PROMPT)
+    prompt_.set_experiment(ExtensionInstallPromptExperiment::Find());
+  else
+    prompt_.set_experiment(ExtensionInstallPromptExperiment::ControlGroup());
+
   if (permissions_.get() &&
       (!extension_ ||
        !extensions::PermissionsData::ShouldSkipPermissionWarnings(

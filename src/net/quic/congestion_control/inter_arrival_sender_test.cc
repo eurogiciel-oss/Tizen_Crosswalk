@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "net/quic/congestion_control/inter_arrival_sender.h"
+
 #include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/stl_util.h"
-#include "net/quic/congestion_control/inter_arrival_sender.h"
 #include "net/quic/test_tools/mock_clock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -17,8 +18,7 @@ namespace test {
 class InterArrivalSenderTest : public ::testing::Test {
  protected:
   InterArrivalSenderTest()
-     : rtt_(QuicTime::Delta::FromMilliseconds(60)),
-       one_ms_(QuicTime::Delta::FromMilliseconds(1)),
+     : one_ms_(QuicTime::Delta::FromMilliseconds(1)),
        one_s_(QuicTime::Delta::FromMilliseconds(1000)),
        nine_ms_(QuicTime::Delta::FromMilliseconds(9)),
        send_start_time_(send_clock_.Now()),
@@ -52,8 +52,8 @@ class InterArrivalSenderTest : public ::testing::Test {
 
   void AckNPackets(int n) {
     for (int i = 0; i < n; ++i) {
-      sender_.OnIncomingAck(
-          acked_sequence_number_++, kDefaultMaxPacketSize, rtt_);
+      sender_.OnPacketAcked(
+          acked_sequence_number_++, kDefaultMaxPacketSize);
     }
   }
 
@@ -105,7 +105,6 @@ class InterArrivalSenderTest : public ::testing::Test {
     return send_clock_.ApproximateNow().Subtract(send_start_time_);
   }
 
-  const QuicTime::Delta rtt_;
   const QuicTime::Delta one_ms_;
   const QuicTime::Delta one_s_;
   const QuicTime::Delta nine_ms_;
@@ -152,7 +151,7 @@ TEST_F(InterArrivalSenderTest, ProbeFollowedByFullRampUpCycle) {
       acc_arrival_time.ToMicroseconds();
   EXPECT_NEAR(0.7f * probe_rate,
               sender_.BandwidthEstimate().ToBytesPerSecond(), 1000);
-  DLOG(INFO) << "After probe";
+  DVLOG(1) << "After probe";
   // Send 50 bursts, make sure that we move fast in the beginning.
   for (int i = 0; i < 50; ++i) {
     SendAvailableCongestionWindow();
@@ -197,7 +196,7 @@ TEST_F(InterArrivalSenderTest, ProbeFollowedByFullRampUpCycle) {
   EXPECT_NEAR(0.99f * probe_rate,
               sender_.BandwidthEstimate().ToBytesPerSecond(), 1000);
   EXPECT_NEAR(SenderDeltaSinceStart().ToMilliseconds(), 1560, 10);
-  DLOG(INFO) << "Near available channel estimate";
+  DVLOG(1) << "Near available channel estimate";
 
   // Send 50 bursts, make sure that we move very slow close to the probe rate.
   for (int i = 0; i < 50; ++i) {
@@ -213,7 +212,7 @@ TEST_F(InterArrivalSenderTest, ProbeFollowedByFullRampUpCycle) {
   EXPECT_NEAR(1.00f * probe_rate,
               sender_.BandwidthEstimate().ToBytesPerSecond(), 2000);
   EXPECT_NEAR(SenderDeltaSinceStart().ToMilliseconds(), 2000, 100);
-  DLOG(INFO) << "At available channel estimate";
+  DVLOG(1) << "At available channel estimate";
 
   // Send 50 bursts, make sure that we move very slow close to the probe rate.
   for (int i = 0; i < 50; ++i) {
@@ -279,7 +278,7 @@ TEST_F(InterArrivalSenderTest, ProbeFollowedByFullRampUpCycle) {
   EXPECT_NEAR(halfway_rate,
               sender_.BandwidthEstimate().ToBytesPerSecond(), 5000);
   EXPECT_NEAR(SenderDeltaSinceStart().ToMilliseconds(), 6600, 100);
-  DLOG(INFO) << "Near halfway point";
+  DVLOG(1) << "Near halfway point";
 
   // Send until we reach max channel capacity.
   for (int i = 0; i < 1500; ++i) {
@@ -503,6 +502,7 @@ TEST_F(InterArrivalSenderTest, MinBitrateDueToDelay) {
 }
 
 TEST_F(InterArrivalSenderTest, MinBitrateDueToLoss) {
+  sender_.UpdateRtt(QuicTime::Delta::FromMilliseconds(60));
   QuicBandwidth expected_min_bitrate = QuicBandwidth::FromKBitsPerSecond(10);
   QuicCongestionFeedbackFrame feedback;
   // At startup make sure we can send.
@@ -539,8 +539,8 @@ TEST_F(InterArrivalSenderTest, MinBitrateDueToLoss) {
     send_clock_.AdvanceTime(time_until_send);
     EXPECT_TRUE(sender_.TimeUntilSend(send_clock_.Now(),
         NOT_RETRANSMISSION, HAS_RETRANSMITTABLE_DATA, NOT_HANDSHAKE).IsZero());
-    sender_.OnIncomingLoss(send_clock_.Now());
-    sender_.OnIncomingAck(acked_sequence_number_, kDefaultMaxPacketSize, rtt_);
+    sender_.OnPacketLost(acked_sequence_number_ - 1, send_clock_.Now());
+    sender_.OnPacketAcked(acked_sequence_number_, kDefaultMaxPacketSize);
     acked_sequence_number_ += 2;  // Create a loss by not acking both packets.
     SendFeedbackMessageNPackets(2, nine_ms_, nine_ms_);
   }
@@ -554,8 +554,8 @@ TEST_F(InterArrivalSenderTest, MinBitrateDueToLoss) {
     send_clock_.AdvanceTime(time_until_send);
     EXPECT_TRUE(sender_.TimeUntilSend(send_clock_.Now(),
         NOT_RETRANSMISSION, HAS_RETRANSMITTABLE_DATA, NOT_HANDSHAKE).IsZero());
-    sender_.OnIncomingLoss(send_clock_.Now());
-    sender_.OnIncomingAck(acked_sequence_number_, kDefaultMaxPacketSize, rtt_);
+    sender_.OnPacketLost(acked_sequence_number_ - 1, send_clock_.Now());
+    sender_.OnPacketAcked(acked_sequence_number_, kDefaultMaxPacketSize);
     acked_sequence_number_ += 2;  // Create a loss by not acking both packets.
     SendFeedbackMessageNPackets(2, nine_ms_, nine_ms_);
 

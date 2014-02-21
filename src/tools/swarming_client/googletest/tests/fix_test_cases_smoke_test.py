@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import hashlib
 import json
@@ -18,9 +18,11 @@ GOOGLETEST_DIR = os.path.dirname(BASE_DIR)
 ROOT_DIR = os.path.dirname(GOOGLETEST_DIR)
 
 sys.path.insert(0, ROOT_DIR)
+sys.path.insert(0, os.path.join(ROOT_DIR, 'tests'))
 
 import isolateserver
 import run_isolated
+import trace_test_util
 
 
 class FixTestCases(unittest.TestCase):
@@ -55,6 +57,7 @@ class FixTestCases(unittest.TestCase):
     self.assertEqual(0, proc.returncode)
     return out
 
+  @trace_test_util.check_can_trace
   def test_simple(self):
     # Create a directory with nothing in it and progressively add more stuff.
     isolate = os.path.join(self.srcdir, 'gtest_fake_pass.isolate')
@@ -93,7 +96,7 @@ class FixTestCases(unittest.TestCase):
         [
           os.path.join(ROOT_DIR, 'isolate.py'),
           'check', '-i', isolate, '-s', isolated,
-          '-V', 'chromeos', str(chromeos_value),
+          '--config-variable', 'chromeos', str(chromeos_value),
         ])
     if not VERBOSE:
       self.assertEqual('', out)
@@ -142,7 +145,7 @@ class FixTestCases(unittest.TestCase):
       },
       u'os': unicode(run_isolated.get_flavor()),
       u'relative_cwd': u'.',
-      u'version': u'1.0',
+      u'version': unicode(isolateserver.ISOLATED_FILE_VERSION),
     }
     if sys.platform == 'win32':
       for value in expected_isolated['files'].itervalues():

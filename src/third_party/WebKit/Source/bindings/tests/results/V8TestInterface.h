@@ -43,21 +43,20 @@ namespace WebCore {
 
 class V8TestInterface {
 public:
-    static bool HasInstance(v8::Handle<v8::Value>, v8::Isolate*, WrapperWorldType);
-    static bool HasInstanceInAnyWorld(v8::Handle<v8::Value>, v8::Isolate*);
-    static v8::Handle<v8::FunctionTemplate> GetTemplate(v8::Isolate*, WrapperWorldType);
+    static bool hasInstance(v8::Handle<v8::Value>, v8::Isolate*);
+    static v8::Handle<v8::FunctionTemplate> domTemplate(v8::Isolate*, WrapperWorldType);
     static TestInterface* toNative(v8::Handle<v8::Object> object)
     {
         return fromInternalPointer(object->GetAlignedPointerFromInternalField(v8DOMWrapperObjectIndex));
     }
     static void derefObject(void*);
     static const WrapperTypeInfo wrapperTypeInfo;
-    static void resolveWrapperReachability(void*, const v8::Persistent<v8::Object>&, v8::Isolate*);
+    static void visitDOMWrapper(void*, const v8::Persistent<v8::Object>&, v8::Isolate*);
     static ActiveDOMObject* toActiveDOMObject(v8::Handle<v8::Object>);
-    static void implementsMethod3MethodCustom(const v8::FunctionCallbackInfo<v8::Value>&);
-#if ENABLE(Condition11) || ENABLE(Condition12)
+    static void implementsCustomVoidMethodMethodCustom(const v8::FunctionCallbackInfo<v8::Value>&);
+#if ENABLE(CONDITION_PARTIAL)
     static void supplementalMethod3MethodCustom(const v8::FunctionCallbackInfo<v8::Value>&);
-#endif // ENABLE(Condition11) || ENABLE(Condition12)
+#endif // ENABLE(CONDITION_PARTIAL)
     static void constructorCallback(const v8::FunctionCallbackInfo<v8::Value>&);
     static void namedPropertySetterCustom(v8::Local<v8::String>, v8::Local<v8::Value>, const v8::PropertyCallbackInfo<v8::Value>&);
     static const int internalFieldCount = v8DefaultWrapperInternalFieldCount + 0;
@@ -71,7 +70,7 @@ public:
         return static_cast<TestInterface*>(object);
     }
     static void installPerContextEnabledProperties(v8::Handle<v8::Object>, TestInterface*, v8::Isolate*);
-    static void installPerContextEnabledPrototypeProperties(v8::Handle<v8::Object>, v8::Isolate*) { }
+    static void installPerContextEnabledMethods(v8::Handle<v8::Object>, v8::Isolate*) { }
 
 private:
     friend v8::Handle<v8::Object> wrap(TestInterface*, v8::Handle<v8::Object> creationContext, v8::Isolate*);
@@ -94,7 +93,7 @@ inline v8::Handle<v8::Object> wrap(TestInterface* impl, v8::Handle<v8::Object> c
 inline v8::Handle<v8::Value> toV8(TestInterface* impl, v8::Handle<v8::Object> creationContext, v8::Isolate* isolate)
 {
     if (UNLIKELY(!impl))
-        return v8NullWithCheck(isolate);
+        return v8::Null(isolate);
     v8::Handle<v8::Value> wrapper = DOMDataStore::getWrapper<V8TestInterface>(impl, isolate);
     if (!wrapper.IsEmpty())
         return wrapper;
@@ -165,7 +164,5 @@ inline void v8SetReturnValueFast(const CallbackInfo& callbackInfo, PassRefPtr<Te
 }
 
 }
-
 #endif // ENABLE(Condition1) || ENABLE(Condition2)
-
 #endif // V8TestInterface_h

@@ -122,6 +122,7 @@ ifeq ($(CONFIG_VP9_ENCODER),yes)
   CODEC_EXPORTS-yes += $(addprefix $(VP9_PREFIX),$(VP9_CX_EXPORTS))
   CODEC_SRCS-yes += $(VP9_PREFIX)vp9cx.mk vpx/vp8.h vpx/vp8cx.h
   INSTALL-LIBS-yes += include/vpx/vp8.h include/vpx/vp8cx.h
+  INSTALL-LIBS-yes += include/vpx/svc_context.h
   INSTALL_MAPS += include/vpx/% $(SRC_PATH_BARE)/$(VP9_PREFIX)/%
   CODEC_DOC_SRCS += vpx/vp8.h vpx/vp8cx.h
   CODEC_DOC_SECTIONS += vp9 vp9_encoder
@@ -182,6 +183,7 @@ CODEC_EXPORTS-$(CONFIG_DECODERS) += vpx/exports_dec
 
 INSTALL-LIBS-yes += include/vpx/vpx_codec.h
 INSTALL-LIBS-yes += include/vpx/vpx_image.h
+INSTALL-LIBS-yes += include/vpx/vpx_external_frame_buffer.h
 INSTALL-LIBS-yes += include/vpx/vpx_integer.h
 INSTALL-LIBS-$(CONFIG_DECODERS) += include/vpx/vpx_decoder.h
 INSTALL-LIBS-$(CONFIG_ENCODERS) += include/vpx/vpx_encoder.h

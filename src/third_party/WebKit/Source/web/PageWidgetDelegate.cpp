@@ -38,14 +38,14 @@
 #include "core/page/EventHandler.h"
 #include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
-#include "core/platform/graphics/GraphicsContext.h"
 #include "core/rendering/RenderLayerCompositor.h"
 #include "core/rendering/RenderView.h"
+#include "platform/graphics/GraphicsContext.h"
 #include "wtf/CurrentTime.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 static inline FrameView* mainFrameView(Page* page)
 {
@@ -86,7 +86,7 @@ void PageWidgetDelegate::layout(Page* page)
     // For now, as we know this is the point in code where the compositor has
     // actually asked for Blink to update the composited layer tree. So finally
     // do all the deferred work for updateCompositingLayers() here.
-    view->renderView()->compositor()->updateCompositingLayers(CompositingUpdateFinishAllDeferredWork);
+    view->renderView()->compositor()->updateCompositingLayers();
 }
 
 void PageWidgetDelegate::paint(Page* page, PageOverlayList* overlays, WebCanvas* canvas, const WebRect& rect, CanvasBackground background)

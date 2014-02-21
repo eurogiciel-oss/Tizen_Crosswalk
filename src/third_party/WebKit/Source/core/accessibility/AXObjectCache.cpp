@@ -65,7 +65,6 @@
 #include "core/page/ChromeClient.h"
 #include "core/page/FocusController.h"
 #include "core/page/Page.h"
-#include "core/platform/ScrollView.h"
 #include "core/rendering/AbstractInlineTextBox.h"
 #include "core/rendering/RenderListBox.h"
 #include "core/rendering/RenderMenuList.h"
@@ -75,6 +74,7 @@
 #include "core/rendering/RenderTableCell.h"
 #include "core/rendering/RenderTableRow.h"
 #include "core/rendering/RenderView.h"
+#include "platform/scroll/ScrollView.h"
 #include "wtf/PassRefPtr.h"
 
 namespace WebCore {
@@ -167,7 +167,7 @@ AXObject* AXObjectCache::focusedUIElementForPage(const Page* page)
     if (!focusedNode)
         focusedNode = focusedDocument;
 
-    if (isHTMLAreaElement(focusedNode))
+    if (focusedNode->hasTagName(areaTag))
         return focusedImageMapUIElement(toHTMLAreaElement(focusedNode));
 
     AXObject* obj = focusedNode->document().axObjectCache()->getOrCreate(focusedNode);
@@ -342,6 +342,11 @@ AXObject* AXObjectCache::getOrCreate(Widget* widget)
 
     // Will crash later if we have two objects for the same widget.
     ASSERT(!get(widget));
+
+    // Catch the case if an (unsupported) widget type is used. Only FrameView and ScrollBar are supported now.
+    ASSERT(newObj);
+    if (!newObj)
+        return 0;
 
     getAXID(newObj.get());
 
@@ -826,7 +831,7 @@ void AXObjectCache::handleAttributeChanged(const QualifiedName& attrName, Elemen
         handleAriaRoleChanged(element);
     else if (attrName == altAttr || attrName == titleAttr)
         textChanged(element);
-    else if (attrName == forAttr && isHTMLLabelElement(element))
+    else if (attrName == forAttr && element->hasTagName(labelTag))
         labelChanged(element);
 
     if (!attrName.localName().string().startsWith("aria-"))

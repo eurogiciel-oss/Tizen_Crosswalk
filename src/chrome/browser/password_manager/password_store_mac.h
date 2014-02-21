@@ -40,7 +40,7 @@ class PasswordStoreMac : public PasswordStore {
  protected:
   virtual ~PasswordStoreMac();
 
-  virtual bool ScheduleTask(const base::Closure& task) OVERRIDE;
+  virtual scoped_refptr<base::SequencedTaskRunner> GetTaskRunner() OVERRIDE;
 
  private:
   virtual void ReportMetricsImpl() OVERRIDE;
@@ -53,6 +53,7 @@ class PasswordStoreMac : public PasswordStore {
       const base::Time& delete_begin, const base::Time& delete_end) OVERRIDE;
   virtual void GetLoginsImpl(
       const autofill::PasswordForm& form,
+      AuthorizationPromptPolicy prompt_policy,
       const ConsumerCallbackRunner& callback_runner) OVERRIDE;
   virtual void GetAutofillableLoginsImpl(GetLoginsRequest* request) OVERRIDE;
   virtual void GetBlacklistLoginsImpl(GetLoginsRequest* request) OVERRIDE;

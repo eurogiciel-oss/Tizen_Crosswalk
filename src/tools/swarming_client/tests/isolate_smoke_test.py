@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2012 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import cStringIO
 import hashlib
@@ -22,6 +22,9 @@ sys.path.insert(0, ROOT_DIR)
 import isolate
 import isolateserver
 from utils import file_path
+import trace_test_util
+# Create shortcuts.
+from isolate_format import KEY_TOUCHED, KEY_TRACKED, KEY_UNTRACKED
 
 
 VERBOSE = False
@@ -145,7 +148,7 @@ class IsolateBase(unittest.TestCase):
   def setUp(self):
     # The tests assume the current directory is the file's directory.
     os.chdir(ROOT_DIR)
-    self.tempdir = tempfile.mkdtemp()
+    self.tempdir = tempfile.mkdtemp(prefix='isolate_smoke_')
     self.isolated = os.path.join(self.tempdir, 'isolate_smoke_test.isolated')
     self.outdir = os.path.join(self.tempdir, 'isolated')
 
@@ -156,7 +159,7 @@ class IsolateBase(unittest.TestCase):
   @staticmethod
   def _isolate_dict_to_string(values):
     buf = cStringIO.StringIO()
-    isolate.pretty_print(values, buf)
+    isolate.isolate_format.pretty_print(values, buf)
     return buf.getvalue()
 
   @classmethod
@@ -249,7 +252,7 @@ class IsolateModeBase(IsolateBase):
       u'files': self._gen_files(read_only, empty_file, False),
       u'os': unicode(isolate.get_flavor()),
       u'relative_cwd': unicode(RELATIVE_CWD[self.case()]),
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     if read_only is not None:
       expected[u'read_only'] = read_only
@@ -264,21 +267,24 @@ class IsolateModeBase(IsolateBase):
       u'algo': u'sha-1',
       u'child_isolated_files': [],
       u'command': [],
-      u'files': self._gen_files(read_only, empty_file, True),
-      u'isolate_file': isolate.safe_relpath(
-          file_path.get_native_path_case(unicode(self.filename())),
-          unicode(os.path.dirname(self.isolated))),
-      u'relative_cwd': unicode(RELATIVE_CWD[self.case()]),
-      u'variables': {
-        u'EXECUTABLE_SUFFIX': u'.exe' if flavor == 'win' else u'',
+      u'config_variables': {
         u'OS': unicode(flavor),
         u'chromeos': chromeos_value,
       },
-      u'version': u'1.0',
+      u'extra_variables': {
+        u'EXECUTABLE_SUFFIX': u'.exe' if flavor == 'win' else u'',
+      },
+      u'files': self._gen_files(read_only, empty_file, True),
+      u'isolate_file': file_path.safe_relpath(
+          file_path.get_native_path_case(unicode(self.filename())),
+          unicode(os.path.dirname(self.isolated))),
+      u'relative_cwd': unicode(RELATIVE_CWD[self.case()]),
+      u'path_variables': {},
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     if args:
       expected[u'command'] = [u'python'] + [unicode(x) for x in args]
-    expected['variables'].update(extra_vars or {})
+    expected['extra_variables'].update(extra_vars or {})
     self.assertEqual(expected, json.load(open(self.saved_state(), 'r')))
 
   def _expect_results(self, args, read_only, extra_vars, empty_file):
@@ -305,7 +311,7 @@ class IsolateModeBase(IsolateBase):
       '--isolated', self.isolated,
       '--outdir', self.outdir,
       '--isolate', self.filename(),
-      '-V', 'chromeos', str(chromeos_value),
+      '--config-variable', 'chromeos', str(chromeos_value),
     ]
     cmd.extend(args)
 
@@ -364,11 +370,10 @@ class IsolateModeBase(IsolateBase):
     self._expect_no_result()
     root = file_path.get_native_path_case(unicode(ROOT_DIR))
     expected = (
-      '\n'
-      'Error: Input directory %s must have a trailing slash\n' %
+      'Input directory %s must have a trailing slash' %
           os.path.join(root, 'tests', 'isolate', 'files1')
     )
-    self.assertEqual(expected, out)
+    self.assertIn(expected, out)
 
   def _test_non_existent(self, mode):
     try:
@@ -381,11 +386,10 @@ class IsolateModeBase(IsolateBase):
     self._expect_no_result()
     root = file_path.get_native_path_case(unicode(ROOT_DIR))
     expected = (
-      '\n'
-      'Error: Input file %s doesn\'t exist\n' %
+      'Input file %s doesn\'t exist' %
           os.path.join(root, 'tests', 'isolate', 'A_file_that_do_not_exist')
     )
-    self.assertEqual(expected, out)
+    self.assertIn(expected, out)
 
   def _test_all_items_invalid(self, mode):
     out = self._execute(mode, 'all_items_invalid.isolate',
@@ -408,7 +412,7 @@ class Isolate(unittest.TestCase):
     self.assertEqual(0, p.returncode)
     out = out[out.index('Commands are:') + 1:]
     out = out[:out.index('')]
-    regexp = '^  (?:\x1b\\[\\d\\dm)(\\w+)\s*(:?\x1b\\[\\d\\dm) .+'
+    regexp = '^  (?:\x1b\\[\\d\\dm|)(\\w+)\s*(:?\x1b\\[\\d\\dm|) .+'
     modes = [re.match(regexp, l) for l in out]
     modes = [m.group(1) for m in modes if m]
     self.assertEqual(sorted(EXPECTED_MODES), sorted(modes))
@@ -479,7 +483,9 @@ class Isolate_check(IsolateModeBase):
 
   # TODO(csharp): Disabled until crbug.com/150823 is fixed.
   def do_not_test_touch_only(self):
-    self._execute('check', 'touch_only.isolate', ['-V', 'FLAG', 'gyp'], False)
+    self._execute(
+        'check', 'touch_only.isolate', ['--extra-variable', 'FLAG', 'gyp'],
+        False)
     self._expect_no_tree()
     empty = os.path.join('files1', 'test_file1.txt')
     self._expected_isolated(['touch_only.py', 'gyp'], None, empty)
@@ -490,7 +496,9 @@ class Isolate_check(IsolateModeBase):
     self._expect_results(['touch_root.py'], None, None, None)
 
   def test_with_flag(self):
-    self._execute('check', 'with_flag.isolate', ['-V', 'FLAG', 'gyp'], False)
+    self._execute(
+        'check', 'with_flag.isolate', ['--extra-variable', 'FLAG', 'gyp'],
+        False)
     self._expect_no_tree()
     self._expect_results(
         ['with_flag.py', 'gyp'], None, {u'FLAG': u'gyp'}, None)
@@ -556,7 +564,10 @@ class Isolate_archive(IsolateModeBase):
     self._execute(
         'archive',
         'split.isolate',
-        ['-V', 'DEPTH', '.', '-V', 'PRODUCT_DIR', 'files1'],
+        [
+          '--path-variable', 'DEPTH', '.',
+          '--path-variable', 'PRODUCT_DIR', 'files1',
+        ],
         False,
         cwd=os.path.join(ROOT_DIR, 'tests', 'isolate'))
     # Reimplement _expected_hash_tree():
@@ -578,7 +589,7 @@ class Isolate_archive(IsolateModeBase):
       u'includes': isolated_hashes,
       u'os': unicode(isolate.get_flavor()),
       u'relative_cwd': unicode(RELATIVE_CWD[self.case()]),
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     self.assertEqual(expected, json.load(open(self.isolated, 'r')))
 
@@ -587,7 +598,7 @@ class Isolate_archive(IsolateModeBase):
       u'algo': u'sha-1',
       u'files': {key: files[key]},
       u'os': unicode(isolate.get_flavor()),
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     self.assertEqual(
         expected, json.load(open(isolated_base + '.0.isolated', 'r')))
@@ -597,16 +608,16 @@ class Isolate_archive(IsolateModeBase):
       u'algo': u'sha-1',
       u'files': {key: files[key]},
       u'os': unicode(isolate.get_flavor()),
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     self.assertEqual(
         expected, json.load(open(isolated_base + '.1.isolated', 'r')))
 
-
   # TODO(csharp): Disabled until crbug.com/150823 is fixed.
   def do_not_test_touch_only(self):
     self._execute(
-        'archive', 'touch_only.isolate', ['-V', 'FLAG', 'gyp'], False)
+        'archive', 'touch_only.isolate', ['--extra-variable', 'FLAG', 'gyp'],
+        False)
     empty = os.path.join('files1', 'test_file1.txt')
     self._expected_hash_tree(empty)
     self._expected_isolated(['touch_only.py', 'gyp'], None, empty)
@@ -618,7 +629,8 @@ class Isolate_archive(IsolateModeBase):
 
   def test_with_flag(self):
     self._execute(
-        'archive', 'with_flag.isolate', ['-V', 'FLAG', 'gyp'], False)
+        'archive', 'with_flag.isolate', ['--extra-variable', 'FLAG', 'gyp'],
+        False)
     self._expected_hash_tree(None)
     self._expect_results(
         ['with_flag.py', 'gyp'], None, {u'FLAG': u'gyp'}, None)
@@ -683,7 +695,9 @@ class Isolate_remap(IsolateModeBase):
 
   # TODO(csharp): Disabled until crbug.com/150823 is fixed.
   def do_not_test_touch_only(self):
-    self._execute('remap', 'touch_only.isolate', ['-V', 'FLAG', 'gyp'], False)
+    self._execute(
+        'remap', 'touch_only.isolate', ['--extra-variable', 'FLAG', 'gyp'],
+        False)
     self._expected_tree()
     empty = os.path.join('files1', 'test_file1.txt')
     self._expect_results(
@@ -695,7 +709,9 @@ class Isolate_remap(IsolateModeBase):
     self._expect_results(['touch_root.py'], None, None, None)
 
   def test_with_flag(self):
-    self._execute('remap', 'with_flag.isolate', ['-V', 'FLAG', 'gyp'], False)
+    self._execute(
+        'remap', 'with_flag.isolate', ['--extra-variable', 'FLAG', 'gyp'],
+        False)
     self._expected_tree()
     self._expect_results(
         ['with_flag.py', 'gyp'], None, {u'FLAG': u'gyp'}, None)
@@ -752,7 +768,9 @@ class Isolate_run(IsolateModeBase):
 
   # TODO(csharp): Disabled until crbug.com/150823 is fixed.
   def do_not_test_touch_only(self):
-    self._execute('run', 'touch_only.isolate', ['-V', 'FLAG', 'run'], False)
+    self._execute(
+        'run', 'touch_only.isolate', ['--extra-variable', 'FLAG', 'run'],
+        False)
     self._expect_empty_tree()
     empty = os.path.join('files1', 'test_file1.txt')
     self._expect_results(
@@ -764,7 +782,9 @@ class Isolate_run(IsolateModeBase):
     self._expect_results(['touch_root.py'], None, None, None)
 
   def test_with_flag(self):
-    self._execute('run', 'with_flag.isolate', ['-V', 'FLAG', 'run'], False)
+    self._execute(
+        'run', 'with_flag.isolate', ['--extra-variable', 'FLAG', 'run'],
+        False)
     # Not sure about the empty tree, should be deleted.
     self._expect_empty_tree()
     self._expect_results(
@@ -794,7 +814,7 @@ class Isolate_trace_read_merge(IsolateModeBase):
   def _check_merge(self, filename):
     filepath = file_path.get_native_path_case(
             os.path.join(unicode(ROOT_DIR), 'tests', 'isolate', filename))
-    expected = 'Updating %s\n' % isolate.safe_relpath(filepath, self.tempdir)
+    expected = 'Updating %s\n' % file_path.safe_relpath(filepath, self.tempdir)
     with open(filepath, 'rb') as f:
       old_content = f.read()
     out = self._execute('merge', filename, [], True) or ''
@@ -803,6 +823,7 @@ class Isolate_trace_read_merge(IsolateModeBase):
       new_content = f.read()
     self.assertEqual(old_content, new_content)
 
+  @trace_test_util.check_can_trace
   def test_fail(self):
     # Even if the process returns non-zero, the trace will still be good.
     try:
@@ -814,9 +835,7 @@ class Isolate_trace_read_merge(IsolateModeBase):
     self._expect_results(['fail.py'], None, None, None)
     expected = self._wrap_in_condition(
         {
-          isolate.KEY_TRACKED: [
-            'fail.py',
-          ],
+          KEY_TRACKED: ['fail.py'],
         })
     out = self._execute('read', 'fail.isolate', [], True) or ''
     self.assertEqual(expected.splitlines(), out.splitlines())
@@ -828,6 +847,7 @@ class Isolate_trace_read_merge(IsolateModeBase):
   def test_non_existent(self):
     self._test_non_existent('trace')
 
+  @trace_test_util.check_can_trace
   def test_all_items_invalid(self):
     out = self._test_all_items_invalid('trace')
     self.assertEqual('', out)
@@ -842,36 +862,34 @@ class Isolate_trace_read_merge(IsolateModeBase):
       err = e.stderr
     self._expect_no_tree()
     self._expect_no_result()
-    expected = '\nError: No command to run.\n'
+    expected = 'No command to run.'
     self.assertEqual('', out)
-    self.assertEqual(expected, err)
+    self.assertIn(expected, err)
 
   # TODO(csharp): Disabled until crbug.com/150823 is fixed.
   def do_not_test_touch_only(self):
     out = self._execute(
-        'trace', 'touch_only.isolate', ['-V', 'FLAG', 'trace'], True)
+        'trace', 'touch_only.isolate', ['--extra-variable', 'FLAG', 'trace'],
+        True)
     self.assertEqual('', out)
     self._expect_no_tree()
     empty = os.path.join('files1', 'test_file1.txt')
     self._expect_results(
         ['touch_only.py', 'trace'], None, {u'FLAG': u'trace'}, empty)
     expected = {
-      isolate.KEY_TRACKED: [
-        'touch_only.py',
-      ],
-      isolate.KEY_TOUCHED: [
-        # Note that .isolate format mandates / and not os.path.sep.
-        'files1/test_file1.txt',
-      ],
+      KEY_TRACKED: ['touch_only.py'],
+      # Note that .isolate format mandates / and not os.path.sep.
+      KEY_TOUCHED: ['files1/test_file1.txt'],
     }
     if sys.platform != 'linux2':
       # TODO(maruel): Implement touch-only tracing on non-linux.
-      del expected[isolate.KEY_TOUCHED]
+      del expected[KEY_TOUCHED]
 
     out = self._execute('read', 'touch_only.isolate', [], True)
     self.assertEqual(self._wrap_in_condition(expected), out)
     self._check_merge('touch_only.isolate')
 
+  @trace_test_util.check_can_trace
   def test_touch_root(self):
     out = self._execute('trace', 'touch_root.isolate', [], True)
     self.assertEqual('', out)
@@ -879,7 +897,7 @@ class Isolate_trace_read_merge(IsolateModeBase):
     self._expect_results(['touch_root.py'], None, None, None)
     expected = self._wrap_in_condition(
         {
-          isolate.KEY_TRACKED: [
+          KEY_TRACKED: [
             '../../isolate.py',
             'touch_root.py',
           ],
@@ -888,21 +906,19 @@ class Isolate_trace_read_merge(IsolateModeBase):
     self.assertEqual(expected, out)
     self._check_merge('touch_root.isolate')
 
+  @trace_test_util.check_can_trace
   def test_with_flag(self):
     out = self._execute(
-        'trace', 'with_flag.isolate', ['-V', 'FLAG', 'trace'], True)
+        'trace', 'with_flag.isolate', ['--extra-variable', 'FLAG', 'trace'],
+        True)
     self.assertEqual('', out)
     self._expect_no_tree()
     self._expect_results(
         ['with_flag.py', 'trace'], None, {u'FLAG': u'trace'}, None)
     expected = {
-      isolate.KEY_TRACKED: [
-        'with_flag.py',
-      ],
-      isolate.KEY_UNTRACKED: [
-        # Note that .isolate format mandates / and not os.path.sep.
-        'files1/',
-      ],
+      KEY_TRACKED: ['with_flag.py'],
+      # Note that .isolate format mandates / and not os.path.sep.
+      KEY_UNTRACKED: ['files1/'],
     }
     out = self._execute('read', 'with_flag.isolate', [], True)
     self.assertEqual(self._wrap_in_condition(expected), out)
@@ -916,13 +932,9 @@ class Isolate_trace_read_merge(IsolateModeBase):
       self._expect_no_tree()
       self._expect_results(['symlink_full.py'], None, None, None)
       expected = {
-        isolate.KEY_TRACKED: [
-          'symlink_full.py',
-        ],
-        isolate.KEY_UNTRACKED: [
-          # Note that .isolate format mandates / and not os.path.sep.
-          'files2/',
-        ],
+        KEY_TRACKED: ['symlink_full.py'],
+        # Note that .isolate format mandates / and not os.path.sep.
+        KEY_UNTRACKED: ['files2/'],
       }
       out = self._execute('read', 'symlink_full.isolate', [], True)
       self.assertEqual(self._wrap_in_condition(expected), out)
@@ -935,12 +947,8 @@ class Isolate_trace_read_merge(IsolateModeBase):
       self._expect_no_tree()
       self._expect_results(['symlink_partial.py'], None, None, None)
       expected = {
-        isolate.KEY_TRACKED: [
-          'symlink_partial.py',
-        ],
-        isolate.KEY_UNTRACKED: [
-          'files2/test_file2.txt',
-        ],
+        KEY_TRACKED: ['symlink_partial.py'],
+        KEY_UNTRACKED: ['files2/test_file2.txt'],
       }
       out = self._execute('read', 'symlink_partial.isolate', [], True)
       self.assertEqual(self._wrap_in_condition(expected), out)
@@ -953,12 +961,8 @@ class Isolate_trace_read_merge(IsolateModeBase):
       self._expect_no_tree()
       self._expect_results(['symlink_outside_build_root.py'], None, None, None)
       expected = {
-        isolate.KEY_TRACKED: [
-          'symlink_outside_build_root.py',
-        ],
-        isolate.KEY_UNTRACKED: [
-          'link_outside_build_root/',
-        ],
+        KEY_TRACKED: ['symlink_outside_build_root.py'],
+        KEY_UNTRACKED: ['link_outside_build_root/'],
       }
       out = self._execute(
           'read', 'symlink_outside_build_root.isolate', [], True)
@@ -989,7 +993,7 @@ class IsolateNoOutdir(IsolateBase):
       sys.executable, os.path.join(ROOT_DIR, 'isolate.py'),
       mode,
       '--isolated', self.isolated,
-      '-V', 'chromeos', str(chromeos_value),
+      '--config-variable', 'chromeos', str(chromeos_value),
     ]
     cmd.extend(args)
 
@@ -1087,13 +1091,14 @@ class IsolateNoOutdir(IsolateBase):
     ])
     self.assertEqual(files, list_files_tree(self.tempdir))
 
+  @trace_test_util.check_can_trace
   def test_trace_read_merge(self):
     self._execute('trace', ['--isolate', self.filename()], False)
     # Read the trace before cleaning up. No need to specify self.filename()
     # because add the needed information is in the .state file.
     output = self._execute('read', [], True)
     expected = {
-      isolate.KEY_TRACKED: [
+      KEY_TRACKED: [
         '../../isolate.py',
         'touch_root.py',
       ],

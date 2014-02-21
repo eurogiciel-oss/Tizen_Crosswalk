@@ -31,7 +31,7 @@ UserDataDirDialogView::~UserDataDirDialogView() {
   select_file_dialog_->ListenerDestroyed();
 }
 
-string16 UserDataDirDialogView::GetDialogButtonLabel(
+base::string16 UserDataDirDialogView::GetDialogButtonLabel(
     ui::DialogButton button) const {
   switch (button) {
     case ui::DIALOG_BUTTON_OK:
@@ -43,10 +43,10 @@ string16 UserDataDirDialogView::GetDialogButtonLabel(
     default:
       NOTREACHED();
   }
-  return string16();
+  return base::string16();
 }
 
-string16 UserDataDirDialogView::GetWindowTitle() const {
+base::string16 UserDataDirDialogView::GetWindowTitle() const {
   return l10n_util::GetStringUTF16(IDS_CANT_WRITE_USER_DIRECTORY_TITLE);
 }
 
@@ -103,7 +103,7 @@ void UserDataDirDialogView::FileSelectionCanceled(void* params) {
 namespace chrome {
 
 base::FilePath ShowUserDataDirDialog(const base::FilePath& user_data_dir) {
-  DCHECK_EQ(base::MessageLoop::TYPE_UI, base::MessageLoop::current()->type());
+  DCHECK(base::MessageLoopForUI::IsCurrent());
   // When the window closes, it will delete itself.
   UserDataDirDialogView* dialog = new UserDataDirDialogView(user_data_dir);
   views::DialogDelegate::CreateDialogWidget(dialog, NULL, NULL)->Show();

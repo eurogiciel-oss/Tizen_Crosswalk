@@ -1,10 +1,12 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.content.browser;
 
+import android.annotation.TargetApi;
 import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
@@ -16,7 +18,7 @@ import android.view.ScaleGestureDetector;
 class ZoomManager {
     private static final String TAG = "ContentViewZoom";
 
-    private ContentViewCore mContentViewCore;
+    private final ContentViewCore mContentViewCore;
 
     // ScaleGestureDetector previous to 4.2.2 failed to record touch event times (b/7626515),
     // so we record them manually for use when synthesizing pinch gestures.
@@ -98,13 +100,18 @@ class ZoomManager {
         }
     }
 
-    private ScaleGestureDetector mMultiTouchDetector;
-    private ScaleGestureListener mMultiTouchListener;
+    private final ScaleGestureDetector mMultiTouchDetector;
+    private final ScaleGestureListener mMultiTouchListener;
 
     ZoomManager(final Context context, ContentViewCore contentViewCore) {
         mContentViewCore = contentViewCore;
         mMultiTouchListener = new ScaleGestureListener();
         mMultiTouchDetector = new ScaleGestureDetector(context, mMultiTouchListener);
+
+        // ScaleGestureDetector's "QuickScale" feature was introduced in KitKat.
+        // As ContentViewGestureHandler already implements this feature,
+        // explicitly disable it to prevent double-handling of the gesture.
+        disableQuickScale(mMultiTouchDetector);
     }
 
     boolean isScaleGestureDetectionInProgress() {
@@ -122,7 +129,7 @@ class ZoomManager {
             mMultiTouchDetector.onTouchEvent(event);
         } catch (Exception e) {
             Log.e(TAG, "ScaleGestureDetector got into a bad state!", e);
-            assert(false);
+            assert false;
         }
     }
 
@@ -143,7 +150,7 @@ class ZoomManager {
             return retVal;
         } catch (Exception e) {
             Log.e(TAG, "ScaleGestureDetector got into a bad state!", e);
-            assert(false);
+            assert false;
         }
         return false;
     }
@@ -151,4 +158,10 @@ class ZoomManager {
     void updateMultiTouchSupport(boolean supportsMultiTouchZoom) {
         mMultiTouchListener.setPermanentlyIgnoreDetectorEvents(!supportsMultiTouchZoom);
     }
+
+    @TargetApi(Build.VERSION_CODES.KITKAT)
+    private static void disableQuickScale(ScaleGestureDetector scaleGestureDetector) {
+       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) return;
+       scaleGestureDetector.setQuickScaleEnabled(false);
+     }
 }

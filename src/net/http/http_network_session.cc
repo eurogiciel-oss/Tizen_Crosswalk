@@ -42,6 +42,7 @@ net::ClientSocketPoolManager* CreateSocketPoolManager(
       params.cert_verifier,
       params.server_bound_cert_service,
       params.transport_security_state,
+      params.cert_transparency_verifier,
       params.ssl_session_cache_shard,
       params.proxy_service,
       params.ssl_config_service,
@@ -58,7 +59,9 @@ HttpNetworkSession::Params::Params()
       cert_verifier(NULL),
       server_bound_cert_service(NULL),
       transport_security_state(NULL),
+      cert_transparency_verifier(NULL),
       proxy_service(NULL),
+      quic_server_info_factory(NULL),
       ssl_config_service(NULL),
       http_auth_handler_factory(NULL),
       network_delegate(NULL),
@@ -80,10 +83,13 @@ HttpNetworkSession::Params::Params()
       time_func(&base::TimeTicks::Now),
       enable_quic(false),
       enable_quic_https(false),
+      enable_quic_port_selection(true),
       quic_clock(NULL),
       quic_random(NULL),
+      quic_max_packet_length(kDefaultMaxPacketSize),
       enable_user_alternate_protocol_ports(false),
       quic_crypto_client_stream_factory(NULL) {
+  quic_supported_versions.push_back(QUIC_VERSION_13);
 }
 
 HttpNetworkSession::Params::~Params() {}
@@ -107,11 +113,15 @@ HttpNetworkSession::HttpNetworkSession(const Params& params)
                                params.client_socket_factory :
                                net::ClientSocketFactory::GetDefaultFactory(),
                            params.http_server_properties,
+                           params.quic_server_info_factory,
                            params.quic_crypto_client_stream_factory,
                            params.quic_random ? params.quic_random :
                                QuicRandom::GetInstance(),
                            params.quic_clock ? params. quic_clock :
-                               new QuicClock()),
+                               new QuicClock(),
+                           params.quic_max_packet_length,
+                           params.quic_supported_versions,
+                           params.enable_quic_port_selection),
       spdy_session_pool_(params.host_resolver,
                          params.ssl_config_service,
                          params.http_server_properties,
@@ -126,7 +136,7 @@ HttpNetworkSession::HttpNetworkSession(const Params& params)
                          params.time_func,
                          params.trusted_spdy_proxy),
       http_stream_factory_(new HttpStreamFactoryImpl(this, false)),
-      websocket_handshake_stream_factory_(
+      http_stream_factory_for_websocket_(
           new HttpStreamFactoryImpl(this, true)),
       params_(params) {
   DCHECK(proxy_service_);
@@ -194,6 +204,8 @@ base::Value* HttpNetworkSession::QuicInfoToValue() const {
   dict->Set("sessions", quic_stream_factory_.QuicStreamFactoryInfoToValue());
   dict->SetBoolean("quic_enabled", params_.enable_quic);
   dict->SetBoolean("quic_enabled_https", params_.enable_quic_https);
+  dict->SetBoolean("enable_quic_port_selection",
+                   params_.enable_quic_port_selection);
   dict->SetString("origin_to_force_quic_on",
                   params_.origin_to_force_quic_on.ToString());
   return dict;

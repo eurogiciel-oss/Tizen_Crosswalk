@@ -191,10 +191,12 @@ template <class Base> class RtpHelper : public Base {
     return true;
   }
   void set_playout(bool playout) { playout_ = playout; }
-  virtual void OnPacketReceived(talk_base::Buffer* packet) {
+  virtual void OnPacketReceived(talk_base::Buffer* packet,
+                                const talk_base::PacketTime& packet_time) {
     rtp_packets_.push_back(std::string(packet->data(), packet->length()));
   }
-  virtual void OnRtcpReceived(talk_base::Buffer* packet) {
+  virtual void OnRtcpReceived(talk_base::Buffer* packet,
+                              const talk_base::PacketTime& packet_time) {
     rtcp_packets_.push_back(std::string(packet->data(), packet->length()));
   }
   virtual void OnReadyToSend(bool ready) {
@@ -279,7 +281,8 @@ class FakeVoiceMediaChannel : public RtpHelper<VoiceMediaChannel> {
     }
     return set_sending(flag != SEND_NOTHING);
   }
-  virtual bool SetSendBandwidth(bool autobw, int bps) { return true; }
+  virtual bool SetStartSendBandwidth(int bps) { return true; }
+  virtual bool SetMaxSendBandwidth(int bps) { return true; }
   virtual bool AddRecvStream(const StreamParams& sp) {
     if (!RtpHelper<VoiceMediaChannel>::AddRecvStream(sp))
       return false;
@@ -444,7 +447,9 @@ class FakeVideoMediaChannel : public RtpHelper<VideoMediaChannel> {
   explicit FakeVideoMediaChannel(FakeVideoEngine* engine)
       : engine_(engine),
         sent_intra_frame_(false),
-        requested_intra_frame_(false) {}
+        requested_intra_frame_(false),
+        start_bps_(-1),
+        max_bps_(-1) {}
   ~FakeVideoMediaChannel();
 
   const std::vector<VideoCodec>& recv_codecs() const { return recv_codecs_; }
@@ -455,6 +460,8 @@ class FakeVideoMediaChannel : public RtpHelper<VideoMediaChannel> {
   const std::map<uint32, VideoRenderer*>& renderers() const {
     return renderers_;
   }
+  int start_bps() const { return start_bps_; }
+  int max_bps() const { return max_bps_; }
   bool GetSendStreamFormat(uint32 ssrc, VideoFormat* format) {
     if (send_formats_.find(ssrc) == send_formats_.end()) {
       return false;
@@ -532,7 +539,14 @@ class FakeVideoMediaChannel : public RtpHelper<VideoMediaChannel> {
   bool HasCapturer(uint32 ssrc) const {
     return capturers_.find(ssrc) != capturers_.end();
   }
-  virtual bool SetSendBandwidth(bool autobw, int bps) { return true; }
+  virtual bool SetStartSendBandwidth(int bps) {
+    start_bps_ = bps;
+    return true;
+  }
+  virtual bool SetMaxSendBandwidth(int bps) {
+    max_bps_ = bps;
+    return true;
+  }
   virtual bool AddRecvStream(const StreamParams& sp) {
     if (!RtpHelper<VideoMediaChannel>::AddRecvStream(sp))
       return false;
@@ -589,6 +603,8 @@ class FakeVideoMediaChannel : public RtpHelper<VideoMediaChannel> {
   bool sent_intra_frame_;
   bool requested_intra_frame_;
   VideoOptions options_;
+  int start_bps_;
+  int max_bps_;
 };
 
 class FakeSoundclipMedia : public SoundclipMedia {
@@ -599,12 +615,11 @@ class FakeSoundclipMedia : public SoundclipMedia {
 class FakeDataMediaChannel : public RtpHelper<DataMediaChannel> {
  public:
   explicit FakeDataMediaChannel(void* unused)
-      : auto_bandwidth_(false), send_blocked_(false), max_bps_(-1) {}
+      : send_blocked_(false), max_bps_(-1) {}
   ~FakeDataMediaChannel() {}
   const std::vector<DataCodec>& recv_codecs() const { return recv_codecs_; }
   const std::vector<DataCodec>& send_codecs() const { return send_codecs_; }
   const std::vector<DataCodec>& codecs() const { return send_codecs(); }
-  bool auto_bandwidth() const { return auto_bandwidth_; }
   int max_bps() const { return max_bps_; }
 
   virtual bool SetRecvCodecs(const std::vector<DataCodec>& codecs) {
@@ -628,8 +643,8 @@ class FakeDataMediaChannel : public RtpHelper<DataMediaChannel> {
     set_playout(receive);
     return true;
   }
-  virtual bool SetSendBandwidth(bool autobw, int bps) {
-    auto_bandwidth_ = autobw;
+  virtual bool SetStartSendBandwidth(int bps) { return true; }
+  virtual bool SetMaxSendBandwidth(int bps) {
     max_bps_ = bps;
     return true;
   }
@@ -667,7 +682,6 @@ class FakeDataMediaChannel : public RtpHelper<DataMediaChannel> {
   std::vector<DataCodec> send_codecs_;
   SendDataParams last_sent_data_params_;
   std::string last_sent_data_;
-  bool auto_bandwidth_;
   bool send_blocked_;
   int max_bps_;
 };
@@ -775,6 +789,8 @@ class FakeVoiceEngine : public FakeBaseEngine {
   int GetInputLevel() { return 0; }
 
   bool SetLocalMonitor(bool enable) { return true; }
+
+  bool StartAecDump(talk_base::PlatformFile file) { return false; }
 
   bool RegisterProcessor(uint32 ssrc, VoiceProcessor* voice_processor,
                          MediaProcessorDirection direction) {

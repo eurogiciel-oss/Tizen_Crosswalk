@@ -151,8 +151,10 @@ base.exportTo('ui', function() {
 
     onClose_: function(e) {
       this.visible = false;
-      e.stopPropagation();
+      if (e.type != 'keydown')
+        e.stopPropagation();
       e.preventDefault();
+      base.dispatchSimpleEvent(this, 'closeclick');
     },
 
     onFocusIn_: function(e) {
@@ -185,8 +187,7 @@ base.exportTo('ui', function() {
       if (e.keyCode !== 27)  // escape
         return;
 
-      this.visible = false;
-      e.preventDefault();
+      this.onClose_(e);
     },
 
     onClick_: function(e) {
@@ -197,11 +198,32 @@ base.exportTo('ui', function() {
       if (!this.userCanClose_)
         return;
 
-      this.visible = false;
-      e.preventDefault();
-      e.stopPropagation();
+      this.onClose_(e);
     }
   };
+
+  Overlay.showError = function(msg, opt_err) {
+    var o = new Overlay();
+    o.title = 'Error';
+    o.textContent = msg;
+    if (opt_err) {
+      var e = base.normalizeException(opt_err);
+
+      var stackDiv = document.createElement('pre');
+      stackDiv.textContent = e.stack;
+      stackDiv.style.paddingLeft = '8px';
+      stackDiv.style.margin = 0;
+      o.appendChild(stackDiv);
+    }
+    var b = document.createElement('button');
+    b.textContent = 'OK';
+    b.addEventListener('click', function() {
+      o.visible = false;
+    });
+    o.rightButtons.appendChild(b);
+    o.visible = true;
+    return o;
+  }
 
   return {
     Overlay: Overlay

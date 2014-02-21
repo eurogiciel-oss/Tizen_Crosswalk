@@ -69,18 +69,55 @@ InspectorTest.runDebuggerTestSuite = function(testSuite)
     }
 
     InspectorTest.startDebuggerTest(runner);
-}
+};
 
 InspectorTest.runTestFunction = function()
 {
     InspectorTest.evaluateInConsole("setTimeout(testFunction, 0)");
     InspectorTest.addResult("Set timer for test function.");
-}
+};
 
 InspectorTest.runTestFunctionAndWaitUntilPaused = function(callback)
 {
     InspectorTest.runTestFunction();
     InspectorTest.waitUntilPaused(callback);
+};
+
+InspectorTest.runAsyncCallStacksTest = function(totalDebuggerStatements, maxAsyncCallStackDepth)
+{
+    InspectorTest.setQuiet(true);
+    InspectorTest.startDebuggerTest(step1);
+
+    function step1()
+    {
+        DebuggerAgent.setAsyncCallStackDepth(maxAsyncCallStackDepth, step2);
+    }
+
+    function step2()
+    {
+        InspectorTest.runTestFunctionAndWaitUntilPaused(didPaused);
+    }
+
+    var step = 0;
+    var callStacksOutput = [];
+    function didPaused(callFrames, reason, breakpointIds, asyncStackTrace)
+    {
+        ++step;
+        callStacksOutput.push(InspectorTest.captureStackTraceIntoString(callFrames, asyncStackTrace) + "\n");
+        if (step < totalDebuggerStatements) {
+            InspectorTest.resumeExecution(InspectorTest.waitUntilPaused.bind(InspectorTest, didPaused));
+        } else {
+            InspectorTest.addResult("Captured call stacks in no particular order:");
+            callStacksOutput.sort();
+            InspectorTest.addResults(callStacksOutput);
+            InspectorTest.completeDebuggerTest();
+        }
+    }
+};
+
+InspectorTest.waitUntilPausedNextTime = function(callback)
+{
+    InspectorTest._waitUntilPausedCallback = InspectorTest.safeWrap(callback);
 };
 
 InspectorTest.waitUntilPaused = function(callback)
@@ -91,6 +128,11 @@ InspectorTest.waitUntilPaused = function(callback)
         callback.apply(callback, InspectorTest._pausedScriptArguments);
     else
         InspectorTest._waitUntilPausedCallback = callback;
+};
+
+InspectorTest.waitUntilResumedNextTime = function(callback)
+{
+    InspectorTest._waitUntilResumedCallback = InspectorTest.safeWrap(callback);
 };
 
 InspectorTest.waitUntilResumed = function(callback)
@@ -110,24 +152,48 @@ InspectorTest.resumeExecution = function(callback)
     InspectorTest.waitUntilResumed(callback);
 };
 
-InspectorTest.captureStackTrace = function(callFrames, dropLineNumbers)
+InspectorTest.captureStackTrace = function(callFrames, asyncStackTrace, options)
 {
-    InspectorTest.addResult("Call stack:");
-    for (var i = 0; i < callFrames.length; i++) {
-        var frame = callFrames[i];
-        var script = WebInspector.debuggerModel.scriptForId(frame.location.scriptId);
-        var url;
-        var lineNumber;
-        if (script) {
-            url = WebInspector.displayNameForURL(script.sourceURL);
-            lineNumber = frame.location.lineNumber + 1;
-        } else {
-            url = "(internal script)";
-            lineNumber = "(line number)";
+    InspectorTest.addResult(InspectorTest.captureStackTraceIntoString(callFrames, asyncStackTrace, options));
+};
+
+InspectorTest.captureStackTraceIntoString = function(callFrames, asyncStackTrace, options)
+{
+    var results = [];
+    options = options || {};
+
+    function printCallFrames(callFrames)
+    {
+        for (var i = 0; i < callFrames.length; i++) {
+            var frame = callFrames[i];
+            var script = WebInspector.debuggerModel.scriptForId(frame.location.scriptId);
+            var url;
+            var lineNumber;
+            if (script) {
+                url = WebInspector.displayNameForURL(script.sourceURL);
+                lineNumber = frame.location.lineNumber + 1;
+            } else {
+                url = "(internal script)";
+                lineNumber = "(line number)";
+            }
+            var s = "    " + i + ") " + frame.functionName + " (" + url + (options.dropLineNumbers ? "" : ":" + lineNumber) + ")";
+            results.push(s);
+            if (options.printReturnValue && frame.returnValue)
+                results.push("       <return>: " + frame.returnValue.description);
         }
-        var s = "    " + i + ") " + frame.functionName + " (" + url + (dropLineNumbers ? "" : ":" + lineNumber) + ")";
-        InspectorTest.addResult(s);
     }
+
+    results.push("Call stack:");
+    printCallFrames(callFrames);
+
+    while (asyncStackTrace) {
+        results.push("    [" + (asyncStackTrace.description || "Async Call") + "]");
+        printCallFrames(asyncStackTrace.callFrames);
+        if (asyncStackTrace.callFrames.peekLast().functionName === "testFunction")
+            break;
+        asyncStackTrace = asyncStackTrace.asyncStackTrace;
+    }
+    return results.join("\n");
 };
 
 InspectorTest.dumpSourceFrameContents = function(sourceFrame)
@@ -139,17 +205,17 @@ InspectorTest.dumpSourceFrameContents = function(sourceFrame)
     InspectorTest.addResult("==Source frame contents end==");
 };
 
-InspectorTest._pausedScript = function(callFrames, reason, auxData, breakpointIds)
+InspectorTest._pausedScript = function(callFrames, reason, auxData, breakpointIds, asyncStackTrace)
 {
     if (!InspectorTest._quiet)
         InspectorTest.addResult("Script execution paused.");
-    InspectorTest._pausedScriptArguments = [callFrames, reason, breakpointIds];
+    InspectorTest._pausedScriptArguments = [callFrames, reason, breakpointIds, asyncStackTrace];
     if (InspectorTest._waitUntilPausedCallback) {
         var callback = InspectorTest._waitUntilPausedCallback;
         delete InspectorTest._waitUntilPausedCallback;
         callback.apply(callback, InspectorTest._pausedScriptArguments);
     }
-}
+};
 
 InspectorTest._resumedScript = function()
 {
@@ -176,16 +242,21 @@ InspectorTest.showUISourceCode = function(uiSourceCode, callback)
 
 InspectorTest.showScriptSource = function(scriptName, callback)
 {
+    InspectorTest.waitForScriptSource(scriptName, function(uiSourceCode) { InspectorTest.showUISourceCode(uiSourceCode, callback); });
+};
+
+InspectorTest.waitForScriptSource = function(scriptName, callback)
+{
     var panel = WebInspector.showPanel("sources");
     var uiSourceCodes = panel._workspace.uiSourceCodes();
     for (var i = 0; i < uiSourceCodes.length; ++i) {
         if (uiSourceCodes[i].name() === scriptName) {
-            InspectorTest.showUISourceCode(uiSourceCodes[i], callback);
+            callback(uiSourceCodes[i]);
             return;
         }
     }
 
-    InspectorTest.addSniffer(WebInspector.SourcesPanel.prototype, "_addUISourceCode", InspectorTest.showScriptSource.bind(InspectorTest, scriptName, callback));
+    InspectorTest.addSniffer(WebInspector.SourcesPanel.prototype, "_addUISourceCode", InspectorTest.waitForScriptSource.bind(InspectorTest, scriptName, callback));
 };
 
 InspectorTest.dumpScriptsNavigator = function(navigator, prefix)
@@ -221,7 +292,6 @@ InspectorTest.removeBreakpoint = function(sourceFrame, lineNumber)
 {
     sourceFrame._breakpointManager.findBreakpoint(sourceFrame._uiSourceCode, lineNumber).remove();
 };
-
 
 InspectorTest.expandProperties = function(properties, callback)
 {
@@ -292,10 +362,14 @@ InspectorTest.createScriptMock = function(url, startLine, startColumn, isContent
     var endColumn = lineCount === 1 ? startColumn + source.length : source.length - source.lineEndings()[lineCount - 2];
     var hasSourceURL = !!source.match(/\/\/#\ssourceURL=\s*(\S*?)\s*$/m) || !!source.match(/\/\/@\ssourceURL=\s*(\S*?)\s*$/m);
     var script = new WebInspector.Script(scriptId, url, startLine, startColumn, endLine, endColumn, isContentScript, null, hasSourceURL);
-    script.requestContent = function(callback) { callback(source, false, "text/javascript"); };
+    script.requestContent = function(callback)
+    {
+        var trimmedSource = WebInspector.Script._trimSourceURLComment(source);
+        callback(trimmedSource, false, "text/javascript");
+    };
     WebInspector.debuggerModel._registerScript(script);
     return script;
-}
+};
 
 InspectorTest._lastScriptId = 0;
 

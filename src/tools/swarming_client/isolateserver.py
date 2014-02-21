@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
-"""Archives a set of files to a server."""
+"""Archives a set of files or directories to a server."""
 
-__version__ = '0.2'
+__version__ = '0.3'
 
 import functools
 import hashlib
@@ -13,7 +13,10 @@ import json
 import logging
 import os
 import re
+import shutil
+import stat
 import sys
+import tempfile
 import threading
 import time
 import urllib
@@ -23,6 +26,7 @@ from third_party import colorama
 from third_party.depot_tools import fix_encoding
 from third_party.depot_tools import subcommand
 
+from utils import file_path
 from utils import net
 from utils import threading_utils
 from utils import tools
@@ -30,6 +34,8 @@ from utils import tools
 
 # Version of isolate protocol passed to the server in /handshake request.
 ISOLATE_PROTOCOL_VERSION = '1.0'
+# Version stored and expected in .isolated files.
+ISOLATED_FILE_VERSION = '1.3'
 
 
 # The number of files to check the isolate server per /pre-upload query.
@@ -98,6 +104,26 @@ SUPPORTED_ALGOS = {
 SUPPORTED_ALGOS_REVERSE = dict((v, k) for k, v in SUPPORTED_ALGOS.iteritems())
 
 
+DEFAULT_BLACKLIST = (
+  # Temporary vim or python files.
+  r'^.+\.(?:pyc|swp)$',
+  # .git or .svn directory.
+  r'^(?:.+' + re.escape(os.path.sep) + r'|)\.(?:git|svn)$',
+)
+
+
+# Chromium-specific.
+DEFAULT_BLACKLIST += (
+  r'^.+\.(?:run_test_cases)$',
+  r'^(?:.+' + re.escape(os.path.sep) + r'|)testserver\.log$',
+)
+
+
+class Error(Exception):
+  """Generic runtime error."""
+  pass
+
+
 class ConfigError(ValueError):
   """Generic failure to load a .isolated file."""
   pass
@@ -138,9 +164,11 @@ def stream_read(stream, chunk_size):
     yield data
 
 
-def file_read(filepath, chunk_size=DISK_FILE_CHUNK):
-  """Yields file content in chunks of given |chunk_size|."""
+def file_read(filepath, chunk_size=DISK_FILE_CHUNK, offset=0):
+  """Yields file content in chunks of |chunk_size| starting from |offset|."""
   with open(filepath, 'rb') as f:
+    if offset:
+      f.seek(offset)
     while True:
       data = f.read(chunk_size)
       if not data:
@@ -232,24 +260,18 @@ def create_directories(base_directory, files):
       os.mkdir(os.path.join(base_directory, d))
 
 
-def create_links(base_directory, files):
-  """Creates any links needed by the given set of files."""
+def create_symlinks(base_directory, files):
+  """Creates any symlinks needed by the given set of files."""
   for filepath, properties in files:
     if 'l' not in properties:
       continue
     if sys.platform == 'win32':
-      # TODO(maruel): Create junctions or empty text files similar to what
-      # cygwin do?
+      # TODO(maruel): Create symlink via the win32 api.
       logging.warning('Ignoring symlink %s', filepath)
       continue
     outfile = os.path.join(base_directory, filepath)
-    # symlink doesn't exist on Windows. So the 'link' property should
-    # never be specified for windows .isolated file.
+    # os.symlink() doesn't exist on Windows.
     os.symlink(properties['l'], outfile)  # pylint: disable=E1101
-    if 'm' in properties:
-      lchmod = getattr(os, 'lchmod', None)
-      if lchmod:
-        lchmod(outfile, properties['m'])
 
 
 def is_valid_file(filepath, size):
@@ -524,7 +546,7 @@ class Storage(object):
         data = ''.join(stream)
       except Exception as exc:
         logging.error('Failed to zip \'%s\': %s', item, exc)
-        channel.send_exception(exc)
+        channel.send_exception()
         return
       self.net_thread_pool.add_task_with_channel(
           channel, priority, push, [data])
@@ -551,7 +573,7 @@ class Storage(object):
         # Verified stream goes to |sink|.
         sink(verifier.run())
       except Exception as err:
-        logging.warning('Failed to fetch %s: %s', digest, err)
+        logging.error('Failed to fetch %s: %s', digest, err)
         raise
       return digest
 
@@ -763,11 +785,12 @@ class StorageApi(object):
     """
     raise NotImplementedError()
 
-  def fetch(self, digest):
+  def fetch(self, digest, offset=0):
     """Fetches an object and yields its content.
 
     Arguments:
       digest: hash digest of item to download.
+      offset: offset (in bytes) from the start of the file to resume fetch from.
 
     Yields:
       Chunks of downloaded item (as str objects).
@@ -886,17 +909,50 @@ class IsolateServer(StorageApi):
     return '%s/content-gs/retrieve/%s/%s' % (
         self.base_url, self.namespace, digest)
 
-  def fetch(self, digest):
+  def fetch(self, digest, offset=0):
     source_url = self.get_fetch_url(digest)
-    logging.debug('download_file(%s)', source_url)
+    logging.debug('download_file(%s, %d)', source_url, offset)
 
     # Because the app engine DB is only eventually consistent, retry 404 errors
     # because the file might just not be visible yet (even though it has been
     # uploaded).
     connection = net.url_open(
-        source_url, retry_404=True, read_timeout=DOWNLOAD_READ_TIMEOUT)
+        source_url,
+        retry_404=True,
+        read_timeout=DOWNLOAD_READ_TIMEOUT,
+        headers={'Range': 'bytes=%d-' % offset} if offset else None)
+
     if not connection:
       raise IOError('Unable to open connection to %s' % source_url)
+
+    # If |offset| is used, verify server respects it by checking Content-Range.
+    if offset:
+      content_range = connection.get_header('Content-Range')
+      if not content_range:
+        raise IOError('Missing Content-Range header')
+
+      # 'Content-Range' format is 'bytes <offset>-<last_byte_index>/<size>'.
+      # According to a spec, <size> can be '*' meaning "Total size of the file
+      # is not known in advance".
+      try:
+        match = re.match(r'bytes (\d+)-(\d+)/(\d+|\*)', content_range)
+        if not match:
+          raise ValueError()
+        content_offset = int(match.group(1))
+        last_byte_index = int(match.group(2))
+        size = None if match.group(3) == '*' else int(match.group(3))
+      except ValueError:
+        raise IOError('Invalid Content-Range header: %s' % content_range)
+
+      # Ensure returned offset equals requested one.
+      if offset != content_offset:
+        raise IOError('Expecting offset %d, got %d (Content-Range is %s)' % (
+            offset, content_offset, content_range))
+
+      # Ensure entire tail of the file is returned.
+      if size is not None and last_byte_index + 1 != size:
+        raise IOError('Incomplete response. Content-Range: %s' % content_range)
+
     return stream_read(connection, NET_IO_FILE_CHUNK)
 
   def push(self, item, content):
@@ -1014,9 +1070,9 @@ class FileSystem(StorageApi):
   def get_fetch_url(self, digest):
     return None
 
-  def fetch(self, digest):
+  def fetch(self, digest, offset=0):
     assert isinstance(digest, basestring)
-    return file_read(os.path.join(self.base_path, digest))
+    return file_read(os.path.join(self.base_path, digest), offset=offset)
 
   def push(self, item, content):
     assert isinstance(item, Item)
@@ -1072,8 +1128,12 @@ class LocalCache(object):
     """Reads data from |content| generator and stores it in cache."""
     raise NotImplementedError()
 
-  def link(self, digest, dest, file_mode=None):
-    """Ensures file at |dest| has same content as cached |digest|."""
+  def hardlink(self, digest, dest, file_mode):
+    """Ensures file at |dest| has same content as cached |digest|.
+
+    If file_mode is provided, it is used to set the executable bit if
+    applicable.
+    """
     raise NotImplementedError()
 
 
@@ -1108,10 +1168,12 @@ class MemoryCache(LocalCache):
     with self._lock:
       self._contents[digest] = data
 
-  def link(self, digest, dest, file_mode=None):
+  def hardlink(self, digest, dest, file_mode):
+    """Since data is kept in memory, there is no filenode to hardlink."""
     file_write(dest, [self.read(digest)])
     if file_mode is not None:
-      os.chmod(dest, file_mode)
+      # Ignores all other bits.
+      os.chmod(dest, file_mode & 0500)
 
 
 def get_hash_algo(_namespace):
@@ -1127,7 +1189,7 @@ def is_namespace_with_compression(namespace):
 
 def get_storage_api(file_or_url, namespace):
   """Returns an object that implements StorageApi interface."""
-  if re.match(r'^https?://.+$', file_or_url):
+  if file_path.is_url(file_or_url):
     return IsolateServer(file_or_url, namespace)
   else:
     return FileSystem(file_or_url)
@@ -1138,6 +1200,267 @@ def get_storage(file_or_url, namespace):
   return Storage(
       get_storage_api(file_or_url, namespace),
       is_namespace_with_compression(namespace))
+
+
+def expand_symlinks(indir, relfile):
+  """Follows symlinks in |relfile|, but treating symlinks that point outside the
+  build tree as if they were ordinary directories/files. Returns the final
+  symlink-free target and a list of paths to symlinks encountered in the
+  process.
+
+  The rule about symlinks outside the build tree is for the benefit of the
+  Chromium OS ebuild, which symlinks the output directory to an unrelated path
+  in the chroot.
+
+  Fails when a directory loop is detected, although in theory we could support
+  that case.
+  """
+  is_directory = relfile.endswith(os.path.sep)
+  done = indir
+  todo = relfile.strip(os.path.sep)
+  symlinks = []
+
+  while todo:
+    pre_symlink, symlink, post_symlink = file_path.split_at_symlink(
+        done, todo)
+    if not symlink:
+      todo = file_path.fix_native_path_case(done, todo)
+      done = os.path.join(done, todo)
+      break
+    symlink_path = os.path.join(done, pre_symlink, symlink)
+    post_symlink = post_symlink.lstrip(os.path.sep)
+    # readlink doesn't exist on Windows.
+    # pylint: disable=E1101
+    target = os.path.normpath(os.path.join(done, pre_symlink))
+    symlink_target = os.readlink(symlink_path)
+    if os.path.isabs(symlink_target):
+      # Absolute path are considered a normal directories. The use case is
+      # generally someone who puts the output directory on a separate drive.
+      target = symlink_target
+    else:
+      # The symlink itself could be using the wrong path case.
+      target = file_path.fix_native_path_case(target, symlink_target)
+
+    if not os.path.exists(target):
+      raise MappingError(
+          'Symlink target doesn\'t exist: %s -> %s' % (symlink_path, target))
+    target = file_path.get_native_path_case(target)
+    if not file_path.path_starts_with(indir, target):
+      done = symlink_path
+      todo = post_symlink
+      continue
+    if file_path.path_starts_with(target, symlink_path):
+      raise MappingError(
+          'Can\'t map recursive symlink reference %s -> %s' %
+          (symlink_path, target))
+    logging.info('Found symlink: %s -> %s', symlink_path, target)
+    symlinks.append(os.path.relpath(symlink_path, indir))
+    # Treat the common prefix of the old and new paths as done, and start
+    # scanning again.
+    target = target.split(os.path.sep)
+    symlink_path = symlink_path.split(os.path.sep)
+    prefix_length = 0
+    for target_piece, symlink_path_piece in zip(target, symlink_path):
+      if target_piece == symlink_path_piece:
+        prefix_length += 1
+      else:
+        break
+    done = os.path.sep.join(target[:prefix_length])
+    todo = os.path.join(
+        os.path.sep.join(target[prefix_length:]), post_symlink)
+
+  relfile = os.path.relpath(done, indir)
+  relfile = relfile.rstrip(os.path.sep) + is_directory * os.path.sep
+  return relfile, symlinks
+
+
+def expand_directory_and_symlink(indir, relfile, blacklist, follow_symlinks):
+  """Expands a single input. It can result in multiple outputs.
+
+  This function is recursive when relfile is a directory.
+
+  Note: this code doesn't properly handle recursive symlink like one created
+  with:
+    ln -s .. foo
+  """
+  if os.path.isabs(relfile):
+    raise MappingError('Can\'t map absolute path %s' % relfile)
+
+  infile = file_path.normpath(os.path.join(indir, relfile))
+  if not infile.startswith(indir):
+    raise MappingError('Can\'t map file %s outside %s' % (infile, indir))
+
+  filepath = os.path.join(indir, relfile)
+  native_filepath = file_path.get_native_path_case(filepath)
+  if filepath != native_filepath:
+    # Special case './'.
+    if filepath != native_filepath + '.' + os.path.sep:
+      # Give up enforcing strict path case on OSX. Really, it's that sad. The
+      # case where it happens is very specific and hard to reproduce:
+      # get_native_path_case(
+      #    u'Foo.framework/Versions/A/Resources/Something.nib') will return
+      # u'Foo.framework/Versions/A/resources/Something.nib', e.g. lowercase 'r'.
+      #
+      # Note that this is really something deep in OSX because running
+      # ls Foo.framework/Versions/A
+      # will print out 'Resources', while file_path.get_native_path_case()
+      # returns a lower case 'r'.
+      #
+      # So *something* is happening under the hood resulting in the command 'ls'
+      # and Carbon.File.FSPathMakeRef('path').FSRefMakePath() to disagree.  We
+      # have no idea why.
+      if sys.platform != 'darwin':
+        raise MappingError(
+            'File path doesn\'t equal native file path\n%s != %s' %
+            (filepath, native_filepath))
+
+  symlinks = []
+  if follow_symlinks:
+    relfile, symlinks = expand_symlinks(indir, relfile)
+
+  if relfile.endswith(os.path.sep):
+    if not os.path.isdir(infile):
+      raise MappingError(
+          '%s is not a directory but ends with "%s"' % (infile, os.path.sep))
+
+    # Special case './'.
+    if relfile.startswith('.' + os.path.sep):
+      relfile = relfile[2:]
+    outfiles = symlinks
+    try:
+      for filename in os.listdir(infile):
+        inner_relfile = os.path.join(relfile, filename)
+        if blacklist and blacklist(inner_relfile):
+          continue
+        if os.path.isdir(os.path.join(indir, inner_relfile)):
+          inner_relfile += os.path.sep
+        outfiles.extend(
+            expand_directory_and_symlink(indir, inner_relfile, blacklist,
+                                         follow_symlinks))
+      return outfiles
+    except OSError as e:
+      raise MappingError(
+          'Unable to iterate over directory %s.\n%s' % (infile, e))
+  else:
+    # Always add individual files even if they were blacklisted.
+    if os.path.isdir(infile):
+      raise MappingError(
+          'Input directory %s must have a trailing slash' % infile)
+
+    if not os.path.isfile(infile):
+      raise MappingError('Input file %s doesn\'t exist' % infile)
+
+    return symlinks + [relfile]
+
+
+def process_input(filepath, prevdict, read_only, flavor, algo):
+  """Processes an input file, a dependency, and return meta data about it.
+
+  Behaviors:
+  - Retrieves the file mode, file size, file timestamp, file link
+    destination if it is a file link and calcultate the SHA-1 of the file's
+    content if the path points to a file and not a symlink.
+
+  Arguments:
+    filepath: File to act on.
+    prevdict: the previous dictionary. It is used to retrieve the cached sha-1
+              to skip recalculating the hash. Optional.
+    read_only: If 1 or 2, the file mode is manipulated. In practice, only save
+               one of 4 modes: 0755 (rwx), 0644 (rw), 0555 (rx), 0444 (r). On
+               windows, mode is not set since all files are 'executable' by
+               default.
+    flavor:    One isolated flavor, like 'linux', 'mac' or 'win'.
+    algo:      Hashing algorithm used.
+
+  Returns:
+    The necessary data to create a entry in the 'files' section of an .isolated
+    file.
+  """
+  out = {}
+  # TODO(csharp): Fix crbug.com/150823 and enable the touched logic again.
+  # if prevdict.get('T') == True:
+  #   # The file's content is ignored. Skip the time and hard code mode.
+  #   if get_flavor() != 'win':
+  #     out['m'] = stat.S_IRUSR | stat.S_IRGRP
+  #   out['s'] = 0
+  #   out['h'] = algo().hexdigest()
+  #   out['T'] = True
+  #   return out
+
+  # Always check the file stat and check if it is a link. The timestamp is used
+  # to know if the file's content/symlink destination should be looked into.
+  # E.g. only reuse from prevdict if the timestamp hasn't changed.
+  # There is the risk of the file's timestamp being reset to its last value
+  # manually while its content changed. We don't protect against that use case.
+  try:
+    filestats = os.lstat(filepath)
+  except OSError:
+    # The file is not present.
+    raise MappingError('%s is missing' % filepath)
+  is_link = stat.S_ISLNK(filestats.st_mode)
+
+  if flavor != 'win':
+    # Ignore file mode on Windows since it's not really useful there.
+    filemode = stat.S_IMODE(filestats.st_mode)
+    # Remove write access for group and all access to 'others'.
+    filemode &= ~(stat.S_IWGRP | stat.S_IRWXO)
+    if read_only:
+      filemode &= ~stat.S_IWUSR
+    if filemode & stat.S_IXUSR:
+      filemode |= stat.S_IXGRP
+    else:
+      filemode &= ~stat.S_IXGRP
+    if not is_link:
+      out['m'] = filemode
+
+  # Used to skip recalculating the hash or link destination. Use the most recent
+  # update time.
+  # TODO(maruel): Save it in the .state file instead of .isolated so the
+  # .isolated file is deterministic.
+  out['t'] = int(round(filestats.st_mtime))
+
+  if not is_link:
+    out['s'] = filestats.st_size
+    # If the timestamp wasn't updated and the file size is still the same, carry
+    # on the sha-1.
+    if (prevdict.get('t') == out['t'] and
+        prevdict.get('s') == out['s']):
+      # Reuse the previous hash if available.
+      out['h'] = prevdict.get('h')
+    if not out.get('h'):
+      out['h'] = hash_file(filepath, algo)
+  else:
+    # If the timestamp wasn't updated, carry on the link destination.
+    if prevdict.get('t') == out['t']:
+      # Reuse the previous link destination if available.
+      out['l'] = prevdict.get('l')
+    if out.get('l') is None:
+      # The link could be in an incorrect path case. In practice, this only
+      # happen on OSX on case insensitive HFS.
+      # TODO(maruel): It'd be better if it was only done once, in
+      # expand_directory_and_symlink(), so it would not be necessary to do again
+      # here.
+      symlink_value = os.readlink(filepath)  # pylint: disable=E1101
+      filedir = file_path.get_native_path_case(os.path.dirname(filepath))
+      native_dest = file_path.fix_native_path_case(filedir, symlink_value)
+      out['l'] = os.path.relpath(native_dest, filedir)
+  return out
+
+
+def save_isolated(isolated, data):
+  """Writes one or multiple .isolated files.
+
+  Note: this reference implementation does not create child .isolated file so it
+  always returns an empty list.
+
+  Returns the list of child isolated files that are included by |isolated|.
+  """
+  # Make sure the data is valid .isolated data by 'reloading' it.
+  algo = SUPPORTED_ALGOS[data['algo']]
+  load_isolated(json.dumps(data), data.get('flavor'), algo)
+  tools.write_json(isolated, data, True)
+  return []
+
 
 
 def upload_tree(base_url, indir, infiles, namespace):
@@ -1175,15 +1498,19 @@ def load_isolated(content, os_flavor, algo):
     raise ConfigError('Expected dict, got %r' % data)
 
   # Check 'version' first, since it could modify the parsing after.
-  value = data.get('version', '1.0')
+  # TODO(maruel): Drop support for unversioned .isolated file around Jan 2014.
+  value = data.get('version', ISOLATED_FILE_VERSION)
   if not isinstance(value, basestring):
     raise ConfigError('Expected string, got %r' % value)
   if not re.match(r'^(\d+)\.(\d+)$', value):
     raise ConfigError('Expected a compatible version, got %r' % value)
-  if value.split('.', 1)[0] != '1':
-    raise ConfigError('Expected compatible \'1.x\' version, got %r' % value)
+  if value.split('.', 1)[0] != ISOLATED_FILE_VERSION.split('.', 1)[0]:
+    raise ConfigError(
+        'Expected compatible \'%s\' version, got %r' %
+        (ISOLATED_FILE_VERSION, value))
 
   if algo is None:
+    # TODO(maruel): Remove the default around Jan 2014.
     # Default the algorithm used in the .isolated file itself, falls back to
     # 'sha-1' if unspecified.
     algo = SUPPORTED_ALGOS_REVERSE[data.get('algo', 'sha-1')]
@@ -1228,8 +1555,8 @@ def load_isolated(content, os_flavor, algo):
             if not is_valid_hash(subsubvalue, algo):
               raise ConfigError('Expected sha-1, got %r' % subsubvalue)
           elif subsubkey == 's':
-            if not isinstance(subsubvalue, int):
-              raise ConfigError('Expected int, got %r' % subsubvalue)
+            if not isinstance(subsubvalue, (int, long)):
+              raise ConfigError('Expected int or long, got %r' % subsubvalue)
           else:
             raise ConfigError('Unknown subsubkey %s' % subsubkey)
         if bool('h' in subvalue) == bool('l' in subvalue):
@@ -1259,8 +1586,8 @@ def load_isolated(content, os_flavor, algo):
           raise ConfigError('Expected sha-1, got %r' % subvalue)
 
     elif key == 'read_only':
-      if not isinstance(value, bool):
-        raise ConfigError('Expected bool, got %r' % value)
+      if not value in (0, 1, 2):
+        raise ConfigError('Expected 0, 1 or 2, got %r' % value)
 
     elif key == 'relative_cwd':
       if not isinstance(value, basestring):
@@ -1420,7 +1747,6 @@ class Settings(object):
     assert check(self.root)
 
     self.relative_cwd = self.relative_cwd or ''
-    self.read_only = self.read_only or False
 
   def _traverse_tree(self, fetch_queue, node):
     if node.can_fetch:
@@ -1489,7 +1815,7 @@ def fetch_isolated(
       if not os.path.isdir(outdir):
         os.makedirs(outdir)
       create_directories(outdir, settings.files)
-      create_links(outdir, settings.files.iteritems())
+      create_symlinks(outdir, settings.files.iteritems())
 
       # Ensure working directory exists.
       cwd = os.path.normpath(os.path.join(outdir, settings.relative_cwd))
@@ -1515,7 +1841,8 @@ def fetch_isolated(
 
           # Link corresponding files to a fetched item in cache.
           for filepath, props in remaining.pop(digest):
-            cache.link(digest, os.path.join(outdir, filepath), props.get('m'))
+            cache.hardlink(
+                digest, os.path.join(outdir, filepath), props.get('m'))
 
           # Report progress.
           duration = time.time() - last_update
@@ -1531,9 +1858,107 @@ def fetch_isolated(
   return settings
 
 
+def directory_to_metadata(root, algo, blacklist):
+  """Returns the FileItem list and .isolated metadata for a directory."""
+  root = file_path.get_native_path_case(root)
+  metadata = dict(
+      (relpath, process_input(
+        os.path.join(root, relpath), {}, False, sys.platform, algo))
+      for relpath in expand_directory_and_symlink(
+        root, './', blacklist, True)
+  )
+  for v in metadata.itervalues():
+    v.pop('t')
+  items = [
+      FileItem(
+          path=os.path.join(root, relpath),
+          digest=meta['h'],
+          size=meta['s'],
+          is_isolated=relpath.endswith('.isolated'))
+      for relpath, meta in metadata.iteritems() if 'h' in meta
+  ]
+  return items, metadata
+
+
+def archive(storage, algo, files, blacklist):
+  """Stores every entries and returns the relevant data."""
+  assert all(isinstance(i, unicode) for i in files), files
+  if len(files) != len(set(map(os.path.abspath, files))):
+    raise Error('Duplicate entries found.')
+
+  results = []
+  # The temporary directory is only created as needed.
+  tempdir = None
+  try:
+    # TODO(maruel): Yield the files to a worker thread.
+    items_to_upload = []
+    for f in files:
+      try:
+        filepath = os.path.abspath(f)
+        if os.path.isdir(filepath):
+          # Uploading a whole directory.
+          items, metadata = directory_to_metadata(filepath, algo, blacklist)
+
+          # Create the .isolated file.
+          if not tempdir:
+            tempdir = tempfile.mkdtemp(prefix='isolateserver')
+          handle, isolated = tempfile.mkstemp(dir=tempdir, suffix='.isolated')
+          os.close(handle)
+          data = {
+              'algo': SUPPORTED_ALGOS_REVERSE[algo],
+              'files': metadata,
+              'version': ISOLATED_FILE_VERSION,
+          }
+          save_isolated(isolated, data)
+          h = hash_file(isolated, algo)
+          items_to_upload.extend(items)
+          items_to_upload.append(
+              FileItem(
+                  path=isolated,
+                  digest=h,
+                  size=os.stat(isolated).st_size,
+                  is_isolated=True))
+          results.append((h, f))
+
+        elif os.path.isfile(filepath):
+          h = hash_file(filepath, algo)
+          items_to_upload.append(
+            FileItem(
+                path=filepath,
+                digest=h,
+                size=os.stat(filepath).st_size,
+                is_isolated=f.endswith('.isolated')))
+          results.append((h, f))
+        else:
+          raise Error('%s is neither a file or directory.' % f)
+      except OSError:
+        raise Error('Failed to process %s.' % f)
+    # Technically we would care about the uploaded files but we don't much in
+    # practice.
+    _uploaded_files = storage.upload_items(items_to_upload)
+    return results
+  finally:
+    if tempdir:
+      shutil.rmtree(tempdir)
+
+
 @subcommand.usage('<file1..fileN> or - to read from stdin')
 def CMDarchive(parser, args):
-  """Archives data to the server."""
+  """Archives data to the server.
+
+  If a directory is specified, a .isolated file is created the whole directory
+  is uploaded. Then this .isolated file can be included in another one to run
+  commands.
+
+  The commands output each file that was processed with its content hash. For
+  directories, the .isolated generated for the directory is listed as the
+  directory entry itself.
+  """
+  parser.add_option(
+      '--blacklist',
+      action='append', default=list(DEFAULT_BLACKLIST),
+      help='List of regexp to use as blacklist filter when uploading '
+           'directories')
   options, files = parser.parse_args(args)
 
   if files == ['-']:
@@ -1542,27 +1967,16 @@ def CMDarchive(parser, args):
   if not files:
     parser.error('Nothing to upload')
 
-  # Load the necessary metadata.
-  # TODO(maruel): Use a worker pool to upload as the hashing is being done.
-  infiles = dict(
-      (
-        f,
-        {
-          's': os.stat(f).st_size,
-          'h': hash_file(f, get_hash_algo(options.namespace)),
-        }
-      )
-      for f in files)
-
-  with tools.Profiler('Archive'):
-    ret = upload_tree(
-        base_url=options.isolate_server,
-        indir=os.getcwd(),
-        infiles=infiles,
-        namespace=options.namespace)
-  if not ret:
-    print '\n'.join('%s  %s' % (infiles[f]['h'], f) for f in sorted(infiles))
-  return ret
+  files = [f.decode('utf-8') for f in files]
+  algo = get_hash_algo(options.namespace)
+  blacklist = tools.gen_blacklist(options.blacklist)
+  try:
+    with get_storage(options.isolate_server, options.namespace) as storage:
+      results = archive(storage, algo, files, blacklist)
+  except Error as e:
+    parser.error(e.args[0])
+  print('\n'.join('%s %s' % (r[0], r[1]) for r in results))
+  return 0
 
 
 def CMDdownload(parser, args):
@@ -1588,48 +2002,50 @@ def CMDdownload(parser, args):
     parser.error('Use one of --isolated or --file, and only one.')
 
   options.target = os.path.abspath(options.target)
-  storage = get_storage(options.isolate_server, options.namespace)
-  cache = MemoryCache()
-  algo = get_hash_algo(options.namespace)
 
-  # Fetching individual files.
-  if options.file:
-    channel = threading_utils.TaskChannel()
-    pending = {}
-    for digest, dest in options.file:
-      pending[digest] = dest
-      storage.async_fetch(
-          channel,
-          WorkerPool.MED,
-          digest,
-          UNKNOWN_FILE_SIZE,
-          functools.partial(file_write, os.path.join(options.target, dest)))
-    while pending:
-      fetched = channel.pull()
-      dest = pending.pop(fetched)
-      logging.info('%s: %s', fetched, dest)
+  with get_storage(options.isolate_server, options.namespace) as storage:
+    # Fetching individual files.
+    if options.file:
+      channel = threading_utils.TaskChannel()
+      pending = {}
+      for digest, dest in options.file:
+        pending[digest] = dest
+        storage.async_fetch(
+            channel,
+            WorkerPool.MED,
+            digest,
+            UNKNOWN_FILE_SIZE,
+            functools.partial(file_write, os.path.join(options.target, dest)))
+      while pending:
+        fetched = channel.pull()
+        dest = pending.pop(fetched)
+        logging.info('%s: %s', fetched, dest)
 
-  # Fetching whole isolated tree.
-  if options.isolated:
-    settings = fetch_isolated(
-        isolated_hash=options.isolated,
-        storage=storage,
-        cache=cache,
-        algo=algo,
-        outdir=options.target,
-        os_flavor=None,
-        require_command=False)
-    rel = os.path.join(options.target, settings.relative_cwd)
-    print('To run this test please run from the directory %s:' %
-          os.path.join(options.target, rel))
-    print('  ' + ' '.join(settings.command))
+    # Fetching whole isolated tree.
+    if options.isolated:
+      settings = fetch_isolated(
+          isolated_hash=options.isolated,
+          storage=storage,
+          cache=MemoryCache(),
+          algo=get_hash_algo(options.namespace),
+          outdir=options.target,
+          os_flavor=None,
+          require_command=False)
+      rel = os.path.join(options.target, settings.relative_cwd)
+      print('To run this test please run from the directory %s:' %
+            os.path.join(options.target, rel))
+      print('  ' + ' '.join(settings.command))
 
   return 0
 
 
 class OptionParserIsolateServer(tools.OptionParserWithLogging):
   def __init__(self, **kwargs):
-    tools.OptionParserWithLogging.__init__(self, **kwargs)
+    tools.OptionParserWithLogging.__init__(
+        self,
+        version=__version__,
+        prog=os.path.basename(sys.modules[__name__].__file__),
+        **kwargs)
     self.add_option(
         '-I', '--isolate-server',
         metavar='URL', default='',
@@ -1650,12 +2066,9 @@ class OptionParserIsolateServer(tools.OptionParserWithLogging):
 def main(args):
   dispatcher = subcommand.CommandDispatcher(__name__)
   try:
-    return dispatcher.execute(
-        OptionParserIsolateServer(version=__version__), args)
-  except (ConfigError, MappingError) as e:
-    sys.stderr.write('\nError: ')
-    sys.stderr.write(str(e))
-    sys.stderr.write('\n')
+    return dispatcher.execute(OptionParserIsolateServer(), args)
+  except Exception as e:
+    tools.report_error(e)
     return 1
 
 

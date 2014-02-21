@@ -48,7 +48,6 @@ def DictDiff(d1, d2):
 def GetEnvironment(host_obj, testing, extra_env_vars=None):
   init_env = dict(os.environ)
   init_env['GYP_GENERATORS'] = 'ninja'
-  init_env['GOMA_DIR'] = bb_utils.GOMA_DIR
   if extra_env_vars:
     init_env.update(extra_env_vars)
   envsetup_cmd = '. build/android/envsetup.sh'
@@ -70,7 +69,8 @@ def GetEnvironment(host_obj, testing, extra_env_vars=None):
     print >> sys.stderr, envsetup_output
     sys.exit(1)
   env = json.loads(json_env)
-  env['GYP_DEFINES'] = env.get('GYP_DEFINES', '') + ' fastbuild=1'
+  env['GYP_DEFINES'] = env.get('GYP_DEFINES', '') + \
+      ' fastbuild=1 use_goma=1 gomadir=%s' % bb_utils.GOMA_DIR
   extra_gyp = host_obj.extra_gyp_defines
   if extra_gyp:
     env['GYP_DEFINES'] += ' %s' % extra_gyp
@@ -104,7 +104,7 @@ def GetCommands(options, bot_config):
 
   test_obj = bot_config.test_obj
   if test_obj:
-    run_test_cmd = [test_obj.script, '--reboot'] + property_args
+    run_test_cmd = [test_obj.script] + property_args
     for test in test_obj.tests:
       run_test_cmd.extend(['-f', test])
     if test_obj.extra_args:
@@ -150,7 +150,7 @@ def GetBotStepMap():
         H(compile_step + std_host_tests, experimental, target_arch='x86')),
       B('fyi-builder-dbg',
         H(std_build_steps + std_host_tests, experimental,
-          extra_gyp='emma_coverage=1')),
+          extra_gyp='emma_coverage=1 android_lint=1')),
       B('x86-builder-dbg',
         H(compile_step + std_host_tests, target_arch='x86')),
       B('fyi-builder-rel', H(std_build_steps,  experimental)),
@@ -161,7 +161,8 @@ def GetBotStepMap():
         H(compile_step, extra_gyp='component=shared_library'),
         T(std_tests, ['--experimental', flakiness_server])),
       B('gpu-builder-tests-dbg', H(compile_step), T(['gpu'])),
-      B('perf-bisect-builder-tests-dbg', H(['bisect_perf_regression'])),
+      # Pass empty T([]) so that logcat monitor and device status check are run.
+      B('perf-bisect-builder-tests-dbg', H(['bisect_perf_regression']), T([])),
       B('perf-tests-rel', H(std_test_steps),
         T([], ['--install=ChromiumTestShell'])),
       B('webkit-latest-webkit-tests', H(std_test_steps),
@@ -171,15 +172,15 @@ def GetBotStepMap():
       B('builder-unit-tests', H(compile_step), T(['unit'])),
       B('webrtc-chromium-builder',
         H(std_build_steps,
-          extra_args=['--build-targets=content_browsertests_apk'])),
+          extra_args=['--build-targets=android_builder_chromium_webrtc'])),
       B('webrtc-native-builder',
         H(std_build_steps,
           extra_args=['--build-targets=android_builder_webrtc'],
           extra_gyp='include_tests=1 enable_tracing=1')),
       B('webrtc-chromium-tests', H(std_test_steps),
-        T(['webrtc_chromium'], [flakiness_server])),
-      B('webrtc-native-tests',
-        H(['download_webrtc_resources'] + std_test_steps),
+        T(['webrtc_chromium'],
+          [flakiness_server, '--gtest-filter=Webrtc*:WebRTC*'])),
+      B('webrtc-native-tests', H(std_test_steps),
         T(['webrtc_native'], [flakiness_server])),
 
       # Generic builder config (for substring match).

@@ -23,9 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-interface SVGPolygonElement : SVGGraphicsElement {
-    readonly attribute SVGPointList points;
+interface SVGPolygonElement : SVGGeometryElement {
+    [ImplementedAs=pointsFromJavascript] readonly attribute SVGPointList points;
     readonly attribute SVGPointList animatedPoints;
 };
-
-SVGPolygonElement implements SVGExternalResourcesRequired;

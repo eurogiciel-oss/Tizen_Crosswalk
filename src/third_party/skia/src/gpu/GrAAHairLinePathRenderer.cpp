@@ -300,19 +300,10 @@ int num_quad_subdivs(const SkPoint p[3]) {
         // = log4(d*d/tol*tol)/2
         // = log2(d*d/tol*tol)
 
-#ifdef SK_SCALAR_IS_FLOAT
         // +1 since we're ignoring the mantissa contribution.
         int log = get_float_exp(dsqd/(gSubdivTol*gSubdivTol)) + 1;
         log = GrMin(GrMax(0, log), kMaxSub);
         return log;
-#else
-        SkScalar log = SkScalarLog(
-                          SkScalarDiv(dsqd,
-                                      SkScalarMul(gSubdivTol, gSubdivTol)));
-        static const SkScalar conv = SkScalarInvert(SkScalarLog(2));
-        log = SkScalarMul(log, conv);
-        return  GrMin(GrMax(0, SkScalarCeilToInt(log)),kMaxSub);
-#endif
     }
 }
 
@@ -759,10 +750,10 @@ bool GrAAHairLinePathRenderer::createLineGeom(const SkPath& path,
     }
     devBounds->set(lines.begin(), lines.count());
     for (int i = 0; i < lineCnt; ++i) {
-        add_line(&lines[2*i], toSrc, drawState->getCoverage(), &verts);
+        add_line(&lines[2*i], toSrc, drawState->getCoverageColor(), &verts);
     }
     // All the verts computed by add_line are within sqrt(1^2 + 0.5^2) of the end points.
-    static const SkScalar kSqrtOfOneAndAQuarter = SkFloatToScalar(1.118f);
+    static const SkScalar kSqrtOfOneAndAQuarter = 1.118f;
     // Add a little extra to account for vector normalization precision.
     static const SkScalar kOutset = kSqrtOfOneAndAQuarter + SK_Scalar1 / 20;
     devBounds->outset(kOutset, kOutset);
@@ -839,7 +830,13 @@ bool GrAAHairLinePathRenderer::canDrawPath(const SkPath& path,
                                            const SkStrokeRec& stroke,
                                            const GrDrawTarget* target,
                                            bool antiAlias) const {
-    if (!stroke.isHairlineStyle() || !antiAlias) {
+    if (!antiAlias) {
+        return false;
+    }
+
+    if (!IsStrokeHairlineOrEquivalent(stroke,
+                                      target->getDrawState().getViewMatrix(),
+                                      NULL)) {
         return false;
     }
 
@@ -888,11 +885,19 @@ bool check_bounds(GrDrawState* drawState, const SkRect& devBounds, void* vertice
 }
 
 bool GrAAHairLinePathRenderer::onDrawPath(const SkPath& path,
-                                          const SkStrokeRec&,
+                                          const SkStrokeRec& stroke,
                                           GrDrawTarget* target,
                                           bool antiAlias) {
-
     GrDrawState* drawState = target->drawState();
+
+    SkScalar hairlineCoverage;
+    if (IsStrokeHairlineOrEquivalent(stroke,
+                                     target->getDrawState().getViewMatrix(),
+                                     &hairlineCoverage)) {
+        uint8_t newCoverage = SkScalarRoundToInt(hairlineCoverage *
+                                                 target->getDrawState().getCoverage());
+        target->drawState()->setCoverage(newCoverage);
+    }
 
     SkIRect devClipBounds;
     target->getClip()->getConservativeBounds(drawState->getRenderTarget(), &devClipBounds);

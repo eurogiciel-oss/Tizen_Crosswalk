@@ -31,7 +31,7 @@
 #ifndef PopupMenuChromium_h
 #define PopupMenuChromium_h
 
-#include "core/platform/PopupMenu.h"
+#include "platform/PopupMenu.h"
 #include "wtf/RefPtr.h"
 
 namespace WebCore {
@@ -43,10 +43,10 @@ class PopupContainer;
 struct PopupItem;
 class PopupMenuClient;
 
-class PopupMenuChromium : public PopupMenu {
+class PopupMenuChromium FINAL : public PopupMenu {
 public:
     PopupMenuChromium(Frame&, PopupMenuClient*);
-    ~PopupMenuChromium();
+    virtual ~PopupMenuChromium();
 
     virtual void show(const FloatQuad& controlPosition, const IntSize& controlSize, int index) OVERRIDE;
     virtual void hide() OVERRIDE;

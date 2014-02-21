@@ -8,8 +8,8 @@
 #include <set>
 
 #include "base/files/scoped_temp_dir.h"
-#include "chrome/browser/chromeos/drive/change_list_loader.h"
 #include "chrome/browser/chromeos/drive/drive.pb.h"
+#include "chrome/browser/chromeos/drive/file_errors.h"
 #include "chrome/browser/chromeos/drive/file_system/operation_observer.h"
 #include "chrome/browser/chromeos/drive/test_util.h"
 #include "content/public/test/test_browser_thread_bundle.h"
@@ -28,6 +28,7 @@ class FakeFreeDiskSpaceGetter;
 class JobScheduler;
 
 namespace internal {
+class ChangeListLoader;
 class FileCache;
 class ResourceMetadata;
 class ResourceMetadataStorage;
@@ -49,22 +50,30 @@ class OperationTestBase : public testing::Test {
     // OperationObserver overrides.
     virtual void OnDirectoryChangedByOperation(
         const base::FilePath& path) OVERRIDE;
-    virtual void OnCacheFileUploadNeededByOperation(
+    virtual void OnEntryUpdatedByOperation(
         const std::string& local_id) OVERRIDE;
+    virtual void OnDriveSyncError(DriveSyncErrorType type,
+                                  const std::string& local_id) OVERRIDE;
 
     // Gets the set of changed paths.
     const std::set<base::FilePath>& get_changed_paths() {
       return changed_paths_;
     }
 
-    // Gets the set of upload needed local IDs.
-    const std::set<std::string>& upload_needed_local_ids() const {
-      return upload_needed_local_ids_;
+    // Gets the set of updated local IDs.
+    const std::set<std::string>& updated_local_ids() const {
+      return updated_local_ids_;
+    }
+
+    // Gets the list of drive sync errors.
+    const std::vector<DriveSyncErrorType>& drive_sync_errors() const {
+      return drive_sync_errors_;
     }
 
    private:
     std::set<base::FilePath> changed_paths_;
-    std::set<std::string> upload_needed_local_ids_;
+    std::set<std::string> updated_local_ids_;
+    std::vector<DriveSyncErrorType> drive_sync_errors_;
   };
 
   OperationTestBase();
@@ -81,6 +90,11 @@ class OperationTestBase : public testing::Test {
   // ResourceMetadta.
   FileError GetLocalResourceEntry(const base::FilePath& path,
                                   ResourceEntry* entry);
+
+  // Synchronously gets the resource entry corresponding to the ID from local
+  // ResourceMetadta.
+  FileError GetLocalResourceEntryById(const std::string& local_id,
+                                      ResourceEntry* entry);
 
   // Gets the local ID of the entry specified by the path.
   std::string GetLocalId(const base::FilePath& path);

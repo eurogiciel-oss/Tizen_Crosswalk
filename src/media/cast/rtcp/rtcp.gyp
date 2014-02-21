@@ -23,6 +23,7 @@
       ], # source
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
+        '<(DEPTH)/media/cast/transport/cast_transport.gyp:cast_transport',
         '<(DEPTH)/net/net.gyp:net',
       ],
     },
@@ -38,6 +39,7 @@
       ], # source
       'dependencies': [
         'cast_rtcp',
+        '<(DEPTH)/media/cast/transport/cast_transport.gyp:cast_transport',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
     },

@@ -27,7 +27,6 @@
 <translation id="3549345495227188780">‏תחילת העבודה עם Chromium OS</translation>
 <translation id="4330297532943865716">‏התקנה מתנגשת של Chromium או Chromium Frame נמצאה במערכת. הסר אותה ונסה שוב.</translation>
 <translation id="6953661834318318668">‏סרגל הכלים של Chromium</translation>
-<translation id="2245147136185581459">‏מזהה Chromium Captive Portal</translation>
 <translation id="4285930937574705105">‏ההתקנה נכשלה בשל שגיאה לא צפויה. אם Chromium  פועל כעת, סגור אותו ונסה שוב.</translation>
 <translation id="1396446129537741364">‏Chromium מנסה להציג סיסמאות.</translation>
 <translation id="3555616473548901994">הסרת ההתקנה הושלמה.</translation>
@@ -61,7 +60,6 @@
 <translation id="7771626876550251690">‏במקרה כזה, הכתובת שמופיעה באישור אינה תואמת לכתובת של האתר שאליו הדפדפן שלך ניסה להגיע. סיבה אפשרית  לכך היא שהתקשורת שלך יורטה על ידי תוקף שמציג אישור עבור אתר שונה, וכך נוצרה אי התאמה. סיבה אפשרית נוספת היא שהשרת מוגדר להחזיר את אותו אישור עבור אתרים מרובים, כולל האתר שבו אתה מנסה לבקר, אפילו שהאישור אינו תקף לכל אותם אתרים. Chromium יכול לומר בוודאות שהגעת אל &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/ strong&gt;, אך אינו יכול לאמת שהוא זהה ל-&lt;strong&gt;<ph name="DOMAIN"/>&lt;/ strong&gt;, שאליו ניסית להגיע. אם תמשיך, Chromium לא יחפש אי התאמות שמיות נוספות.</translation>
 <translation id="4330585738697551178">‏מודול זה מתנגש עם Chromium.</translation>
 <translation id="3190315855212034486">‏וואו! Chromium קרס. להפעיל מחדש עכשיו?</translation>
-<translation id="3590194807845837023">בטל נעילת פרופיל והפעל מחדש</translation>
 <translation id="6714487516757221107">‏לא נמצאה התקנה של Chromium או Chromium Frame שיש לעדכן.</translation>
 <translation id="3197823471738295152">המכשיר שלך מעודכן.</translation>
 <translation id="8551886023433311834">כמעט מעודכן! הפעל מחדש את המכשיר שלך כדי לסיים את העדכון.</translation>
@@ -152,6 +150,7 @@
 <translation id="6717134281241384636">‏לא ניתן להשתמש בפרופיל שלך משום שהוא מגיע מגרסה חדשה יותר של Chromium.
 
 ייתכן שחלק מהתכונות לא יהיו זמינות. ציין ספריית פרופיל אחרת או השתמש בגרסה חדשה יותר של Chromium.</translation>
+<translation id="8907580949721785412">‏Chromium מנסה להציג סיסמאות. הקלד את הסיסמה שלך ל-Windows כדי לאפשר זאת.</translation>
 <translation id="9013087743919948559">‏הוסף ל-‏Chromium‏</translation>
 <translation id="6212496753309875659">‏במחשב זה קיימת כבר גרסה מתקדמת יותר של Chromium. אם התוכנה אינה פועלת, הסר את ההתקנה של Chromium ונסה שוב.</translation>
 <translation id="1298199220304005244">‏קבלת עזרה באמצעות מערכת ההפעלה של Chromium</translation>

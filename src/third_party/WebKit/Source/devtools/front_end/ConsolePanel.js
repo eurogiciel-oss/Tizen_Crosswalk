@@ -33,53 +33,92 @@
 WebInspector.ConsolePanel = function()
 {
     WebInspector.Panel.call(this, "console");
-
     this._view = WebInspector.consoleView;
 }
 
 WebInspector.ConsolePanel.prototype = {
+    /**
+     * @return {!Element}
+     */
+    defaultFocusedElement: function()
+    {
+        return this._view.defaultFocusedElement();
+    },
+
     wasShown: function()
     {
         WebInspector.Panel.prototype.wasShown.call(this);
-        if (WebInspector.inspectorView.drawer().visible()) {
-            WebInspector.inspectorView.drawer().hide(true);
-            this._drawerWasVisible = true;
-        }
         this._view.show(this.element);
     },
 
     willHide: function()
     {
-        if (this._drawerWasVisible) {
-            WebInspector.inspectorView.drawer().show(true);
-            delete this._drawerWasVisible;
-        }
         WebInspector.Panel.prototype.willHide.call(this);
-    },
-
-    searchCanceled: function()
-    {
-        this._view.searchCanceled();
-    },
-
-    /**
-     * @param {string} query
-     * @param {boolean} shouldJump
-     */
-    performSearch: function(query, shouldJump)
-    {
-        this._view.performSearch(query, shouldJump, this);
-    },
-
-    jumpToNextSearchResult: function()
-    {
-        this._view.jumpToNextSearchResult(this);
-    },
-
-    jumpToPreviousSearchResult: function()
-    {
-        this._view.jumpToPreviousSearchResult(this);
+        if (WebInspector.ConsolePanel.WrapperView._instance)
+            WebInspector.ConsolePanel.WrapperView._instance._showViewInWrapper();
     },
 
     __proto__: WebInspector.Panel.prototype
+}
+
+/**
+ * @constructor
+ * @implements {WebInspector.Drawer.ViewFactory}
+ */
+WebInspector.ConsolePanel.ViewFactory = function()
+{
+}
+
+WebInspector.ConsolePanel.ViewFactory.prototype = {
+    /**
+     * @return {!WebInspector.View}
+     */
+    createView: function()
+    {
+        if (!WebInspector.ConsolePanel.WrapperView._instance)
+            WebInspector.ConsolePanel.WrapperView._instance = new WebInspector.ConsolePanel.WrapperView();
+        return WebInspector.ConsolePanel.WrapperView._instance;
+    }
+}
+
+/**
+ * @constructor
+ * @extends {WebInspector.View}
+ */
+WebInspector.ConsolePanel.WrapperView = function()
+{
+    WebInspector.View.call(this);
+    this.element.classList.add("console-view-wrapper");
+
+    this._view = WebInspector.consoleView;
+    // FIXME: this won't be needed once drawer becomes a view.
+    this.wasShown();
+}
+
+WebInspector.ConsolePanel.WrapperView.prototype = {
+    wasShown: function()
+    {
+        if (!WebInspector.inspectorView.currentPanel() || WebInspector.inspectorView.currentPanel().name !== "console")
+            this._showViewInWrapper();
+    },
+
+    /**
+     * @return {!Element}
+     */
+    defaultFocusedElement: function()
+    {
+        return this._view.defaultFocusedElement();
+    },
+
+    focus: function()
+    {
+        this._view.focus();
+    },
+
+    _showViewInWrapper: function()
+    {
+        this._view.show(this.element);
+    },
+
+    __proto__: WebInspector.View.prototype
 }

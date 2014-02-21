@@ -4,9 +4,10 @@ layer at (0,0) size 800x600
   RenderBlock {HTML} at (0,0) size 800x600
     RenderBody {BODY} at (0,0) size 800x600
 layer at (100,0) size 500x600
-  RenderRegion {DIV} at (100,0) size 500x600
-Flow Threads
-  Thread with flow-name 'thread'
+  RenderBlock (positioned) {DIV} at (100,0) size 500x600
+    RenderNamedFlowFragment at (0,0) size 500x600
+Named flows
+  Named flow 'thread'
     layer at (0,0) size 500x600
       RenderNamedFlowThread at (0,0) size 500x600
         RenderPartObject {IFRAME} at (0,0) size 500x600
@@ -53,15 +54,15 @@ Flow Threads
                     text run at (298,240) width 114: "the ground, Alice"
                     text run at (57,258) width 306: "soon came to the conclusion that it was a very "
                   RenderBlock (floating) {SPAN} at (6,261.19) size 48x64 [bgcolor=#ADD8E6]
-                  RenderText {#text} at (363,258) size 355x36
-                    text run at (363,258) width 49: "difficult"
-                    text run at (57,276) width 88: "game indeed. "
+                  RenderText {#text} at (362,258) size 355x36
+                    text run at (362,258) width 50: "difficult"
+                    text run at (57,276) width 89: "game indeed. "
                   RenderBR {BR} at (0,0) size 0x0
                   RenderText {#text} at (57,294) size 303x18
                     text run at (57,294) width 303: "The players all played at once without waiting"
                   RenderBlock (floating) {SPAN} at (364,297.19) size 48x80 [bgcolor=#90EE90]
                   RenderText {#text} at (57,312) size 354x36
-                    text run at (57,312) width 63: "for turns, "
+                    text run at (57,312) width 64: "for turns, "
                     text run at (120,312) width 240: "quarrelling all the while, and fighting"
                     text run at (6,330) width 172: "for the hedgehogs; and in "
                     text run at (178,330) width 115: "a very short time "
@@ -84,5 +85,5 @@ Flow Threads
                     text run at (81,456) width 331: "me? They\x{2019}re dreadfully fond of beheading people"
                     text run at (6,474) width 93: "here; the great "
                     text run at (99,474) width 261: "wonder is, that there\x{2018}s any one left alive!\x{2019}"
-  Regions for flow 'thread'
-    RenderRegion {DIV}
+    Regions for named flow 'thread'
+      RenderNamedFlowFragment (anonymous child of {DIV})

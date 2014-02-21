@@ -17,19 +17,16 @@
 namespace ui {
 
 // A common InputMethod implementation shared between IMM32 and TSF.
-class UI_EXPORT InputMethodWin : public InputMethodBase {
+class UI_BASE_EXPORT InputMethodWin : public InputMethodBase {
  public:
   InputMethodWin(internal::InputMethodDelegate* delegate,
                  HWND toplevel_window_handle);
 
   // Overridden from InputMethod:
   virtual void Init(bool focused) OVERRIDE;
-  virtual bool DispatchKeyEvent(
-      const base::NativeEvent& native_key_event) OVERRIDE;
-  virtual bool DispatchFabricatedKeyEvent(const ui::KeyEvent& event) OVERRIDE;
+  virtual bool DispatchKeyEvent(const ui::KeyEvent& event) OVERRIDE;
   virtual void OnInputLocaleChanged() OVERRIDE;
   virtual std::string GetInputLocale() OVERRIDE;
-  virtual base::i18n::TextDirection GetInputTextDirection() OVERRIDE;
   virtual bool IsActive() OVERRIDE;
 
  protected:
@@ -77,15 +74,14 @@ class UI_EXPORT InputMethodWin : public InputMethodBase {
   ui::IMM32Manager imm32_manager_;
 
  private:
+  bool DispatchFabricatedKeyEvent(const ui::KeyEvent& event);
+
   // The toplevel window handle.
   // On non-Aura environment, this value is not used and always NULL.
   const HWND toplevel_window_handle_;
 
   // Name of the current input locale.
   std::string locale_;
-
-  // The current input text direction.
-  base::i18n::TextDirection direction_;
 
   // The new text direction and layout alignment requested by the user by
   // pressing ctrl-shift. It'll be sent to the text input client when the key

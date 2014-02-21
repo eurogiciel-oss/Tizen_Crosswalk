@@ -11,18 +11,21 @@
 #include "cc/test/fake_picture_pile_impl.h"
 #include "cc/test/pixel_test.h"
 #include "gpu/GLES2/gl2extchromium.h"
-#include "third_party/WebKit/public/platform/WebGraphicsContext3D.h"
+#include "gpu/command_buffer/client/gles2_interface.h"
 #include "third_party/skia/include/core/SkImageFilter.h"
 #include "third_party/skia/include/core/SkMatrix.h"
 #include "third_party/skia/include/effects/SkColorFilterImageFilter.h"
 #include "third_party/skia/include/effects/SkColorMatrixFilter.h"
 #include "ui/gfx/rect_conversions.h"
 
+using gpu::gles2::GLES2Interface;
+
 namespace cc {
 namespace {
 
+#if !defined(OS_ANDROID)
 scoped_ptr<RenderPass> CreateTestRootRenderPass(RenderPass::Id id,
-                                                gfx::Rect rect) {
+                                                const gfx::Rect& rect) {
   scoped_ptr<RenderPass> pass = RenderPass::Create();
   const gfx::Rect output_rect = rect;
   const gfx::RectF damage_rect = rect;
@@ -33,7 +36,7 @@ scoped_ptr<RenderPass> CreateTestRootRenderPass(RenderPass::Id id,
 
 scoped_ptr<RenderPass> CreateTestRenderPass(
     RenderPass::Id id,
-    gfx::Rect rect,
+    const gfx::Rect& rect,
     const gfx::Transform& transform_to_root_target) {
   scoped_ptr<RenderPass> pass = RenderPass::Create();
   const gfx::Rect output_rect = rect;
@@ -43,42 +46,48 @@ scoped_ptr<RenderPass> CreateTestRenderPass(
 }
 
 scoped_ptr<SharedQuadState> CreateTestSharedQuadState(
-    gfx::Transform content_to_target_transform, gfx::Rect rect) {
+    gfx::Transform content_to_target_transform, const gfx::Rect& rect) {
   const gfx::Size content_bounds = rect.size();
   const gfx::Rect visible_content_rect = rect;
   const gfx::Rect clip_rect = rect;
   const bool is_clipped = false;
   const float opacity = 1.0f;
+  const SkXfermode::Mode blend_mode = SkXfermode::kSrcOver_Mode;
   scoped_ptr<SharedQuadState> shared_state = SharedQuadState::Create();
   shared_state->SetAll(content_to_target_transform,
                        content_bounds,
                        visible_content_rect,
                        clip_rect,
                        is_clipped,
-                       opacity);
+                       opacity,
+                       blend_mode);
   return shared_state.Pass();
 }
 
 scoped_ptr<SharedQuadState> CreateTestSharedQuadStateClipped(
     gfx::Transform content_to_target_transform,
-    gfx::Rect rect,
-    gfx::Rect clip_rect) {
+    const gfx::Rect& rect,
+    const gfx::Rect& clip_rect) {
   const gfx::Size content_bounds = rect.size();
   const gfx::Rect visible_content_rect = clip_rect;
   const bool is_clipped = true;
   const float opacity = 1.0f;
+  const SkXfermode::Mode blend_mode = SkXfermode::kSrcOver_Mode;
   scoped_ptr<SharedQuadState> shared_state = SharedQuadState::Create();
   shared_state->SetAll(content_to_target_transform,
                        content_bounds,
                        visible_content_rect,
                        clip_rect,
                        is_clipped,
-                       opacity);
+                       opacity,
+                       blend_mode);
   return shared_state.Pass();
 }
 
 scoped_ptr<DrawQuad> CreateTestRenderPassDrawQuad(
-    SharedQuadState* shared_state, gfx::Rect rect, RenderPass::Id pass_id) {
+    SharedQuadState* shared_state,
+    const gfx::Rect& rect,
+    RenderPass::Id pass_id) {
   scoped_ptr<RenderPassDrawQuad> quad = RenderPassDrawQuad::Create();
   quad->SetNew(shared_state,
                rect,
@@ -94,7 +103,7 @@ scoped_ptr<DrawQuad> CreateTestRenderPassDrawQuad(
 }
 
 scoped_ptr<TextureDrawQuad> CreateTestTextureDrawQuad(
-    gfx::Rect rect,
+    const gfx::Rect& rect,
     SkColor texel_color,
     SkColor background_color,
     bool premultiplied_alpha,
@@ -142,16 +151,6 @@ typedef ::testing::Types<GLRenderer,
                          SoftwareRendererWithExpandedViewport> RendererTypes;
 TYPED_TEST_CASE(RendererPixelTest, RendererTypes);
 
-typedef ::testing::Types<GLRenderer,
-                         GLRendererWithSkiaGPUBackend,
-                         SoftwareRenderer> RendererTypesWithSkiaGPUBackend;
-template <typename RendererType>
-class RendererPixelTestWithSkiaGPUBackend
-    : public RendererPixelTest<RendererType> {
-};
-TYPED_TEST_CASE(RendererPixelTestWithSkiaGPUBackend,
-                RendererTypesWithSkiaGPUBackend);
-
 // All pixels can be off by one, but any more than that is an error.
 class FuzzyPixelOffByOneComparator : public FuzzyPixelComparator {
  public:
@@ -195,7 +194,6 @@ bool FuzzyForSoftwareOnlyPixelComparator<RendererType>::Compare(
   return exact_.Compare(actual_bmp, expected_bmp);
 }
 
-#if !defined(OS_ANDROID)
 TYPED_TEST(RendererPixelTest, SimpleGreenRect) {
   gfx::Rect rect(this->device_viewport_size_);
 
@@ -461,7 +459,7 @@ class VideoGLRendererPixelTest : public GLRendererPixelTest {
                                     gfx::Vector2d());
     }
 
-    scoped_ptr<YUVVideoDrawQuad> yuv_quad = cc::YUVVideoDrawQuad::Create();
+    scoped_ptr<YUVVideoDrawQuad> yuv_quad = YUVVideoDrawQuad::Create();
     yuv_quad->SetNew(shared_state, rect, opaque_rect, gfx::Size(),
                      y_resource, u_resource, v_resource, a_resource);
     return yuv_quad.Pass();
@@ -1283,35 +1281,32 @@ TEST_F(GLRendererPixelTestWithBackgroundFilter, InvertFilter) {
 class ExternalStencilPixelTest : public GLRendererPixelTest {
  protected:
   void ClearBackgroundToGreen() {
-    WebKit::WebGraphicsContext3D* context3d =
-        output_surface_->context_provider()->Context3d();
+    GLES2Interface* gl = output_surface_->context_provider()->ContextGL();
     output_surface_->EnsureBackbuffer();
     output_surface_->Reshape(device_viewport_size_, 1);
-    context3d->clearColor(0.f, 1.f, 0.f, 1.f);
-    context3d->clear(GL_COLOR_BUFFER_BIT);
+    gl->ClearColor(0.f, 1.f, 0.f, 1.f);
+    gl->Clear(GL_COLOR_BUFFER_BIT);
   }
 
   void PopulateStencilBuffer() {
     // Set two quadrants of the stencil buffer to 1.
-    WebKit::WebGraphicsContext3D* context3d =
-        output_surface_->context_provider()->Context3d();
-    ASSERT_TRUE(context3d->getContextAttributes().stencil);
+    GLES2Interface* gl = output_surface_->context_provider()->ContextGL();
     output_surface_->EnsureBackbuffer();
     output_surface_->Reshape(device_viewport_size_, 1);
-    context3d->clearStencil(0);
-    context3d->clear(GL_STENCIL_BUFFER_BIT);
-    context3d->enable(GL_SCISSOR_TEST);
-    context3d->clearStencil(1);
-    context3d->scissor(0,
-                       0,
-                       device_viewport_size_.width() / 2,
-                       device_viewport_size_.height() / 2);
-    context3d->clear(GL_STENCIL_BUFFER_BIT);
-    context3d->scissor(device_viewport_size_.width() / 2,
-                       device_viewport_size_.height() / 2,
-                       device_viewport_size_.width(),
-                       device_viewport_size_.height());
-    context3d->clear(GL_STENCIL_BUFFER_BIT);
+    gl->ClearStencil(0);
+    gl->Clear(GL_STENCIL_BUFFER_BIT);
+    gl->Enable(GL_SCISSOR_TEST);
+    gl->ClearStencil(1);
+    gl->Scissor(0,
+                0,
+                device_viewport_size_.width() / 2,
+                device_viewport_size_.height() / 2);
+    gl->Clear(GL_STENCIL_BUFFER_BIT);
+    gl->Scissor(device_viewport_size_.width() / 2,
+                device_viewport_size_.height() / 2,
+                device_viewport_size_.width(),
+                device_viewport_size_.height());
+    gl->Clear(GL_STENCIL_BUFFER_BIT);
   }
 };
 
@@ -1621,10 +1616,9 @@ TEST_F(GLRendererPixelTest, AntiAliasingPerspective) {
       FuzzyPixelOffByOneComparator(true)));
 }
 
-TYPED_TEST(RendererPixelTestWithSkiaGPUBackend, PictureDrawQuadIdentityScale) {
+TYPED_TEST(RendererPixelTest, PictureDrawQuadIdentityScale) {
   gfx::Size pile_tile_size(1000, 1000);
   gfx::Rect viewport(this->device_viewport_size_);
-  bool use_skia_gpu_backend = this->UseSkiaGPUBackend();
   // TODO(enne): the renderer should figure this out on its own.
   ResourceFormat texture_format = RGBA_8888;
 
@@ -1667,7 +1661,6 @@ TYPED_TEST(RendererPixelTestWithSkiaGPUBackend, PictureDrawQuadIdentityScale) {
                     texture_format,
                     viewport,
                     1.f,
-                    use_skia_gpu_backend,
                     blue_pile);
   pass->quad_list.push_back(blue_quad.PassAs<DrawQuad>());
 
@@ -1692,7 +1685,6 @@ TYPED_TEST(RendererPixelTestWithSkiaGPUBackend, PictureDrawQuadIdentityScale) {
                      texture_format,
                      viewport,
                      1.f,
-                     use_skia_gpu_backend,
                      green_pile);
   pass->quad_list.push_back(green_quad.PassAs<DrawQuad>());
 
@@ -1710,7 +1702,6 @@ TYPED_TEST(RendererPixelTestWithSkiaGPUBackend, PictureDrawQuadIdentityScale) {
 TYPED_TEST(RendererPixelTest, PictureDrawQuadOpacity) {
   gfx::Size pile_tile_size(1000, 1000);
   gfx::Rect viewport(this->device_viewport_size_);
-  bool use_skia_gpu_backend = this->UseSkiaGPUBackend();
   ResourceFormat texture_format = RGBA_8888;
 
   RenderPass::Id id(1, 1);
@@ -1740,7 +1731,6 @@ TYPED_TEST(RendererPixelTest, PictureDrawQuadOpacity) {
                      texture_format,
                      viewport,
                      1.f,
-                     use_skia_gpu_backend,
                      green_pile);
   pass->quad_list.push_back(green_quad.PassAs<DrawQuad>());
 
@@ -1765,7 +1755,6 @@ TYPED_TEST(RendererPixelTest, PictureDrawQuadOpacity) {
                      texture_format,
                      viewport,
                      1.f,
-                     use_skia_gpu_backend,
                      white_pile);
   pass->quad_list.push_back(white_quad.PassAs<DrawQuad>());
 
@@ -1803,7 +1792,6 @@ TYPED_TEST(RendererPixelTest, PictureDrawQuadDisableImageFiltering) {
 
   gfx::Size pile_tile_size(1000, 1000);
   gfx::Rect viewport(this->device_viewport_size_);
-  bool use_skia_gpu_backend = this->UseSkiaGPUBackend();
   ResourceFormat texture_format = RGBA_8888;
 
   RenderPass::Id id(1, 1);
@@ -1843,7 +1831,6 @@ TYPED_TEST(RendererPixelTest, PictureDrawQuadDisableImageFiltering) {
                      texture_format,
                      viewport,
                      1.f,
-                     use_skia_gpu_backend,
                      pile);
   pass->quad_list.push_back(quad.PassAs<DrawQuad>());
 
@@ -1859,11 +1846,9 @@ TYPED_TEST(RendererPixelTest, PictureDrawQuadDisableImageFiltering) {
       ExactPixelComparator(true)));
 }
 
-TYPED_TEST(RendererPixelTestWithSkiaGPUBackend,
-           PictureDrawQuadNonIdentityScale) {
+TYPED_TEST(RendererPixelTest, PictureDrawQuadNonIdentityScale) {
   gfx::Size pile_tile_size(1000, 1000);
   gfx::Rect viewport(this->device_viewport_size_);
-  bool use_skia_gpu_backend = this->UseSkiaGPUBackend();
   // TODO(enne): the renderer should figure this out on its own.
   ResourceFormat texture_format = RGBA_8888;
 
@@ -1902,7 +1887,6 @@ TYPED_TEST(RendererPixelTestWithSkiaGPUBackend,
                       texture_format,
                       green_rect1,
                       1.f,
-                      use_skia_gpu_backend,
                       green_pile);
   pass->quad_list.push_back(green_quad1.PassAs<DrawQuad>());
 
@@ -1915,7 +1899,6 @@ TYPED_TEST(RendererPixelTestWithSkiaGPUBackend,
                       texture_format,
                       green_rect2,
                       1.f,
-                      use_skia_gpu_backend,
                       green_pile);
   pass->quad_list.push_back(green_quad2.PassAs<DrawQuad>());
 
@@ -1987,7 +1970,6 @@ TYPED_TEST(RendererPixelTestWithSkiaGPUBackend,
                     texture_format,
                     content_union_rect,
                     contents_scale,
-                    use_skia_gpu_backend,
                     pile);
   pass->quad_list.push_back(blue_quad.PassAs<DrawQuad>());
 
@@ -2011,6 +1993,69 @@ TYPED_TEST(RendererPixelTestWithSkiaGPUBackend,
       base::FilePath(FILE_PATH_LITERAL("four_blue_green_checkers.png")),
       ExactPixelComparator(true)));
 }
+
+TYPED_TEST(RendererPixelTest, WrapModeRepeat) {
+  gfx::Rect rect(this->device_viewport_size_);
+
+  RenderPass::Id id(1, 1);
+  scoped_ptr<RenderPass> pass = CreateTestRootRenderPass(id, rect);
+
+  scoped_ptr<SharedQuadState> shared_state =
+      CreateTestSharedQuadState(gfx::Transform(), rect);
+
+  gfx::Rect texture_rect(4, 4);
+  SkPMColor colors[4] = {
+    SkPreMultiplyColor(SkColorSetARGB(255, 0, 255, 0)),
+    SkPreMultiplyColor(SkColorSetARGB(255, 0, 128, 0)),
+    SkPreMultiplyColor(SkColorSetARGB(255, 0,  64, 0)),
+    SkPreMultiplyColor(SkColorSetARGB(255, 0,   0, 0)),
+  };
+  uint32_t pixels[16] = {
+    colors[0], colors[0], colors[1], colors[1],
+    colors[0], colors[0], colors[1], colors[1],
+    colors[2], colors[2], colors[3], colors[3],
+    colors[2], colors[2], colors[3], colors[3],
+  };
+  ResourceProvider::ResourceId resource =
+      this->resource_provider_->CreateResource(
+          texture_rect.size(),
+          GL_REPEAT,
+          ResourceProvider::TextureUsageAny,
+          RGBA_8888);
+  this->resource_provider_->SetPixels(
+      resource,
+      reinterpret_cast<uint8_t*>(pixels),
+      texture_rect,
+      texture_rect,
+      gfx::Vector2d());
+
+  float vertex_opacity[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+  scoped_ptr<TextureDrawQuad> texture_quad = TextureDrawQuad::Create();
+  texture_quad->SetNew(
+      shared_state.get(),
+      gfx::Rect(this->device_viewport_size_),
+      gfx::Rect(),
+      resource,
+      true,  // premultiplied_alpha
+      gfx::PointF(0.0f, 0.0f),  // uv_top_left
+      gfx::PointF(  // uv_bottom_right
+          this->device_viewport_size_.width() / texture_rect.width(),
+          this->device_viewport_size_.height() / texture_rect.height()),
+      SK_ColorWHITE,
+      vertex_opacity,
+      false);  // flipped
+  pass->quad_list.push_back(texture_quad.PassAs<DrawQuad>());
+
+  RenderPassList pass_list;
+  pass_list.push_back(pass.Pass());
+
+  EXPECT_TRUE(this->RunPixelTest(
+      &pass_list,
+      PixelTest::NoOffscreenContext,
+      base::FilePath(FILE_PATH_LITERAL("wrap_mode_repeat.png")),
+      FuzzyPixelOffByOneComparator(true)));
+}
+
 #endif  // !defined(OS_ANDROID)
 
 }  // namespace

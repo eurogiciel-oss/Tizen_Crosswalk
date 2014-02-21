@@ -104,6 +104,42 @@
     <message name="IDS_BOOKMARK_BAR_RENAME_FOLDER" desc="Title of the bookmark context menu item that brings up a dialog to rename a folder">
       &amp;Rename...
     </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO" desc="Menu title for undoing a bookmark operation">
+      &amp;Undo
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO" desc="Menu title for redoing a bookmark operation">
+      &amp;Redo
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_ADD" desc="Menu title for undoing adding a bookmark">
+      &amp;Undo add
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_ADD" desc="Menu title for redoing adding a bookmark">
+      &amp;Redo add
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_DELETE" desc="Menu title for undoing deletion of a bookmark">
+      &amp;Undo delete
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_DELETE" desc="Menu title for redoing deletion of a bookmark">
+      &amp;Redo delete
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_EDIT" desc="Menu title for undoing a bookmark edit">
+      &amp;Undo edit
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_EDIT" desc="Menu title for redoing a bookmark edit">
+      &amp;Redo edit
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_MOVE" desc="Menu title for undoing moving a bookmark">
+      &amp;Undo move
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_MOVE" desc="Menu title for redoing moving a bookmark">
+      &amp;Redo move
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_REORDER" desc="Menu title for undoing reordering bookmarks">
+      &amp;Undo reorder
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_REORDER" desc="Menu title for redoing reordering bookmarks">
+      &amp;Redo reorder
+    </message>
     <message name="IDS_BOOKMARK_BAR_REMOVE" desc="Menu title for removing/unstarring a bookmark">
       &amp;Delete
     </message>
@@ -144,6 +180,42 @@
     <message name="IDS_BOOKMARK_BAR_RENAME_FOLDER" desc="In Title Case: Title of the bookmark context menu item that brings up a dialog to rename a folder">
       &amp;Rename...
     </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO" desc="In Title Case: Menu title for undoing a bookmark operation">
+       &amp;Undo
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO" desc="In Title Case: Menu title for redoing a bookmark operation">
+       &amp;Redo
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_ADD" desc="In Title Case: Menu title for undoing adding a bookmark">
+      &amp;Undo Add
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_ADD" desc="In Title Case: Menu title for redoing adding a bookmark">
+      &amp;Redo Add
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_DELETE" desc="In Title Case: Menu title for undoing deletion of a bookmark">
+      &amp;Undo Delete
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_DELETE" desc="In Title Case: Menu title for redoing deletion of a bookmark">
+      &amp;Redo Delete
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_EDIT" desc="In Title Case: Menu title for undoing a bookmark edit">
+      &amp;Undo Edit
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_EDIT" desc="In Title Case: Menu title for redoing a bookmark edit">
+      &amp;Redo Edit
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_MOVE" desc="In Title Case: Menu title for undoing moving a bookmark">
+      &amp;Undo Move
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_MOVE" desc="In Title Case: Menu title for redoing moving a bookmark">
+      &amp;Redo Move
+    </message>
+    <message name="IDS_BOOKMARK_BAR_UNDO_REORDER" desc="In Title Case: Menu title for undoing reordering bookmarks">
+      &amp;Undo Reorder
+    </message>
+    <message name="IDS_BOOKMARK_BAR_REDO_REORDER" desc="In Title Case: Menu title for redoing reordering bookmarks">
+      &amp;Redo Reorder
+    </message>
     <message name="IDS_BOOKMARK_BAR_REMOVE" desc="In Title Case: Menu title for removing/unstarring a bookmark">
       &amp;Delete
     </message>
@@ -183,11 +255,20 @@
   <message name="IDS_BOOKMARK_BUBBLE_PAGE_BOOKMARK" desc="Title of the bubble when re-clicking on a bookmark">
     Bookmark
   </message>
+  <message name="IDS_BOOKMARK_AX_BUBBLE_PAGE_BOOKMARK" desc="Title of the bubble when re-clicking on a bookmark, read by spoken feedback">
+    Edit bookmark
+  </message>
   <message name="IDS_BOOKMARK_BUBBLE_TITLE_TEXT" desc="Text preceding the title of the page that was bookmarked">
     Name:
   </message>
+  <message name="IDS_BOOKMARK_AX_BUBBLE_TITLE_TEXT" desc="Text preceding the title of the page that was bookmarked, read by spoken feedback">
+    Bookmark name
+  </message>
   <message name="IDS_BOOKMARK_BUBBLE_FOLDER_TEXT" desc="Text preceding the folder selector">
     Folder:
+  </message>
+  <message name="IDS_BOOKMARK_AX_BUBBLE_FOLDER_TEXT" desc="Text preceding the folder selector">
+    Bookmark folder
   </message>
   <message name="IDS_BOOKMARK_BUBBLE_REMOVE_BOOKMARK" desc="Title of the button for removing the bookmark">
     Remove
@@ -220,8 +301,14 @@
   <message name="IDS_BOOKMARK_EDITOR_NAME_LABEL" desc="Label shown before the title/name of the URL.">
     Name:
   </message>
+  <message name="IDS_BOOKMARK_AX_EDITOR_NAME_LABEL" desc="Spoken text for bookmark name text field in edit folder dialog">
+    Bookmark name
+  </message>
   <message name="IDS_BOOKMARK_BAR_EDIT_FOLDER_LABEL" desc="Title of label before text field in edit folder dialog">
     Name:
+  </message>
+  <message name="IDS_BOOKMARK_AX_EDITOR_URL_LABEL" desc="Spoken text for bookmark URL text field in edit folder dialog.">
+    Bookmark URL
   </message>
   <message name="IDS_BOOKMARK_EDITOR_URL_LABEL" desc="Label shown before the URL.">
     URL:

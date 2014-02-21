@@ -167,9 +167,11 @@ RequestTracker.prototype = {
 };
 
 /**
- * Generate and track XMLHttpRequests which will have abort() called on.
+ * Generate and track XMLHttpRequests which will timeout or have abort() called
+ * on.
  *
- * @param shouldAbort {Boolean} True if we should call abort at all.
+ * @param shouldAbort {Boolean} True if we should call send() and then abort()
+ *                              at all.
  * @param abortDelay  {Number}  The time in ms to wait before calling abort().
  */
 function AbortedRequest(shouldAbort, abortDelay) {
@@ -193,30 +195,49 @@ AbortedRequest.prototype = {
     req.ontimeout = handleEvent;
 
     req.timeout = TIME_REGULAR_TIMEOUT;
-    var _this = this;
 
     function abortReq() {
-      req.abort();
+      if (me.abortDelay > TIME_REGULAR_TIMEOUT) {
+        is(me.request.readyState, XMLHttpRequest.DONE, "XHR must be in DONE state after timeout");
+        me.ensureTimeoutEventFired();
+        // req is in DONE state, so, "abort" event won't fire.
+        req.abort();
+      } else {
+        me.ensureNoEventsFired();
+        // This fires "abort" event.
+        req.abort();
+      }
+
+      is(me.request.readyState, XMLHttpRequest.UNSENT, "XHR must be in UNSENT state after abort()");
+
+      TestCounter.testComplete();
     }
 
     if (!this.shouldAbort) {
       self.setTimeout(function() {
         try {
-          _this.noEventsFired();
+          // send() has not been called. No event should be observed.
+          me.ensureNoEventsFired();
         }
         catch (e) {
           ok(false, "Unexpected error: " + e);
-          TestCounter.testComplete();
         }
+
+        TestCounter.testComplete();
       }, TIME_NORMAL_LOAD);
     }
     else {
       // Abort events can only be triggered on sent requests.
       req.send();
       if (this.abortDelay == -1) {
-        abortReq();
+        is(req.readyState, XMLHttpRequest.OPENED, "XHR must be in OPENED state");
+        // This should fire "abort" event. handleEvent checks that.
+        req.abort();
+
+        TestCounter.testComplete();
       }
       else {
+        // Check state of req and call abort() on it after the specified delay.
         self.setTimeout(abortReq, this.abortDelay);
       }
     }
@@ -225,10 +246,15 @@ AbortedRequest.prototype = {
   /**
    * Ensure that no events fired at all, especially not our timeout event.
    */
-  noEventsFired: function() {
+  ensureNoEventsFired: function() {
     ok(!this.hasFired, "No events should fire for an unsent, unaborted request");
-    // We're done; if timeout hasn't fired by now, it never will.
-    TestCounter.testComplete();
+  },
+
+  /**
+   * Ensure that an event fired, our timeout event.
+   */
+  ensureTimeoutEventFired: function() {
+    ok(this.hasFired && this.eventFired == "timeout", "A timeout event should have fired");
   },
 
   /**
@@ -243,22 +269,34 @@ AbortedRequest.prototype = {
   /**
    * Check the event received, and if it's the right (and only) one we get.
    *
-   * WebKit fires abort events even for DONE and UNSENT states, which is 
-   * discussed in http://webkit.org/b/98404
-   * That's why we chose to accept secondary "abort" events in this test.
-   *
    * @param {DOMProgressEvent} evt An event of type "load" or "timeout".
    */
   handleEvent: function(evt) {
-    if (this.hasFired && evt.type != "abort") {
-      ok(false, "Only abort event should fire: " + this.getMessage());
+    if (this.hasFired) {
+      ok(false, "Only one event should fire: " + this.getMessage());
       return;
     }
 
-    var expectedEvent = (this.abortDelay >= TIME_REGULAR_TIMEOUT && !this.hasFired) ? "timeout" : "abort";
+    if (!this.shouldAbort) {
+      // We don't call send() and abort(). No event should fire.
+      ok(false, "No event should fire: " + this.getMessage());
+      return;
+    }
+
+    var expectedEvent;
+    if (this.abortDelay >= TIME_REGULAR_TIMEOUT) {
+      // Timeout happens earlier than abort(). abort() will be noop since the
+      // XHR should be already in DONE state at that point.
+      expectedEvent = "timeout";
+    } else {
+      // abort() will be called earlier than timeout. "abort" event should
+      //  fire.
+      expectedEvent = "abort";
+    }
+
     this.hasFired = true;
+    this.eventFired = evt.type;
     is(evt.type, expectedEvent, this.getMessage());
-    TestCounter.testComplete();
   }
 };
 

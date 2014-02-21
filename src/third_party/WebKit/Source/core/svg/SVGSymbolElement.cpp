@@ -25,42 +25,38 @@
 #include "SVGNames.h"
 #include "core/rendering/svg/RenderSVGHiddenContainer.h"
 #include "core/svg/SVGElementInstance.h"
-#include "core/svg/SVGFitToViewBox.h"
 
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_BOOLEAN(SVGSymbolElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
-DEFINE_ANIMATED_PRESERVEASPECTRATIO(SVGSymbolElement, SVGNames::preserveAspectRatioAttr, PreserveAspectRatio, preserveAspectRatio)
-DEFINE_ANIMATED_RECT(SVGSymbolElement, SVGNames::viewBoxAttr, ViewBox, viewBox)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGSymbolElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(viewBox)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(preserveAspectRatio)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGSymbolElement::SVGSymbolElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+inline SVGSymbolElement::SVGSymbolElement(Document& document)
+    : SVGElement(SVGNames::symbolTag, document)
+    , m_viewBox(SVGAnimatedRect::create(this, SVGNames::viewBoxAttr))
+    , m_preserveAspectRatio(SVGAnimatedPreserveAspectRatio::create(this, SVGNames::preserveAspectRatioAttr, SVGPreserveAspectRatio::create()))
 {
-    ASSERT(hasTagName(SVGNames::symbolTag));
     ScriptWrappable::init(this);
+
+    addToPropertyMap(m_viewBox);
+    addToPropertyMap(m_preserveAspectRatio);
     registerAnimatedPropertiesForSVGSymbolElement();
 }
 
-PassRefPtr<SVGSymbolElement> SVGSymbolElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGSymbolElement> SVGSymbolElement::create(Document& document)
 {
-    return adoptRef(new SVGSymbolElement(tagName, document));
+    return adoptRef(new SVGSymbolElement(document));
 }
 
 bool SVGSymbolElement::isSupportedAttribute(const QualifiedName& attrName)
 {
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
-    if (supportedAttributes.isEmpty()) {
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
+    if (supportedAttributes.isEmpty())
         SVGFitToViewBox::addSupportedAttributes(supportedAttributes);
-    }
+
     return supportedAttributes.contains<SVGAttributeHashTranslator>(attrName);
 }
 
@@ -71,8 +67,6 @@ void SVGSymbolElement::parseAttribute(const QualifiedName& name, const AtomicStr
         return;
     }
 
-    if (SVGExternalResourcesRequired::parseAttribute(name, value))
-        return;
     if (SVGFitToViewBox::parseAttribute(this, name, value))
         return;
 

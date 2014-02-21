@@ -27,13 +27,13 @@
 #include "chrome/browser/history/history_service.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/prefs/browser_prefs.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/test/base/testing_pref_service_syncable.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/user_prefs/pref_registry_syncable.h"
 #include "content/public/test/test_browser_thread_bundle.h"
 #include "content/public/test/test_utils.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/permissions/permission_set.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -96,7 +96,7 @@ const base::FilePath::CharType kExtensionFilePath[] =
 static scoped_refptr<extensions::Extension> CreateExtension(
     const std::string& name,
     const std::string& id) {
-  DictionaryValue manifest;
+  base::DictionaryValue manifest;
   manifest.SetString(extensions::manifest_keys::kVersion, "1.0.0.0");
   manifest.SetString(extensions::manifest_keys::kName, name);
   std::string error;
@@ -181,7 +181,8 @@ TEST_F(ProfileSigninConfirmationHelperTest, PromptForNewProfile_Bookmarks) {
   ASSERT_TRUE(model_);
 
   // Profile is new but has bookmarks.
-  model_->AddURL(model_->bookmark_bar_node(), 0, string16(ASCIIToUTF16("foo")),
+  model_->AddURL(model_->bookmark_bar_node(), 0,
+                 base::string16(base::ASCIIToUTF16("foo")),
                  GURL("http://foo.com"));
   EXPECT_TRUE(
       GetCallbackResult(

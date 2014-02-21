@@ -101,11 +101,9 @@ static INLINE void filter4(int8_t mask, uint8_t hev, uint8_t *op1,
   *op1 = signed_char_clamp(ps1 + filter) ^ 0x80;
 }
 
-void vp9_loop_filter_horizontal_edge_c(uint8_t *s, int p /* pitch */,
-                                       const uint8_t *blimit,
-                                       const uint8_t *limit,
-                                       const uint8_t *thresh,
-                                       int count) {
+void vp9_lpf_horizontal_4_c(uint8_t *s, int p /* pitch */,
+                            const uint8_t *blimit, const uint8_t *limit,
+                            const uint8_t *thresh, int count) {
   int i;
 
   // loop filter designed to work using chars so that we can make maximum use
@@ -121,11 +119,17 @@ void vp9_loop_filter_horizontal_edge_c(uint8_t *s, int p /* pitch */,
   }
 }
 
-void vp9_loop_filter_vertical_edge_c(uint8_t *s, int pitch,
-                                     const uint8_t *blimit,
-                                     const uint8_t *limit,
-                                     const uint8_t *thresh,
-                                     int count) {
+void vp9_lpf_horizontal_4_dual_c(uint8_t *s, int p, const uint8_t *blimit0,
+                                 const uint8_t *limit0, const uint8_t *thresh0,
+                                 const uint8_t *blimit1, const uint8_t *limit1,
+                                 const uint8_t *thresh1) {
+  vp9_lpf_horizontal_4_c(s, p, blimit0, limit0, thresh0, 1);
+  vp9_lpf_horizontal_4_c(s + 8, p, blimit1, limit1, thresh1, 1);
+}
+
+void vp9_lpf_vertical_4_c(uint8_t *s, int pitch, const uint8_t *blimit,
+                          const uint8_t *limit, const uint8_t *thresh,
+                          int count) {
   int i;
 
   // loop filter designed to work using chars so that we can make maximum use
@@ -139,6 +143,15 @@ void vp9_loop_filter_vertical_edge_c(uint8_t *s, int pitch,
     filter4(mask, hev, s - 2, s - 1, s, s + 1);
     s += pitch;
   }
+}
+
+void vp9_lpf_vertical_4_dual_c(uint8_t *s, int pitch, const uint8_t *blimit0,
+                               const uint8_t *limit0, const uint8_t *thresh0,
+                               const uint8_t *blimit1, const uint8_t *limit1,
+                               const uint8_t *thresh1) {
+  vp9_lpf_vertical_4_c(s, pitch, blimit0, limit0, thresh0, 1);
+  vp9_lpf_vertical_4_c(s + 8 * pitch, pitch, blimit1, limit1,
+                                  thresh1, 1);
 }
 
 static INLINE void filter8(int8_t mask, uint8_t hev, uint8_t flat,
@@ -162,11 +175,9 @@ static INLINE void filter8(int8_t mask, uint8_t hev, uint8_t flat,
   }
 }
 
-void vp9_mbloop_filter_horizontal_edge_c(uint8_t *s, int p,
-                                         const uint8_t *blimit,
-                                         const uint8_t *limit,
-                                         const uint8_t *thresh,
-                                         int count) {
+void vp9_lpf_horizontal_8_c(uint8_t *s, int p, const uint8_t *blimit,
+                            const uint8_t *limit, const uint8_t *thresh,
+                            int count) {
   int i;
 
   // loop filter designed to work using chars so that we can make maximum use
@@ -185,11 +196,17 @@ void vp9_mbloop_filter_horizontal_edge_c(uint8_t *s, int p,
   }
 }
 
-void vp9_mbloop_filter_vertical_edge_c(uint8_t *s, int pitch,
-                                       const uint8_t *blimit,
-                                       const uint8_t *limit,
-                                       const uint8_t *thresh,
-                                       int count) {
+void vp9_lpf_horizontal_8_dual_c(uint8_t *s, int p, const uint8_t *blimit0,
+                                 const uint8_t *limit0, const uint8_t *thresh0,
+                                 const uint8_t *blimit1, const uint8_t *limit1,
+                                 const uint8_t *thresh1) {
+  vp9_lpf_horizontal_8_c(s, p, blimit0, limit0, thresh0, 1);
+  vp9_lpf_horizontal_8_c(s + 8, p, blimit1, limit1, thresh1, 1);
+}
+
+void vp9_lpf_vertical_8_c(uint8_t *s, int pitch, const uint8_t *blimit,
+                          const uint8_t *limit, const uint8_t *thresh,
+                          int count) {
   int i;
 
   for (i = 0; i < 8 * count; ++i) {
@@ -203,6 +220,15 @@ void vp9_mbloop_filter_vertical_edge_c(uint8_t *s, int pitch,
                              s,     s + 1, s + 2, s + 3);
     s += pitch;
   }
+}
+
+void vp9_lpf_vertical_8_dual_c(uint8_t *s, int pitch, const uint8_t *blimit0,
+                               const uint8_t *limit0, const uint8_t *thresh0,
+                               const uint8_t *blimit1, const uint8_t *limit1,
+                               const uint8_t *thresh1) {
+  vp9_lpf_vertical_8_c(s, pitch, blimit0, limit0, thresh0, 1);
+  vp9_lpf_vertical_8_c(s + 8 * pitch, pitch, blimit1, limit1,
+                                    thresh1, 1);
 }
 
 static INLINE void filter16(int8_t mask, uint8_t hev,
@@ -256,11 +282,9 @@ static INLINE void filter16(int8_t mask, uint8_t hev,
   }
 }
 
-void vp9_mb_lpf_horizontal_edge_w_c(uint8_t *s, int p,
-                                    const uint8_t *blimit,
-                                    const uint8_t *limit,
-                                    const uint8_t *thresh,
-                                    int count) {
+void vp9_lpf_horizontal_16_c(uint8_t *s, int p, const uint8_t *blimit,
+                             const uint8_t *limit, const uint8_t *thresh,
+                             int count) {
   int i;
 
   // loop filter designed to work using chars so that we can make maximum use
@@ -285,13 +309,14 @@ void vp9_mb_lpf_horizontal_edge_w_c(uint8_t *s, int p,
   }
 }
 
-void vp9_mb_lpf_vertical_edge_w_c(uint8_t *s, int p,
-                                  const uint8_t *blimit,
-                                  const uint8_t *limit,
-                                  const uint8_t *thresh) {
+static void mb_lpf_vertical_edge_w(uint8_t *s, int p,
+                                   const uint8_t *blimit,
+                                   const uint8_t *limit,
+                                   const uint8_t *thresh,
+                                   int count) {
   int i;
 
-  for (i = 0; i < 8; ++i) {
+  for (i = 0; i < count; ++i) {
     const uint8_t p3 = s[-4], p2 = s[-3], p1 = s[-2], p0 = s[-1];
     const uint8_t q0 = s[0], q1 = s[1],  q2 = s[2], q3 = s[3];
     const int8_t mask = filter_mask(*limit, *blimit,
@@ -306,4 +331,14 @@ void vp9_mb_lpf_vertical_edge_w_c(uint8_t *s, int p,
              s,     s + 1, s + 2, s + 3, s + 4, s + 5, s + 6, s + 7);
     s += p;
   }
+}
+
+void vp9_lpf_vertical_16_c(uint8_t *s, int p, const uint8_t *blimit,
+                           const uint8_t *limit, const uint8_t *thresh) {
+  mb_lpf_vertical_edge_w(s, p, blimit, limit, thresh, 8);
+}
+
+void vp9_lpf_vertical_16_dual_c(uint8_t *s, int p, const uint8_t *blimit,
+                                const uint8_t *limit, const uint8_t *thresh) {
+  mb_lpf_vertical_edge_w(s, p, blimit, limit, thresh, 16);
 }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <body>
 <script>
 description('Tests that an element is not upgraded after being destroyed');
@@ -16,7 +16,7 @@ var proto = Object.create(HTMLSpanElement.prototype);
 proto.createdCallback = function () {
     testFailed('unreachable');
 };
-document.register('x-a', {prototype: proto});
+document.registerElement('x-a', {prototype: proto});
 
 testPassed('Did not crash.');
 

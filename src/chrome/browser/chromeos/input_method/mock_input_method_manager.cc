@@ -60,6 +60,18 @@ size_t MockInputMethodManager::GetNumActiveInputMethods() const {
   return 1;
 }
 
+const InputMethodDescriptor* MockInputMethodManager::GetInputMethodFromId(
+    const std::string& input_method_id) const {
+  static const InputMethodDescriptor defaultInputMethod =
+      InputMethodUtil::GetFallbackInputMethodDescriptor();
+  for (size_t i = 0; i < active_input_method_ids_.size(); i++) {
+    if (input_method_id == active_input_method_ids_[i]) {
+      return &defaultInputMethod;
+    }
+  }
+  return NULL;
+}
+
 void MockInputMethodManager::EnableLayouts(const std::string& language_code,
                                            const std::string& initial_layout) {
 }
@@ -84,11 +96,7 @@ void MockInputMethodManager::ActivateInputMethodProperty(
 
 void MockInputMethodManager::AddInputMethodExtension(
     const std::string& id,
-    const std::string& name,
-    const std::vector<std::string>& layouts,
-    const std::vector<std::string>& languages,
-    const GURL& options_url,
-    InputMethodEngine* instance) {
+    InputMethodEngineInterface* instance) {
 }
 
 void MockInputMethodManager::RemoveInputMethodExtension(const std::string& id) {
@@ -128,7 +136,8 @@ InputMethodDescriptor MockInputMethodManager::GetCurrentInputMethod() const {
                                  descriptor.keyboard_layouts(),
                                  descriptor.language_codes(),
                                  true,
-                                 GURL());  // options page url.
+                                 GURL(),  // options page url.
+                                 GURL());  // input view page url.
   }
   return descriptor;
 }
@@ -136,6 +145,10 @@ InputMethodDescriptor MockInputMethodManager::GetCurrentInputMethod() const {
 InputMethodPropertyList
 MockInputMethodManager::GetCurrentInputMethodProperties() const {
   return InputMethodPropertyList();
+}
+
+void MockInputMethodManager::SetCurrentInputMethodProperties(
+    const InputMethodPropertyList& property_list) {
 }
 
 XKeyboard* MockInputMethodManager::GetXKeyboard() {

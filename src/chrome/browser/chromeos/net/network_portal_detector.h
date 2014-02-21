@@ -32,6 +32,10 @@ class NetworkPortalDetector {
           response_code(net::URLFetcher::RESPONSE_CODE_INVALID) {
     }
 
+    bool operator==(const CaptivePortalState& o) const {
+      return status == o.status && response_code == o.response_code;
+    }
+
     CaptivePortalStatus status;
     int response_code;
   };
@@ -111,6 +115,9 @@ class NetworkPortalDetector {
 
   // Gets the instance of the NetworkPortalDetector.
   static NetworkPortalDetector* Get();
+
+  // Returns non-localized string representation of |status|.
+  static std::string CaptivePortalStatusString(CaptivePortalStatus status);
 
  protected:
   NetworkPortalDetector() {}

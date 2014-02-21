@@ -26,9 +26,7 @@
 #include "config.h"
 #include "core/dom/Element.h"
 
-#include "CSSPropertyNames.h"
 #include "CSSValueKeywords.h"
-#include "HTMLNames.h"
 #include "RuntimeEnabledFeatures.h"
 #include "SVGNames.h"
 #include "XMLNames.h"
@@ -36,19 +34,17 @@
 #include "core/accessibility/AXObjectCache.h"
 #include "core/animation/DocumentTimeline.h"
 #include "core/animation/css/CSSAnimations.h"
-#include "core/css/CSSParser.h"
 #include "core/css/CSSStyleSheet.h"
 #include "core/css/CSSValuePool.h"
 #include "core/css/PropertySetCSSStyleDeclaration.h"
 #include "core/css/StylePropertySet.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/resolver/StyleResolver.h"
 #include "core/dom/Attr.h"
-#include "core/dom/Attribute.h"
 #include "core/dom/CSSSelectorWatch.h"
 #include "core/dom/ClientRect.h"
 #include "core/dom/ClientRectList.h"
 #include "core/dom/DatasetDOMStringMap.h"
-#include "core/dom/Document.h"
 #include "core/dom/DocumentSharedObjectPool.h"
 #include "core/dom/ElementRareData.h"
 #include "core/dom/ExceptionCode.h"
@@ -57,10 +53,10 @@
 #include "core/dom/MutationRecord.h"
 #include "core/dom/NamedNodeMap.h"
 #include "core/dom/NodeRenderStyle.h"
-#include "core/dom/NodeRenderingContext.h"
 #include "core/dom/PostAttachCallbacks.h"
 #include "core/dom/PresentationAttributeStyle.h"
 #include "core/dom/PseudoElement.h"
+#include "core/dom/RenderTreeBuilder.h"
 #include "core/dom/ScriptableDocumentParser.h"
 #include "core/dom/SelectorQuery.h"
 #include "core/dom/Text.h"
@@ -77,6 +73,7 @@
 #include "core/frame/ContentSecurityPolicy.h"
 #include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
+#include "core/frame/UseCounter.h"
 #include "core/html/ClassList.h"
 #include "core/html/HTMLCollection.h"
 #include "core/html/HTMLDocument.h"
@@ -88,11 +85,12 @@
 #include "core/html/HTMLTableRowsCollection.h"
 #include "core/html/HTMLTemplateElement.h"
 #include "core/html/parser/HTMLParserIdioms.h"
+#include "core/inspector/InspectorInstrumentation.h"
 #include "core/page/FocusController.h"
 #include "core/page/Page.h"
 #include "core/page/PointerLockController.h"
 #include "core/rendering/FlowThreadController.h"
-#include "core/rendering/RenderRegion.h"
+#include "core/rendering/RenderNamedFlowFragment.h"
 #include "core/rendering/RenderView.h"
 #include "core/rendering/RenderWidget.h"
 #include "core/svg/SVGDocumentExtensions.h"
@@ -100,6 +98,7 @@
 #include "wtf/BitVector.h"
 #include "wtf/HashFunctions.h"
 #include "wtf/text/CString.h"
+#include "wtf/text/StringBuilder.h"
 #include "wtf/text/TextPosition.h"
 
 namespace WebCore {
@@ -109,7 +108,7 @@ using namespace XMLNames;
 
 class StyleResolverParentPusher {
 public:
-    StyleResolverParentPusher(Element* parent)
+    explicit StyleResolverParentPusher(Element& parent)
         : m_parent(parent)
         , m_pushedStyleResolver(0)
     {
@@ -118,7 +117,7 @@ public:
     {
         if (m_pushedStyleResolver)
             return;
-        m_pushedStyleResolver = m_parent->document().styleResolver();
+        m_pushedStyleResolver = &m_parent.document().ensureStyleResolver();
         m_pushedStyleResolver->pushParentElement(m_parent);
     }
     ~StyleResolverParentPusher()
@@ -129,15 +128,15 @@ public:
 
         // This tells us that our pushed style selector is in a bad state,
         // so we should just bail out in that scenario.
-        ASSERT(m_pushedStyleResolver == m_parent->document().styleResolver());
-        if (m_pushedStyleResolver != m_parent->document().styleResolver())
+        ASSERT(m_pushedStyleResolver == m_parent.document().styleResolver());
+        if (m_pushedStyleResolver != m_parent.document().styleResolver())
             return;
 
         m_pushedStyleResolver->popParentElement(m_parent);
     }
 
 private:
-    Element* m_parent;
+    Element& m_parent;
     StyleResolver* m_pushedStyleResolver;
 };
 
@@ -178,11 +177,12 @@ static void removeAttrNodeListForElement(Element* element)
     element->setHasSyntheticAttrChildNodes(false);
 }
 
-static Attr* findAttrNodeInList(AttrNodeList& attrNodeList, const QualifiedName& name)
+static Attr* findAttrNodeInList(const AttrNodeList& attrNodeList, const QualifiedName& name)
 {
-    for (unsigned i = 0; i < attrNodeList.size(); ++i) {
-        if (attrNodeList[i]->qualifiedName() == name)
-            return attrNodeList[i].get();
+    AttrNodeList::const_iterator end = attrNodeList.end();
+    for (AttrNodeList::const_iterator it = attrNodeList.begin(); it != end; ++it) {
+        if ((*it)->qualifiedName() == name)
+            return it->get();
     }
     return 0;
 }
@@ -198,22 +198,10 @@ Element::~Element()
     // content nodes should have been removed from the content nodes collection
     // and the inNamedFlow flag reset.
     ASSERT(!document().renderView() || !inNamedFlow());
+    ASSERT(needsAttach());
 
-    if (PropertySetCSSStyleDeclaration* cssomWrapper = inlineStyleCSSOMWrapper())
-        cssomWrapper->clearParentElement();
-
-    if (hasRareData()) {
-        ElementRareData* data = elementRareData();
-        data->setPseudoElement(BEFORE, 0);
-        data->setPseudoElement(AFTER, 0);
-        data->setPseudoElement(BACKDROP, 0);
-        data->clearShadow();
-
-        if (RuntimeEnabledFeatures::webAnimationsCSSEnabled()) {
-            if (ActiveAnimations* activeAnimations = data->activeAnimations())
-                activeAnimations->cssAnimations().cancel();
-        }
-    }
+    if (hasRareData())
+        elementRareData()->clearShadow();
 
     if (isCustomElement())
         CustomElement::wasDestroyed(this);
@@ -377,7 +365,7 @@ NamedNodeMap* Element::attributes() const
 
 ActiveAnimations* Element::activeAnimations() const
 {
-    if (hasActiveAnimations())
+    if (hasRareData())
         return elementRareData()->activeAnimations();
     return 0;
 }
@@ -392,7 +380,7 @@ ActiveAnimations* Element::ensureActiveAnimations()
 
 bool Element::hasActiveAnimations() const
 {
-    if (!RuntimeEnabledFeatures::webAnimationsEnabled())
+    if (!RuntimeEnabledFeatures::webAnimationsCSSEnabled())
         return false;
 
     if (!hasRareData())
@@ -416,6 +404,9 @@ void Element::synchronizeAllAttributes() const
 {
     if (!elementData())
         return;
+    // NOTE: anyAttributeMatches in SelectorChecker.cpp
+    // currently assumes that all lazy attributes have a null namespace.
+    // If that ever changes we'll need to fix that code.
     if (elementData()->m_styleAttributeIsDirty) {
         ASSERT(isStyledElement());
         synchronizeStyleAttributeInternal();
@@ -437,11 +428,13 @@ inline void Element::synchronizeAttribute(const QualifiedName& name) const
     }
     if (UNLIKELY(elementData()->m_animatedSVGAttributesAreDirty)) {
         ASSERT(isSVGElement());
+        // See comment in the AtomicString version of synchronizeAttribute()
+        // also.
         toSVGElement(this)->synchronizeAnimatedSVGAttribute(name);
     }
 }
 
-inline void Element::synchronizeAttribute(const AtomicString& localName) const
+void Element::synchronizeAttribute(const AtomicString& localName) const
 {
     // This version of synchronizeAttribute() is streamlined for the case where you don't have a full QualifiedName,
     // e.g when called from DOM API.
@@ -454,8 +447,17 @@ inline void Element::synchronizeAttribute(const AtomicString& localName) const
     }
     if (elementData()->m_animatedSVGAttributesAreDirty) {
         // We're not passing a namespace argument on purpose. SVGNames::*Attr are defined w/o namespaces as well.
-        ASSERT(isSVGElement());
-        static_cast<const SVGElement*>(this)->synchronizeAnimatedSVGAttribute(QualifiedName(nullAtom, localName, nullAtom));
+
+        // FIXME: this code is called regardless of whether name is an
+        // animated SVG Attribute. It would seem we should only call this method
+        // if SVGElement::isAnimatableAttribute is true, but the list of
+        // animatable attributes in isAnimatableAttribute does not suffice to
+        // pass all layout tests. Also, m_animatedSVGAttributesAreDirty stays
+        // dirty unless synchronizeAnimatedSVGAttribute is called with
+        // anyQName(). This means that even if Element::synchronizeAttribute()
+        // is called on all attributes, m_animatedSVGAttributesAreDirty remains
+        // true.
+        toSVGElement(this)->synchronizeAnimatedSVGAttribute(QualifiedName(nullAtom, localName, nullAtom));
     }
 }
 
@@ -513,8 +515,7 @@ void Element::scrollByUnits(int units, ScrollGranularity granularity)
         direction = ScrollUp;
         units = -units;
     }
-    Node* stopNode = this;
-    toRenderBox(renderer())->scroll(direction, granularity, units, &stopNode);
+    toRenderBox(renderer())->scroll(direction, granularity, units);
 }
 
 void Element::scrollByLines(int lines)
@@ -527,16 +528,16 @@ void Element::scrollByPages(int pages)
     scrollByUnits(pages, ScrollByPage);
 }
 
-static float localZoomForRenderer(RenderObject* renderer)
+static float localZoomForRenderer(RenderObject& renderer)
 {
     // FIXME: This does the wrong thing if two opposing zooms are in effect and canceled each
     // other out, but the alternative is that we'd have to crawl up the whole render tree every
     // time (or store an additional bit in the RenderStyle to indicate that a zoom was specified).
     float zoomFactor = 1;
-    if (renderer->style()->effectiveZoom() != 1) {
+    if (renderer.style()->effectiveZoom() != 1) {
         // Need to find the nearest enclosing RenderObject that set up
         // a differing zoom, and then we divide our result by it to eliminate the zoom.
-        RenderObject* prev = renderer;
+        RenderObject* prev = &renderer;
         for (RenderObject* curr = prev->parent(); curr; curr = curr->parent()) {
             if (curr->style()->effectiveZoom() != prev->style()->effectiveZoom()) {
                 zoomFactor = prev->style()->zoom();
@@ -550,7 +551,7 @@ static float localZoomForRenderer(RenderObject* renderer)
     return zoomFactor;
 }
 
-static int adjustForLocalZoom(LayoutUnit value, RenderObject* renderer)
+static int adjustForLocalZoom(LayoutUnit value, RenderObject& renderer)
 {
     float zoomFactor = localZoomForRenderer(renderer);
     if (zoomFactor == 1)
@@ -562,7 +563,7 @@ int Element::offsetLeft()
 {
     document().partialUpdateLayoutIgnorePendingStylesheets(this);
     if (RenderBoxModelObject* renderer = renderBoxModelObject())
-        return adjustForLocalZoom(renderer->pixelSnappedOffsetLeft(), renderer);
+        return adjustForLocalZoom(renderer->pixelSnappedOffsetLeft(), *renderer);
     return 0;
 }
 
@@ -570,7 +571,7 @@ int Element::offsetTop()
 {
     document().partialUpdateLayoutIgnorePendingStylesheets(this);
     if (RenderBoxModelObject* renderer = renderBoxModelObject())
-        return adjustForLocalZoom(renderer->pixelSnappedOffsetTop(), renderer);
+        return adjustForLocalZoom(renderer->pixelSnappedOffsetTop(), *renderer);
     return 0;
 }
 
@@ -580,12 +581,12 @@ int Element::offsetWidth()
 
     if (RenderBox* renderer = renderBox()) {
         if (renderer->canDetermineWidthWithoutLayout())
-            return adjustLayoutUnitForAbsoluteZoom(renderer->fixedOffsetWidth(), renderer).round();
+            return adjustLayoutUnitForAbsoluteZoom(renderer->fixedOffsetWidth(), *renderer).round();
     }
 
     document().partialUpdateLayoutIgnorePendingStylesheets(this);
     if (RenderBoxModelObject* renderer = renderBoxModelObject())
-        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedOffsetWidth(), renderer).round();
+        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedOffsetWidth(), *renderer).round();
     return 0;
 }
 
@@ -593,11 +594,11 @@ int Element::offsetHeight()
 {
     document().partialUpdateLayoutIgnorePendingStylesheets(this);
     if (RenderBoxModelObject* renderer = renderBoxModelObject())
-        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedOffsetHeight(), renderer).round();
+        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedOffsetHeight(), *renderer).round();
     return 0;
 }
 
-Element* Element::bindingsOffsetParent()
+Element* Element::offsetParentForBindings()
 {
     Element* element = offsetParent();
     if (!element || !element->isInShadowTree())
@@ -647,7 +648,7 @@ int Element::clientWidth()
     }
 
     if (RenderBox* renderer = renderBox())
-        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedClientWidth(), renderer).round();
+        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedClientWidth(), *renderer).round();
     return 0;
 }
 
@@ -668,7 +669,7 @@ int Element::clientHeight()
     }
 
     if (RenderBox* renderer = renderBox())
-        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedClientHeight(), renderer).round();
+        return adjustLayoutUnitForAbsoluteZoom(renderer->pixelSnappedClientHeight(), *renderer).round();
     return 0;
 }
 
@@ -676,7 +677,13 @@ int Element::scrollLeft()
 {
     document().updateLayoutIgnorePendingStylesheets();
 
-    if (document().documentElement() == this) {
+    if (document().documentElement() != this) {
+        if (RenderBox* rend = renderBox())
+            return adjustForAbsoluteZoom(rend->scrollLeft(), rend);
+        return 0;
+    }
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
         if (document().inQuirksMode())
             return 0;
 
@@ -686,8 +693,6 @@ int Element::scrollLeft()
         }
     }
 
-    if (RenderBox* rend = renderBox())
-        return adjustForAbsoluteZoom(rend->scrollLeft(), rend);
     return 0;
 }
 
@@ -695,7 +700,13 @@ int Element::scrollTop()
 {
     document().updateLayoutIgnorePendingStylesheets();
 
-    if (document().documentElement() == this) {
+    if (document().documentElement() != this) {
+        if (RenderBox* rend = renderBox())
+            return adjustForAbsoluteZoom(rend->scrollTop(), rend);
+        return 0;
+    }
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
         if (document().inQuirksMode())
             return 0;
 
@@ -705,8 +716,6 @@ int Element::scrollTop()
         }
     }
 
-    if (RenderBox* rend = renderBox())
-        return adjustForAbsoluteZoom(rend->scrollTop(), rend);
     return 0;
 }
 
@@ -714,7 +723,13 @@ void Element::setScrollLeft(int newLeft)
 {
     document().updateLayoutIgnorePendingStylesheets();
 
-    if (document().documentElement() == this) {
+    if (document().documentElement() != this) {
+        if (RenderBox* rend = renderBox())
+            rend->setScrollLeft(static_cast<int>(newLeft * rend->style()->effectiveZoom()));
+        return;
+    }
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
         if (document().inQuirksMode())
             return;
 
@@ -725,24 +740,21 @@ void Element::setScrollLeft(int newLeft)
         if (!view)
             return;
 
-        // WHATWG spec says [1]: "If the element is the root element invoke scroll()
-        // with x as first argument and zero as second". Blink intentionally matches
-        // other engine's behaviors here, instead, where the 'y' scroll position is
-        // preversed. See [2].
-        // [1] http://dev.w3.org/csswg/cssom-view/#dom-element-scrollleft
-        // [2] https://www.w3.org/Bugs/Public/show_bug.cgi?id=23448
         view->setScrollPosition(IntPoint(static_cast<int>(newLeft * frame->pageZoomFactor()), view->scrollY()));
     }
-
-    if (RenderBox* rend = renderBox())
-        rend->setScrollLeft(static_cast<int>(newLeft * rend->style()->effectiveZoom()));
 }
 
 void Element::setScrollTop(int newTop)
 {
     document().updateLayoutIgnorePendingStylesheets();
 
-    if (document().documentElement() == this) {
+    if (document().documentElement() != this) {
+        if (RenderBox* rend = renderBox())
+            rend->setScrollTop(static_cast<int>(newTop * rend->style()->effectiveZoom()));
+        return;
+    }
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
         if (document().inQuirksMode())
             return;
 
@@ -753,17 +765,8 @@ void Element::setScrollTop(int newTop)
         if (!view)
             return;
 
-        // WHATWG spec says [1]: "If the element is the root element invoke scroll()
-        // with zero as first argument and y as second". Blink intentionally
-        // matches other engine's behaviors here, instead, where the 'x' scroll
-        // position is preversed. See [2].
-        // [1] http://dev.w3.org/csswg/cssom-view/#dom-element-scrolltop
-        // [2] https://www.w3.org/Bugs/Public/show_bug.cgi?id=23448
         view->setScrollPosition(IntPoint(view->scrollX(), static_cast<int>(newTop * frame->pageZoomFactor())));
     }
-
-    if (RenderBox* rend = renderBox())
-        rend->setScrollTop(static_cast<int>(newTop * rend->style()->effectiveZoom()));
 }
 
 int Element::scrollWidth()
@@ -827,7 +830,7 @@ PassRefPtr<ClientRectList> Element::getClientRects()
 
     Vector<FloatQuad> quads;
     renderBoxModelObject->absoluteQuads(quads);
-    document().adjustFloatQuadsForScrollAndAbsoluteZoom(quads, renderBoxModelObject);
+    document().adjustFloatQuadsForScrollAndAbsoluteZoom(quads, *renderBoxModelObject);
     return ClientRectList::create(quads);
 }
 
@@ -855,7 +858,8 @@ PassRefPtr<ClientRect> Element::getBoundingClientRect()
     for (size_t i = 1; i < quads.size(); ++i)
         result.unite(quads[i].boundingBox());
 
-    document().adjustFloatRectForScrollAndAbsoluteZoom(result, renderer());
+    ASSERT(renderer());
+    document().adjustFloatRectForScrollAndAbsoluteZoom(result, *renderer());
     return ClientRect::create(result);
 }
 
@@ -882,10 +886,10 @@ const AtomicString& Element::getAttributeNS(const AtomicString& namespaceURI, co
     return getAttribute(QualifiedName(nullAtom, localName, namespaceURI));
 }
 
-void Element::setAttribute(const AtomicString& localName, const AtomicString& value, ExceptionState& es)
+void Element::setAttribute(const AtomicString& localName, const AtomicString& value, ExceptionState& exceptionState)
 {
     if (!Document::isValidName(localName)) {
-        es.throwUninformativeAndGenericDOMException(InvalidCharacterError);
+        exceptionState.throwDOMException(InvalidCharacterError, "'" + localName + "' is not a valid attribute name.");
         return;
     }
 
@@ -910,7 +914,7 @@ void Element::setSynchronizedLazyAttribute(const QualifiedName& name, const Atom
     setAttributeInternal(index, name, value, InSynchronizationOfLazyAttribute);
 }
 
-inline void Element::setAttributeInternal(size_t index, const QualifiedName& name, const AtomicString& newValue, SynchronizationOfLazyAttribute inSynchronizationOfLazyAttribute)
+ALWAYS_INLINE void Element::setAttributeInternal(size_t index, const QualifiedName& name, const AtomicString& newValue, SynchronizationOfLazyAttribute inSynchronizationOfLazyAttribute)
 {
     if (newValue.isNull()) {
         if (index != kNotFound)
@@ -923,12 +927,13 @@ inline void Element::setAttributeInternal(size_t index, const QualifiedName& nam
         return;
     }
 
-    QualifiedName existingAttributeName = attributeItem(index)->name();
+    const Attribute* existingAttribute = attributeItem(index);
+    QualifiedName existingAttributeName = existingAttribute->name();
 
     if (!inSynchronizationOfLazyAttribute)
-        willModifyAttribute(existingAttributeName, attributeItem(index)->value(), newValue);
+        willModifyAttribute(existingAttributeName, existingAttribute->value(), newValue);
 
-    if (newValue != attributeItem(index)->value()) {
+    if (newValue != existingAttribute->value()) {
         // If there is an Attr node hooked to this attribute, the Attr::setValue() call below
         // will write into the ElementData.
         // FIXME: Refactor this so it makes some sense.
@@ -970,7 +975,7 @@ void Element::attributeChanged(const QualifiedName& name, const AtomicString& ne
 
     document().incDOMTreeVersion();
 
-    StyleResolver* styleResolver = document().styleResolverIfExists();
+    StyleResolver* styleResolver = document().styleResolver();
     bool testShouldInvalidateStyle = inActiveDocument() && styleResolver && styleChangeType() < SubtreeStyleChange;
     bool shouldInvalidateStyle = false;
 
@@ -986,14 +991,12 @@ void Element::attributeChanged(const QualifiedName& name, const AtomicString& ne
         AtomicString newId = makeIdForStyleResolution(newValue, document().inQuirksMode());
         if (newId != oldId) {
             elementData()->setIdForStyleResolution(newId);
-            shouldInvalidateStyle = testShouldInvalidateStyle && checkNeedsStyleInvalidationForIdChange(oldId, newId, styleResolver->ruleFeatureSet());
+            shouldInvalidateStyle = testShouldInvalidateStyle && checkNeedsStyleInvalidationForIdChange(oldId, newId, styleResolver->ensureRuleFeatureSet());
         }
     } else if (name == classAttr) {
         classAttributeChanged(newValue);
     } else if (name == HTMLNames::nameAttr) {
         setHasName(!newValue.isNull());
-    } else if (name == HTMLNames::pseudoAttr) {
-        shouldInvalidateStyle |= testShouldInvalidateStyle && isInShadowTree();
     }
 
     invalidateNodeListCachesInAncestors(&name, this);
@@ -1011,7 +1014,7 @@ void Element::attributeChanged(const QualifiedName& name, const AtomicString& ne
 inline void Element::attributeChangedFromParserOrByCloning(const QualifiedName& name, const AtomicString& newValue, AttributeModificationReason reason)
 {
     if (name == isAttr)
-        CustomElementRegistrationContext::setTypeExtension(this, newValue, reason == ModifiedDirectly ? CustomElementRegistrationContext::CreatedByParser : CustomElementRegistrationContext::NotCreatedByParser);
+        CustomElementRegistrationContext::setTypeExtension(this, newValue);
     attributeChanged(name, newValue, reason);
 }
 
@@ -1056,36 +1059,43 @@ static bool checkSelectorForClassChange(const SpaceSplitString& changedClasses, 
 template<typename Checker>
 static bool checkSelectorForClassChange(const SpaceSplitString& oldClasses, const SpaceSplitString& newClasses, const Checker& checker)
 {
-    unsigned oldSize = oldClasses.size();
-    if (!oldSize)
+    if (!oldClasses.size())
         return checkSelectorForClassChange(newClasses, checker);
-    BitVector remainingClassBits;
-    remainingClassBits.ensureSize(oldSize);
+
     // Class vectors tend to be very short. This is faster than using a hash table.
-    unsigned newSize = newClasses.size();
-    for (unsigned i = 0; i < newSize; ++i) {
-        for (unsigned j = 0; j < oldSize; ++j) {
+    BitVector remainingClassBits;
+    remainingClassBits.ensureSize(oldClasses.size());
+
+    for (unsigned i = 0; i < newClasses.size(); ++i) {
+        bool found = false;
+        for (unsigned j = 0; j < oldClasses.size(); ++j) {
             if (newClasses[i] == oldClasses[j]) {
+                // Mark each class that is still in the newClasses so we can skip doing
+                // an n^2 search below when looking for removals. We can't break from
+                // this loop early since a class can appear more than once.
                 remainingClassBits.quickSet(j);
-                continue;
+                found = true;
             }
         }
-        if (checker.hasSelectorForClass(newClasses[i]))
+        // Class was added.
+        if (!found && checker.hasSelectorForClass(newClasses[i]))
             return true;
     }
-    for (unsigned i = 0; i < oldSize; ++i) {
-        // If the bit is not set the the corresponding class has been removed.
+
+    for (unsigned i = 0; i < oldClasses.size(); ++i) {
         if (remainingClassBits.quickGet(i))
             continue;
+        // Class was removed.
         if (checker.hasSelectorForClass(oldClasses[i]))
             return true;
     }
+
     return false;
 }
 
 void Element::classAttributeChanged(const AtomicString& newClassString)
 {
-    StyleResolver* styleResolver = document().styleResolverIfExists();
+    StyleResolver* styleResolver = document().styleResolver();
     bool testShouldInvalidateStyle = inActiveDocument() && styleResolver && styleChangeType() < SubtreeStyleChange;
     bool shouldInvalidateStyle = false;
 
@@ -1094,10 +1104,10 @@ void Element::classAttributeChanged(const AtomicString& newClassString)
         const SpaceSplitString oldClasses = elementData()->classNames();
         elementData()->setClass(newClassString, shouldFoldCase);
         const SpaceSplitString& newClasses = elementData()->classNames();
-        shouldInvalidateStyle = testShouldInvalidateStyle && checkSelectorForClassChange(oldClasses, newClasses, styleResolver->ruleFeatureSet());
+        shouldInvalidateStyle = testShouldInvalidateStyle && checkSelectorForClassChange(oldClasses, newClasses, styleResolver->ensureRuleFeatureSet());
     } else {
         const SpaceSplitString& oldClasses = elementData()->classNames();
-        shouldInvalidateStyle = testShouldInvalidateStyle && checkSelectorForClassChange(oldClasses, styleResolver->ruleFeatureSet());
+        shouldInvalidateStyle = testShouldInvalidateStyle && checkSelectorForClassChange(oldClasses, styleResolver->ensureRuleFeatureSet());
         elementData()->clearClass();
     }
 
@@ -1222,13 +1232,52 @@ String Element::nodeNamePreservingCase() const
     return m_tagName.toString();
 }
 
-void Element::setPrefix(const AtomicString& prefix, ExceptionState& es)
+void Element::setPrefix(const AtomicString& prefix, ExceptionState& exceptionState)
 {
-    checkSetPrefix(prefix, es);
-    if (es.hadException())
+    UseCounter::count(document(), UseCounter::ElementSetPrefix);
+
+    if (!prefix.isEmpty() && !Document::isValidName(prefix)) {
+        exceptionState.throwDOMException(InvalidCharacterError, "The prefix '" + prefix + "' is not a valid name.");
+        return;
+    }
+
+    // FIXME: Raise NamespaceError if prefix is malformed per the Namespaces in XML specification.
+
+    const AtomicString& nodeNamespaceURI = namespaceURI();
+    if (nodeNamespaceURI.isEmpty() && !prefix.isEmpty()) {
+        exceptionState.throwDOMException(NamespaceError, "No namespace is set, so a namespace prefix may not be set.");
+        return;
+    }
+
+    if (prefix == xmlAtom && nodeNamespaceURI != XMLNames::xmlNamespaceURI) {
+        exceptionState.throwDOMException(NamespaceError, "The prefix '" + xmlAtom + "' may not be set on namespace '" + nodeNamespaceURI + "'.");
+        return;
+    }
+
+    if (exceptionState.hadException())
         return;
 
     m_tagName.setPrefix(prefix.isEmpty() ? AtomicString() : prefix);
+}
+
+const AtomicString& Element::locateNamespacePrefix(const AtomicString& namespaceToLocate) const
+{
+    if (!prefix().isNull() && namespaceURI() == namespaceToLocate)
+        return prefix();
+
+    if (hasAttributes()) {
+        for (unsigned i = 0; i < attributeCount(); i++) {
+            const Attribute* attr = attributeItem(i);
+
+            if (attr->prefix() == xmlnsAtom && attr->value() == namespaceToLocate)
+                return attr->localName();
+        }
+    }
+
+    if (Element* parent = parentElement())
+        return parent->locateNamespacePrefix(namespaceToLocate);
+
+    return nullAtom;
 }
 
 KURL Element::baseURI() const
@@ -1356,22 +1405,22 @@ void Element::attach(const AttachContext& context)
 {
     ASSERT(document().inStyleRecalc());
 
-    StyleResolverParentPusher parentPusher(this);
+    StyleResolverParentPusher parentPusher(*this);
 
-    // We've already been through detach when doing a lazyAttach, but we might
+    // We've already been through detach when doing an attach, but we might
     // need to clear any state that's been added since then.
     if (hasRareData() && styleChangeType() == NeedsReattachStyleChange) {
         ElementRareData* data = elementRareData();
         data->clearComputedStyle();
         data->resetDynamicRestyleObservations();
+        // Only clear the style state if we're not going to reuse the style from recalcStyle.
         if (!context.resolvedStyle)
             data->resetStyleState();
     }
 
-    NodeRenderingContext(this, context.resolvedStyle).createRendererForElementIfNeeded();
+    RenderTreeBuilder(this, context.resolvedStyle).createRendererForElementIfNeeded();
 
-    if (RenderStyle* style = renderStyle())
-        updateCallbackSelectors(0, style);
+    addCallbackSelectors();
 
     createPseudoElementIfNeeded(BEFORE);
 
@@ -1379,8 +1428,9 @@ void Element::attach(const AttachContext& context)
     if (ElementShadow* shadow = this->shadow()) {
         parentPusher.push();
         shadow->attach(context);
-    } else if (firstChild())
+    } else if (firstChild()) {
         parentPusher.push();
+    }
 
     ContainerNode::attach(context);
 
@@ -1393,6 +1443,12 @@ void Element::attach(const AttachContext& context)
             if (isFocusable() && document().focusedElement() == this)
                 document().updateFocusAppearanceSoon(false /* don't restore selection */);
             data->setNeedsFocusAppearanceUpdateSoonAfterAttach(false);
+        }
+        if (RuntimeEnabledFeatures::webAnimationsCSSEnabled() && !renderer()) {
+            if (ActiveAnimations* activeAnimations = data->activeAnimations()) {
+                activeAnimations->cssAnimations().cancel();
+                activeAnimations->setAnimationStyleChange(false);
+            }
         }
     }
 
@@ -1410,30 +1466,34 @@ void Element::detach(const AttachContext& context)
     RenderWidget::UpdateSuspendScope suspendWidgetHierarchyUpdates;
     unregisterNamedFlowContentNode();
     cancelFocusAppearanceUpdate();
-    if (RenderStyle* style = renderStyle()) {
-        if (!style->callbackSelectors().isEmpty())
-            updateCallbackSelectors(style, 0);
-    }
+    removeCallbackSelectors();
     if (hasRareData()) {
         ElementRareData* data = elementRareData();
-        data->setPseudoElement(BEFORE, 0);
-        data->setPseudoElement(AFTER, 0);
-        data->setPseudoElement(BACKDROP, 0);
-        data->clearComputedStyle();
-        data->resetDynamicRestyleObservations();
+        data->clearPseudoElements();
         data->setIsInsideRegion(false);
 
-        // Only clear the style state if we're not going to reuse the style from recalcStyle.
-        if (!context.resolvedStyle)
+        // attach() will perform the below steps for us when inside recalcStyle.
+        if (!document().inStyleRecalc()) {
             data->resetStyleState();
-
-        if (RuntimeEnabledFeatures::webAnimationsCSSEnabled() && !context.performingReattach) {
-            if (ActiveAnimations* activeAnimations = data->activeAnimations())
-                activeAnimations->cssAnimations().cancel();
+            data->clearComputedStyle();
+            data->resetDynamicRestyleObservations();
         }
+
+        if (RuntimeEnabledFeatures::webAnimationsCSSEnabled()) {
+            if (ActiveAnimations* activeAnimations = data->activeAnimations()) {
+                if (context.performingReattach) {
+                    // FIXME: restart compositor animations rather than pull back to the main thread
+                    activeAnimations->cancelAnimationOnCompositor();
+                } else {
+                    activeAnimations->cssAnimations().cancel();
+                    activeAnimations->setAnimationStyleChange(false);
+                }
+            }
+        }
+
+        if (ElementShadow* shadow = data->shadow())
+            shadow->detach(context);
     }
-    if (ElementShadow* shadow = this->shadow())
-        shadow->detach(context);
     ContainerNode::detach(context);
 }
 
@@ -1465,7 +1525,7 @@ bool Element::pseudoStyleCacheIsInvalid(const RenderStyle* currentStyle, RenderS
             newStyle->addCachedPseudoStyle(newPseudoStyle);
             if (pseudoId == FIRST_LINE || pseudoId == FIRST_LINE_INHERITED) {
                 // FIXME: We should do an actual diff to determine whether a repaint vs. layout
-                // is needed, but for now just assume a layout will be required.  The diff code
+                // is needed, but for now just assume a layout will be required. The diff code
                 // in RenderObject::setStyle would need to be factored out so that it could be reused.
                 renderer()->setNeedsLayoutAndPrefWidthsRecalc();
             }
@@ -1477,41 +1537,61 @@ bool Element::pseudoStyleCacheIsInvalid(const RenderStyle* currentStyle, RenderS
 
 PassRefPtr<RenderStyle> Element::styleForRenderer()
 {
-    if (hasCustomStyleCallbacks()) {
-        if (RefPtr<RenderStyle> style = customStyleForRenderer())
-            return style.release();
-    }
+    ASSERT(document().inStyleRecalc());
 
-    return originalStyleForRenderer();
+    RefPtr<RenderStyle> style;
+
+    // FIXME: Instead of clearing updates that may have been added from calls to styleForElement
+    // outside recalcStyle, we should just never set them if we're not inside recalcStyle.
+    if (ActiveAnimations* activeAnimations = this->activeAnimations())
+        activeAnimations->cssAnimations().setPendingUpdate(nullptr);
+
+    if (hasCustomStyleCallbacks())
+        style = customStyleForRenderer();
+    if (!style)
+        style = originalStyleForRenderer();
+
+    // styleForElement() might add active animations so we need to get it again.
+    if (ActiveAnimations* activeAnimations = this->activeAnimations())
+        activeAnimations->cssAnimations().maybeApplyPendingUpdate(this);
+
+    ASSERT(style);
+    return style.release();
 }
 
 PassRefPtr<RenderStyle> Element::originalStyleForRenderer()
 {
-    return document().styleResolver()->styleForElement(this);
+    ASSERT(document().inStyleRecalc());
+    return document().ensureStyleResolver().styleForElement(this);
 }
 
 void Element::recalcStyle(StyleRecalcChange change, Text* nextTextSibling)
 {
     ASSERT(document().inStyleRecalc());
+    ASSERT(!parentOrShadowHostNode()->needsStyleRecalc());
 
     if (hasCustomStyleCallbacks())
         willRecalcStyle(change);
 
-    if (hasRareData() && (change > NoChange || needsStyleRecalc())) {
-        ElementRareData* data = elementRareData();
-        data->resetStyleState();
-        data->clearComputedStyle();
+    if (change >= Inherit || needsStyleRecalc()) {
+        if (hasRareData()) {
+            ElementRareData* data = elementRareData();
+            data->resetStyleState();
+            data->clearComputedStyle();
+
+            if (change >= Inherit) {
+                if (ActiveAnimations* activeAnimations = data->activeAnimations())
+                    activeAnimations->setAnimationStyleChange(false);
+            }
+        }
+        if (parentRenderStyle())
+            change = recalcOwnStyle(change);
+        clearNeedsStyleRecalc();
     }
 
-    // Active InsertionPoints have no renderers so they never need to go through a recalc.
-    if ((change >= Inherit || needsStyleRecalc()) && parentRenderStyle() && !isActiveInsertionPoint(*this))
-        change = recalcOwnStyle(change);
-
     // If we reattached we don't need to recalc the style of our descendants anymore.
-    if (change < Reattach)
+    if ((change >= Inherit && change < Reattach) || childNeedsStyleRecalc())
         recalcChildStyle(change);
-
-    clearNeedsStyleRecalc();
     clearChildNeedsStyleRecalc();
 
     if (hasCustomStyleCallbacks())
@@ -1521,26 +1601,18 @@ void Element::recalcStyle(StyleRecalcChange change, Text* nextTextSibling)
         reattachWhitespaceSiblings(nextTextSibling);
 }
 
-static bool callbackSelectorsDiffer(RenderStyle* style1, RenderStyle* style2)
-{
-    const Vector<String> emptyVector;
-    const Vector<String>& callbackSelectors1 = style1 ? style1->callbackSelectors() : emptyVector;
-    const Vector<String>& callbackSelectors2 = style2 ? style2->callbackSelectors() : emptyVector;
-    if (callbackSelectors1.isEmpty() && callbackSelectors2.isEmpty()) {
-        // Help the inliner with this common case.
-        return false;
-    }
-    return callbackSelectors1 != callbackSelectors2;
-}
-
 StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change)
 {
     ASSERT(document().inStyleRecalc());
+    ASSERT(!parentOrShadowHostNode()->needsStyleRecalc());
+    ASSERT(change >= Inherit || needsStyleRecalc());
+    ASSERT(parentRenderStyle());
 
-    CSSAnimationUpdateScope cssAnimationUpdateScope(this);
     RefPtr<RenderStyle> oldStyle = renderStyle();
     RefPtr<RenderStyle> newStyle = styleForRenderer();
     StyleRecalcChange localChange = RenderStyle::compare(oldStyle.get(), newStyle.get());
+
+    ASSERT(newStyle);
 
     if (localChange == Reattach) {
         AttachContext reattachContext;
@@ -1549,13 +1621,15 @@ StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change)
         return Reattach;
     }
 
+    ASSERT(oldStyle);
+
     InspectorInstrumentation::didRecalculateStyleForElement(this);
 
-    if (localChange != NoChange && callbackSelectorsDiffer(oldStyle.get(), newStyle.get()))
+    if (localChange != NoChange)
         updateCallbackSelectors(oldStyle.get(), newStyle.get());
 
     if (RenderObject* renderer = this->renderer()) {
-        if (localChange != NoChange || pseudoStyleCacheIsInvalid(oldStyle.get(), newStyle.get()) || (change == Force && renderer->requiresForcedStyleRecalcPropagation()) || shouldNotifyRendererWithIdenticalStyles()) {
+        if (localChange != NoChange || pseudoStyleCacheIsInvalid(oldStyle.get(), newStyle.get()) || shouldNotifyRendererWithIdenticalStyles()) {
             renderer->setAnimatableStyle(newStyle.get());
         } else {
             // Although no change occurred, we use the new style so that the cousin style sharing code won't get
@@ -1566,16 +1640,11 @@ StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change)
         }
     }
 
-    // If "rem" units are used anywhere in the document, and if the document element's font size changes, then go ahead and force font updating
-    // all the way down the tree. This is simpler than having to maintain a cache of objects (and such font size changes should be rare anyway).
-    if (document().styleEngine()->usesRemUnits() && document().documentElement() == this && oldStyle && newStyle && oldStyle->fontSize() != newStyle->fontSize()) {
-        // Cached RenderStyles may depend on the re units.
-        document().styleResolver()->invalidateMatchedPropertiesCache();
-        return Force;
-    }
-
     if (styleChangeType() >= SubtreeStyleChange)
         return Force;
+
+    if (change <= Inherit)
+        return localChange;
 
     return max(localChange, change);
 }
@@ -1583,48 +1652,29 @@ StyleRecalcChange Element::recalcOwnStyle(StyleRecalcChange change)
 void Element::recalcChildStyle(StyleRecalcChange change)
 {
     ASSERT(document().inStyleRecalc());
+    ASSERT(change >= Inherit || childNeedsStyleRecalc());
+    ASSERT(!needsStyleRecalc());
 
-    StyleResolverParentPusher parentPusher(this);
+    StyleResolverParentPusher parentPusher(*this);
 
     for (ShadowRoot* root = youngestShadowRoot(); root; root = root->olderShadowRoot()) {
-        if (shouldRecalcStyle(change, root)) {
+        if (root->shouldCallRecalcStyle(change)) {
             parentPusher.push();
             root->recalcStyle(change);
         }
     }
 
-    if (shouldRecalcStyle(change, this))
+    if (shouldCallRecalcStyle(change))
         updatePseudoElement(BEFORE, change);
 
-    bool hasDirectAdjacentRules = childrenAffectedByDirectAdjacentRules();
-    bool hasIndirectAdjacentRules = childrenAffectedByForwardPositionalRules();
-    unsigned forceCheckOfNextElementCount = 0;
-    bool forceCheckOfAnyElementSibling = false;
-    if (hasDirectAdjacentRules || hasIndirectAdjacentRules) {
-        for (Node* child = firstChild(); child; child = child->nextSibling()) {
-            if (!child->isElementNode())
-                continue;
-            Element* element = toElement(child);
-            bool childRulesChanged = element->needsStyleRecalc() && element->styleChangeType() >= SubtreeStyleChange;
+    if (change < Force && hasRareData() && childNeedsStyleRecalc())
+        checkForChildrenAdjacentRuleChanges();
 
-            if (forceCheckOfNextElementCount || forceCheckOfAnyElementSibling)
-                element->setNeedsStyleRecalc();
-
-            if (forceCheckOfNextElementCount)
-                forceCheckOfNextElementCount--;
-
-            if (childRulesChanged && hasDirectAdjacentRules)
-                forceCheckOfNextElementCount = document().styleEngine()->maxDirectAdjacentSelectors();
-
-            forceCheckOfAnyElementSibling = forceCheckOfAnyElementSibling || (childRulesChanged && hasIndirectAdjacentRules);
-        }
-    }
     // This loop is deliberately backwards because we use insertBefore in the rendering tree, and want to avoid
     // a potentially n^2 loop to find the insertion point while resolving style. Having us start from the last
     // child and work our way back means in the common case, we'll find the insertion point in O(1) time.
-    // Reversing this loop can lead to non-deterministic results in our code to optimize out empty whitespace
-    // RenderTexts. We try to put off recalcing their style until the end to avoid this issue.
     // See crbug.com/288225
+    StyleResolver& styleResolver = document().ensureStyleResolver();
     Text* lastTextNode = 0;
     for (Node* child = lastChild(); child; child = child->previousSibling()) {
         if (child->isTextNode()) {
@@ -1632,21 +1682,72 @@ void Element::recalcChildStyle(StyleRecalcChange change)
             lastTextNode = toText(child);
         } else if (child->isElementNode()) {
             Element* element = toElement(child);
-            if (shouldRecalcStyle(change, element)) {
+            if (element->shouldCallRecalcStyle(change)) {
                 parentPusher.push();
                 element->recalcStyle(change, lastTextNode);
             } else if (element->supportsStyleSharing()) {
-                document().styleResolver()->addToStyleSharingList(element);
+                styleResolver.addToStyleSharingList(*element);
             }
             if (element->renderer())
                 lastTextNode = 0;
         }
     }
 
-    if (shouldRecalcStyle(change, this)) {
+    if (shouldCallRecalcStyle(change)) {
         updatePseudoElement(AFTER, change);
         updatePseudoElement(BACKDROP, change);
     }
+}
+
+void Element::checkForChildrenAdjacentRuleChanges()
+{
+    bool hasDirectAdjacentRules = childrenAffectedByDirectAdjacentRules();
+    bool hasIndirectAdjacentRules = childrenAffectedByForwardPositionalRules();
+
+    if (!hasDirectAdjacentRules && !hasIndirectAdjacentRules)
+        return;
+
+    unsigned forceCheckOfNextElementCount = 0;
+    bool forceCheckOfAnyElementSibling = false;
+
+    for (Node* child = firstChild(); child; child = child->nextSibling()) {
+        if (!child->isElementNode())
+            continue;
+        Element* element = toElement(child);
+        bool childRulesChanged = element->needsStyleRecalc() && element->styleChangeType() >= SubtreeStyleChange;
+
+        if (forceCheckOfNextElementCount || forceCheckOfAnyElementSibling)
+            element->setNeedsStyleRecalc();
+
+        if (forceCheckOfNextElementCount)
+            forceCheckOfNextElementCount--;
+
+        if (childRulesChanged && hasDirectAdjacentRules)
+            forceCheckOfNextElementCount = document().styleEngine()->maxDirectAdjacentSelectors();
+
+        forceCheckOfAnyElementSibling = forceCheckOfAnyElementSibling || (childRulesChanged && hasIndirectAdjacentRules);
+    }
+}
+
+void Element::updateCallbackSelectors(RenderStyle* oldStyle, RenderStyle* newStyle)
+{
+    Vector<String> emptyVector;
+    const Vector<String>& oldCallbackSelectors = oldStyle ? oldStyle->callbackSelectors() : emptyVector;
+    const Vector<String>& newCallbackSelectors = newStyle ? newStyle->callbackSelectors() : emptyVector;
+    if (oldCallbackSelectors.isEmpty() && newCallbackSelectors.isEmpty())
+        return;
+    if (oldCallbackSelectors != newCallbackSelectors)
+        CSSSelectorWatch::from(document()).updateSelectorMatches(oldCallbackSelectors, newCallbackSelectors);
+}
+
+void Element::addCallbackSelectors()
+{
+    updateCallbackSelectors(0, renderStyle());
+}
+
+void Element::removeCallbackSelectors()
+{
+    updateCallbackSelectors(renderStyle(), 0);
 }
 
 ElementShadow* Element::shadow() const
@@ -1666,22 +1767,37 @@ void Element::didAffectSelector(AffectedSelectorMask mask)
         elementShadow->didAffectSelector(mask);
 }
 
-PassRefPtr<ShadowRoot> Element::createShadowRoot(ExceptionState& es)
+void Element::setAnimationStyleChange(bool animationStyleChange)
+{
+    if (ActiveAnimations* activeAnimations = elementRareData()->activeAnimations())
+        activeAnimations->setAnimationStyleChange(animationStyleChange);
+}
+
+void Element::setNeedsAnimationStyleRecalc()
+{
+    if (styleChangeType() != NoStyleChange)
+        return;
+
+    setNeedsStyleRecalc(LocalStyleChange);
+    setAnimationStyleChange(true);
+}
+
+PassRefPtr<ShadowRoot> Element::createShadowRoot(ExceptionState& exceptionState)
 {
     if (alwaysCreateUserAgentShadowRoot())
         ensureUserAgentShadowRoot();
 
     if (RuntimeEnabledFeatures::authorShadowDOMForAnyElementEnabled())
-        return ensureShadow().addShadowRoot(*this, ShadowRoot::AuthorShadowRoot);
+        return PassRefPtr<ShadowRoot>(ensureShadow().addShadowRoot(*this, ShadowRoot::AuthorShadowRoot));
 
     // Since some elements recreates shadow root dynamically, multiple shadow
     // subtrees won't work well in that element. Until they are fixed, we disable
     // adding author shadow root for them.
     if (!areAuthorShadowsAllowed()) {
-        es.throwUninformativeAndGenericDOMException(HierarchyRequestError);
+        exceptionState.throwDOMException(HierarchyRequestError, "Author-created shadow roots are disabled for this element.");
         return 0;
     }
-    return ensureShadow().addShadowRoot(*this, ShadowRoot::AuthorShadowRoot);
+    return PassRefPtr<ShadowRoot>(ensureShadow().addShadowRoot(*this, ShadowRoot::AuthorShadowRoot));
 }
 
 ShadowRoot* Element::shadowRoot() const
@@ -1711,11 +1827,11 @@ ShadowRoot* Element::userAgentShadowRoot() const
     return 0;
 }
 
-ShadowRoot* Element::ensureUserAgentShadowRoot()
+ShadowRoot& Element::ensureUserAgentShadowRoot()
 {
     if (ShadowRoot* shadowRoot = userAgentShadowRoot())
-        return shadowRoot;
-    ShadowRoot* shadowRoot = ensureShadow().addShadowRoot(*this, ShadowRoot::UserAgentShadowRoot);
+        return *shadowRoot;
+    ShadowRoot& shadowRoot = ensureShadow().addShadowRoot(*this, ShadowRoot::UserAgentShadowRoot);
     didAddUserAgentShadowRoot(shadowRoot);
     return shadowRoot;
 }
@@ -1735,25 +1851,26 @@ bool Element::childTypeAllowed(NodeType type) const
     return false;
 }
 
-static void inline checkForEmptyStyleChange(Element* element, RenderStyle* style)
+void Element::checkForEmptyStyleChange(RenderStyle* style)
 {
-    if (!style && !element->styleAffectedByEmpty())
+    if (!style && !styleAffectedByEmpty())
         return;
 
-    if (!style || (element->styleAffectedByEmpty() && (!style->emptyState() || element->hasChildNodes())))
-        element->setNeedsStyleRecalc();
+    if (!style || (styleAffectedByEmpty() && (!style->emptyState() || hasChildNodes())))
+        setNeedsStyleRecalc();
 }
 
-static void checkForSiblingStyleChanges(Element* e, RenderStyle* style, bool finishedParsingCallback,
-                                        Node* beforeChange, Node* afterChange, int childCountDelta)
+void Element::checkForSiblingStyleChanges(bool finishedParsingCallback, Node* beforeChange, Node* afterChange, int childCountDelta)
 {
-    if (!e->inActiveDocument() || e->document().hasPendingForcedStyleRecalc() || e->styleChangeType() >= SubtreeStyleChange)
+    if (!inActiveDocument() || document().hasPendingForcedStyleRecalc() || styleChangeType() >= SubtreeStyleChange)
         return;
 
-    // :empty selector.
-    checkForEmptyStyleChange(e, style);
+    RenderStyle* style = renderStyle();
 
-    if (!style || (e->needsStyleRecalc() && e->childrenAffectedByPositionalRules()))
+    // :empty selector.
+    checkForEmptyStyleChange(style);
+
+    if (!style || (needsStyleRecalc() && childrenAffectedByPositionalRules()))
         return;
 
     // Forward positional selectors include the ~ selector, nth-child, nth-of-type, first-of-type and only-of-type.
@@ -1763,17 +1880,17 @@ static void checkForSiblingStyleChanges(Element* e, RenderStyle* style, bool fin
     // |afterChange| is 0 in the parser callback case, so we won't do any work for the forward case if we don't have to.
     // For performance reasons we just mark the parent node as changed, since we don't want to make childrenChanged O(n^2) by crawling all our kids
     // here. recalcStyle will then force a walk of the children when it sees that this has happened.
-    if ((e->childrenAffectedByForwardPositionalRules() && afterChange) || (e->childrenAffectedByBackwardPositionalRules() && beforeChange)) {
-        e->setNeedsStyleRecalc();
+    if ((childrenAffectedByForwardPositionalRules() && afterChange) || (childrenAffectedByBackwardPositionalRules() && beforeChange)) {
+        setNeedsStyleRecalc();
         return;
     }
 
     // :first-child.  In the parser callback case, we don't have to check anything, since we were right the first time.
     // In the DOM case, we only need to do something if |afterChange| is not 0.
     // |afterChange| is 0 in the parser case, so it works out that we'll skip this block.
-    if (e->childrenAffectedByFirstChildRules() && afterChange) {
+    if (childrenAffectedByFirstChildRules() && afterChange) {
         // Find our new first child.
-        Node* newFirstChild = e->firstElementChild();
+        Node* newFirstChild = firstElementChild();
         RenderStyle* newFirstChildStyle = newFirstChild ? newFirstChild->renderStyle() : 0;
 
         // Find the first element node following |afterChange|
@@ -1791,9 +1908,9 @@ static void checkForSiblingStyleChanges(Element* e, RenderStyle* style, bool fin
 
     // :last-child.  In the parser callback case, we don't have to check anything, since we were right the first time.
     // In the DOM case, we only need to do something if |afterChange| is not 0.
-    if (e->childrenAffectedByLastChildRules() && beforeChange) {
+    if (childrenAffectedByLastChildRules() && beforeChange) {
         // Find our new last child.
-        Node* newLastChild = e->lastElementChild();
+        Node* newLastChild = lastElementChild();
         RenderStyle* newLastChildStyle = newLastChild ? newLastChild->renderStyle() : 0;
 
         // Find the last element node going backwards from |beforeChange|
@@ -1811,7 +1928,7 @@ static void checkForSiblingStyleChanges(Element* e, RenderStyle* style, bool fin
 
     // The + selector.  We need to invalidate the first element following the insertion point.  It is the only possible element
     // that could be affected by this DOM change.
-    if (e->childrenAffectedByDirectAdjacentRules() && afterChange) {
+    if (childrenAffectedByDirectAdjacentRules() && afterChange) {
         if (Node* firstElementAfterInsertion = afterChange->isElementNode() ? afterChange : afterChange->nextElementSibling())
             firstElementAfterInsertion->setNeedsStyleRecalc();
     }
@@ -1821,9 +1938,9 @@ void Element::childrenChanged(bool changedByParser, Node* beforeChange, Node* af
 {
     ContainerNode::childrenChanged(changedByParser, beforeChange, afterChange, childCountDelta);
     if (changedByParser)
-        checkForEmptyStyleChange(this, renderStyle());
+        checkForEmptyStyleChange(renderStyle());
     else
-        checkForSiblingStyleChanges(this, renderStyle(), false, beforeChange, afterChange, childCountDelta);
+        checkForSiblingStyleChanges(false, beforeChange, afterChange, childCountDelta);
 
     if (ElementShadow* shadow = this->shadow())
         shadow->setNeedsDistributionRecalc();
@@ -1836,17 +1953,10 @@ void Element::removeAllEventListeners()
         shadow->removeAllEventListeners();
 }
 
-void Element::beginParsingChildren()
-{
-    clearIsParsingChildrenFinished();
-}
-
 void Element::finishParsingChildren()
 {
-    setIsParsingChildrenFinished();
-    checkForSiblingStyleChanges(this, renderStyle(), true, lastChild(), 0, 0);
-    if (isCustomElement())
-        CustomElement::didFinishParsingChildren(this);
+    setIsParsingChildrenFinished(true);
+    checkForSiblingStyleChanges(this, lastChild(), 0, 0);
 }
 
 #ifndef NDEBUG
@@ -1883,10 +1993,10 @@ const Vector<RefPtr<Attr> >& Element::attrNodeList()
     return *attrNodeListForElement(this);
 }
 
-PassRefPtr<Attr> Element::setAttributeNode(Attr* attrNode, ExceptionState& es)
+PassRefPtr<Attr> Element::setAttributeNode(Attr* attrNode, ExceptionState& exceptionState)
 {
     if (!attrNode) {
-        es.throwUninformativeAndGenericDOMException(TypeMismatchError);
+        exceptionState.throwDOMException(TypeMismatchError, "The node provided is invalid.");
         return 0;
     }
 
@@ -1897,7 +2007,7 @@ PassRefPtr<Attr> Element::setAttributeNode(Attr* attrNode, ExceptionState& es)
     // InUseAttributeError: Raised if node is an Attr that is already an attribute of another Element object.
     // The DOM user must explicitly clone Attr nodes to re-use them in other elements.
     if (attrNode->ownerElement()) {
-        es.throwUninformativeAndGenericDOMException(InUseAttributeError);
+        exceptionState.throwDOMException(InUseAttributeError, "The node provided is an attribute node that is already an attribute of another Element; attribute nodes must be explicitly cloned.");
         return 0;
     }
 
@@ -1921,19 +2031,19 @@ PassRefPtr<Attr> Element::setAttributeNode(Attr* attrNode, ExceptionState& es)
     return oldAttrNode.release();
 }
 
-PassRefPtr<Attr> Element::setAttributeNodeNS(Attr* attr, ExceptionState& es)
+PassRefPtr<Attr> Element::setAttributeNodeNS(Attr* attr, ExceptionState& exceptionState)
 {
-    return setAttributeNode(attr, es);
+    return setAttributeNode(attr, exceptionState);
 }
 
-PassRefPtr<Attr> Element::removeAttributeNode(Attr* attr, ExceptionState& es)
+PassRefPtr<Attr> Element::removeAttributeNode(Attr* attr, ExceptionState& exceptionState)
 {
     if (!attr) {
-        es.throwUninformativeAndGenericDOMException(TypeMismatchError);
+        exceptionState.throwDOMException(TypeMismatchError, "The node provided is invalid.");
         return 0;
     }
     if (attr->ownerElement() != this) {
-        es.throwUninformativeAndGenericDOMException(NotFoundError);
+        exceptionState.throwDOMException(NotFoundError, "The node provided is owned by another element.");
         return 0;
     }
 
@@ -1943,7 +2053,7 @@ PassRefPtr<Attr> Element::removeAttributeNode(Attr* attr, ExceptionState& es)
 
     size_t index = elementData()->getAttrIndex(attr);
     if (index == kNotFound) {
-        es.throwUninformativeAndGenericDOMException(NotFoundError);
+        exceptionState.throwDOMException(NotFoundError, "The attribute was not found on this element.");
         return 0;
     }
 
@@ -1952,17 +2062,17 @@ PassRefPtr<Attr> Element::removeAttributeNode(Attr* attr, ExceptionState& es)
     return guard.release();
 }
 
-bool Element::parseAttributeName(QualifiedName& out, const AtomicString& namespaceURI, const AtomicString& qualifiedName, ExceptionState& es)
+bool Element::parseAttributeName(QualifiedName& out, const AtomicString& namespaceURI, const AtomicString& qualifiedName, ExceptionState& exceptionState)
 {
-    String prefix, localName;
-    if (!Document::parseQualifiedName(qualifiedName, prefix, localName, es))
+    AtomicString prefix, localName;
+    if (!Document::parseQualifiedName(qualifiedName, prefix, localName, exceptionState))
         return false;
-    ASSERT(!es.hadException());
+    ASSERT(!exceptionState.hadException());
 
     QualifiedName qName(prefix, localName, namespaceURI);
 
     if (!Document::hasValidNamespaceForAttributes(qName)) {
-        es.throwUninformativeAndGenericDOMException(NamespaceError);
+        exceptionState.throwDOMException(NamespaceError, "'" + namespaceURI + "' is an invalid namespace for attributes.");
         return false;
     }
 
@@ -1970,10 +2080,10 @@ bool Element::parseAttributeName(QualifiedName& out, const AtomicString& namespa
     return true;
 }
 
-void Element::setAttributeNS(const AtomicString& namespaceURI, const AtomicString& qualifiedName, const AtomicString& value, ExceptionState& es)
+void Element::setAttributeNS(const AtomicString& namespaceURI, const AtomicString& qualifiedName, const AtomicString& value, ExceptionState& exceptionState)
 {
     QualifiedName parsedName = anyName;
-    if (!parseAttributeName(parsedName, namespaceURI, qualifiedName, es))
+    if (!parseAttributeName(parsedName, namespaceURI, qualifiedName, exceptionState))
         return;
     setAttribute(parsedName, value);
 }
@@ -2196,38 +2306,106 @@ String Element::outerHTML() const
     return createMarkup(this);
 }
 
-void Element::setInnerHTML(const String& html, ExceptionState& es)
+void Element::setInnerHTML(const String& html, ExceptionState& exceptionState)
 {
-    if (RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(html, this, AllowScriptingContent, "innerHTML", es)) {
+    if (RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(html, this, AllowScriptingContent, "innerHTML", exceptionState)) {
         ContainerNode* container = this;
         if (hasTagName(templateTag))
             container = toHTMLTemplateElement(this)->content();
-        replaceChildrenWithFragment(container, fragment.release(), es);
+        replaceChildrenWithFragment(container, fragment.release(), exceptionState);
     }
 }
 
-void Element::setOuterHTML(const String& html, ExceptionState& es)
+void Element::setOuterHTML(const String& html, ExceptionState& exceptionState)
 {
     Node* p = parentNode();
-    if (!p || !p->isElementNode()) {
-        es.throwUninformativeAndGenericDOMException(NoModificationAllowedError);
+    if (!p) {
+        exceptionState.throwDOMException(NoModificationAllowedError, "This element has no parent node.");
         return;
     }
+    if (!p->isElementNode()) {
+        exceptionState.throwDOMException(NoModificationAllowedError, "This element's parent is of type '" + p->nodeName() + "', which is not an element node.");
+        return;
+    }
+
     RefPtr<Element> parent = toElement(p);
     RefPtr<Node> prev = previousSibling();
     RefPtr<Node> next = nextSibling();
 
-    RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(html, parent.get(), AllowScriptingContent, "outerHTML", es);
-    if (es.hadException())
+    RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(html, parent.get(), AllowScriptingContent, "outerHTML", exceptionState);
+    if (exceptionState.hadException())
         return;
 
-    parent->replaceChild(fragment.release(), this, es);
+    parent->replaceChild(fragment.release(), this, exceptionState);
     RefPtr<Node> node = next ? next->previousSibling() : 0;
-    if (!es.hadException() && node && node->isTextNode())
-        mergeWithNextTextNode(node.release(), es);
+    if (!exceptionState.hadException() && node && node->isTextNode())
+        mergeWithNextTextNode(node.release(), exceptionState);
 
-    if (!es.hadException() && prev && prev->isTextNode())
-        mergeWithNextTextNode(prev.release(), es);
+    if (!exceptionState.hadException() && prev && prev->isTextNode())
+        mergeWithNextTextNode(prev.release(), exceptionState);
+}
+
+Node* Element::insertAdjacent(const String& where, Node* newChild, ExceptionState& exceptionState)
+{
+    if (equalIgnoringCase(where, "beforeBegin")) {
+        if (ContainerNode* parent = this->parentNode()) {
+            parent->insertBefore(newChild, this, exceptionState);
+            if (!exceptionState.hadException())
+                return newChild;
+        }
+        return 0;
+    }
+
+    if (equalIgnoringCase(where, "afterBegin")) {
+        insertBefore(newChild, firstChild(), exceptionState);
+        return exceptionState.hadException() ? 0 : newChild;
+    }
+
+    if (equalIgnoringCase(where, "beforeEnd")) {
+        appendChild(newChild, exceptionState);
+        return exceptionState.hadException() ? 0 : newChild;
+    }
+
+    if (equalIgnoringCase(where, "afterEnd")) {
+        if (ContainerNode* parent = this->parentNode()) {
+            parent->insertBefore(newChild, nextSibling(), exceptionState);
+            if (!exceptionState.hadException())
+                return newChild;
+        }
+        return 0;
+    }
+
+    exceptionState.throwDOMException(SyntaxError, "The value provided ('" + where + "') is not one of 'beforeBegin', 'afterBegin', 'beforeEnd', or 'afterEnd'.");
+    return 0;
+}
+
+// Step 1 of http://domparsing.spec.whatwg.org/#insertadjacenthtml()
+static Element* contextElementForInsertion(const String& where, Element* element, ExceptionState& exceptionState)
+{
+    if (equalIgnoringCase(where, "beforeBegin") || equalIgnoringCase(where, "afterEnd")) {
+        ContainerNode* parent = element->parentNode();
+        if (!parent || !parent->isElementNode()) {
+            exceptionState.throwDOMException(NoModificationAllowedError, "The element has no parent.");
+            return 0;
+        }
+        return toElement(parent);
+    }
+    if (equalIgnoringCase(where, "afterBegin") || equalIgnoringCase(where, "beforeEnd"))
+        return element;
+    exceptionState.throwDOMException(SyntaxError, "The value provided ('" + where + "') is not one of 'beforeBegin', 'afterBegin', 'beforeEnd', or 'afterEnd'.");
+    return 0;
+}
+
+void Element::insertAdjacentHTML(const String& where, const String& markup, ExceptionState& exceptionState)
+{
+    RefPtr<Element> contextElement = contextElementForInsertion(where, this, exceptionState);
+    if (!contextElement)
+        return;
+
+    RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(markup, contextElement.get(), AllowScriptingContent, "insertAdjacentHTML", exceptionState);
+    if (!fragment)
+        return;
+    insertAdjacent(where, fragment.get(), exceptionState);
 }
 
 String Element::innerText()
@@ -2291,20 +2469,34 @@ String Element::textFromChildren()
     return content.toString();
 }
 
-// pseudo is used via shadowPseudoId.
-const AtomicString& Element::pseudo() const
+const AtomicString& Element::shadowPseudoId() const
 {
-    return getAttribute(pseudoAttr);
+    if (ShadowRoot* root = containingShadowRoot()) {
+        if (root->type() == ShadowRoot::UserAgentShadowRoot)
+            return fastGetAttribute(pseudoAttr);
+    }
+    return nullAtom;
 }
 
-const AtomicString& Element::part() const
+void Element::setShadowPseudoId(const AtomicString& id)
 {
-    return getAttribute(partAttr);
+    ASSERT(CSSSelector::parsePseudoType(id) == CSSSelector::PseudoWebKitCustomElement || CSSSelector::parsePseudoType(id) == CSSSelector::PseudoUserAgentCustomElement);
+    setAttribute(pseudoAttr, id);
 }
 
-void Element::setPart(const AtomicString& value)
+bool Element::isInDescendantTreeOf(const Element* shadowHost) const
 {
-    setAttribute(partAttr, value);
+    ASSERT(shadowHost);
+    ASSERT(isShadowHost(shadowHost));
+
+    const ShadowRoot* shadowRoot = containingShadowRoot();
+    while (shadowRoot) {
+        const Element* ancestorShadowHost = shadowRoot->shadowHost();
+        if (ancestorShadowHost == shadowHost)
+            return true;
+        shadowRoot = ancestorShadowHost->containingShadowRoot();
+    }
+    return false;
 }
 
 LayoutSize Element::minimumSizeForResizing() const
@@ -2351,22 +2543,24 @@ void Element::setStyleAffectedByEmpty()
     ensureElementRareData().setStyleAffectedByEmpty(true);
 }
 
-void Element::setChildrenAffectedByHover(bool value)
+void Element::setChildrenAffectedByFocus()
 {
-    if (value || hasRareData())
-        ensureElementRareData().setChildrenAffectedByHover(value);
+    ensureElementRareData().setChildrenAffectedByFocus(true);
 }
 
-void Element::setChildrenAffectedByActive(bool value)
+void Element::setChildrenAffectedByHover()
 {
-    if (value || hasRareData())
-        ensureElementRareData().setChildrenAffectedByActive(value);
+    ensureElementRareData().setChildrenAffectedByHover(true);
 }
 
-void Element::setChildrenAffectedByDrag(bool value)
+void Element::setChildrenAffectedByActive()
 {
-    if (value || hasRareData())
-        ensureElementRareData().setChildrenAffectedByDrag(value);
+    ensureElementRareData().setChildrenAffectedByActive(true);
+}
+
+void Element::setChildrenAffectedByDrag()
+{
+    ensureElementRareData().setChildrenAffectedByDrag(true);
 }
 
 void Element::setChildrenAffectedByFirstChildRules()
@@ -2406,7 +2600,8 @@ bool Element::childrenSupportStyleSharing() const
 {
     if (!hasRareData())
         return true;
-    return !rareDataChildrenAffectedByHover()
+    return !rareDataChildrenAffectedByFocus()
+        && !rareDataChildrenAffectedByHover()
         && !rareDataChildrenAffectedByActive()
         && !rareDataChildrenAffectedByDrag()
         && !rareDataChildrenAffectedByFirstChildRules()
@@ -2420,6 +2615,12 @@ bool Element::rareDataStyleAffectedByEmpty() const
 {
     ASSERT(hasRareData());
     return elementRareData()->styleAffectedByEmpty();
+}
+
+bool Element::rareDataChildrenAffectedByFocus() const
+{
+    ASSERT(hasRareData());
+    return elementRareData()->childrenAffectedByFocus();
 }
 
 bool Element::rareDataChildrenAffectedByHover() const
@@ -2547,15 +2748,6 @@ void Element::cancelFocusAppearanceUpdate()
         document().cancelFocusAppearanceUpdate();
 }
 
-void Element::updateCallbackSelectors(RenderStyle* oldStyle, RenderStyle* newStyle)
-{
-    const Vector<String> emptyVector;
-    const Vector<String>& oldCallbackSelectors = oldStyle ? oldStyle->callbackSelectors() : emptyVector;
-    const Vector<String>& newCallbackSelectors = newStyle ? newStyle->callbackSelectors() : emptyVector;
-
-    CSSSelectorWatch::from(document()).updateSelectorMatches(oldCallbackSelectors, newCallbackSelectors);
-}
-
 void Element::normalizeAttributes()
 {
     if (!hasAttributes())
@@ -2569,7 +2761,12 @@ void Element::normalizeAttributes()
 void Element::updatePseudoElement(PseudoId pseudoId, StyleRecalcChange change)
 {
     PseudoElement* element = pseudoElement(pseudoId);
-    if (element && (needsStyleRecalc() || shouldRecalcStyle(change, element))) {
+    if (element && (needsStyleRecalc() || element->shouldCallRecalcStyle(change))) {
+        // Need to clear the cached style if the PseudoElement wants a recalc so it
+        // computes a new style.
+        if (element->needsStyleRecalc())
+            renderer()->style()->removeCachedPseudoStyle(pseudoId);
+
         // PseudoElement styles hang off their parent element's style so if we needed
         // a style recalc we should Force one on the pseudo.
         // FIXME: We should figure out the right text sibling to pass.
@@ -2587,26 +2784,13 @@ void Element::updatePseudoElement(PseudoId pseudoId, StyleRecalcChange change)
 
 void Element::createPseudoElementIfNeeded(PseudoId pseudoId)
 {
-    if (needsPseudoElement(pseudoId))
-        createPseudoElement(pseudoId);
-}
+    if (isPseudoElement())
+        return;
 
-bool Element::needsPseudoElement(PseudoId pseudoId) const
-{
-    if (pseudoId == BACKDROP && !isInTopLayer())
-        return false;
-    if (!renderer() || !pseudoElementRendererIsNeeded(renderer()->getCachedPseudoStyle(pseudoId)))
-        return false;
-    if (!renderer()->canHaveGeneratedChildren())
-        return false;
-    return true;
-}
+    RefPtr<PseudoElement> element = document().ensureStyleResolver().createPseudoElementIfNeeded(*this, pseudoId);
+    if (!element)
+        return;
 
-void Element::createPseudoElement(PseudoId pseudoId)
-{
-    ASSERT(needsPseudoElement(pseudoId));
-    ASSERT(!isPseudoElement());
-    RefPtr<PseudoElement> element = PseudoElement::create(this, pseudoId);
     if (pseudoId == BACKDROP)
         document().addToTopLayer(element.get(), this);
     element->insertedInto(this);
@@ -2629,14 +2813,9 @@ RenderObject* Element::pseudoElementRenderer(PseudoId pseudoId) const
     return 0;
 }
 
-bool Element::webkitMatchesSelector(const String& selector, ExceptionState& es)
+bool Element::matches(const String& selectors, ExceptionState& exceptionState)
 {
-    if (selector.isEmpty()) {
-        es.throwUninformativeAndGenericDOMException(SyntaxError);
-        return false;
-    }
-
-    SelectorQuery* selectorQuery = document().selectorQueryCache().add(selector, document(), es);
+    SelectorQuery* selectorQuery = document().selectorQueryCache().add(AtomicString(selectors), document(), exceptionState);
     if (!selectorQuery)
         return false;
     return selectorQuery->matches(*this);
@@ -2690,8 +2869,7 @@ int Element::getIntegralAttribute(const QualifiedName& attributeName) const
 
 void Element::setIntegralAttribute(const QualifiedName& attributeName, int value)
 {
-    // FIXME: Need an AtomicString version of String::number.
-    setAttribute(attributeName, String::number(value));
+    setAttribute(attributeName, AtomicString::number(value));
 }
 
 unsigned Element::getUnsignedIntegralAttribute(const QualifiedName& attributeName) const
@@ -2701,17 +2879,22 @@ unsigned Element::getUnsignedIntegralAttribute(const QualifiedName& attributeNam
 
 void Element::setUnsignedIntegralAttribute(const QualifiedName& attributeName, unsigned value)
 {
-    // FIXME: Need an AtomicString version of String::number.
-    setAttribute(attributeName, String::number(value));
+    // Range restrictions are enforced for unsigned IDL attributes that
+    // reflect content attributes,
+    //   http://www.whatwg.org/specs/web-apps/current-work/multipage/common-dom-interfaces.html#reflecting-content-attributes-in-idl-attributes
+    if (value > 0x7fffffffu)
+        value = 0;
+    setAttribute(attributeName, AtomicString::number(value));
 }
 
-bool Element::childShouldCreateRenderer(const Node& child) const
+double Element::getFloatingPointAttribute(const QualifiedName& attributeName, double fallbackValue) const
 {
-    // Only create renderers for SVG elements whose parents are SVG elements, or for proper <svg xmlns="svgNS"> subdocuments.
-    if (child.isSVGElement())
-        return child.hasTagName(SVGNames::svgTag) || isSVGElement();
+    return parseToDoubleForNumberType(getAttribute(attributeName), fallbackValue);
+}
 
-    return ContainerNode::childShouldCreateRenderer(child);
+void Element::setFloatingPointAttribute(const QualifiedName& attributeName, double value)
+{
+    setAttribute(attributeName, AtomicString::number(value));
 }
 
 void Element::webkitRequestFullscreen()
@@ -2801,34 +2984,21 @@ bool Element::isSpellCheckingEnabled() const
 
 RenderRegion* Element::renderRegion() const
 {
-    if (renderer() && renderer()->isRenderRegion())
-        return toRenderRegion(renderer());
+    if (renderer() && renderer()->isRenderNamedFlowFragmentContainer())
+        return toRenderBlockFlow(renderer())->renderNamedFlowFragment();
 
     return 0;
 }
 
-bool Element::shouldMoveToFlowThread(RenderStyle* styleToUse) const
-{
-    ASSERT(styleToUse);
-
-    if (FullscreenElementStack::isActiveFullScreenElement(this))
-        return false;
-
-    if (isInShadowTree())
-        return false;
-
-    if (styleToUse->flowThread().isEmpty())
-        return false;
-
-    return !isRegisteredWithNamedFlow();
-}
-
 const AtomicString& Element::webkitRegionOverset() const
 {
+    DEFINE_STATIC_LOCAL(AtomicString, undefinedState, ("undefined", AtomicString::ConstructFromLiteral));
+    if (!RuntimeEnabledFeatures::cssRegionsEnabled())
+        return undefinedState;
+
     document().updateLayoutIgnorePendingStylesheets();
 
-    DEFINE_STATIC_LOCAL(AtomicString, undefinedState, ("undefined", AtomicString::ConstructFromLiteral));
-    if (!RuntimeEnabledFeatures::cssRegionsEnabled() || !renderRegion())
+    if (!renderRegion())
         return undefinedState;
 
     switch (renderRegion()->regionOversetState()) {
@@ -2854,11 +3024,14 @@ const AtomicString& Element::webkitRegionOverset() const
 
 Vector<RefPtr<Range> > Element::webkitGetRegionFlowRanges() const
 {
+    Vector<RefPtr<Range> > rangeObjects;
+    if (!RuntimeEnabledFeatures::cssRegionsEnabled())
+        return rangeObjects;
+
     document().updateLayoutIgnorePendingStylesheets();
 
-    Vector<RefPtr<Range> > rangeObjects;
-    if (RuntimeEnabledFeatures::cssRegionsEnabled() && renderer() && renderer()->isRenderRegion()) {
-        RenderRegion* region = toRenderRegion(renderer());
+    if (renderer() && renderer()->isRenderNamedFlowFragmentContainer()) {
+        RenderNamedFlowFragment* region = toRenderBlockFlow(renderer())->renderNamedFlowFragment();
         if (region->isValid())
             region->getRanges(rangeObjects);
     }
@@ -2873,7 +3046,7 @@ bool Element::fastAttributeLookupAllowed(const QualifiedName& name) const
         return false;
 
     if (isSVGElement())
-        return !static_cast<const SVGElement*>(this)->isAnimatableAttribute(name);
+        return !toSVGElement(this)->isAnimatableAttribute(name);
 
     return true;
 }
@@ -2941,7 +3114,7 @@ void Element::updateLabel(TreeScope& scope, const AtomicString& oldForAttributeV
 
 static bool hasSelectorForAttribute(Document* document, const AtomicString& localName)
 {
-    return document->styleResolver() && document->styleResolver()->ruleFeatureSet().hasSelectorForAttribute(localName);
+    return document->ensureStyleResolver().ensureRuleFeatureSet().hasSelectorForAttribute(localName);
 }
 
 void Element::willModifyAttribute(const QualifiedName& name, const AtomicString& oldValue, const AtomicString& newValue)
@@ -3178,12 +3351,10 @@ void Element::cloneAttributesFromElement(const Element& other)
         ownerDocumentsHaveDifferentCaseSensitivity = other.document().inQuirksMode() != document().inQuirksMode();
 
     // If 'other' has a mutable ElementData, convert it to an immutable one so we can share it between both elements.
-    // We can only do this if there is no CSSOM wrapper for other's inline style, and there are no presentation attributes,
-    // and sharing the data won't result in different case sensitivity of class or id.
+    // We can only do this if there are no presentation attributes and sharing the data won't result in different case sensitivity of class or id.
     if (other.m_elementData->isUnique()
         && !ownerDocumentsHaveDifferentCaseSensitivity
-        && !other.m_elementData->presentationAttributeStyle()
-        && (!other.m_elementData->inlineStyle() || !other.m_elementData->inlineStyle()->hasCSSOMWrapper()))
+        && !other.m_elementData->presentationAttributeStyle())
         const_cast<Element&>(other).m_elementData = static_cast<const UniqueElementData*>(other.m_elementData.get())->makeShareableCopy();
 
     if (!other.m_elementData->isUnique() && !ownerDocumentsHaveDifferentCaseSensitivity)
@@ -3244,15 +3415,16 @@ void Element::synchronizeStyleAttributeInternal() const
     ASSERT(elementData());
     ASSERT(elementData()->m_styleAttributeIsDirty);
     elementData()->m_styleAttributeIsDirty = false;
-    if (const StylePropertySet* inlineStyle = this->inlineStyle())
-        const_cast<Element*>(this)->setSynchronizedLazyAttribute(styleAttr, inlineStyle->asText());
+    const StylePropertySet* inlineStyle = this->inlineStyle();
+    const_cast<Element*>(this)->setSynchronizedLazyAttribute(styleAttr,
+        inlineStyle ? AtomicString(inlineStyle->asText()) : nullAtom);
 }
 
 CSSStyleDeclaration* Element::style()
 {
     if (!isStyledElement())
         return 0;
-    return ensureMutableInlineStyle()->ensureInlineCSSStyleDeclaration(this);
+    return ensureElementRareData().ensureInlineCSSStyleDeclaration(this);
 }
 
 MutableStylePropertySet* Element::ensureMutableInlineStyle()
@@ -3262,20 +3434,17 @@ MutableStylePropertySet* Element::ensureMutableInlineStyle()
     if (!inlineStyle) {
         CSSParserMode mode = (!isHTMLElement() || document().inQuirksMode()) ? HTMLQuirksMode : HTMLStandardMode;
         inlineStyle = MutableStylePropertySet::create(mode);
-    }
-    else if (!inlineStyle->isMutable())
+    } else if (!inlineStyle->isMutable()) {
         inlineStyle = inlineStyle->mutableCopy();
-    ASSERT(inlineStyle->isMutable());
-    return static_cast<MutableStylePropertySet*>(inlineStyle.get());
+    }
+    return toMutableStylePropertySet(inlineStyle);
 }
 
-PropertySetCSSStyleDeclaration* Element::inlineStyleCSSOMWrapper()
+void Element::clearMutableInlineStyleIfEmpty()
 {
-    if (!inlineStyle() || !inlineStyle()->hasCSSOMWrapper())
-        return 0;
-    PropertySetCSSStyleDeclaration* cssomWrapper = ensureMutableInlineStyle()->cssStyleDeclaration();
-    ASSERT(cssomWrapper && cssomWrapper->parentElement() == this);
-    return cssomWrapper;
+    if (ensureMutableInlineStyle()->isEmpty()) {
+        ensureUniqueElementData()->m_inlineStyle.clear();
+    }
 }
 
 inline void Element::setInlineStyleFromString(const AtomicString& newStyleString)
@@ -3293,7 +3462,7 @@ inline void Element::setInlineStyleFromString(const AtomicString& newStyleString
         inlineStyle.clear();
 
     if (!inlineStyle) {
-        inlineStyle = CSSParser::parseInlineStyleDeclaration(newStyleString, this);
+        inlineStyle = BisonCSSParser::parseInlineStyleDeclaration(newStyleString, this);
     } else {
         ASSERT(inlineStyle->isMutable());
         static_pointer_cast<MutableStylePropertySet>(inlineStyle)->parseDeclaration(newStyleString, document().elementSheet()->contents());
@@ -3308,8 +3477,6 @@ void Element::styleAttributeChanged(const AtomicString& newStyleString, Attribut
         startLineNumber = document().scriptableDocumentParser()->lineNumber();
 
     if (newStyleString.isNull()) {
-        if (PropertySetCSSStyleDeclaration* cssomWrapper = inlineStyleCSSOMWrapper())
-            cssomWrapper->clearParentElement();
         ensureUniqueElementData()->m_inlineStyle.clear();
     } else if (modificationReason == ModifiedByCloning || document().contentSecurityPolicy()->allowInlineStyle(document().url(), startLineNumber)) {
         setInlineStyleFromString(newStyleString);
@@ -3377,17 +3544,10 @@ bool Element::removeInlineStyleProperty(CSSPropertyID propertyID)
 void Element::removeAllInlineStyleProperties()
 {
     ASSERT(isStyledElement());
-    if (!inlineStyle() || inlineStyle()->isEmpty())
+    if (!inlineStyle())
         return;
     ensureMutableInlineStyle()->clear();
     inlineStyleChanged();
-}
-
-void Element::addSubresourceAttributeURLs(ListHashSet<KURL>& urls) const
-{
-    ASSERT(isStyledElement());
-    if (const StylePropertySet* inlineStyle = elementData() ? elementData()->inlineStyle() : 0)
-        inlineStyle->addSubresourceStyleURLs(urls, document().elementSheet()->contents());
 }
 
 void Element::updatePresentationAttributeStyle()
@@ -3418,7 +3578,7 @@ void Element::addPropertyToPresentationAttributeStyle(MutableStylePropertySet* s
 
 bool Element::supportsStyleSharing() const
 {
-    if (!isStyledElement() || !parentElement())
+    if (!isStyledElement() || !parentOrShadowHostElement())
         return false;
     // If the element has inline style it is probably unique.
     if (inlineStyle())
@@ -3426,7 +3586,7 @@ bool Element::supportsStyleSharing() const
     if (isSVGElement() && toSVGElement(this)->animatedSMILStyleProperties())
         return false;
     // Ids stop style sharing if they show up in the stylesheets.
-    if (hasID() && document().styleResolver()->hasRulesForId(idForStyleResolution()))
+    if (hasID() && document().ensureStyleResolver().hasRulesForId(idForStyleResolution()))
         return false;
     // Active and hovered elements always make a chain towards the document node
     // and no siblings or cousins will have the same state.
@@ -3436,7 +3596,7 @@ bool Element::supportsStyleSharing() const
         return false;
     if (focused())
         return false;
-    if (!parentElement()->childrenSupportStyleSharing())
+    if (!parentOrShadowHostElement()->childrenSupportStyleSharing())
         return false;
     if (hasScopedHTMLStyleChild())
         return false;
@@ -3445,8 +3605,6 @@ bool Element::supportsStyleSharing() const
     if (isHTMLElement() && toHTMLElement(this)->hasDirectionAuto())
         return false;
     if (hasActiveAnimations())
-        return false;
-    if (shadow() && shadow()->containsActiveStyles())
         return false;
     // Turn off style sharing for elements that can gain layers for reasons outside of the style system.
     // See comments in RenderObject::setStyle().

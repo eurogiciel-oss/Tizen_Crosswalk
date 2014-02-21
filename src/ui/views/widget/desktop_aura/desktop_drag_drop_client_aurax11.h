@@ -42,7 +42,7 @@ namespace views {
 class DesktopNativeCursorManager;
 
 // Implements drag and drop on X11 for aura. On one side, this class takes raw
-// X11 events forwarded from DesktopRootWindowHostLinux, while on the other, it
+// X11 events forwarded from DesktopWindowTreeHostLinux, while on the other, it
 // handles the views drag events.
 class VIEWS_EXPORT DesktopDragDropClientAuraX11
     : public aura::client::DragDropClient,
@@ -214,8 +214,6 @@ class VIEWS_EXPORT DesktopDragDropClientAuraX11
   gfx::NativeCursor grab_cursor_;
   gfx::NativeCursor copy_grab_cursor_;
   gfx::NativeCursor move_grab_cursor_;
-
-  static std::map< ::Window, DesktopDragDropClientAuraX11*> g_live_client_map;
 
   DISALLOW_COPY_AND_ASSIGN(DesktopDragDropClientAuraX11);
 };

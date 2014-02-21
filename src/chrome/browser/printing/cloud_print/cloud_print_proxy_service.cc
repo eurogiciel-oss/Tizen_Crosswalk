@@ -23,7 +23,7 @@
 #include "chrome/browser/notifications/notification.h"
 #include "chrome/browser/notifications/notification_ui_manager.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/service/service_process_control.h"
+#include "chrome/browser/service_process/service_process_control.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/cloud_print/cloud_print_proxy_info.h"
 #include "chrome/common/pref_names.h"
@@ -144,7 +144,7 @@ void CloudPrintProxyService::GetPrintersAvalibleForRegistration(
   if (!list_path.empty()) {
     std::string printers_json;
     base::ReadFileToString(list_path, &printers_json);
-    scoped_ptr<Value> value(base::JSONReader::Read(printers_json));
+    scoped_ptr<base::Value> value(base::JSONReader::Read(printers_json));
     base::ListValue* list = NULL;
     if (value && value->GetAsList(&list) && list) {
       for (size_t i = 0; i < list->GetSize(); ++i) {

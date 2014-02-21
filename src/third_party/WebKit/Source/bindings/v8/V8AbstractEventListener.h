@@ -69,9 +69,9 @@ namespace WebCore {
 
         // Implementation of EventListener interface.
 
-        virtual bool operator==(const EventListener& other) { return this == &other; }
+        virtual bool operator==(const EventListener& other) OVERRIDE { return this == &other; }
 
-        virtual void handleEvent(ExecutionContext*, Event*);
+        virtual void handleEvent(ExecutionContext*, Event*) OVERRIDE;
 
         virtual bool isLazy() const { return false; }
 
@@ -126,13 +126,13 @@ namespace WebCore {
 
     private:
         // Implementation of EventListener function.
-        virtual bool virtualisAttribute() const { return m_isAttribute; }
+        virtual bool virtualisAttribute() const OVERRIDE { return m_isAttribute; }
 
         virtual v8::Local<v8::Value> callListenerFunction(ExecutionContext*, v8::Handle<v8::Value> jsevent, Event*) = 0;
 
         virtual bool shouldPreventDefault(v8::Local<v8::Value> returnValue);
 
-        static void makeWeakCallback(v8::Isolate*, v8::Persistent<v8::Object>*, V8AbstractEventListener*);
+        static void setWeakCallback(const v8::WeakCallbackData<v8::Object, V8AbstractEventListener>&);
 
         ScopedPersistent<v8::Object> m_listener;
 

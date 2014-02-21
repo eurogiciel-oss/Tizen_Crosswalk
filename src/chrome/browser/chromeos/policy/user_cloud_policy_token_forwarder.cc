@@ -6,8 +6,8 @@
 
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/chromeos/policy/user_cloud_policy_manager_chromeos.h"
-#include "chrome/browser/policy/cloud/cloud_policy_core.h"
 #include "chrome/browser/signin/profile_oauth2_token_service.h"
+#include "components/policy/core/common/cloud/cloud_policy_core.h"
 #include "content/public/browser/notification_source.h"
 #include "google_apis/gaia/gaia_constants.h"
 
@@ -16,7 +16,8 @@ namespace policy {
 UserCloudPolicyTokenForwarder::UserCloudPolicyTokenForwarder(
     UserCloudPolicyManagerChromeOS* manager,
     ProfileOAuth2TokenService* token_service)
-    : manager_(manager),
+    : OAuth2TokenService::Consumer("policy_token_forwarder"),
+      manager_(manager),
       token_service_(token_service) {
   // Start by waiting for the CloudPolicyService to be initialized, so that
   // we can check if it already has a DMToken or not.

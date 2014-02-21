@@ -9,7 +9,7 @@
 
 namespace {
 
-// TODO(qinmin): modify ui/range/Range.h to support template so that we
+// TODO(qinmin): modify ui/gfx/range/range.h to support template so that we
 // don't need to define this.
 struct Range {
   Range(float start, float end) : start_(start), end_(end) {}
@@ -17,14 +17,6 @@ struct Range {
   float start_;
   float end_;
 };
-
-inline bool Intersects(const Range& a, const Range& b) {
-  return a.start_ < b.end_ && b.start_ < a.end_;
-}
-
-inline Range Intersect(const Range& a, const Range& b) {
-  return Range(std::max(a.start_, b.start_), std::min(a.end_, b.end_));
-}
 
 bool Range::IsEmpty() {
   return start_ >= end_;

@@ -46,7 +46,7 @@ class ExceptionState;
 
 class Key : public ScriptWrappable, public RefCounted<Key> {
 public:
-    static PassRefPtr<Key> create(const WebKit::WebCryptoKey& key) { return adoptRef(new Key(key)); }
+    static PassRefPtr<Key> create(const blink::WebCryptoKey& key) { return adoptRef(new Key(key)); }
 
     ~Key();
 
@@ -55,17 +55,19 @@ public:
     Algorithm* algorithm();
     Vector<String> usages() const;
 
-    const WebKit::WebCryptoKey& key() const { return m_key; }
+    const blink::WebCryptoKey& key() const { return m_key; }
 
-    bool canBeUsedForAlgorithm(const WebKit::WebCryptoAlgorithm&, AlgorithmOperation, ExceptionState&) const;
+    // If the key cannot be used with the indicated algorithm, returns false
+    // and fills the provided String with error details.
+    bool canBeUsedForAlgorithm(const blink::WebCryptoAlgorithm&, AlgorithmOperation, String&) const;
 
-    static bool parseFormat(const String&, WebKit::WebCryptoKeyFormat&, ExceptionState&);
-    static bool parseUsageMask(const Vector<String>&, WebKit::WebCryptoKeyUsageMask&, ExceptionState&);
+    static bool parseFormat(const String&, blink::WebCryptoKeyFormat&, ExceptionState&);
+    static bool parseUsageMask(const Vector<String>&, blink::WebCryptoKeyUsageMask&, ExceptionState&);
 
 protected:
-    explicit Key(const WebKit::WebCryptoKey&);
+    explicit Key(const blink::WebCryptoKey&);
 
-    const WebKit::WebCryptoKey m_key;
+    const blink::WebCryptoKey m_key;
     RefPtr<Algorithm> m_algorithm;
 };
 

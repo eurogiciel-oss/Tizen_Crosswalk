@@ -44,18 +44,17 @@ public:
 
     virtual String title() const OVERRIDE FINAL;
 
-    virtual short tabIndex() const;
+    virtual short tabIndex() const OVERRIDE;
     void setTabIndex(int);
 
     void setInnerText(const String&, ExceptionState&);
     void setOuterText(const String&, ExceptionState&);
 
     Element* insertAdjacentElement(const String& where, Element* newChild, ExceptionState&);
-    void insertAdjacentHTML(const String& where, const String& html, ExceptionState&);
     void insertAdjacentText(const String& where, const String& text, ExceptionState&);
 
     virtual bool hasCustomFocusLogic() const;
-    virtual bool supportsFocus() const;
+    virtual bool supportsFocus() const OVERRIDE;
 
     String contentEditable() const;
     void setContentEditable(const String&, ExceptionState&);
@@ -71,14 +70,11 @@ public:
 
     void click();
 
-    virtual void accessKeyAction(bool sendMouseEvents);
+    virtual void accessKeyAction(bool sendMouseEvents) OVERRIDE;
 
     bool ieForbidsInsertHTML() const;
 
-    virtual bool rendererIsNeeded(const RenderStyle&);
-    virtual RenderObject* createRenderer(RenderStyle*);
-
-    HTMLFormElement* form() const { return virtualForm(); }
+    virtual HTMLFormElement* formOwner() const { return 0; }
 
     HTMLFormElement* findFormAncestor() const;
 
@@ -106,7 +102,7 @@ protected:
     virtual void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStylePropertySet*) OVERRIDE;
     unsigned parseBorderWidthAttribute(const AtomicString&) const;
 
-    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0);
+    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0) OVERRIDE;
     void calculateAndAdjustDirectionality();
 
 private:
@@ -114,9 +110,6 @@ private:
 
     void mapLanguageAttributeToLocale(const AtomicString&, MutableStylePropertySet*);
 
-    virtual HTMLFormElement* virtualForm() const;
-
-    Node* insertAdjacent(const String& where, Node* newChild, ExceptionState&);
     PassRefPtr<DocumentFragment> textToFragment(const String&, ExceptionState&);
 
     void dirAttributeChanged(const AtomicString&);
@@ -126,7 +119,7 @@ private:
 
     TranslateAttributeMode translateAttributeMode() const;
 
-    AtomicString eventNameForAttributeName(const QualifiedName& attrName) const;
+    const AtomicString& eventNameForAttributeName(const QualifiedName& attrName) const;
 
     void handleKeypressEvent(KeyboardEvent*);
     bool supportsSpatialNavigationFocus() const;
@@ -137,7 +130,7 @@ DEFINE_NODE_TYPE_CASTS(HTMLElement, isHTMLElement());
 inline HTMLElement::HTMLElement(const QualifiedName& tagName, Document& document, ConstructionType type = CreateHTMLElement)
     : Element(tagName, &document, type)
 {
-    ASSERT(tagName.localName().impl());
+    ASSERT(!tagName.localName().isNull());
     ScriptWrappable::init(this);
 }
 

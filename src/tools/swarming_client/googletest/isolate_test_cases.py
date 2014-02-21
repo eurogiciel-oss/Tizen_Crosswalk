@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Traces each test cases of a google-test executable individually and generates
 or updates an .isolate file.
@@ -22,16 +22,17 @@ if not ROOT_DIR in sys.path:
   sys.path.insert(0, ROOT_DIR)
 
 import isolate
-import run_test_cases
 import trace_inputs
-import trace_test_cases
+from googletest import run_test_cases
+from googletest import trace_test_cases
 
 from utils import tools
 
 
 def isolate_test_cases(
     cmd, test_cases, jobs, isolated_file, isolate_file,
-    root_dir, reldir, variables, trace_blacklist):
+    root_dir, reldir, path_variables, config_variables, extra_variables,
+    trace_blacklist):
   assert os.path.isabs(root_dir) and os.path.isdir(root_dir), root_dir
 
   logname = isolated_file + '.log'
@@ -41,7 +42,7 @@ def isolate_test_cases(
   results = trace_test_cases.trace_test_cases(
       cmd, cwd_dir, test_cases, jobs, logname)
   api = trace_inputs.get_api()
-  blacklist = trace_inputs.gen_blacklist(trace_blacklist)
+  blacklist = tools.gen_blacklist(trace_blacklist)
   logs = dict(
       (i.pop('trace'), i) for i in api.parse_log(logname, blacklist, None))
   exception = None
@@ -57,19 +58,21 @@ def isolate_test_cases(
         logging.error('Got exception: %s', exception)
         continue
       files = log_dict['results'].strip_root(root_dir).files
-      tracked, touched = isolate.split_touched(files)
+      tracked, touched = isolate.isolate_format.split_touched(files)
       value = isolate.generate_isolate(
           tracked,
           [],
           touched,
           root_dir,
-          variables,
+          path_variables,
+          config_variables,
+          extra_variables,
           reldir,
           blacklist)
       # item['test_case'] could be an invalid file name.
       out = basename + '.' + item['tracename'] + '.isolate'
       with open(out, 'w') as f:
-        isolate.pretty_print(value, f)
+        isolate.isolate_format.pretty_print(value, f)
       inputs.append(out)
 
     # Merges back. Note that it is possible to blow up the command line
@@ -155,7 +158,9 @@ def main():
     if not test_cases:
       parser.error('No test case to run with command: %s' % ' '.join(command))
 
-    config.saved_state.variables.update(options.variables)
+    config.saved_state.config_variables.update(options.config_variables)
+    config.saved_state.extra_variables.update(options.extra_variables)
+    config.saved_state.path_variables.update(options.path_variables)
     return isolate_test_cases(
         command,
         test_cases,
@@ -164,7 +169,9 @@ def main():
         config.saved_state.isolate_filepath,
         config.root_dir,
         config.saved_state.relative_cwd,
-        config.saved_state.variables,
+        config.saved_state.path_variables,
+        config.saved_state.config_variables,
+        config.saved_state.extra_variables,
         options.trace_blacklist)
   except isolate.ExecutionError, e:
     print >> sys.stderr, str(e)

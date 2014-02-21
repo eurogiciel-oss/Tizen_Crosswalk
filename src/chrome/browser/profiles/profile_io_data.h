@@ -29,22 +29,18 @@
 class ChromeHttpUserAgentSettings;
 class ChromeNetworkDelegate;
 class CookieSettings;
-class DesktopNotificationService;
-class ExtensionInfoMap;
 class HostContentSettingsMap;
 class ManagedModeURLFilter;
+class MediaDeviceIDSalt;
 class Profile;
 class ProtocolHandlerRegistry;
 class SigninNamesOnIOThread;
-class TransportSecurityPersister;
 
-namespace chrome_browser_net {
-class LoadTimeStats;
-class ResourcePrefetchPredictorObserver;
+namespace extensions {
+class InfoMap;
 }
 
 namespace net {
-class CertVerifier;
 class CookieStore;
 class FraudulentCertificateReporter;
 class FtpTransactionFactory;
@@ -54,12 +50,14 @@ class ServerBoundCertService;
 class ProxyConfigService;
 class ProxyService;
 class SSLConfigService;
+class TransportSecurityPersister;
 class TransportSecurityState;
 class URLRequestJobFactoryImpl;
 }  // namespace net
 
 namespace policy {
 class PolicyCertVerifier;
+class PolicyHeaderIOHelper;
 class URLBlacklistManager;
 }  // namespace policy
 
@@ -113,13 +111,9 @@ class ProfileIOData {
   // These are useful when the Chrome layer is called from the content layer
   // with a content::ResourceContext, and they want access to Chrome data for
   // that profile.
-  ExtensionInfoMap* GetExtensionInfoMap() const;
+  extensions::InfoMap* GetExtensionInfoMap() const;
   CookieSettings* GetCookieSettings() const;
   HostContentSettingsMap* GetHostContentSettingsMap() const;
-
-#if defined(ENABLE_NOTIFICATIONS)
-  DesktopNotificationService* GetNotificationService() const;
-#endif
 
   IntegerPrefMember* session_startup_pref() const {
     return &session_startup_pref_;
@@ -127,6 +121,10 @@ class ProfileIOData {
 
   SigninNamesOnIOThread* signin_names() const {
     return signin_names_.get();
+  }
+
+  StringPrefMember* google_services_account_id() const {
+    return &google_services_user_account_id_;
   }
 
   StringPrefMember* google_services_username() const {
@@ -173,18 +171,27 @@ class ProfileIOData {
     return &signin_allowed_;
   }
 
+  std::string GetMediaDeviceIDSalt() const;
+
   net::TransportSecurityState* transport_security_state() const {
     return transport_security_state_.get();
   }
+
+#if defined(OS_CHROMEOS)
+  std::string username_hash() const {
+    return username_hash_;
+  }
+#endif
 
   bool is_incognito() const {
     return is_incognito_;
   }
 
-  chrome_browser_net::ResourcePrefetchPredictorObserver*
-      resource_prefetch_predictor_observer() const {
-    return resource_prefetch_predictor_observer_.get();
+#if defined(ENABLE_CONFIGURATION_POLICY)
+  policy::PolicyHeaderIOHelper* policy_header_helper() const {
+    return policy_header_helper_.get();
   }
+#endif
 
 #if defined(ENABLE_MANAGED_USERS)
   const ManagedModeURLFilter* managed_mode_url_filter() const {
@@ -201,13 +208,17 @@ class ProfileIOData {
   // should only be called from there.
   bool GetMetricsEnabledStateOnIOThread() const;
 
+  void set_client_cert_store_factory_for_testing(
+    const base::Callback<scoped_ptr<net::ClientCertStore>()>& factory) {
+      client_cert_store_factory_ = factory;
+  }
+
  protected:
   // A URLRequestContext for media that owns its HTTP factory, to ensure
   // it is deleted.
   class MediaRequestContext : public ChromeURLRequestContext {
    public:
-    explicit MediaRequestContext(
-        chrome_browser_net::LoadTimeStats* load_time_stats);
+    MediaRequestContext();
 
     void SetHttpTransactionFactory(
         scoped_ptr<net::HttpTransactionFactory> http_factory);
@@ -222,8 +233,7 @@ class ProfileIOData {
   // to ensure they are deleted.
   class AppRequestContext : public ChromeURLRequestContext {
    public:
-    explicit AppRequestContext(
-        chrome_browser_net::LoadTimeStats* load_time_stats);
+    AppRequestContext();
 
     void SetCookieStore(net::CookieStore* cookie_store);
     void SetHttpTransactionFactory(
@@ -250,13 +260,7 @@ class ProfileIOData {
     scoped_refptr<HostContentSettingsMap> host_content_settings_map;
     scoped_refptr<net::SSLConfigService> ssl_config_service;
     scoped_refptr<net::CookieMonster::Delegate> cookie_monster_delegate;
-    scoped_refptr<ExtensionInfoMap> extension_info_map;
-    scoped_ptr<chrome_browser_net::ResourcePrefetchPredictorObserver>
-        resource_prefetch_predictor_observer_;
-
-#if defined(ENABLE_NOTIFICATIONS)
-    DesktopNotificationService* notification_service;
-#endif
+    scoped_refptr<extensions::InfoMap> extension_info_map;
 
     // This pointer exists only as a means of conveying a url job factory
     // pointer from the protocol handler registry on the UI thread to the
@@ -275,7 +279,7 @@ class ProfileIOData {
 #endif
 
 #if defined(OS_CHROMEOS)
-    scoped_ptr<policy::PolicyCertVerifier> cert_verifier;
+    std::string username_hash;
 #endif
 
     // The profile this struct was populated from. It's passed as a void* to
@@ -329,10 +333,6 @@ class ProfileIOData {
     return main_request_context_.get();
   }
 
-  chrome_browser_net::LoadTimeStats* load_time_stats() const {
-    return load_time_stats_;
-  }
-
   bool initialized() const {
     return initialized_;
   }
@@ -362,8 +362,15 @@ class ProfileIOData {
     virtual net::HostResolver* GetHostResolver() OVERRIDE;
     virtual net::URLRequestContext* GetRequestContext() OVERRIDE;
     virtual scoped_ptr<net::ClientCertStore> CreateClientCertStore() OVERRIDE;
+    virtual void CreateKeygenHandler(
+        uint32 key_size_in_bits,
+        const std::string& challenge_string,
+        const GURL& url,
+        const base::Callback<void(scoped_ptr<net::KeygenHandler>)>& callback)
+        OVERRIDE;
     virtual bool AllowMicAccess(const GURL& origin) OVERRIDE;
     virtual bool AllowCameraAccess(const GURL& origin) OVERRIDE;
+    virtual std::string GetMediaDeviceIDSalt() OVERRIDE;
 
    private:
     friend class ProfileIOData;
@@ -427,10 +434,6 @@ class ProfileIOData {
           ChromeURLRequestContext* app_context,
           const StoragePartitionDescriptor& partition_descriptor) const = 0;
 
-  // Returns the LoadTimeStats object to be used for this profile.
-  virtual chrome_browser_net::LoadTimeStats* GetLoadTimeStats(
-      IOThread::Globals* io_thread_globals) const = 0;
-
   // The order *DOES* matter for the majority of these member variables, so
   // don't move them around unless you know what you're doing!
   // General rules:
@@ -454,6 +457,11 @@ class ProfileIOData {
   // Provides access to the email addresses of all signed in profiles.
   mutable scoped_ptr<SigninNamesOnIOThread> signin_names_;
 
+  // Used for testing.
+  mutable base::Callback<scoped_ptr<net::ClientCertStore>()>
+      client_cert_store_factory_;
+
+  mutable StringPrefMember google_services_user_account_id_;
   mutable StringPrefMember google_services_username_;
   mutable StringPrefMember google_services_username_pattern_;
   mutable BooleanPrefMember reverse_autologin_enabled_;
@@ -463,6 +471,8 @@ class ProfileIOData {
   std::string reverse_autologin_pending_email_;
 
   mutable StringListPrefMember one_click_signin_rejected_email_list_;
+
+  mutable scoped_ptr<MediaDeviceIDSalt> media_device_id_salt_;
 
   // Member variables which are pointed to by the various context objects.
   mutable BooleanPrefMember enable_referrers_;
@@ -474,6 +484,7 @@ class ProfileIOData {
   mutable BooleanPrefMember signin_allowed_;
   // TODO(marja): Remove session_startup_pref_ if no longer needed.
   mutable IntegerPrefMember session_startup_pref_;
+  mutable BooleanPrefMember quick_check_enabled_;
 
   // The state of metrics reporting in the browser that this profile runs on.
   // Unfortunately, since ChromeOS has a separate representation of this state,
@@ -484,11 +495,14 @@ class ProfileIOData {
   BooleanPrefMember enable_metrics_;
 #endif
 
+#if defined(ENABLE_CONFIGURATION_POLICY)
   // Pointed to by NetworkDelegate.
   mutable scoped_ptr<policy::URLBlacklistManager> url_blacklist_manager_;
+  mutable scoped_ptr<policy::PolicyHeaderIOHelper> policy_header_helper_;
+#endif
 
   // Pointed to by URLRequestContext.
-  mutable scoped_refptr<ExtensionInfoMap> extension_info_map_;
+  mutable scoped_refptr<extensions::InfoMap> extension_info_map_;
   mutable scoped_ptr<net::ServerBoundCertService> server_bound_cert_service_;
   mutable scoped_ptr<ChromeNetworkDelegate> network_delegate_;
   mutable scoped_ptr<net::FraudulentCertificateReporter>
@@ -498,14 +512,11 @@ class ProfileIOData {
   mutable scoped_ptr<net::HttpServerProperties>
       http_server_properties_;
 #if defined(OS_CHROMEOS)
-  mutable scoped_ptr<net::CertVerifier> cert_verifier_;
+  mutable scoped_ptr<policy::PolicyCertVerifier> cert_verifier_;
+  mutable std::string username_hash_;
 #endif
 
-#if defined(ENABLE_NOTIFICATIONS)
-  mutable DesktopNotificationService* notification_service_;
-#endif
-
-  mutable scoped_ptr<TransportSecurityPersister>
+  mutable scoped_ptr<net::TransportSecurityPersister>
       transport_security_persister_;
 
   // These are only valid in between LazyInitialize() and their accessor being
@@ -522,13 +533,8 @@ class ProfileIOData {
 
   mutable scoped_refptr<HostContentSettingsMap> host_content_settings_map_;
 
-  mutable scoped_ptr<chrome_browser_net::ResourcePrefetchPredictorObserver>
-      resource_prefetch_predictor_observer_;
-
   mutable scoped_ptr<ChromeHttpUserAgentSettings>
       chrome_http_user_agent_settings_;
-
-  mutable chrome_browser_net::LoadTimeStats* load_time_stats_;
 
 #if defined(ENABLE_MANAGED_USERS)
   mutable scoped_refptr<const ManagedModeURLFilter> managed_mode_url_filter_;

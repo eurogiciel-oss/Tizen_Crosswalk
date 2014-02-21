@@ -64,9 +64,6 @@ inline static bool hasVerticalAppearance(HTMLInputElement* input)
     ASSERT(input->renderer());
     RenderStyle* sliderStyle = input->renderer()->style();
 
-    if (sliderStyle->appearance() == MediaVolumeSliderPart && RenderTheme::theme().usesVerticalVolumeSlider())
-        return true;
-
     return sliderStyle->appearance() == SliderVerticalPart;
 }
 
@@ -196,7 +193,7 @@ void RenderSliderContainer::layout()
 // --------------------------------
 
 inline SliderThumbElement::SliderThumbElement(Document& document)
-    : HTMLDivElement(HTMLNames::divTag, document)
+    : HTMLDivElement(document)
     , m_inDragMode(false)
 {
 }
@@ -245,8 +242,8 @@ Node* SliderThumbElement::focusDelegate()
 void SliderThumbElement::dragFrom(const LayoutPoint& point)
 {
     RefPtr<SliderThumbElement> protector(this);
-    setPositionFromPoint(point);
     startDragging();
+    setPositionFromPoint(point);
 }
 
 void SliderThumbElement::setPositionFromPoint(const LayoutPoint& point)
@@ -305,7 +302,6 @@ void SliderThumbElement::setPositionFromPoint(const LayoutPoint& point)
     input->setValueFromRenderer(valueString);
     if (renderer())
         renderer()->setNeedsLayout();
-    input->dispatchFormControlChangeEvent();
 }
 
 void SliderThumbElement::startDragging()
@@ -326,6 +322,7 @@ void SliderThumbElement::stopDragging()
     m_inDragMode = false;
     if (renderer())
         renderer()->setNeedsLayout();
+    hostInput()->dispatchFormControlChangeEvent();
 }
 
 void SliderThumbElement::defaultEventHandler(Event* event)
@@ -412,7 +409,7 @@ static const AtomicString& mediaSliderThumbShadowPartId()
     return mediaSliderThumb;
 }
 
-const AtomicString& SliderThumbElement::part() const
+const AtomicString& SliderThumbElement::shadowPseudoId() const
 {
     HTMLInputElement* input = hostInput();
     if (!input)
@@ -435,7 +432,7 @@ const AtomicString& SliderThumbElement::part() const
 // --------------------------------
 
 inline SliderContainerElement::SliderContainerElement(Document& document)
-    : HTMLDivElement(HTMLNames::divTag, document)
+    : HTMLDivElement(document)
 {
 }
 
@@ -449,7 +446,7 @@ RenderObject* SliderContainerElement::createRenderer(RenderStyle*)
     return new RenderSliderContainer(this);
 }
 
-const AtomicString& SliderContainerElement::part() const
+const AtomicString& SliderContainerElement::shadowPseudoId() const
 {
     DEFINE_STATIC_LOCAL(const AtomicString, mediaSliderContainer, ("-webkit-media-slider-container", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(const AtomicString, sliderContainer, ("-webkit-slider-container", AtomicString::ConstructFromLiteral));

@@ -12,14 +12,21 @@
 namespace media {
 namespace cast {
 
+// The callback should not be used, as the receiver is using the external
+// transport. Implementation is required as the pacer is common to sender and
+// receiver.
+static void DoNothingCastTransportStatus(transport::CastTransportStatus status)
+{
+  NOTREACHED() << "Internal transport used in CastReceiver";
+}
 // The video and audio receivers should only be called from the main thread.
 // LocalFrameReciever posts tasks to the main thread, making the cast interface
 // thread safe.
 class LocalFrameReceiver : public FrameReceiver {
  public:
   LocalFrameReceiver(scoped_refptr<CastEnvironment> cast_environment,
-                     base::WeakPtr<AudioReceiver> audio_receiver,
-                     base::WeakPtr<VideoReceiver> video_receiver)
+                     AudioReceiver* audio_receiver,
+                     VideoReceiver* video_receiver)
       : cast_environment_(cast_environment),
         audio_receiver_(audio_receiver),
         video_receiver_(video_receiver) {}
@@ -27,15 +34,15 @@ class LocalFrameReceiver : public FrameReceiver {
   virtual void GetRawVideoFrame(
       const VideoFrameDecodedCallback& callback) OVERRIDE {
     cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
-        base::Bind(&VideoReceiver::GetRawVideoFrame, video_receiver_,
-        callback));
+        base::Bind(&VideoReceiver::GetRawVideoFrame,
+                   video_receiver_->AsWeakPtr(), callback));
   }
 
   virtual void GetEncodedVideoFrame(
       const VideoFrameEncodedCallback& callback) OVERRIDE {
     cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
-        base::Bind(&VideoReceiver::GetEncodedVideoFrame, video_receiver_,
-        callback));
+        base::Bind(&VideoReceiver::GetEncodedVideoFrame,
+                   video_receiver_->AsWeakPtr(), callback));
   }
 
   virtual void GetRawAudioFrame(
@@ -43,14 +50,15 @@ class LocalFrameReceiver : public FrameReceiver {
       int desired_frequency,
       const AudioFrameDecodedCallback& callback) OVERRIDE {
     cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE, base::Bind(
-        &AudioReceiver::GetRawAudioFrame, audio_receiver_,
+        &AudioReceiver::GetRawAudioFrame, audio_receiver_->AsWeakPtr(),
         number_of_10ms_blocks, desired_frequency, callback));
   }
 
   virtual void GetCodedAudioFrame(
       const AudioFrameEncodedCallback& callback) OVERRIDE {
-    cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE, base::Bind(
-        &AudioReceiver::GetEncodedAudioFrame, audio_receiver_, callback));
+    cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
+        base::Bind(&AudioReceiver::GetEncodedAudioFrame,
+                   audio_receiver_->AsWeakPtr(), callback));
   }
 
  protected:
@@ -60,16 +68,16 @@ class LocalFrameReceiver : public FrameReceiver {
   friend class base::RefCountedThreadSafe<LocalFrameReceiver>;
 
   scoped_refptr<CastEnvironment> cast_environment_;
-  base::WeakPtr<AudioReceiver> audio_receiver_;
-  base::WeakPtr<VideoReceiver> video_receiver_;
+  AudioReceiver* audio_receiver_;
+  VideoReceiver* video_receiver_;
 };
 
 // The video and audio receivers should only be called from the main thread.
-class LocalPacketReceiver : public PacketReceiver {
+class LocalPacketReceiver : public transport::PacketReceiver {
  public:
   LocalPacketReceiver(scoped_refptr<CastEnvironment> cast_environment,
-                      base::WeakPtr<AudioReceiver> audio_receiver,
-                      base::WeakPtr<VideoReceiver> video_receiver,
+                      AudioReceiver* audio_receiver,
+                      VideoReceiver* video_receiver,
                       uint32 ssrc_of_audio_sender,
                       uint32 ssrc_of_video_sender)
       : cast_environment_(cast_environment),
@@ -103,12 +111,12 @@ class LocalPacketReceiver : public PacketReceiver {
     }
     if (ssrc_of_sender == ssrc_of_audio_sender_) {
       cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
-          base::Bind(&AudioReceiver::IncomingPacket, audio_receiver_,
-              packet, length, callback));
+          base::Bind(&AudioReceiver::IncomingPacket,
+                     audio_receiver_->AsWeakPtr(), packet, length, callback));
     } else if (ssrc_of_sender == ssrc_of_video_sender_) {
       cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
-          base::Bind(&VideoReceiver::IncomingPacket, video_receiver_,
-              packet, length, callback));
+          base::Bind(&VideoReceiver::IncomingPacket,
+                     video_receiver_->AsWeakPtr(), packet, length, callback));
     } else {
       // No action; just log and call the callback informing that we are done
       // with the packet.
@@ -126,8 +134,8 @@ class LocalPacketReceiver : public PacketReceiver {
   friend class base::RefCountedThreadSafe<LocalPacketReceiver>;
 
   scoped_refptr<CastEnvironment> cast_environment_;
-  base::WeakPtr<AudioReceiver> audio_receiver_;
-  base::WeakPtr<VideoReceiver> video_receiver_;
+  AudioReceiver* audio_receiver_;
+  VideoReceiver* video_receiver_;
   const uint32 ssrc_of_audio_sender_;
   const uint32 ssrc_of_video_sender_;
 };
@@ -136,7 +144,7 @@ CastReceiver* CastReceiver::CreateCastReceiver(
     scoped_refptr<CastEnvironment> cast_environment,
     const AudioReceiverConfig& audio_config,
     const VideoReceiverConfig& video_config,
-    PacketSender* const packet_sender) {
+    transport::PacketSender* const packet_sender) {
   return new CastReceiverImpl(cast_environment,
                               audio_config,
                               video_config,
@@ -147,22 +155,25 @@ CastReceiverImpl::CastReceiverImpl(
     scoped_refptr<CastEnvironment> cast_environment,
     const AudioReceiverConfig& audio_config,
     const VideoReceiverConfig& video_config,
-    PacketSender* const packet_sender)
-    : pacer_(cast_environment, packet_sender),
+    transport::PacketSender* const packet_sender)
+    : pacer_(cast_environment->Clock(), NULL, packet_sender,
+             cast_environment->GetMessageTaskRunnerForThread(
+             CastEnvironment::TRANSPORT),
+             base::Bind(&DoNothingCastTransportStatus)),
       audio_receiver_(cast_environment, audio_config, &pacer_),
       video_receiver_(cast_environment, video_config, &pacer_),
       frame_receiver_(new LocalFrameReceiver(cast_environment,
-                                             audio_receiver_.AsWeakPtr(),
-                                             video_receiver_.AsWeakPtr())),
+                                             &audio_receiver_,
+                                             &video_receiver_)),
       packet_receiver_(new LocalPacketReceiver(cast_environment,
-                                               audio_receiver_.AsWeakPtr(),
-                                               video_receiver_.AsWeakPtr(),
+                                               &audio_receiver_,
+                                               &video_receiver_,
                                                audio_config.incoming_ssrc,
                                                video_config.incoming_ssrc)) {}
 
 CastReceiverImpl::~CastReceiverImpl() {}
 
-scoped_refptr<PacketReceiver> CastReceiverImpl::packet_receiver() {
+scoped_refptr<transport::PacketReceiver> CastReceiverImpl::packet_receiver() {
   return packet_receiver_;
 }
 

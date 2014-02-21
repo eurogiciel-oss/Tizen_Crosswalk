@@ -33,20 +33,20 @@ class SVGInlineTextBox;
 
 class SVGRootInlineBox FINAL : public RootInlineBox {
 public:
-    SVGRootInlineBox(RenderBlock* block)
+    SVGRootInlineBox(RenderBlockFlow* block)
         : RootInlineBox(block)
         , m_logicalHeight(0)
     {
     }
 
-    virtual bool isSVGRootInlineBox() const OVERRIDE FINAL { return true; }
+    virtual bool isSVGRootInlineBox() const OVERRIDE { return true; }
 
-    virtual float virtualLogicalHeight() const OVERRIDE FINAL { return m_logicalHeight; }
+    virtual float virtualLogicalHeight() const OVERRIDE { return m_logicalHeight; }
     void setLogicalHeight(float height) { m_logicalHeight = height; }
 
-    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom) OVERRIDE FINAL;
+    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom) OVERRIDE;
 
-    virtual void markDirty(bool dirty = true) OVERRIDE FINAL;
+    virtual void markDirty(bool dirty = true) OVERRIDE;
 
     void computePerCharacterLayoutInformation();
 
@@ -62,11 +62,7 @@ private:
     float m_logicalHeight;
 };
 
-inline SVGRootInlineBox* toSVGRootInlineBox(RootInlineBox* box)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!box || box->isSVGRootInlineBox());
-    return static_cast<SVGRootInlineBox*>(box);
-}
+DEFINE_INLINE_BOX_TYPE_CASTS(SVGRootInlineBox);
 
 } // namespace WebCore
 

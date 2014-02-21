@@ -100,7 +100,7 @@ void DelegatedRendererLayerImpl::CreateChildIdIfNeeded(
 
 void DelegatedRendererLayerImpl::SetFrameData(
     const DelegatedFrameData* frame_data,
-    gfx::RectF damage_in_frame) {
+    const gfx::RectF& damage_in_frame) {
   DCHECK(child_id_) << "CreateChildIdIfNeeded must be called first.";
   DCHECK(frame_data);
   DCHECK(!frame_data->render_pass_list.empty());
@@ -142,12 +142,14 @@ void DelegatedRendererLayerImpl::SetFrameData(
   resource_provider->DeclareUsedResourcesFromChild(child_id_, resources_);
 
   // Display size is already set so we can compute what the damage rect
-  // will be in layer space.
+  // will be in layer space. The damage may exceed the visible portion of
+  // the frame, so intersect the damage to the layer's bounds.
   RenderPass* new_root_pass = render_pass_list.back();
   gfx::Size frame_size = new_root_pass->output_rect.size();
   gfx::RectF damage_in_layer = MathUtil::MapClippedRect(
       DelegatedFrameToLayerSpaceTransform(frame_size), damage_in_frame);
-  set_update_rect(gfx::UnionRects(update_rect(), damage_in_layer));
+  SetUpdateRect(gfx::IntersectRects(
+      gfx::UnionRects(update_rect(), damage_in_layer), gfx::Rect(bounds())));
 
   SetRenderPasses(&render_pass_list);
   have_render_passes_to_push_ = true;
@@ -189,7 +191,7 @@ scoped_ptr<LayerImpl> DelegatedRendererLayerImpl::CreateLayerImpl(
       tree_impl, id()).PassAs<LayerImpl>();
 }
 
-void DelegatedRendererLayerImpl::DidLoseOutputSurface() {
+void DelegatedRendererLayerImpl::ReleaseResources() {
   ClearRenderPasses();
   ClearChildId();
 }
@@ -482,6 +484,7 @@ void DelegatedRendererLayerImpl::ClearChildId() {
     provider->DestroyChild(child_id_);
   }
 
+  resources_.clear();
   child_id_ = 0;
 }
 

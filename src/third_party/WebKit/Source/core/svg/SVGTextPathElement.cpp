@@ -22,7 +22,6 @@
 
 #include "core/svg/SVGTextPathElement.h"
 
-#include "SVGNames.h"
 #include "XLinkNames.h"
 #include "core/rendering/svg/RenderSVGResource.h"
 #include "core/rendering/svg/RenderSVGTextPath.h"
@@ -31,33 +30,32 @@
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_LENGTH(SVGTextPathElement, SVGNames::startOffsetAttr, StartOffset, startOffset)
 DEFINE_ANIMATED_ENUMERATION(SVGTextPathElement, SVGNames::methodAttr, Method, method, SVGTextPathMethodType)
 DEFINE_ANIMATED_ENUMERATION(SVGTextPathElement, SVGNames::spacingAttr, Spacing, spacing, SVGTextPathSpacingType)
 DEFINE_ANIMATED_STRING(SVGTextPathElement, XLinkNames::hrefAttr, Href, href)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGTextPathElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(startOffset)
     REGISTER_LOCAL_ANIMATED_PROPERTY(method)
     REGISTER_LOCAL_ANIMATED_PROPERTY(spacing)
     REGISTER_LOCAL_ANIMATED_PROPERTY(href)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGTextContentElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGTextPathElement::SVGTextPathElement(const QualifiedName& tagName, Document& document)
-    : SVGTextContentElement(tagName, document)
-    , m_startOffset(LengthModeOther)
+inline SVGTextPathElement::SVGTextPathElement(Document& document)
+    : SVGTextContentElement(SVGNames::textPathTag, document)
+    , m_startOffset(SVGAnimatedLength::create(this, SVGNames::startOffsetAttr, SVGLength::create(LengthModeOther)))
     , m_method(SVGTextPathMethodAlign)
     , m_spacing(SVGTextPathSpacingExact)
 {
-    ASSERT(hasTagName(SVGNames::textPathTag));
     ScriptWrappable::init(this);
+
+    addToPropertyMap(m_startOffset);
     registerAnimatedPropertiesForSVGTextPathElement();
 }
 
-PassRefPtr<SVGTextPathElement> SVGTextPathElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGTextPathElement> SVGTextPathElement::create(Document& document)
 {
-    return adoptRef(new SVGTextPathElement(tagName, document));
+    return adoptRef(new SVGTextPathElement(document));
 }
 
 SVGTextPathElement::~SVGTextPathElement()
@@ -89,7 +87,7 @@ void SVGTextPathElement::parseAttribute(const QualifiedName& name, const AtomicS
     if (!isSupportedAttribute(name))
         SVGTextContentElement::parseAttribute(name, value);
     else if (name == SVGNames::startOffsetAttr)
-        setStartOffsetBaseValue(SVGLength::construct(LengthModeOther, value, parseError));
+        m_startOffset->setBaseValueAsString(value, AllowNegativeLengths, parseError);
     else if (name == SVGNames::methodAttr) {
         SVGTextPathMethodType propertyValue = SVGPropertyTraits<SVGTextPathMethodType>::fromString(value);
         if (propertyValue > 0)
@@ -131,16 +129,6 @@ RenderObject* SVGTextPathElement::createRenderer(RenderStyle*)
     return new RenderSVGTextPath(this);
 }
 
-bool SVGTextPathElement::childShouldCreateRenderer(const Node& child) const
-{
-    if (child.isTextNode()
-        || child.hasTagName(SVGNames::aTag)
-        || child.hasTagName(SVGNames::tspanTag))
-        return true;
-
-    return false;
-}
-
 bool SVGTextPathElement::rendererIsNeeded(const RenderStyle& style)
 {
     if (parentNode()
@@ -157,7 +145,7 @@ void SVGTextPathElement::buildPendingResource()
     if (!inDocument())
         return;
 
-    String id;
+    AtomicString id;
     Element* target = SVGURIReference::targetElementFromIRIString(hrefCurrentValue(), document(), &id);
     if (!target) {
         // Do not register as pending if we are already pending this resource.
@@ -191,7 +179,7 @@ void SVGTextPathElement::removedFrom(ContainerNode* rootParent)
 
 bool SVGTextPathElement::selfHasRelativeLengths() const
 {
-    return startOffsetCurrentValue().isRelative()
+    return m_startOffset->currentValue()->isRelative()
         || SVGTextContentElement::selfHasRelativeLengths();
 }
 

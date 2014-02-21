@@ -7,8 +7,10 @@
 #include "base/logging.h"
 #include "base/metrics/histogram.h"
 #include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "content/renderer/media/audio_device_factory.h"
 #include "content/renderer/media/webrtc_audio_device_impl.h"
+#include "content/renderer/media/webrtc_logging.h"
 #include "media/audio/audio_output_device.h"
 #include "media/audio/audio_parameters.h"
 #include "media/audio/sample_rates.h"
@@ -163,11 +165,13 @@ class SharedAudioRenderer : public MediaStreamAudioRenderer {
 }  // namespace
 
 WebRtcAudioRenderer::WebRtcAudioRenderer(int source_render_view_id,
+                                         int source_render_frame_id,
                                          int session_id,
                                          int sample_rate,
                                          int frames_per_buffer)
     : state_(UNINITIALIZED),
       source_render_view_id_(source_render_view_id),
+      source_render_frame_id_(source_render_frame_id),
       session_id_(session_id),
       source_(NULL),
       play_ref_count_(0),
@@ -176,6 +180,13 @@ WebRtcAudioRenderer::WebRtcAudioRenderer(int source_render_view_id,
       fifo_delay_milliseconds_(0),
       sample_rate_(sample_rate),
       frames_per_buffer_(frames_per_buffer) {
+  WebRtcLogMessage(base::StringPrintf(
+      "WAR::WAR. source_render_view_id=%d"
+      ", session_id=%d, sample_rate=%d, frames_per_buffer=%d",
+      source_render_view_id,
+      session_id,
+      sample_rate,
+      frames_per_buffer));
 }
 
 WebRtcAudioRenderer::~WebRtcAudioRenderer() {
@@ -304,7 +315,8 @@ bool WebRtcAudioRenderer::Initialize(WebRtcAudioRendererSource* source) {
   source->SetRenderFormat(source_params);
 
   // Configure the audio rendering client and start rendering.
-  sink_ = AudioDeviceFactory::NewOutputDevice(source_render_view_id_);
+  sink_ = AudioDeviceFactory::NewOutputDevice(
+      source_render_view_id_, source_render_frame_id_);
 
   // TODO(tommi): Rename InitializeUnifiedStream to rather reflect association
   // with a session.

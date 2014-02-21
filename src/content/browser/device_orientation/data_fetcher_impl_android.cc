@@ -8,10 +8,19 @@
 
 #include "base/android/jni_android.h"
 #include "base/memory/singleton.h"
+#include "base/metrics/histogram.h"
 #include "content/browser/device_orientation/inertial_sensor_consts.h"
 #include "jni/DeviceMotionAndOrientation_jni.h"
 
 using base::android::AttachCurrentThread;
+
+namespace {
+
+static void updateRotationVectorHistogram(bool value) {
+  UMA_HISTOGRAM_BOOLEAN("InertialSensor.RotationVectorAndroidAvailable", value);
+}
+
+}
 
 namespace content {
 
@@ -54,8 +63,10 @@ void DataFetcherImplAndroid::GotOrientation(
   device_orientation_buffer_->data.hasGamma = true;
   device_orientation_buffer_->seqlock.WriteEnd();
 
-  if (!is_orientation_buffer_ready_)
+  if (!is_orientation_buffer_ready_) {
     SetOrientationBufferReadyStatus(true);
+    updateRotationVectorHistogram(true);
+  }
 }
 
 void DataFetcherImplAndroid::GotAcceleration(
@@ -124,15 +135,15 @@ void DataFetcherImplAndroid::GotRotationRate(
   }
 }
 
-bool DataFetcherImplAndroid::Start(DeviceData::Type event_type) {
+bool DataFetcherImplAndroid::Start(EventType event_type) {
   DCHECK(!device_orientation_.is_null());
   return Java_DeviceMotionAndOrientation_start(
       AttachCurrentThread(), device_orientation_.obj(),
-      reinterpret_cast<jint>(this), static_cast<jint>(event_type),
+      reinterpret_cast<intptr_t>(this), static_cast<jint>(event_type),
       kInertialSensorIntervalMillis);
 }
 
-void DataFetcherImplAndroid::Stop(DeviceData::Type event_type) {
+void DataFetcherImplAndroid::Stop(EventType event_type) {
   DCHECK(!device_orientation_.is_null());
   Java_DeviceMotionAndOrientation_stop(
       AttachCurrentThread(), device_orientation_.obj(),
@@ -158,7 +169,7 @@ bool DataFetcherImplAndroid::StartFetchingDeviceMotionData(
     device_motion_buffer_ = buffer;
     ClearInternalMotionBuffers();
   }
-  bool success = Start(DeviceData::kTypeMotion);
+  bool success = Start(kTypeMotion);
 
   // If no motion data can ever be provided, the number of active device motion
   // sensors will be zero. In that case flag the shared memory buffer
@@ -172,7 +183,7 @@ bool DataFetcherImplAndroid::StartFetchingDeviceMotionData(
 }
 
 void DataFetcherImplAndroid::StopFetchingDeviceMotionData() {
-  Stop(DeviceData::kTypeMotion);
+  Stop(kTypeMotion);
   {
     base::AutoLock autolock(motion_buffer_lock_);
     if (device_motion_buffer_) {
@@ -191,6 +202,15 @@ void DataFetcherImplAndroid::CheckMotionBufferReadyToRead() {
     device_motion_buffer_->data.interval = kInertialSensorIntervalMillis;
     device_motion_buffer_->seqlock.WriteEnd();
     SetMotionBufferReadyStatus(true);
+
+    UMA_HISTOGRAM_BOOLEAN("InertialSensor.AccelerometerAndroidAvailable",
+        received_motion_data_[RECEIVED_MOTION_DATA_ACCELERATION] > 0);
+    UMA_HISTOGRAM_BOOLEAN(
+        "InertialSensor.AccelerometerIncGravityAndroidAvailable",
+        received_motion_data_[RECEIVED_MOTION_DATA_ACCELERATION_INCL_GRAVITY]
+        > 0);
+    UMA_HISTOGRAM_BOOLEAN("InertialSensor.GyroscopeAndroidAvailable",
+        received_motion_data_[RECEIVED_MOTION_DATA_ROTATION_RATE] > 0);
   }
 }
 
@@ -225,7 +245,7 @@ bool DataFetcherImplAndroid::StartFetchingDeviceOrientationData(
     base::AutoLock autolock(orientation_buffer_lock_);
     device_orientation_buffer_ = buffer;
   }
-  bool success = Start(DeviceData::kTypeOrientation);
+  bool success = Start(kTypeOrientation);
 
   {
     base::AutoLock autolock(orientation_buffer_lock_);
@@ -233,11 +253,15 @@ bool DataFetcherImplAndroid::StartFetchingDeviceOrientationData(
     // to start firing all-null events.
     SetOrientationBufferReadyStatus(!success);
   }
+
+  if (!success)
+    updateRotationVectorHistogram(false);
+
   return success;
 }
 
 void DataFetcherImplAndroid::StopFetchingDeviceOrientationData() {
-  Stop(DeviceData::kTypeOrientation);
+  Stop(kTypeOrientation);
   {
     base::AutoLock autolock(orientation_buffer_lock_);
     if (device_orientation_buffer_) {

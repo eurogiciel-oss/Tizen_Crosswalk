@@ -27,18 +27,19 @@
 #define WebLayer_h
 
 #include "WebAnimation.h"
+#include "WebBlendMode.h"
 #include "WebColor.h"
 #include "WebCommon.h"
-#include "WebCompositingReasons.h"
 #include "WebPoint.h"
 #include "WebRect.h"
+#include "WebSize.h"
 #include "WebString.h"
 #include "WebVector.h"
 
 class SkMatrix44;
 class SkImageFilter;
 
-namespace WebKit {
+namespace blink {
 class WebAnimationDelegate;
 class WebFilterOperations;
 class WebLayerClient;
@@ -46,7 +47,6 @@ class WebLayerScrollClient;
 struct WebFloatPoint;
 struct WebFloatRect;
 struct WebLayerPositionConstraint;
-struct WebSize;
 
 class WebLayer {
 public:
@@ -85,6 +85,12 @@ public:
 
     virtual void setOpacity(float) = 0;
     virtual float opacity() const = 0;
+
+    virtual void setBlendMode(WebBlendMode) = 0;
+    virtual WebBlendMode blendMode() const = 0;
+
+    virtual void setIsRootForIsolatedGroup(bool) = 0;
+    virtual bool isRootForIsolatedGroup() = 0;
 
     virtual void setOpaque(bool) = 0;
     virtual bool opaque() const = 0;
@@ -127,9 +133,6 @@ public:
     // (opacity, transforms), it may conflict and hide the background filters.
     virtual void setBackgroundFilters(const WebFilterOperations&) = 0;
 
-    // Provides a bitfield that describe why this composited layer was created.
-    virtual void setCompositingReasons(WebCompositingReasons) = 0;
-
     // An animation delegate is notified when animations are started and
     // stopped. The WebLayer does not take ownership of the delegate, and it is
     // the responsibility of the client to reset the layer's delegate before
@@ -167,10 +170,11 @@ public:
     virtual void setScrollPosition(WebPoint) = 0;
     virtual WebPoint scrollPosition() const = 0;
 
-    virtual void setMaxScrollPosition(WebSize) = 0;
     virtual WebSize maxScrollPosition() const = 0;
 
-    virtual void setScrollable(bool) = 0;
+    // To set a WebLayer as scrollable we must specify the corresponding clip layer.
+    // TODO(wjmaclean) Make this pure virtual once https://codereview.chromium.org/23983047 lands.
+    virtual void setScrollClipLayer(WebLayer*) { }
     virtual bool scrollable() const = 0;
 
     virtual void setUserScrollable(bool horizontal, bool vertical) = 0;
@@ -212,8 +216,12 @@ public:
     virtual bool isOrphan() const = 0;
 
     virtual void setWebLayerClient(WebLayerClient*) = 0;
+
+    // TODO(wjmaclean) Remove next two lines once https://codereview.chromium.org/23983047 lands.
+    virtual void setMaxScrollPosition(WebSize) { }
+    virtual void setScrollable(bool) { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // WebLayer_h

@@ -23,6 +23,7 @@
 #define SVGAltGlyphElement_h
 
 #if ENABLE(SVG_FONTS)
+#include "SVGNames.h"
 #include "core/svg/SVGTextPositioningElement.h"
 #include "core/svg/SVGURIReference.h"
 #include "wtf/Vector.h"
@@ -35,25 +36,27 @@ class SVGGlyphElement;
 class SVGAltGlyphElement FINAL : public SVGTextPositioningElement,
                                  public SVGURIReference {
 public:
-    static PassRefPtr<SVGAltGlyphElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGAltGlyphElement> create(Document&);
 
     const AtomicString& glyphRef() const;
     void setGlyphRef(const AtomicString&, ExceptionState&);
     const AtomicString& format() const;
     void setFormat(const AtomicString&, ExceptionState&);
 
-    bool hasValidGlyphElements(Vector<String>& glyphNames) const;
+    bool hasValidGlyphElements(Vector<AtomicString>& glyphNames) const;
 
 private:
-    SVGAltGlyphElement(const QualifiedName&, Document&);
+    explicit SVGAltGlyphElement(Document&);
 
-    virtual RenderObject* createRenderer(RenderStyle*);
-    virtual bool childShouldCreateRenderer(const Node& child) const;
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
+    virtual bool childShouldCreateRenderer(const Node& child) const OVERRIDE { return true; }
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGAltGlyphElement)
         DECLARE_ANIMATED_STRING(Href, href)
     END_DECLARE_ANIMATED_PROPERTIES
 };
+
+DEFINE_NODE_TYPE_CASTS(SVGAltGlyphElement, hasTagName(SVGNames::altGlyphTag));
 
 } // namespace WebCore
 

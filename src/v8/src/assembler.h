@@ -262,7 +262,6 @@ class RelocInfo BASE_EMBEDDED {
     CODE_TARGET,  // Code target which is not any of the above.
     CODE_TARGET_WITH_ID,
     CONSTRUCT_CALL,  // code target that is a call to a JavaScript constructor.
-    CODE_TARGET_CONTEXT,  // Code target used for contextual loads and stores.
     DEBUG_BREAK,  // Code target for the debugger statement.
     EMBEDDED_OBJECT,
     CELL,
@@ -372,6 +371,9 @@ class RelocInfo BASE_EMBEDDED {
   Mode rmode() const {  return rmode_; }
   intptr_t data() const { return data_; }
   double data64() const { return data64_; }
+  uint64_t raw_data64() {
+    return BitCast<uint64_t>(data64_);
+  }
   Code* host() const { return host_; }
 
   // Apply a relocation by delta bytes
@@ -390,7 +392,6 @@ class RelocInfo BASE_EMBEDDED {
                                  WriteBarrierMode mode = UPDATE_WRITE_BARRIER));
   INLINE(Object* target_object());
   INLINE(Handle<Object> target_object_handle(Assembler* origin));
-  INLINE(Object** target_object_address());
   INLINE(void set_target_object(Object* target,
                                 WriteBarrierMode mode = UPDATE_WRITE_BARRIER));
   INLINE(Address target_runtime_entry(Assembler* origin));
@@ -425,7 +426,7 @@ class RelocInfo BASE_EMBEDDED {
 
   // Read/modify the reference in the instruction this relocation
   // applies to; can only be called if rmode_ is external_reference
-  INLINE(Address* target_reference_address());
+  INLINE(Address target_reference());
 
   // Read/modify the address of a call instruction. This is used to relocate
   // the break points where straight-line code is patched with a call
@@ -435,6 +436,10 @@ class RelocInfo BASE_EMBEDDED {
   INLINE(Object* call_object());
   INLINE(void set_call_object(Object* target));
   INLINE(Object** call_object_address());
+
+  // Wipe out a relocation to a fixed value, used for making snapshots
+  // reproducible.
+  INLINE(void WipeOut());
 
   template<typename StaticVisitor> inline void Visit(Heap* heap);
   inline void Visit(Isolate* isolate, ObjectVisitor* v);
@@ -486,12 +491,6 @@ class RelocInfo BASE_EMBEDDED {
     double data64_;
   };
   Code* host_;
-  // Code and Embedded Object pointers on some platforms are stored split
-  // across two consecutive 32-bit instructions. Heap management
-  // routines expect to access these pointers indirectly. The following
-  // location provides a place for these pointers to exist naturally
-  // when accessed via the Iterator.
-  Object* reconstructed_obj_ptr_;
   // External-reference pointers are also split across instruction-pairs
   // on some platforms, but are accessed via indirect pointers. This location
   // provides a place for that pointer to exist naturally. Its address
@@ -718,10 +717,6 @@ class ExternalReference BASE_EMBEDDED {
       Isolate* isolate);
   static ExternalReference flush_icache_function(Isolate* isolate);
   static ExternalReference perform_gc_function(Isolate* isolate);
-  static ExternalReference fill_heap_number_with_random_function(
-      Isolate* isolate);
-  static ExternalReference random_uint32_function(Isolate* isolate);
-  static ExternalReference transcendental_cache_array_address(Isolate* isolate);
   static ExternalReference delete_handle_scope_extensions(Isolate* isolate);
 
   static ExternalReference get_date_field_function(Isolate* isolate);
@@ -729,9 +724,6 @@ class ExternalReference BASE_EMBEDDED {
 
   static ExternalReference get_make_code_young_function(Isolate* isolate);
   static ExternalReference get_mark_code_as_executed_function(Isolate* isolate);
-
-  // New heap objects tracking support.
-  static ExternalReference record_object_allocation_function(Isolate* isolate);
 
   // Deoptimization support.
   static ExternalReference new_deoptimizer_function(Isolate* isolate);
@@ -790,9 +782,7 @@ class ExternalReference BASE_EMBEDDED {
   static ExternalReference new_space_high_promotion_mode_active_address(
       Isolate* isolate);
 
-  static ExternalReference double_fp_operation(Token::Value operation,
-                                               Isolate* isolate);
-  static ExternalReference compare_doubles(Isolate* isolate);
+  static ExternalReference mod_two_doubles_operation(Isolate* isolate);
   static ExternalReference power_double_double_function(Isolate* isolate);
   static ExternalReference power_double_int_function(Isolate* isolate);
 
@@ -817,9 +807,6 @@ class ExternalReference BASE_EMBEDDED {
   static ExternalReference address_of_the_hole_nan();
   static ExternalReference address_of_uint32_bias();
 
-  static ExternalReference math_sin_double_function(Isolate* isolate);
-  static ExternalReference math_cos_double_function(Isolate* isolate);
-  static ExternalReference math_tan_double_function(Isolate* isolate);
   static ExternalReference math_log_double_function(Isolate* isolate);
 
   static ExternalReference math_exp_constants(int constant_index);

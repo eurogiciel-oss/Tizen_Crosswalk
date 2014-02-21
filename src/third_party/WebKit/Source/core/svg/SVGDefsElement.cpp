@@ -28,29 +28,21 @@
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_BOOLEAN(SVGDefsElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGDefsElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGGraphicsElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGDefsElement::SVGDefsElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
+inline SVGDefsElement::SVGDefsElement(Document& document)
+    : SVGGraphicsElement(SVGNames::defsTag, document)
 {
-    ASSERT(hasTagName(SVGNames::defsTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGDefsElement();
 }
 
-PassRefPtr<SVGDefsElement> SVGDefsElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGDefsElement> SVGDefsElement::create(Document& document)
 {
-    return adoptRef(new SVGDefsElement(tagName, document));
-}
-
-bool SVGDefsElement::isValid() const
-{
-    return SVGTests::isValid();
+    return adoptRef(new SVGDefsElement(document));
 }
 
 RenderObject* SVGDefsElement::createRenderer(RenderStyle*)

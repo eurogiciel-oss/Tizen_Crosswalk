@@ -6,7 +6,7 @@
 
 # Add new suites here before upgrading them to the stable list below.
 EXPERIMENTAL_TEST_SUITES = [
-    'content_browsertests',
+    'content_gl_tests',
 ]
 
 # Do not modify this list without approval of an android owner.
@@ -31,6 +31,7 @@ STABLE_TEST_SUITES = [
     'webkit_unit_tests',
     'breakpad_unittests',
     'sandbox_linux_unittests',
+    'content_browsertests',
 ]
 
 WEBRTC_CHROMIUM_TEST_SUITES = [
@@ -41,7 +42,6 @@ WEBRTC_NATIVE_TEST_SUITES = [
     'audio_decoder_unittests',
     'common_audio_unittests',
     'common_video_unittests',
-    'metrics_unittests',
     'modules_tests',
     'modules_unittests',
     'neteq_unittests',

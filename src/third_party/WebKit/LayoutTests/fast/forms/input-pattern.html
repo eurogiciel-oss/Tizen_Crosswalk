@@ -1,7 +1,7 @@
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <html>
 <head>
-<script src="../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../resources/js-test.js"></script>
 </head>
 <body>
 <p id="description"></p>
@@ -23,8 +23,8 @@ shouldBe('input.pattern', '"bar"');
 
 // Null.
 input.pattern = null;
-shouldBe('input.pattern', '""');
-shouldBe('input.getAttribute("pattern")', 'null');
+shouldBe('input.pattern', '"null"');
+shouldBe('input.getAttribute("pattern")', '"null"');
 input.setAttribute('pattern', null);
 shouldBe('input.pattern', '"null"');
 

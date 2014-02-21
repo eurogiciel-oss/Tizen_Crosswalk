@@ -30,7 +30,7 @@ remoting.clientSession = null;
 remoting.connectIT2Me = function() {
   if (!remoting.connector) {
     remoting.connector = new remoting.SessionConnector(
-        document.getElementById('session-mode'),
+        document.getElementById('client-plugin-container'),
         remoting.onConnected,
         showConnectError_);
   }
@@ -57,7 +57,8 @@ remoting.onResize = function() {
  */
 remoting.onVisibilityChanged = function() {
   if (remoting.clientSession) {
-    remoting.clientSession.pauseVideo(document.webkitHidden);
+    remoting.clientSession.pauseVideo(
+      ('hidden' in document) ? document.hidden : document.webkitHidden);
   }
 }
 
@@ -247,7 +248,7 @@ remoting.connectMe2Me = function(hostId) {
 remoting.connectMe2MeHostVersionAcknowledged_ = function(host) {
   if (!remoting.connector) {
     remoting.connector = new remoting.SessionConnector(
-        document.getElementById('session-mode'),
+        document.getElementById('client-plugin-container'),
         remoting.onConnected,
         showConnectError_);
   }

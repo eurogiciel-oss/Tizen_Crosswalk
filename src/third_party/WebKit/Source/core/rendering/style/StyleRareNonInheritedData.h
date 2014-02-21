@@ -25,6 +25,7 @@
 #ifndef StyleRareNonInheritedData_h
 #define StyleRareNonInheritedData_h
 
+#include "core/css/StyleColor.h"
 #include "core/rendering/ClipPathOperation.h"
 #include "core/rendering/style/BasicShapes.h"
 #include "core/rendering/style/CounterDirectives.h"
@@ -33,6 +34,7 @@
 #include "core/rendering/style/FillLayer.h"
 #include "core/rendering/style/LineClampValue.h"
 #include "core/rendering/style/NinePieceImage.h"
+#include "core/rendering/style/RenderStyleConstants.h"
 #include "core/rendering/style/ShapeValue.h"
 #include "platform/LengthPoint.h"
 #include "wtf/OwnPtr.h"
@@ -134,14 +136,14 @@ public:
 
     RefPtr<ClipPathOperation> m_clipPath;
 
-    Color m_textDecorationColor;
-    Color m_visitedLinkTextDecorationColor;
-    Color m_visitedLinkBackgroundColor;
-    Color m_visitedLinkOutlineColor;
-    Color m_visitedLinkBorderLeftColor;
-    Color m_visitedLinkBorderRightColor;
-    Color m_visitedLinkBorderTopColor;
-    Color m_visitedLinkBorderBottomColor;
+    StyleColor m_textDecorationColor;
+    StyleColor m_visitedLinkTextDecorationColor;
+    StyleColor m_visitedLinkBackgroundColor;
+    StyleColor m_visitedLinkOutlineColor;
+    StyleColor m_visitedLinkBorderLeftColor;
+    StyleColor m_visitedLinkBorderRightColor;
+    StyleColor m_visitedLinkBorderTopColor;
+    StyleColor m_visitedLinkBorderBottomColor;
 
     int m_order;
 
@@ -162,8 +164,10 @@ public:
     unsigned m_backfaceVisibility : 1; // EBackfaceVisibility
 
     unsigned m_alignContent : 3; // EAlignContent
-    unsigned m_alignItems : 3; // EAlignItems
-    unsigned m_alignSelf : 3; // EAlignItems
+    unsigned m_alignItems : 4; // ItemPosition
+    unsigned m_alignItemsOverflowAlignment : 2; // OverflowAlignment
+    unsigned m_alignSelf : 4; // ItemPosition
+    unsigned m_alignSelfOverflowAlignment : 2; // OverflowAlignment
     unsigned m_justifyContent : 3; // EJustifyContent
 
     unsigned userDrag : 2; // EUserDrag
@@ -184,11 +188,18 @@ public:
 
     unsigned m_effectiveBlendMode: 5; // EBlendMode
 
-    unsigned m_touchAction : 1; // TouchAction
+    unsigned m_touchAction : TouchActionBits; // TouchAction
 
     unsigned m_objectFit : 3; // ObjectFit
 
     unsigned m_isolation : 1; // Isolation
+
+    unsigned m_justifySelf : 4; // ItemPosition
+    unsigned m_justifySelfOverflowAlignment : 2; // OverflowAlignment
+
+    // ScrollBehavior. 'scroll-behavior' has 2 accepted values, but ScrollBehavior has a third
+    // value (that can only be specified using CSSOM scroll APIs) so 2 bits are needed.
+    unsigned m_scrollBehavior: 2;
 
 private:
     StyleRareNonInheritedData();

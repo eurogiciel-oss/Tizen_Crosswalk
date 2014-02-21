@@ -81,8 +81,8 @@ void DirectRenderer::QuadRectTransform(gfx::Transform* quad_rect_transform,
 }
 
 void DirectRenderer::InitializeViewport(DrawingFrame* frame,
-                                        gfx::Rect draw_rect,
-                                        gfx::Rect viewport_rect,
+                                        const gfx::Rect& draw_rect,
+                                        const gfx::Rect& viewport_rect,
                                         gfx::Size surface_size) {
   bool flip_y = FlippedFramebuffer();
 
@@ -185,7 +185,7 @@ void DirectRenderer::DecideRenderPassAllocationsForFrame(
   for (size_t i = 0; i < render_passes_in_draw_order.size(); ++i) {
     if (!render_pass_textures_.contains(render_passes_in_draw_order[i]->id)) {
       scoped_ptr<ScopedResource> texture =
-          ScopedResource::create(resource_provider_);
+          ScopedResource::Create(resource_provider_);
       render_pass_textures_.set(render_passes_in_draw_order[i]->id,
                               texture.Pass());
     }
@@ -195,6 +195,8 @@ void DirectRenderer::DecideRenderPassAllocationsForFrame(
 void DirectRenderer::DrawFrame(RenderPassList* render_passes_in_draw_order,
                                ContextProvider* offscreen_context_provider,
                                float device_scale_factor,
+                               const gfx::Rect& device_viewport_rect,
+                               const gfx::Rect& device_clip_rect,
                                bool allow_partial_swap,
                                bool disable_picture_quad_image_filtering) {
   TRACE_EVENT0("cc", "DirectRenderer::DrawFrame");
@@ -210,7 +212,9 @@ void DirectRenderer::DrawFrame(RenderPassList* render_passes_in_draw_order,
       Capabilities().using_partial_swap && allow_partial_swap
           ? root_render_pass->damage_rect
           : root_render_pass->output_rect;
-  frame.root_damage_rect.Intersect(gfx::Rect(client_->DeviceViewport().size()));
+  frame.root_damage_rect.Intersect(gfx::Rect(device_viewport_rect.size()));
+  frame.device_viewport_rect = device_viewport_rect;
+  frame.device_clip_rect = device_clip_rect;
   frame.offscreen_context_provider = offscreen_context_provider;
   frame.disable_picture_quad_image_filtering =
       disable_picture_quad_image_filtering;
@@ -220,8 +224,7 @@ void DirectRenderer::DrawFrame(RenderPassList* render_passes_in_draw_order,
   // Only reshape when we know we are going to draw. Otherwise, the reshape
   // can leave the window at the wrong size if we never draw and the proper
   // viewport size is never set.
-  output_surface_->Reshape(client_->DeviceViewport().size(),
-                           device_scale_factor);
+  output_surface_->Reshape(device_viewport_rect.size(), device_scale_factor);
 
   BeginDrawingFrame(&frame);
   for (size_t i = 0; i < render_passes_in_draw_order->size(); ++i) {
@@ -269,11 +272,12 @@ bool DirectRenderer::NeedDeviceClip(const DrawingFrame* frame) const {
   if (frame->current_render_pass != frame->root_render_pass)
     return false;
 
-  return !client_->DeviceClip().Contains(client_->DeviceViewport());
+  return !frame->device_clip_rect.Contains(frame->device_viewport_rect);
 }
 
-gfx::Rect DirectRenderer::DeviceClipRect(const DrawingFrame* frame) const {
-  gfx::Rect device_clip_rect = client_->DeviceClip();
+gfx::Rect DirectRenderer::DeviceClipRectInWindowSpace(const DrawingFrame* frame)
+    const {
+  gfx::Rect device_clip_rect = frame->device_clip_rect;
   if (FlippedFramebuffer())
     device_clip_rect.set_y(current_surface_size_.height() -
                            device_clip_rect.bottom());
@@ -287,7 +291,7 @@ void DirectRenderer::SetScissorStateForQuad(const DrawingFrame* frame,
     return;
   }
   if (NeedDeviceClip(frame)) {
-    SetScissorTestRect(DeviceClipRect(frame));
+    SetScissorTestRect(DeviceClipRectInWindowSpace(frame));
     return;
   }
 
@@ -313,11 +317,12 @@ void DirectRenderer::SetScissorStateForQuadWithRenderPassScissor(
   SetScissorTestRectInDrawSpace(frame, quad_scissor_rect);
 }
 
-void DirectRenderer::SetScissorTestRectInDrawSpace(const DrawingFrame* frame,
-                                                   gfx::RectF draw_space_rect) {
+void DirectRenderer::SetScissorTestRectInDrawSpace(
+    const DrawingFrame* frame,
+    const gfx::RectF& draw_space_rect) {
   gfx::Rect window_space_rect = MoveFromDrawToWindowSpace(draw_space_rect);
   if (NeedDeviceClip(frame))
-    window_space_rect.Intersect(DeviceClipRect(frame));
+    window_space_rect.Intersect(DeviceClipRectInWindowSpace(frame));
   SetScissorTestRect(window_space_rect);
 }
 
@@ -335,7 +340,7 @@ void DirectRenderer::DrawRenderPass(DrawingFrame* frame,
   gfx::RectF render_pass_scissor;
   bool draw_rect_covers_full_surface = true;
   if (frame->current_render_pass == frame->root_render_pass &&
-      !client_->DeviceViewport().Contains(
+      !frame->device_viewport_rect.Contains(
            gfx::Rect(output_surface_->SurfaceSize())))
     draw_rect_covers_full_surface = false;
 
@@ -349,7 +354,7 @@ void DirectRenderer::DrawRenderPass(DrawingFrame* frame,
   if (frame->current_render_pass != frame->root_render_pass ||
       settings_->should_clear_root_render_pass) {
     if (NeedDeviceClip(frame)) {
-      SetScissorTestRect(DeviceClipRect(frame));
+      SetScissorTestRect(DeviceClipRectInWindowSpace(frame));
       draw_rect_covers_full_surface = false;
     } else if (!using_scissor_as_optimization) {
       EnsureScissorTestDisabled();
@@ -392,13 +397,10 @@ bool DirectRenderer::UseRenderPass(DrawingFrame* frame,
     BindFramebufferToOutputSurface(frame);
     InitializeViewport(frame,
                        render_pass->output_rect,
-                       client_->DeviceViewport(),
+                       frame->device_viewport_rect,
                        output_surface_->SurfaceSize());
     return true;
   }
-
-  if (!resource_provider_)
-    return false;
 
   ScopedResource* texture = render_pass_textures_.get(render_pass->id);
   DCHECK(texture);
@@ -406,10 +408,10 @@ bool DirectRenderer::UseRenderPass(DrawingFrame* frame,
   gfx::Size size = RenderPassTextureSize(render_pass);
   size.Enlarge(enlarge_pass_texture_amount_.x(),
                enlarge_pass_texture_amount_.y());
-  if (!texture->id() &&
-      !texture->Allocate(
-           size, ResourceProvider::TextureUsageFramebuffer, RGBA_8888))
-    return false;
+  if (!texture->id())
+    texture->Allocate(
+        size, ResourceProvider::TextureUsageFramebuffer, RGBA_8888);
+  DCHECK(texture->id());
 
   return BindFramebufferToTexture(frame, texture, render_pass->output_rect);
 }

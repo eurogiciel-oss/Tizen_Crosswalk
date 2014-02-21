@@ -9,6 +9,7 @@ if (window.testRunner) {
 
 function test()
 {
+    InspectorTest.sendCommand("Profiler.enable", {});
     InspectorTest.sendCommand("Profiler.start", {}, didStartFrontendProfile);
     function didStartFrontendProfile(messageObject)
     {
@@ -33,9 +34,8 @@ function test()
 
     function didStopFrontendProfile(messageObject)
     {
-        if (!InspectorTest.expectedError("failToStopFrontendProfile", messageObject))
+        if (!InspectorTest.expectedSuccess("stoppedFrontendProfile", messageObject))
             return;
-        InspectorTest.log("Error message was: " + JSON.stringify(messageObject.error));
         InspectorTest.sendCommand("Profiler.start", {}, didStartFrontendProfile2);
     }
 
@@ -49,7 +49,6 @@ function test()
     function didStopFrontendProfile2(messageObject)
     {
         InspectorTest.expectedSuccess("stopFrontendProfileSecondTime", messageObject)
-        InspectorTest.sendCommand("Profiler.clearProfiles", {});
         InspectorTest.completeTest();
     }
 }

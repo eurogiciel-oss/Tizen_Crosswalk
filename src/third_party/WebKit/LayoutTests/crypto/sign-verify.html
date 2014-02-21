@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../fast/js/resources/js-test-pre.js"></script>
+<script src="../resources/js-test.js"></script>
 <script src="resources/common.js"></script>
 </head>
 <body>
@@ -89,11 +89,9 @@ function runSuccessTestCase(testCase)
         
         // shouldBe() can only resolve variables in global context.
         tmpKey = key;
-        tmpHashName = testCase.algorithm;
         shouldBe("tmpKey.type", "'secret'")
         shouldBe("tmpKey.extractable", "false")
         shouldBe("tmpKey.algorithm.name", "'HMAC'")
-        shouldBe("tmpKey.algorithm.hash.name", "tmpHashName")
         shouldBe("tmpKey.usages.join(',')", "'sign,verify'")
 
         // (2) Sign.
@@ -140,17 +138,17 @@ allTests.push(importTestKeys().then(function(importedKeys) {
     shouldThrow("crypto.subtle.sign({name: 'RSAES-PKCS1-v1_5'}, keys.hmacSha1, data)");
 
     // Key's algorithm must match.
-    shouldThrow("crypto.subtle.sign({name: 'hmac', hash: {name: 'sha-256'}}, keys.hmacSha1, data)");
+    shouldRejectPromiseWithNull("crypto.subtle.sign({name: 'hmac', hash: {name: 'sha-256'}}, keys.hmacSha1, data)");
 
     // ---------------------------------------------------
     // HMAC normalization failures (HmacParams)
     // ---------------------------------------------------
-    shouldThrow("crypto.subtle.sign({name: 'hmac'}, keys.hmacSha1, data)");
-    shouldThrow("crypto.subtle.sign({name: 'hmac', hash: 3}, keys.hmacSha1, data)");
-    shouldThrow("crypto.subtle.sign({name: 'hmac', hash: null}, keys.hmacSha1, data)");
-    shouldThrow("crypto.subtle.sign({name: 'hmac', hash: {}}, keys.hmacSha1, data)");
-    shouldThrow("crypto.subtle.sign({name: 'hmac', hash: {name: 'foo'}}, keys.hmacSha1, data)");
-    shouldThrow("crypto.subtle.sign({name: 'hmac', hash: {name: 'AES-CBC'}}, keys.hmacSha1, data)");
+    shouldRejectPromiseWithNull("crypto.subtle.sign({name: 'hmac'}, keys.hmacSha1, data)");
+    shouldRejectPromiseWithNull("crypto.subtle.sign({name: 'hmac', hash: 3}, keys.hmacSha1, data)");
+    shouldRejectPromiseWithNull("crypto.subtle.sign({name: 'hmac', hash: null}, keys.hmacSha1, data)");
+    shouldRejectPromiseWithNull("crypto.subtle.sign({name: 'hmac', hash: {}}, keys.hmacSha1, data)");
+    shouldRejectPromiseWithNull("crypto.subtle.sign({name: 'hmac', hash: {name: 'foo'}}, keys.hmacSha1, data)");
+    shouldRejectPromiseWithNull("crypto.subtle.sign({name: 'hmac', hash: {name: 'AES-CBC'}}, keys.hmacSha1, data)");
 }));
 
 // -------------------------------------------------

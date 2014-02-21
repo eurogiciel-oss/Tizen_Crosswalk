@@ -22,7 +22,9 @@
 
 // TODO: no css::ViewCSS available!
 // TODO: no events::DocumentEvent available!
-interface SVGSVGElement : SVGGraphicsElement {
+[
+    // StrictTypeChecking,  // FIXME: createSVGTransformFromMatrix doesn't have [StrictTypeChecking]
+] interface SVGSVGElement : SVGGraphicsElement {
     readonly attribute SVGAnimatedLength x;
     readonly attribute SVGAnimatedLength y;
     readonly attribute SVGAnimatedLength width;
@@ -37,7 +39,7 @@ interface SVGSVGElement : SVGGraphicsElement {
     readonly attribute boolean useCurrentView;
     readonly attribute SVGViewSpec currentView;
              attribute float currentScale;
-    readonly attribute SVGPoint currentTranslate;
+    [ImplementedAs=currentTranslateFromJavascript] readonly attribute SVGPoint currentTranslate;
 
     unsigned long suspendRedraw([Default=Undefined] optional unsigned long maxWaitMilliseconds);
     void unsuspendRedraw([Default=Undefined] optional unsigned long suspendHandleId);
@@ -47,15 +49,15 @@ interface SVGSVGElement : SVGGraphicsElement {
     void unpauseAnimations();
     boolean animationsPaused();
     float getCurrentTime();
-    void setCurrentTime([Default=Undefined] optional float seconds);
-    NodeList getIntersectionList([Default=Undefined] optional SVGRect rect,
-                                 [Default=Undefined] optional SVGElement referenceElement);
-    NodeList getEnclosureList([Default=Undefined] optional SVGRect rect,
-                              [Default=Undefined] optional SVGElement referenceElement);
-    boolean checkIntersection([Default=Undefined] optional SVGElement element,
-                              [Default=Undefined] optional SVGRect rect);
-    boolean checkEnclosure([Default=Undefined] optional SVGElement element,
-                           [Default=Undefined] optional SVGRect rect);
+    void setCurrentTime(float seconds);
+    [StrictTypeChecking] NodeList getIntersectionList(SVGRect rect,
+                                                      SVGElement? referenceElement);
+    [StrictTypeChecking] NodeList getEnclosureList(SVGRect rect,
+                                                   SVGElement? referenceElement);
+    [StrictTypeChecking] boolean checkIntersection(SVGElement element,
+                                                   SVGRect rect);
+    [StrictTypeChecking] boolean checkEnclosure(SVGElement element,
+                                                SVGRect rect);
     void deselectAll();
 
     SVGNumber createSVGNumber();
@@ -69,7 +71,5 @@ interface SVGSVGElement : SVGGraphicsElement {
     Element getElementById([Default=Undefined] optional DOMString elementId);
 };
 
-SVGSVGElement implements SVGExternalResourcesRequired;
 SVGSVGElement implements SVGFitToViewBox;
 SVGSVGElement implements SVGZoomAndPan;
-

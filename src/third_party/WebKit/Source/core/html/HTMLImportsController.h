@@ -45,10 +45,10 @@ namespace WebCore {
 class FetchRequest;
 class ExecutionContext;
 class ResourceFetcher;
-class HTMLImportLoader;
-class HTMLImportLoaderClient;
+class HTMLImportChild;
+class HTMLImportChildClient;
 
-class HTMLImportsController : public HTMLImportRoot, public DocumentSupplement {
+class HTMLImportsController FINAL : public HTMLImportRoot, public DocumentSupplement {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     static void provideTo(Document*);
@@ -58,32 +58,33 @@ public:
 
     // HTMLImport
     virtual HTMLImportRoot* root() OVERRIDE;
-    virtual HTMLImport* parent() const OVERRIDE;
     virtual Document* document() const OVERRIDE;
     virtual void wasDetachedFromDocument() OVERRIDE;
-    virtual void didFinishParsing() OVERRIDE;
-    virtual bool isProcessing() const OVERRIDE;
-    // HTMLImportRoot
-    virtual void importWasDisposed() OVERRIDE;
-    virtual HTMLImportsController* toController() { return this; }
+    virtual bool isDone() const OVERRIDE;
+    virtual bool hasLoader() const OVERRIDE;
 
-    PassRefPtr<HTMLImportLoader> createLoader(HTMLImport* parent, FetchRequest);
+    // HTMLImportRoot
+    virtual void scheduleRecalcState() OVERRIDE;
+    virtual HTMLImportsController* toController() OVERRIDE { return this; }
+    virtual HTMLImportChild* findLinkFor(const KURL&, HTMLImport* excluding = 0) const OVERRIDE;
+
+    HTMLImportChild* load(HTMLImport* parent, HTMLImportChildClient*, FetchRequest);
     void showSecurityErrorMessage(const String&);
-    PassRefPtr<HTMLImportLoader> findLinkFor(const KURL&) const;
+
     SecurityOrigin* securityOrigin() const;
     ResourceFetcher* fetcher() const;
 
-    void scheduleUnblock();
-    void unblockTimerFired(Timer<HTMLImportsController>*);
+    void recalcTimerFired(Timer<HTMLImportsController>*);
 
 private:
+    HTMLImportChild* createChild(const KURL&, HTMLImport* parent, HTMLImportChildClient*);
     void clear();
 
     Document* m_master;
-    Timer<HTMLImportsController> m_unblockTimer;
+    Timer<HTMLImportsController> m_recalcTimer;
 
     // List of import which has been loaded or being loaded.
-    typedef Vector<RefPtr<HTMLImportLoader> > ImportList;
+    typedef Vector<OwnPtr<HTMLImportChild> > ImportList;
     ImportList m_imports;
 };
 

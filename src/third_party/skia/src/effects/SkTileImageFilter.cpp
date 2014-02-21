@@ -19,45 +19,65 @@ bool SkTileImageFilter::onFilterImage(Proxy* proxy, const SkBitmap& src, const S
                                       SkBitmap* dst, SkIPoint* offset) {
     SkBitmap source = src;
     SkImageFilter* input = getInput(0);
-    SkIPoint localOffset = SkIPoint::Make(0, 0);
-    if (input && !input->filterImage(proxy, src, ctm, &source, &localOffset)) {
+    SkIPoint srcOffset = SkIPoint::Make(0, 0);
+    if (input && !input->filterImage(proxy, src, ctm, &source, &srcOffset)) {
         return false;
     }
 
-    int w = SkScalarTruncToInt(fDstRect.width());
-    int h = SkScalarTruncToInt(fDstRect.height());
+    SkRect dstRect;
+    ctm.mapRect(&dstRect, fDstRect);
+    SkIRect dstIRect;
+    dstRect.roundOut(&dstIRect);
+    int w = dstIRect.width();
+    int h = dstIRect.height();
     if (!fSrcRect.width() || !fSrcRect.height() || !w || !h) {
         return false;
     }
 
-    SkIRect srcRect;
-    fSrcRect.roundOut(&srcRect);
+    SkRect srcRect;
+    ctm.mapRect(&srcRect, fSrcRect);
+    SkIRect srcIRect;
+    srcRect.roundOut(&srcIRect);
+    srcIRect.offset(-srcOffset);
     SkBitmap subset;
-    if (!source.extractSubset(&subset, srcRect)) {
+    SkIRect bounds;
+    source.getBounds(&bounds);
+
+    if (!srcIRect.intersect(bounds)) {
+        offset->fX = offset->fY = 0;
+        return true;
+    } else if (!source.extractSubset(&subset, srcIRect)) {
         return false;
     }
 
     SkAutoTUnref<SkBaseDevice> device(proxy->createDevice(w, h));
-    SkIRect bounds;
-    source.getBounds(&bounds);
+    if (NULL == device.get()) {
+        return false;
+    }
     SkCanvas canvas(device);
     SkPaint paint;
     paint.setXfermodeMode(SkXfermode::kSrc_Mode);
 
     SkAutoTUnref<SkShader> shader(SkShader::CreateBitmapShader(subset,
                                   SkShader::kRepeat_TileMode, SkShader::kRepeat_TileMode));
+    SkMatrix shaderMatrix;
+    shaderMatrix.setTranslate(SkIntToScalar(srcOffset.fX),
+                              SkIntToScalar(srcOffset.fY));
+    shader->setLocalMatrix(shaderMatrix);
     paint.setShader(shader);
-    SkRect dstRect = fDstRect;
-    dstRect.offset(SkIntToScalar(localOffset.fX), SkIntToScalar(localOffset.fY));
+    canvas.translate(-dstRect.fLeft, -dstRect.fTop);
     canvas.drawRect(dstRect, paint);
     *dst = device->accessBitmap(false);
+    offset->fX = dstIRect.fLeft;
+    offset->fY = dstIRect.fTop;
     return true;
 }
 
-SkTileImageFilter::SkTileImageFilter(SkFlattenableReadBuffer& buffer) : INHERITED(buffer) {
+SkTileImageFilter::SkTileImageFilter(SkFlattenableReadBuffer& buffer)
+  : INHERITED(1, buffer) {
     buffer.readRect(&fSrcRect);
     buffer.readRect(&fDstRect);
-    buffer.validate(SkIsValidRect(fSrcRect) && SkIsValidRect(fDstRect));
+    buffer.validate(buffer.isValid() && SkIsValidRect(fSrcRect) && SkIsValidRect(fDstRect));
 }
 
 void SkTileImageFilter::flatten(SkFlattenableWriteBuffer& buffer) const {

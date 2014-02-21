@@ -146,21 +146,24 @@ bool RedirectToFileResourceHandler::OnReadCompleted(int request_id,
   return WriteMore();
 }
 
-bool RedirectToFileResourceHandler::OnResponseCompleted(
+void RedirectToFileResourceHandler::OnResponseCompleted(
     int request_id,
     const net::URLRequestStatus& status,
-    const std::string& security_info) {
+    const std::string& security_info,
+    bool* defer) {
   if (write_callback_pending_) {
     completed_during_write_ = true;
     completed_status_ = status;
     completed_security_info_ = security_info;
-    return false;
+    did_defer_ = true;
+    *defer = true;
+    return;
   }
-  return next_handler_->OnResponseCompleted(request_id, status, security_info);
+  next_handler_->OnResponseCompleted(request_id, status, security_info, defer);
 }
 
 void RedirectToFileResourceHandler::DidCreateTemporaryFile(
-    base::PlatformFileError /*error_code*/,
+    base::File::Error /*error_code*/,
     base::PassPlatformFile file_handle,
     const base::FilePath& file_path) {
   deletable_file_ = ShareableFileReference::GetOrCreate(
@@ -193,11 +196,13 @@ void RedirectToFileResourceHandler::DidWriteToFile(int result) {
   if (failed) {
     ResumeIfDeferred();
   } else if (completed_during_write_) {
-    if (next_handler_->OnResponseCompleted(request_id,
-                                           completed_status_,
-                                           completed_security_info_)) {
+    bool defer = false;
+    next_handler_->OnResponseCompleted(request_id,
+                                       completed_status_,
+                                       completed_security_info_,
+                                       &defer);
+    if (!defer)
       ResumeIfDeferred();
-    }
   }
 }
 

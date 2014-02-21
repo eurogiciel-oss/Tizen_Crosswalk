@@ -70,7 +70,7 @@ WebSocketDeflater::~WebSocketDeflater()
 {
     int result = deflateEnd(m_stream.get());
     if (result != Z_OK)
-        LOG(Network, "WebSocketDeflater %p Destructor deflateEnd() failed: %d is returned", this, result);
+        WTF_LOG(Network, "WebSocketDeflater %p Destructor deflateEnd() failed: %d is returned", this, result);
 }
 
 static void setStreamParameter(z_stream* stream, const char* inputData, size_t inputLength, char* outputData, size_t outputLength)
@@ -108,7 +108,7 @@ bool WebSocketDeflater::finish()
         // Since consecutive calls of deflate with Z_SYNC_FLUSH and no input lead to an error,
         // we create and return the output for the empty input manually.
         ASSERT(!m_buffer.size());
-        m_buffer.append("\x02\x00", 2);
+        m_buffer.append("\x00", 1);
         return true;
     }
     while (true) {
@@ -165,7 +165,7 @@ WebSocketInflater::~WebSocketInflater()
 {
     int result = inflateEnd(m_stream.get());
     if (result != Z_OK)
-        LOG(Network, "WebSocketInflater %p Destructor inflateEnd() failed: %d is returned", this, result);
+        WTF_LOG(Network, "WebSocketInflater %p Destructor inflateEnd() failed: %d is returned", this, result);
 }
 
 bool WebSocketInflater::addBytes(const char* data, size_t length)

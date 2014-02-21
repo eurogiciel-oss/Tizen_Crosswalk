@@ -11,8 +11,6 @@
 #include "SkRasterClip.h"
 #include "SkShader.h"
 
-SK_DEFINE_INST_COUNT(SkBitmapDevice)
-
 #define CHECK_FOR_ANNOTATION(paint) \
     do { if (paint.getAnnotation()) { return; } } while (0)
 
@@ -26,25 +24,30 @@ SkBitmapDevice::SkBitmapDevice(const SkBitmap& bitmap, const SkDeviceProperties&
     , fBitmap(bitmap) {
 }
 
-SkBitmapDevice::SkBitmapDevice(SkBitmap::Config config, int width, int height, bool isOpaque) {
+void SkBitmapDevice::init(SkBitmap::Config config, int width, int height, bool isOpaque) {
     fBitmap.setConfig(config, width, height, 0, isOpaque ?
                       kOpaque_SkAlphaType : kPremul_SkAlphaType);
-    fBitmap.allocPixels();
-    if (!isOpaque) {
-        fBitmap.eraseColor(SK_ColorTRANSPARENT);
+
+    if (SkBitmap::kNo_Config != config) {
+        if (!fBitmap.allocPixels()) {
+            // indicate failure by zeroing our bitmap
+            fBitmap.setConfig(config, 0, 0, 0, isOpaque ?
+                              kOpaque_SkAlphaType : kPremul_SkAlphaType);
+        } else if (!isOpaque) {
+            fBitmap.eraseColor(SK_ColorTRANSPARENT);
+        }
     }
+}
+
+SkBitmapDevice::SkBitmapDevice(SkBitmap::Config config, int width, int height, bool isOpaque) {
+    this->init(config, width, height, isOpaque);
 }
 
 SkBitmapDevice::SkBitmapDevice(SkBitmap::Config config, int width, int height, bool isOpaque,
                                const SkDeviceProperties& deviceProperties)
-    : SkBaseDevice(deviceProperties) {
-
-    fBitmap.setConfig(config, width, height, 0, isOpaque ?
-                      kOpaque_SkAlphaType : kPremul_SkAlphaType);
-    fBitmap.allocPixels();
-    if (!isOpaque) {
-        fBitmap.eraseColor(SK_ColorTRANSPARENT);
-    }
+    : SkBaseDevice(deviceProperties)
+{
+    this->init(config, width, height, isOpaque);
 }
 
 SkBitmapDevice::~SkBitmapDevice() {
@@ -61,8 +64,14 @@ SkBaseDevice* SkBitmapDevice::onCreateCompatibleDevice(SkBitmap::Config config,
                                                        int width, int height,
                                                        bool isOpaque,
                                                        Usage usage) {
-    return SkNEW_ARGS(SkBitmapDevice,(config, width, height, isOpaque,
-                                      this->getDeviceProperties()));
+    SkBitmapDevice* device = SkNEW_ARGS(SkBitmapDevice,(config, width, height,
+                                        isOpaque, this->getDeviceProperties()));
+    // Check if allocation failed and delete device if it did fail
+    if ((device->width() != width) || (device->height() != height)) {
+        SkDELETE(device);
+        device = NULL;
+    }
+    return device;
 }
 
 void SkBitmapDevice::lockPixels() {
@@ -74,14 +83,6 @@ void SkBitmapDevice::lockPixels() {
 void SkBitmapDevice::unlockPixels() {
     if (fBitmap.lockPixelsAreWritable()) {
         fBitmap.unlockPixels();
-    }
-}
-
-void SkBitmapDevice::getGlobalBounds(SkIRect* bounds) const {
-    if (NULL != bounds) {
-        const SkIPoint& origin = this->getOrigin();
-        bounds->setXYWH(origin.x(), origin.y(),
-                        fBitmap.width(), fBitmap.height());
     }
 }
 
@@ -163,10 +164,8 @@ void SkBitmapDevice::writePixels(const SkBitmap& bitmap,
             drawSprite = false;
         } else {
             // we convert to a temporary bitmap and draw that as a sprite
-            dstBmp.setConfig(SkBitmap::kARGB_8888_Config,
-                             spriteRect.width(),
-                             spriteRect.height());
-            if (!dstBmp.allocPixels()) {
+            if (!dstBmp.allocPixels(SkImageInfo::MakeN32Premul(spriteRect.width(),
+                                                               spriteRect.height()))) {
                 return;
             }
             drawSprite = true;
@@ -232,11 +231,16 @@ void SkBitmapDevice::drawOval(const SkDraw& draw, const SkRect& oval, const SkPa
 void SkBitmapDevice::drawRRect(const SkDraw& draw, const SkRRect& rrect, const SkPaint& paint) {
     CHECK_FOR_ANNOTATION(paint);
 
+#ifdef SK_IGNORE_BLURRED_RRECT_OPT
     SkPath  path;
+
     path.addRRect(rrect);
     // call the VIRTUAL version, so any subclasses who do handle drawPath aren't
     // required to override drawRRect.
     this->drawPath(draw, path, paint, NULL, true);
+#else
+    draw.drawRRect(rrect, paint);
+#endif
 }
 
 void SkBitmapDevice::drawPath(const SkDraw& draw, const SkPath& path,
@@ -360,14 +364,6 @@ void SkBitmapDevice::drawTextOnPath(const SkDraw& draw, const void* text,
                                     const SkPaint& paint) {
     draw.drawTextOnPath((const char*)text, len, path, matrix, paint);
 }
-
-#ifdef SK_BUILD_FOR_ANDROID
-void SkBitmapDevice::drawPosTextOnPath(const SkDraw& draw, const void* text, size_t len,
-                                       const SkPoint pos[], const SkPaint& paint,
-                                       const SkPath& path, const SkMatrix* matrix) {
-    draw.drawPosTextOnPath((const char*)text, len, pos, paint, path, matrix);
-}
-#endif
 
 void SkBitmapDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
                                   int vertexCount,

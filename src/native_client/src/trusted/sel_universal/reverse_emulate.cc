@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "native_client/src/include/portability_io.h"
+#include "native_client/src/public/secure_service.h"
 #include "native_client/src/shared/platform/nacl_check.h"
 #include "native_client/src/shared/platform/nacl_log.h"
 #include "native_client/src/shared/platform/nacl_sync.h"
@@ -22,6 +23,7 @@
 #include "native_client/src/shared/platform/scoped_ptr_refcount.h"
 #include "native_client/src/shared/srpc/nacl_srpc.h"
 #include "native_client/src/trusted/desc/nacl_desc_wrapper.h"
+#include "native_client/src/trusted/nonnacl_util/launcher_factory.h"
 #include "native_client/src/trusted/nonnacl_util/sel_ldr_launcher.h"
 #include "native_client/src/trusted/reverse_service/reverse_service.h"
 #include "native_client/src/trusted/sel_universal/rpc_universal.h"
@@ -126,7 +128,9 @@ bool ReverseEmulateInit(NaClSrpcChannel* command_channel,
   NaClLog(1, "ReverseEmulateInit: launching reverse RPC service\n");
   NaClDesc* h;
   NaClSrpcResultCodes rpc_result =
-      NaClSrpcInvokeBySignature(command_channel, "reverse_setup::h", &h);
+      NaClSrpcInvokeBySignature(command_channel,
+                                NACL_SECURE_SERVICE_REVERSE_SETUP,
+                                &h);
   if (NACL_SRPC_RESULT_OK != rpc_result) {
     NaClLog(LOG_ERROR, "ReverseEmulateInit: reverse setup failed\n");
     return false;
@@ -407,7 +411,7 @@ int64_t ReverseEmulate::RequestQuotaForWrite(nacl::string file_id,
                                              int64_t offset,
                                              int64_t length) {
   NaClLog(1, "ReverseEmulate::RequestQuotaForWrite (file_id=%s, offset=%"
-          NACL_PRId64", length=%"NACL_PRId64")\n", file_id.c_str(), offset,
+          NACL_PRId64 ", length=%" NACL_PRId64 ")\n", file_id.c_str(), offset,
           length);
   return length;
 }

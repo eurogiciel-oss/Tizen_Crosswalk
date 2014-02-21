@@ -58,9 +58,12 @@ DirectoryContentScanner.prototype.__proto__ = ContentScanner.prototype;
  */
 DirectoryContentScanner.prototype.scan = function(
     entriesCallback, successCallback, errorCallback) {
-  if (!this.entry_ || this.entry_ === DirectoryModel.fakeDriveEntry_) {
+  if (!this.entry_ ||
+      (util.isFakeEntry(this.entry_) &&
+       this.entry_.rootType === RootType.DRIVE)) {
     // If entry is not specified or a fake, we cannot read it.
-    errorCallback(util.createFileError(FileError.INVALID_MODIFICATION_ERR));
+    errorCallback(util.createDOMError(
+        util.FileError.INVALID_MODIFICATION_ERR));
     return;
   }
 
@@ -70,7 +73,7 @@ DirectoryContentScanner.prototype.scan = function(
     reader.readEntries(
         function(entries) {
           if (this.cancelled_) {
-            errorCallback(util.createFileError(FileError.ABORT_ERR));
+            errorCallback(util.createDOMError(util.FileError.ABORT_ERR));
             return;
           }
 
@@ -134,15 +137,15 @@ DriveSearchContentScanner.prototype.scan = function(
         {query: this.query_, nextFeed: nextFeed},
         function(entries, nextFeed) {
           if (this.cancelled_) {
-            errorCallback(util.createFileError(FileError.ABORT_ERR));
+            errorCallback(util.createDOMError(util.FileError.ABORT_ERR));
             return;
           }
 
           // TODO(tbarzic): Improve error handling.
           if (!entries) {
             console.error('Drive search encountered an error.');
-            errorCallback(util.createFileError(
-                FileError.INVALID_MODIFICATION_ERR));
+            errorCallback(util.createDOMError(
+                util.FileError.INVALID_MODIFICATION_ERR));
             return;
           }
 
@@ -170,7 +173,7 @@ DriveSearchContentScanner.prototype.scan = function(
       function() {
         // Check cancelled state before read the entries.
         if (this.cancelled_) {
-          errorCallback(util.createFileError(FileError.ABORT_ERR));
+          errorCallback(util.createDOMError(util.FileError.ABORT_ERR));
           return;
         }
         readEntries('');
@@ -208,7 +211,7 @@ LocalSearchContentScanner.prototype.scan = function(
   var maybeRunCallback = function() {
     if (numRunningTasks === 0) {
       if (this.cancelled_)
-        errorCallback(util.createFileError(FileError.ABORT_ERR));
+        errorCallback(util.createDOMError(util.FileError.ABORT_ERR));
       else if (error)
         errorCallback(error);
       else
@@ -297,14 +300,14 @@ DriveMetadataSearchContentScanner.prototype.scan = function(
       {query: this.query_, types: this.searchType_, maxResults: 500},
       function(results) {
         if (this.cancelled_) {
-          errorCallback(util.createFileError(FileError.ABORT_ERR));
+          errorCallback(util.createDOMError(util.FileError.ABORT_ERR));
           return;
         }
 
         if (!results) {
           console.error('Drive search encountered an error.');
-          errorCallback(util.createFileError(
-              FileError.INVALID_MODIFICATION_ERR));
+          errorCallback(util.createDOMError(
+              util.FileError.INVALID_MODIFICATION_ERR));
           return;
         }
 
@@ -458,7 +461,6 @@ function DirectoryContents(context, isSearch, directoryEntry,
   this.scanner_ = null;
   this.prefetchMetadataQueue_ = new AsyncUtil.Queue();
   this.scanCancelled_ = false;
-  this.fileList_.prepareSort = this.prepareSort_.bind(this);
 }
 
 /**
@@ -481,8 +483,11 @@ DirectoryContents.prototype.clone = function() {
  * @param {Array|cr.ui.ArrayDataModel} fileList The new file list.
  */
 DirectoryContents.prototype.setFileList = function(fileList) {
-  this.fileList_ = fileList;
-  this.fileList_.prepareSort = this.prepareSort_.bind(this);
+  if (fileList instanceof cr.ui.ArrayDataModel)
+    this.fileList_ = fileList;
+  else
+    this.fileList_ = new cr.ui.ArrayDataModel(fileList);
+  this.context_.metadataCache.setCacheSize(this.fileList_.length);
 };
 
 /**
@@ -491,11 +496,12 @@ DirectoryContents.prototype.setFileList = function(fileList) {
  */
 DirectoryContents.prototype.replaceContextFileList = function() {
   if (this.context_.fileList !== this.fileList_) {
-    var spliceArgs = [].slice.call(this.fileList_);
+    var spliceArgs = this.fileList_.slice();
     var fileList = this.context_.fileList;
     spliceArgs.unshift(0, fileList.length);
     fileList.splice.apply(fileList, spliceArgs);
     this.fileList_ = fileList;
+    this.context_.metadataCache.setCacheSize(this.fileList_.length);
   }
 };
 
@@ -565,9 +571,6 @@ DirectoryContents.prototype.onScanCompleted_ = function() {
     return;
 
   this.prefetchMetadataQueue_.run(function(callback) {
-    if (!this.isSearch() &&
-        this.getDirectoryEntry().fullPath === RootDirectory.DOWNLOADS)
-      metrics.recordMediumCount('DownloadsCount', this.fileList_.length);
     // Call callback first, so isScanning() returns false in the event handlers.
     callback();
     cr.dispatchSimpleEvent(this, 'scan-completed');
@@ -602,6 +605,12 @@ DirectoryContents.prototype.onNewEntries_ = function(entries) {
   var entriesFiltered = [].filter.call(
       entries, this.context_.fileFilter.filter.bind(this.context_.fileFilter));
 
+  // Update the filelist without waiting the metadata.
+  this.fileList_.push.apply(this.fileList_, entriesFiltered);
+  cr.dispatchSimpleEvent(this, 'scan-updated');
+
+  this.context_.metadataCache.setCacheSize(this.fileList_.length);
+
   // Because the prefetchMetadata can be slow, throttling by splitting entries
   // into smaller chunks to reduce UI latency.
   // TODO(hidehiko,mtomasz): This should be handled in MetadataCache.
@@ -616,25 +625,21 @@ DirectoryContents.prototype.onNewEntries_ = function(entries) {
           return;
         }
 
-        this.fileList_.push.apply(this.fileList_, chunk);
+        // TODO(yoshiki): Here we should fire the update event of changed
+        // items. Currently we have a method this.fileList_.updateIndex() to
+        // fire an event, but this method takes only 1 argument and invokes sort
+        // one by one. It is obviously time wasting. Instead, we call sort
+        // directory.
+        // In future, we should implement a good method like updateIndexes and
+        // use it here.
+        var status = this.fileList_.sortStatus;
+        this.fileList_.sort(status.field, status.direction);
+
         cr.dispatchSimpleEvent(this, 'scan-updated');
         callback();
       }.bind(this));
     }.bind(this, chunk));
   }
-};
-
-/**
- * Cache necessary data before a sort happens.
- *
- * This is called by the table code before a sort happens, so that we can
- * go fetch data for the sort field that we may not have yet.
- * @param {string} field Sort field.
- * @param {function(Object)} callback Called when done.
- * @private
- */
-DirectoryContents.prototype.prepareSort_ = function(field, callback) {
-  this.prefetchMetadata(this.fileList_.slice(), callback);
 };
 
 /**
@@ -664,7 +669,8 @@ DirectoryContents.prototype.createDirectory = function(
   // TODO(hidehiko): createDirectory should not be the part of
   // DirectoryContent.
   if (this.isSearch_ || !this.directoryEntry_) {
-    errorCallback(util.createFileError(FileError.INVALID_MODIFICATION_ERR));
+    errorCallback(util.createDOMError(
+        util.FileError.INVALID_MODIFICATION_ERR));
     return;
   }
 

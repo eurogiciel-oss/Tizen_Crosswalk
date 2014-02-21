@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <body>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="../resources/common.js"></script>
 
 <input id="tabindex30" tabindex="30">
@@ -25,8 +25,8 @@ var shadowRoot = internals.youngestShadowRoot($('time-with-tabindex20'));
 debug('Forword:');
 shouldBeEqualToString('eventSender.keyDown(tab); document.activeElement.id', 'tabindex20-1');
 shouldBeEqualToString('eventSender.keyDown(tab); document.activeElement.id', 'time-with-tabindex20');
-shouldBe('shadowRoot.activeElement.getAttribute("part")', 'firstSubField');
-shouldBe('eventSender.keyDown(tab); eventSender.keyDown(tab); shadowRoot.activeElement.getAttribute("part")', 'lastSubField');
+shouldBe('internals.shadowPseudoId(shadowRoot.activeElement)', 'firstSubField');
+shouldBe('eventSender.keyDown(tab); eventSender.keyDown(tab); internals.shadowPseudoId(shadowRoot.activeElement)', 'lastSubField');
 shouldBeEqualToString('eventSender.keyDown(tab); document.activeElement.id', 'tabindex20-3');
 shouldBeEqualToString('eventSender.keyDown(tab); document.activeElement.id', 'tabindex30');
 
@@ -34,8 +34,8 @@ debug('');
 debug('Backword:');
 shouldBeEqualToString('eventSender.keyDown(tab, shift); document.activeElement.id', 'tabindex20-3');
 shouldBeEqualToString('eventSender.keyDown(tab, shift); document.activeElement.id', 'time-with-tabindex20');
-shouldBe('shadowRoot.activeElement.getAttribute("part")', 'lastSubField');
-shouldBe('eventSender.keyDown(tab, shift); eventSender.keyDown(tab, shift); shadowRoot.activeElement.getAttribute("part")', 'firstSubField');
+shouldBe('internals.shadowPseudoId(shadowRoot.activeElement)', 'lastSubField');
+shouldBe('eventSender.keyDown(tab, shift); eventSender.keyDown(tab, shift); internals.shadowPseudoId(shadowRoot.activeElement)', 'firstSubField');
 shouldBeEqualToString('eventSender.keyDown(tab, shift); document.activeElement.id', 'tabindex20-1');
 
 

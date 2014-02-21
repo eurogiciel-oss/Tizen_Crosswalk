@@ -29,10 +29,15 @@
  */
 
 .filter-text-filter {
+    display: flex;
     margin-top: 1px;
     margin-left: 1px;
     margin-right: 1px;
     flex: 0 0 100px;
+}
+
+.filter-text-filter.supports-regex {
+    flex: 0 0 155px;
 }
 
 .filter-bitset-filter {
@@ -43,7 +48,7 @@
 
 .filter-bitset-filter li {
     display: inline-block;
-    margin: 1px 2px;
+    margin: 2px;
     padding: 0px 6px;
     background: transparent;
     text-shadow: rgba(255, 255, 255, 0.5) 0 1px 0;
@@ -96,6 +101,10 @@
     overflow: hidden;
 }
 
+.filter-text-invalid {
+    background-color: rgb(255, 200, 200);
+}
+
 .filter-checkbox-filter .checkbox-filter-checkbox {
     width: 10px;
     height: 10px;
@@ -120,7 +129,7 @@
 
 .filter-checkbox-filter .checkbox-filter-checkbox-checked {
     background-image: url(Images/statusbarButtonGlyphs.png);
-    background-size: 320px 120px;
+    background-size: 320px 144px;
     background-position: -129px -110px;
 }
 

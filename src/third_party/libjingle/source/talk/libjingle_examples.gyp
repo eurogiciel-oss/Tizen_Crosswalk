@@ -51,7 +51,7 @@
         'libjingle.gyp:libjingle_p2p',
       ],
       'sources': [
-        'p2p/base/relayserver_main.cc',
+        'examples/relayserver/relayserver_main.cc',
       ],
     },  # target relayserver
     {
@@ -62,7 +62,7 @@
         'libjingle.gyp:libjingle_p2p',
       ],
       'sources': [
-        'p2p/base/stunserver_main.cc',
+        'examples/stunserver/stunserver_main.cc',
       ],
     },  # target stunserver
     {
@@ -73,7 +73,7 @@
         'libjingle.gyp:libjingle_p2p',
       ],
       'sources': [
-        'p2p/base/turnserver_main.cc',
+        'examples/turnserver/turnserver_main.cc',
       ],
     },  # target turnserver
     {
@@ -261,35 +261,6 @@
               '-framework UIKit',
             ],
           },
-          'postbuilds': [
-            {
-              # Ideally app signing would be a part of gyp.
-              # Delete if/when that comes to pass.
-              'postbuild_name': 'Sign AppRTCDemo',
-              'variables': {
-                'variables': {
-                  'key_id%': '<!(security find-identity -p codesigning -v | grep "iPhone Developer" | awk \'{print $2}\')',
-                },
-                'key_id%': '<(key_id)',
-                # Total HACK to give a more informative message when multiple
-                # codesigning keys are present in the default keychain.  Ideally
-                # we could pick more intelligently among the keys, but as a
-                # first cut just tell the developer to specify a key identity
-                # explicitly.
-                'ensure_single_key': '<!(python -c "assert \'\\n\' not in \'\'\'<(key_id)\'\'\', \'key_id gyp variable needs to be set explicitly because there are multiple codesigning keys!\'")',
-              },
-              'conditions': [
-                ['key_id==""', {
-                  'action': [ 'echo', 'Skipping signing' ],
-                }, {
-                  'action': [
-                    '/usr/bin/codesign', '-v', '--force', '--sign', '<(key_id)',
-                    '${BUILT_PRODUCTS_DIR}/AppRTCDemo.app',
-                  ],
-                }],
-              ],
-            },
-          ],
         },  # target AppRTCDemo
       ],  # targets
     }],  # OS=="ios"
@@ -333,15 +304,20 @@
               'outputs': [
                 '<(PRODUCT_DIR)/AppRTCDemo-debug.apk',
               ],
+              'variables': {
+                'ant_log': '../../<(INTERMEDIATE_DIR)/ant.log', # ../.. to compensate for the cd examples/android below.
+              },
               'action': [
                 'bash', '-ec',
                 'rm -fr <(_outputs) examples/android/{bin,libs} && '
+                'mkdir -p <(INTERMEDIATE_DIR) && ' # Must happen _before_ the cd below
                 'mkdir -p examples/android/libs/<(android_app_abi) && '
                 'cp <(PRODUCT_DIR)/libjingle_peerconnection.jar examples/android/libs/ &&'
                 '<(android_strip) -o examples/android/libs/<(android_app_abi)/libjingle_peerconnection_so.so  <(PRODUCT_DIR)/libjingle_peerconnection_so.so &&'
                 'cd examples/android && '
-                'ant debug && '
-                'cd - && '
+                '{ ant debug > <(ant_log) 2>&1 || '
+                '  { cat <(ant_log) ; exit 1; } } && '
+                'cd - > /dev/null && '
                 'cp examples/android/bin/AppRTCDemo-debug.apk <(_outputs)'
               ],
             },

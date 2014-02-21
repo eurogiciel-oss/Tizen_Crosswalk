@@ -31,6 +31,7 @@
 #include <limits>
 #include "core/rendering/GraphicsContextAnnotator.h"
 #include "core/rendering/HitTestResult.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/PaintInfo.h"
 #include "core/rendering/RenderTableCell.h"
 #include "core/rendering/RenderTableCol.h"
@@ -38,7 +39,6 @@
 #include "core/rendering/RenderView.h"
 #include "core/rendering/SubtreeLayoutScope.h"
 #include "wtf/HashSet.h"
-#include "wtf/Vector.h"
 
 using namespace std;
 
@@ -619,8 +619,7 @@ int RenderTableSection::calcRowLogicalHeight()
 
     RenderTableCell* cell;
 
-    RenderView* viewRenderer = view();
-    LayoutStateMaintainer statePusher(viewRenderer);
+    LayoutStateMaintainer statePusher(view());
 
     m_rowPos.resize(m_grid.size() + 1);
 
@@ -640,7 +639,7 @@ int RenderTableSection::calcRowLogicalHeight()
         LayoutUnit baselineDescent = 0;
 
         // Our base size is the biggest logical height from our cells' styles (excluding row spanning cells).
-        m_rowPos[r + 1] = max(m_rowPos[r] + minimumValueForLength(m_grid[r].logicalHeight, 0, viewRenderer).round(), 0);
+        m_rowPos[r + 1] = max(m_rowPos[r] + minimumValueForLength(m_grid[r].logicalHeight, 0).round(), 0);
 
         Row& row = m_grid[r].row;
         unsigned totalCols = row.size();
@@ -731,6 +730,8 @@ void RenderTableSection::layout()
     ASSERT(!needsCellRecalc());
     ASSERT(!table()->needsSectionRecalc());
 
+    LayoutRectRecorder recorder(*this);
+
     // addChild may over-grow m_grid but we don't want to throw away the memory too early as addChild
     // can be called in a loop (e.g during parsing). Doing it now ensures we have a stable-enough structure.
     m_grid.shrinkToFit();
@@ -750,6 +751,8 @@ void RenderTableSection::layout()
             RenderTableCell* cell = current.primaryCell();
             if (!cell || current.inColSpan)
                 continue;
+
+            LayoutRectRecorder cellRecorder(*cell);
 
             unsigned endCol = startColumn;
             unsigned cspan = cell->colSpan();
@@ -908,6 +911,8 @@ void RenderTableSection::layoutRows()
             if (!cell || cs.inColSpan)
                 continue;
 
+            LayoutRectRecorder cellRecorder(*cell);
+
             int rowIndex = cell->rowIndex();
             int rHeight = m_rowPos[rowIndex + cell->rowSpan()] - m_rowPos[rowIndex] - vspacing;
 
@@ -988,7 +993,8 @@ void RenderTableSection::layoutRows()
 
             LayoutSize childOffset(cell->location() - oldCellRect.location());
             if (childOffset.width() || childOffset.height()) {
-                view()->addLayoutDelta(childOffset);
+                if (!RuntimeEnabledFeatures::repaintAfterLayoutEnabled())
+                    view()->addLayoutDelta(childOffset);
 
                 // If the child moved, we have to repaint it as well as any floating/positioned
                 // descendants.  An exception is if we need a layout.  In this case, we know we're going to
@@ -1027,7 +1033,7 @@ void RenderTableSection::computeOverflowFromCells()
 void RenderTableSection::computeOverflowFromCells(unsigned totalRows, unsigned nEffCols)
 {
     unsigned totalCellsCount = nEffCols * totalRows;
-    int maxAllowedOverflowingCellsCount = totalCellsCount < gMinTableSizeToUseFastPaintPathWithOverflowingCell ? 0 : gMaxAllowedOverflowingCellRatioForFastPaintPath * totalCellsCount;
+    unsigned maxAllowedOverflowingCellsCount = totalCellsCount < gMinTableSizeToUseFastPaintPathWithOverflowingCell ? 0 : gMaxAllowedOverflowingCellRatioForFastPaintPath * totalCellsCount;
 
 #ifndef NDEBUG
     bool hasOverflowingCell = false;
@@ -1060,7 +1066,7 @@ void RenderTableSection::computeOverflowFromCells(unsigned totalRows, unsigned n
     ASSERT(hasOverflowingCell == this->hasOverflowingCell());
 }
 
-int RenderTableSection::calcOuterBorderBefore() const
+int RenderTableSection::calcBlockDirectionOuterBorder(BlockBorderSide side) const
 {
     unsigned totalCols = table()->numEffCols();
     if (!m_grid.size() || !totalCols)
@@ -1068,13 +1074,13 @@ int RenderTableSection::calcOuterBorderBefore() const
 
     unsigned borderWidth = 0;
 
-    const BorderValue& sb = style()->borderBefore();
+    const BorderValue& sb = side == BorderBefore ? style()->borderBefore() : style()->borderAfter();
     if (sb.style() == BHIDDEN)
         return -1;
     if (sb.style() > BHIDDEN)
         borderWidth = sb.width();
 
-    const BorderValue& rb = firstChild()->style()->borderBefore();
+    const BorderValue& rb = side == BorderBefore ? firstChild()->style()->borderBefore() : lastChild()->style()->borderAfter();
     if (rb.style() == BHIDDEN)
         return -1;
     if (rb.style() > BHIDDEN && rb.width() > borderWidth)
@@ -1082,14 +1088,15 @@ int RenderTableSection::calcOuterBorderBefore() const
 
     bool allHidden = true;
     for (unsigned c = 0; c < totalCols; c++) {
-        const CellStruct& current = cellAt(0, c);
+        const CellStruct& current = cellAt(side == BorderBefore ? 0 : m_grid.size() - 1, c);
         if (current.inColSpan || !current.hasCells())
             continue;
-        const BorderValue& cb = current.primaryCell()->style()->borderBefore(); // FIXME: Make this work with perpendicular and flipped cells.
+        const RenderStyle* primaryCellStyle = current.primaryCell()->style();
+        const BorderValue& cb = side == BorderBefore ? primaryCellStyle->borderBefore() : primaryCellStyle->borderAfter(); // FIXME: Make this work with perpendicular and flipped cells.
         // FIXME: Don't repeat for the same col group
         RenderTableCol* colGroup = table()->colElement(c);
         if (colGroup) {
-            const BorderValue& gb = colGroup->style()->borderBefore();
+            const BorderValue& gb = side == BorderBefore ? colGroup->style()->borderBefore() : colGroup->style()->borderAfter();
             if (gb.style() == BHIDDEN || cb.style() == BHIDDEN)
                 continue;
             allHidden = false;
@@ -1108,76 +1115,28 @@ int RenderTableSection::calcOuterBorderBefore() const
     if (allHidden)
         return -1;
 
+    if (side == BorderAfter)
+        borderWidth++; // Distribute rounding error
     return borderWidth / 2;
 }
 
-int RenderTableSection::calcOuterBorderAfter() const
+int RenderTableSection::calcInlineDirectionOuterBorder(InlineBorderSide side) const
 {
     unsigned totalCols = table()->numEffCols();
     if (!m_grid.size() || !totalCols)
         return 0;
+    unsigned colIndex = side == BorderStart ? 0 : totalCols - 1;
 
     unsigned borderWidth = 0;
 
-    const BorderValue& sb = style()->borderAfter();
+    const BorderValue& sb = side == BorderStart ? style()->borderStart() : style()->borderEnd();
     if (sb.style() == BHIDDEN)
         return -1;
     if (sb.style() > BHIDDEN)
         borderWidth = sb.width();
 
-    const BorderValue& rb = lastChild()->style()->borderAfter();
-    if (rb.style() == BHIDDEN)
-        return -1;
-    if (rb.style() > BHIDDEN && rb.width() > borderWidth)
-        borderWidth = rb.width();
-
-    bool allHidden = true;
-    for (unsigned c = 0; c < totalCols; c++) {
-        const CellStruct& current = cellAt(m_grid.size() - 1, c);
-        if (current.inColSpan || !current.hasCells())
-            continue;
-        const BorderValue& cb = current.primaryCell()->style()->borderAfter(); // FIXME: Make this work with perpendicular and flipped cells.
-        // FIXME: Don't repeat for the same col group
-        RenderTableCol* colGroup = table()->colElement(c);
-        if (colGroup) {
-            const BorderValue& gb = colGroup->style()->borderAfter();
-            if (gb.style() == BHIDDEN || cb.style() == BHIDDEN)
-                continue;
-            allHidden = false;
-            if (gb.style() > BHIDDEN && gb.width() > borderWidth)
-                borderWidth = gb.width();
-            if (cb.style() > BHIDDEN && cb.width() > borderWidth)
-                borderWidth = cb.width();
-        } else {
-            if (cb.style() == BHIDDEN)
-                continue;
-            allHidden = false;
-            if (cb.style() > BHIDDEN && cb.width() > borderWidth)
-                borderWidth = cb.width();
-        }
-    }
-    if (allHidden)
-        return -1;
-
-    return (borderWidth + 1) / 2;
-}
-
-int RenderTableSection::calcOuterBorderStart() const
-{
-    unsigned totalCols = table()->numEffCols();
-    if (!m_grid.size() || !totalCols)
-        return 0;
-
-    unsigned borderWidth = 0;
-
-    const BorderValue& sb = style()->borderStart();
-    if (sb.style() == BHIDDEN)
-        return -1;
-    if (sb.style() > BHIDDEN)
-        borderWidth = sb.width();
-
-    if (RenderTableCol* colGroup = table()->colElement(0)) {
-        const BorderValue& gb = colGroup->style()->borderStart();
+    if (RenderTableCol* colGroup = table()->colElement(colIndex)) {
+        const BorderValue& gb = side == BorderStart ? colGroup->style()->borderStart() : colGroup->style()->borderEnd();
         if (gb.style() == BHIDDEN)
             return -1;
         if (gb.style() > BHIDDEN && gb.width() > borderWidth)
@@ -1186,12 +1145,14 @@ int RenderTableSection::calcOuterBorderStart() const
 
     bool allHidden = true;
     for (unsigned r = 0; r < m_grid.size(); r++) {
-        const CellStruct& current = cellAt(r, 0);
+        const CellStruct& current = cellAt(r, colIndex);
         if (!current.hasCells())
             continue;
         // FIXME: Don't repeat for the same cell
-        const BorderValue& cb = current.primaryCell()->style()->borderStart(); // FIXME: Make this work with perpendicular and flipped cells.
-        const BorderValue& rb = current.primaryCell()->parent()->style()->borderStart();
+        const RenderStyle* primaryCellStyle = current.primaryCell()->style();
+        const RenderStyle* primaryCellParentStyle = current.primaryCell()->parent()->style();
+        const BorderValue& cb = side == BorderStart ? primaryCellStyle->borderStart() : primaryCellStyle->borderEnd(); // FIXME: Make this work with perpendicular and flipped cells.
+        const BorderValue& rb = side == BorderStart ? primaryCellParentStyle->borderStart() : primaryCellParentStyle->borderEnd();
         if (cb.style() == BHIDDEN || rb.style() == BHIDDEN)
             continue;
         allHidden = false;
@@ -1203,59 +1164,17 @@ int RenderTableSection::calcOuterBorderStart() const
     if (allHidden)
         return -1;
 
-    return (borderWidth + (table()->style()->isLeftToRightDirection() ? 0 : 1)) / 2;
-}
-
-int RenderTableSection::calcOuterBorderEnd() const
-{
-    unsigned totalCols = table()->numEffCols();
-    if (!m_grid.size() || !totalCols)
-        return 0;
-
-    unsigned borderWidth = 0;
-
-    const BorderValue& sb = style()->borderEnd();
-    if (sb.style() == BHIDDEN)
-        return -1;
-    if (sb.style() > BHIDDEN)
-        borderWidth = sb.width();
-
-    if (RenderTableCol* colGroup = table()->colElement(totalCols - 1)) {
-        const BorderValue& gb = colGroup->style()->borderEnd();
-        if (gb.style() == BHIDDEN)
-            return -1;
-        if (gb.style() > BHIDDEN && gb.width() > borderWidth)
-            borderWidth = gb.width();
-    }
-
-    bool allHidden = true;
-    for (unsigned r = 0; r < m_grid.size(); r++) {
-        const CellStruct& current = cellAt(r, totalCols - 1);
-        if (!current.hasCells())
-            continue;
-        // FIXME: Don't repeat for the same cell
-        const BorderValue& cb = current.primaryCell()->style()->borderEnd(); // FIXME: Make this work with perpendicular and flipped cells.
-        const BorderValue& rb = current.primaryCell()->parent()->style()->borderEnd();
-        if (cb.style() == BHIDDEN || rb.style() == BHIDDEN)
-            continue;
-        allHidden = false;
-        if (cb.style() > BHIDDEN && cb.width() > borderWidth)
-            borderWidth = cb.width();
-        if (rb.style() > BHIDDEN && rb.width() > borderWidth)
-            borderWidth = rb.width();
-    }
-    if (allHidden)
-        return -1;
-
-    return (borderWidth + (table()->style()->isLeftToRightDirection() ? 1 : 0)) / 2;
+    if ((side == BorderStart) != table()->style()->isLeftToRightDirection())
+        borderWidth++; // Distribute rounding error
+    return borderWidth / 2;
 }
 
 void RenderTableSection::recalcOuterBorder()
 {
-    m_outerBorderBefore = calcOuterBorderBefore();
-    m_outerBorderAfter = calcOuterBorderAfter();
-    m_outerBorderStart = calcOuterBorderStart();
-    m_outerBorderEnd = calcOuterBorderEnd();
+    m_outerBorderBefore = calcBlockDirectionOuterBorder(BorderBefore);
+    m_outerBorderAfter = calcBlockDirectionOuterBorder(BorderAfter);
+    m_outerBorderStart = calcInlineDirectionOuterBorder(BorderStart);
+    m_outerBorderEnd = calcInlineDirectionOuterBorder(BorderEnd);
 }
 
 int RenderTableSection::firstLineBoxBaseline() const
@@ -1785,7 +1704,7 @@ CollapsedBorderValue& RenderTableSection::cachedCollapsedBorder(const RenderTabl
 {
     ASSERT(table()->collapseBorders());
     HashMap<pair<const RenderTableCell*, int>, CollapsedBorderValue>::iterator it = m_cellsCollapsedBorders.find(make_pair(cell, side));
-    ASSERT(it != m_cellsCollapsedBorders.end());
+    ASSERT_WITH_SECURITY_IMPLICATION(it != m_cellsCollapsedBorders.end());
     return it->value;
 }
 
@@ -1812,7 +1731,9 @@ void RenderTableSection::setLogicalPositionForCell(RenderTableCell* cell, unsign
         cellLocation.setX(table()->columnPositions()[effectiveColumn] + horizontalBorderSpacing);
 
     cell->setLogicalLocation(cellLocation);
-    view()->addLayoutDelta(oldCellLocation - cell->location());
+
+    if (!RuntimeEnabledFeatures::repaintAfterLayoutEnabled())
+        view()->addLayoutDelta(oldCellLocation - cell->location());
 }
 
 } // namespace WebCore

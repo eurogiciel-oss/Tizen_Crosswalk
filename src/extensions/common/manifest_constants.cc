@@ -16,6 +16,7 @@ const char kBackgroundPage[] = "background.page";
 const char kBackgroundPageLegacy[] = "background_page";
 const char kBackgroundPersistent[] = "background.persistent";
 const char kBackgroundScripts[] = "background.scripts";
+const char kBookmarkUI[] = "chrome_settings_overrides.bookmarks_ui";
 const char kBrowserAction[] = "browser_action";
 const char kChromeURLOverrides[] = "chrome_url_overrides";
 const char kCommands[] = "commands";
@@ -46,13 +47,16 @@ const char kFileHandlerExtensions[] = "extensions";
 const char kFileHandlerTitle[] = "title";
 const char kFileHandlerTypes[] = "types";
 const char kGlobal[] = "global";
+const char kHideBookmarkButton[] = "hide_bookmark_button";
 const char kHomepageURL[] = "homepage_url";
 const char kIcons[] = "icons";
 const char kId[] = "id";
+const char kImeOptionsPage[] = "options_page";
 const char kImport[] = "import";
 const char kIncognito[] = "incognito";
 const char kIncludeGlobs[] = "include_globs";
 const char kInputComponents[] = "input_components";
+const char kInputView[] = "input_view";
 const char kIsolation[] = "app.isolation";
 const char kJs[] = "js";
 const char kKey[] = "key";
@@ -105,6 +109,7 @@ const char kPlugins[] = "plugins";
 const char kPluginsPath[] = "path";
 const char kPluginsPublic[] = "public";
 const char kPublicKey[] = "key";
+const char kRemoveButton[] = "remove_button";
 const char kResources[] = "resources";
 const char kRequirements[] = "requirements";
 const char kRunAt[] = "run_at";
@@ -146,6 +151,7 @@ const char kTtsVoicesEventTypeWord[] = "word";
 const char kTtsVoicesEventTypes[] = "event_types";
 const char kTtsVoicesGender[] = "gender";
 const char kTtsVoicesLang[] = "lang";
+const char kTtsVoicesRemote[] = "remote";
 const char kTtsVoicesVoiceName[] = "voice_name";
 const char kType[] = "type";
 const char kUpdateURL[] = "update_url";
@@ -215,6 +221,11 @@ const char kLaunchContainerWindow[] = "window";
 // cross-platform.
 namespace manifest_errors {
 
+const char kActiveTabPermissionNotGranted[] =
+    "The 'activeTab' permission is not in effect because this extension has "
+    "not been in invoked.";
+const char kAllURLOrActiveTabNeeded[] =
+    "Either the '<all_urls>' or 'activeTab' permission is required.";
 const char kAppsNotEnabled[] =
     "Apps are not enabled.";
 const char kBackgroundPermissionNeeded[] =
@@ -324,6 +335,8 @@ const char kInvalidFileFilterValue[] =
     "Invalid value for 'file_filters[*]'.";
 const char kInvalidFileHandlers[] =
     "Invalid value for 'file_handlers'.";
+const char kInvalidFileHandlersTooManyTypesAndExtensions[] =
+    "Too many MIME and extension file_handlers have been declared.";
 const char kInvalidFileHandlerExtension[] =
     "Invalid value for 'file_handlers[*].extensions'.";
 const char kInvalidFileHandlerExtensionElement[] =
@@ -372,6 +385,8 @@ const char kInvalidInputComponentShortcutKeycode[] =
     "Invalid value for 'input_components[*].shortcutKey.keyCode";
 const char kInvalidInputComponentType[] =
     "Invalid value for 'input_components[*].type";
+const char kInvalidInputView[] =
+    "Invalid value for 'input_view'.";
 const char kInvalidIntent[] =
     "Invalid value for intents[*]";
 const char kInvalidIntentDisposition[] =
@@ -533,6 +548,8 @@ const char kInvalidSandboxedPagesCSP[] =
     "Invalid value for 'sandbox.content_security_policy'.";
 const char kInvalidScriptBadge[] =
     "Invalid value for 'script_badge'.";
+const char kInvalidSearchEngineURL[] =
+    "Invalid URL [*] for 'chrome_settings_overrides.search_provider'.";
 const char kInvalidEmptySettingsOverrides[] =
     "Empty dictionary for 'chrome_settings_overrides'.";
 const char kInvalidShortName[] =
@@ -573,6 +590,8 @@ const char kInvalidTtsVoicesGender[] =
     "Invalid value for 'tts_engine.voices[*].gender'.";
 const char kInvalidTtsVoicesLang[] =
     "Invalid value for 'tts_engine.voices[*].lang'.";
+const char kInvalidTtsVoicesRemote[] =
+    "Invalid value for 'tts_engine.voices[*].remote'.";
 const char kInvalidTtsVoicesVoiceName[] =
     "Invalid value for 'tts_engine.voices[*].voice_name'.";
 const char kInvalidUpdateURL[] =
@@ -618,6 +637,8 @@ const char kInsecureContentSecurityPolicy[] =
     " \"'unsafe-eval'\", \"http://127.0.0.1\", \"http://localhost\", or any"
     " \"https://\" or \"chrome-extension://\" origin. For more information,"
     " see http://developer.chrome.com/extensions/contentSecurityPolicy.html";
+const char kKeyIsDeprecatedWithReplacement[] =
+    "Key \"*\" is deprecated.  Key \"*\" should be used instead.";
 const char kLaunchPathAndExtentAreExclusive[] =
     "The 'app.launch.local_path' and 'app.urls' keys cannot both be set.";
 const char kLaunchPathAndURLAreExclusive[] =
@@ -670,6 +691,8 @@ const char kScriptBadgeTitleIgnored[] =
     "default_title specified in script_badge manifest section will not be "
     "used.";
 const char kUnrecognizedManifestKey[] = "Unrecognized manifest key '*'.";
+const char kUnrecognizedManifestProperty[] =
+    "Unrecognized property '*' of manifest key '*'.";
 const char kWebRequestConflictsWithLazyBackground[] =
     "The 'webRequest' API cannot be used with event pages.";
 #if defined(OS_CHROMEOS)

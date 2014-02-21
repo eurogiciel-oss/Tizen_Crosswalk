@@ -40,7 +40,7 @@ class PeriodicWave;
 
 // OscillatorNode is an audio generator of periodic waveforms.
 
-class OscillatorNode : public AudioScheduledSourceNode {
+class OscillatorNode FINAL : public AudioScheduledSourceNode {
 public:
     // The waveform type.
     // These must be defined as in the .idl file.
@@ -57,8 +57,7 @@ public:
     virtual ~OscillatorNode();
 
     // AudioNode
-    virtual void process(size_t framesToProcess);
-    virtual void reset();
+    virtual void process(size_t framesToProcess) OVERRIDE;
 
     String type() const;
 
@@ -101,12 +100,6 @@ private:
     AudioFloatArray m_detuneValues;
 
     RefPtr<PeriodicWave> m_periodicWave;
-
-    // Cache the wave tables for different waveform types, except CUSTOM.
-    static PeriodicWave* s_periodicWaveSine;
-    static PeriodicWave* s_periodicWaveSquare;
-    static PeriodicWave* s_periodicWaveSawtooth;
-    static PeriodicWave* s_periodicWaveTriangle;
 };
 
 } // namespace WebCore

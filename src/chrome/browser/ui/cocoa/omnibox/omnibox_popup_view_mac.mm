@@ -19,7 +19,7 @@
 #include "chrome/common/autocomplete_match_type.h"
 #include "grit/theme_resources.h"
 #include "skia/ext/skia_utils_mac.h"
-#import "third_party/GTM/AppKit/GTMNSAnimation+Duration.h"
+#import "third_party/google_toolbox_for_mac/src/AppKit/GTMNSAnimation+Duration.h"
 #import "ui/base/cocoa/cocoa_event_utils.h"
 #import "ui/base/cocoa/flipped_view.h"
 #include "ui/base/cocoa/window_size_constants.h"
@@ -246,7 +246,7 @@ NSAttributedString* OmniboxPopupViewMac::MatchText(
 
 // static
 NSMutableAttributedString* OmniboxPopupViewMac::DecorateMatchedString(
-    const string16& match_string,
+    const base::string16& match_string,
     const AutocompleteMatch::ACMatchClassifications& classifications,
     NSColor* text_color,
     NSColor* dim_text_color,
@@ -311,7 +311,7 @@ NSMutableAttributedString* OmniboxPopupViewMac::DecorateMatchedString(
 
 NSMutableAttributedString* OmniboxPopupViewMac::ElideString(
     NSMutableAttributedString* a_string,
-    const string16& original_string,
+    const base::string16& original_string,
     const gfx::Font& font,
     const float width) {
   // If it already fits, nothing to be done.
@@ -320,8 +320,9 @@ NSMutableAttributedString* OmniboxPopupViewMac::ElideString(
   }
 
   // If ElideText() decides to do nothing, nothing to be done.
-  const string16 elided =
-      gfx::ElideText(original_string, font, width, gfx::ELIDE_AT_END);
+  const base::string16 elided =
+      gfx::ElideText(original_string, gfx::FontList(font), width,
+                     gfx::ELIDE_AT_END);
   if (0 == elided.compare(original_string)) {
     return a_string;
   }
@@ -497,10 +498,5 @@ void OmniboxPopupViewMac::OpenURLForRow(size_t row,
   size_t start_match = model_->result().ShouldHideTopMatch() ? 1 : 0;
   row += start_match;
   DCHECK_LT(row, GetResult().size());
-
-  // OpenMatch() may close the popup, which will clear the result set and, by
-  // extension, |match| and its contents.  So copy the relevant match out to
-  // make sure it stays alive until the call completes.
-  AutocompleteMatch match = GetResult().match_at(row);
-  omnibox_view_->OpenMatch(match, disposition, GURL(), row);
+  omnibox_view_->OpenMatch(GetResult().match_at(row), disposition, GURL(), row);
 }

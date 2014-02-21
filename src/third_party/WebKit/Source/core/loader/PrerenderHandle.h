@@ -32,7 +32,7 @@
 #define PrerenderHandle_h
 
 #include "core/dom/DocumentLifecycleObserver.h"
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
 #include "wtf/Noncopyable.h"
 #include "wtf/PassOwnPtr.h"
 #include "wtf/PassRefPtr.h"
@@ -43,7 +43,7 @@ class Document;
 class Prerender;
 class PrerenderClient;
 
-class PrerenderHandle : public DocumentLifecycleObserver {
+class PrerenderHandle FINAL : public DocumentLifecycleObserver {
     WTF_MAKE_NONCOPYABLE(PrerenderHandle);
 public:
     static PassOwnPtr<PrerenderHandle> create(Document&, PrerenderClient*, const KURL&);

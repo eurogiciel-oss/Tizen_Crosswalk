@@ -24,7 +24,7 @@ extern "C" {
 #include "ui/gfx/x/x11_types.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_implementation.h"
-#include "ui/gl/vsync_provider.h"
+#include "ui/gl/sync_control_vsync_provider.h"
 
 namespace gfx {
 
@@ -600,6 +600,10 @@ bool NativeViewGLSurfaceGLX::IsOffscreen() {
 }
 
 bool NativeViewGLSurfaceGLX::SwapBuffers() {
+  TRACE_EVENT2("gpu", "NativeViewGLSurfaceGLX:RealSwapBuffers",
+      "width", GetSize().width(),
+      "height", GetSize().height());
+
   glXSwapBuffers(g_display, GetDrawableHandle());
   return true;
 }

@@ -30,6 +30,7 @@
 #include "core/loader/FormState.h"
 #include "core/loader/FormSubmission.h"
 #include "wtf/OwnPtr.h"
+#include "wtf/WeakPtr.h"
 
 namespace WTF{
 class TextEncoding;
@@ -47,7 +48,6 @@ class HTMLInputElement;
 class HTMLFormElement FINAL : public HTMLElement {
 public:
     static PassRefPtr<HTMLFormElement> create(Document&);
-    static PassRefPtr<HTMLFormElement> create(const QualifiedName&, Document&);
     virtual ~HTMLFormElement();
 
     PassRefPtr<HTMLCollection> elements();
@@ -57,19 +57,19 @@ public:
     Node* item(unsigned index);
 
     String enctype() const { return m_attributes.encodingType(); }
-    void setEnctype(const String&);
+    void setEnctype(const AtomicString&);
 
     String encoding() const { return m_attributes.encodingType(); }
-    void setEncoding(const String& value) { setEnctype(value); }
+    void setEncoding(const AtomicString& value) { setEnctype(value); }
 
     bool shouldAutocomplete() const;
 
-    // FIXME: Should rename these two functions to say "form control" or "form-associated element" instead of "form element".
-    void registerFormElement(FormAssociatedElement*);
-    void removeFormElement(FormAssociatedElement*);
-
-    void registerImgElement(HTMLImageElement*);
-    void removeImgElement(HTMLImageElement*);
+    void associate(FormAssociatedElement&);
+    void disassociate(FormAssociatedElement&);
+    void associate(HTMLImageElement&);
+    void disassociate(HTMLImageElement&);
+    WeakPtr<HTMLFormElement> createWeakPtr();
+    void didAssociateByParser();
 
     bool prepareForSubmission(Event*);
     void submit();
@@ -79,22 +79,15 @@ public:
     void setDemoted(bool);
 
     void submitImplicitly(Event*, bool fromImplicitSubmissionTrigger);
-    bool formWouldHaveSecureSubmission(const String& url);
 
     String name() const;
 
     bool noValidate() const;
 
-    String acceptCharset() const { return m_attributes.acceptCharset(); }
-    void setAcceptCharset(const String&);
-
-    String action() const;
-    void setAction(const String&);
+    const AtomicString& action() const;
 
     String method() const;
-    void setMethod(const String&);
-
-    virtual String target() const;
+    void setMethod(const AtomicString&);
 
     bool wasUserSubmitted() const;
 
@@ -118,21 +111,21 @@ public:
 
     CheckedRadioButtons& checkedRadioButtons() { return m_checkedRadioButtons; }
 
-    const Vector<FormAssociatedElement*>& associatedElements() const { return m_associatedElements; }
-    const Vector<HTMLImageElement*>& imageElements() const { return m_imageElements; }
+    const Vector<FormAssociatedElement*>& associatedElements() const;
+    const Vector<HTMLImageElement*>& imageElements();
 
     void getTextFieldValues(StringPairVector& fieldNamesAndValues) const;
-    void anonymousNamedGetter(const AtomicString& name, bool&, RefPtr<NodeList>&, bool&, RefPtr<Node>&);
+    void anonymousNamedGetter(const AtomicString& name, bool&, RefPtr<RadioNodeList>&, bool&, RefPtr<Node>&);
 
 private:
-    HTMLFormElement(const QualifiedName&, Document&);
+    explicit HTMLFormElement(Document&);
 
-    virtual bool rendererIsNeeded(const RenderStyle&);
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE;
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void removedFrom(ContainerNode*) OVERRIDE;
     virtual void finishParsingChildren() OVERRIDE;
 
-    virtual void handleLocalEvents(Event*);
+    virtual void handleLocalEvents(Event*) OVERRIDE;
 
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
     virtual bool isURLAttribute(const Attribute&) const OVERRIDE;
@@ -146,8 +139,8 @@ private:
 
     void scheduleFormSubmission(PassRefPtr<FormSubmission>);
 
-    unsigned formElementIndexWithFormAttribute(Element*, unsigned rangeStart, unsigned rangeEnd);
-    unsigned formElementIndex(FormAssociatedElement*);
+    void collectAssociatedElements(Node* root, Vector<FormAssociatedElement*>&) const;
+    void collectImageElements(Node* root, Vector<HTMLImageElement*>&);
 
     // Returns true if the submission should proceed.
     bool validateInteractively(Event*);
@@ -157,7 +150,7 @@ private:
     // are any invalid controls in this form.
     bool checkInvalidControlsAndCollectUnhandled(Vector<RefPtr<FormAssociatedElement> >*, HTMLFormControlElement::CheckValidityDispatchEvents = HTMLFormControlElement::CheckValidityDispatchEventsAllowed);
 
-    Node* elementFromPastNamesMap(const AtomicString&) const;
+    Node* elementFromPastNamesMap(const AtomicString&);
     void addToPastNamesMap(Node*, const AtomicString& pastName);
     void removeFromPastNamesMap(HTMLElement&);
 
@@ -168,10 +161,15 @@ private:
 
     CheckedRadioButtons m_checkedRadioButtons;
 
-    unsigned m_associatedElementsBeforeIndex;
-    unsigned m_associatedElementsAfterIndex;
+    // Do not access m_associatedElements directly. Use associatedElements() instead.
     Vector<FormAssociatedElement*> m_associatedElements;
+    // Do not access m_imageElements directly. Use imageElements() instead.
     Vector<HTMLImageElement*> m_imageElements;
+    WeakPtrFactory<HTMLFormElement> m_weakPtrFactory;
+    bool m_associatedElementsAreDirty;
+    bool m_imageElementsAreDirty;
+    bool m_hasElementsAssociatedByParser;
+    bool m_didFinishParsingChildren;
 
     bool m_wasUserSubmitted;
     bool m_isSubmittingOrPreparingForSubmission;

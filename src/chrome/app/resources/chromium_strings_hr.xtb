@@ -27,7 +27,6 @@
 <translation id="3549345495227188780">Počnite s upotrebom OS-a Chromium</translation>
 <translation id="4330297532943865716">U sustavu je pronađena sukobljena instalacija preglednika Chromium ili aplikacije Chromium Frame. Deinstalirajte je i pokušajte ponovo.</translation>
 <translation id="6953661834318318668">Alatna traka preglednika Chromium</translation>
-<translation id="2245147136185581459">Detektor tehnike Captive Portal u sustavu Chromium</translation>
 <translation id="4285930937574705105">Instalacija nije uspjela zbog nepoznate pogreške. Ako je Chromium trenutačno otvoren, zatvorite ga i pokušajte ponovo.</translation>
 <translation id="1396446129537741364">Chromium pokušava prikazati zaporke.</translation>
 <translation id="3555616473548901994">Deinstalacija dovršena.</translation>
@@ -61,7 +60,6 @@
 <translation id="7771626876550251690">U ovom slučaju, adresa navedena u certifikatu ne odgovara adresi web-lokacije kojoj je vaš preglednik pokušao pristupiti. Moguće je da vaše komunikacije presreće napadač koji nudi certifikat neke druge web-lokacije, što uzrokuje nepodudaranje. Drugi je mogući razlog taj da je poslužitelj postavljen da vraća isti certifikat za više web-lokacija, uključujući onu koju pokušavate posjetiti, iako taj certifikat nije valjan za sve te web-lokacije. Chromium može sa sigurnošću ustvrditi da ste stigli na web-lokaciju &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, ali ne može potvrditi da je to web-lokacija &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; koju ste namjeravali posjetiti. Ako nastavite, Chromium više neće provjeravati nepodudaranja imena.</translation>
 <translation id="4330585738697551178">Za taj se modul već zna da je u konfliktu s Chromiumom.</translation>
 <translation id="3190315855212034486">Hopa! Chromium je pao. Pokrenuti ponovo sada?</translation>
-<translation id="3590194807845837023">Otključaj profil i pokreni ponovo</translation>
 <translation id="6714487516757221107">Nije pronađena nijedna instalacija preglednika Chromium ili aplikacije Chromium Frame za ažuriranje.</translation>
 <translation id="3197823471738295152">Uređaj je ažuran.</translation>
 <translation id="8551886023433311834">Gotovo ažurno! Ponovo pokrenite uređaj da biste dovršili ažuriranje.</translation>
@@ -154,6 +152,7 @@
 <translation id="6717134281241384636">Vaš se profil ne može upotrebljavati jer je iz novije verzije Chromiuma.
 
 Neke su značajke možda nedostupne. Navedite neki drugi direktorij profila ili upotrijebite noviju verziju Chromiuma.</translation>
+<translation id="8907580949721785412">Chromium pokušava prikazati zaporke. Upišite svoju zaporku za Windows da biste to dopustili.</translation>
 <translation id="9013087743919948559">Dodajte u Chromium</translation>
 <translation id="6212496753309875659">Ovo računalo već ima noviju verziju Chromiuma. Ako softver ne funkcionira, deinstalirajte Chromium i pokušajte ponovo.</translation>
 <translation id="1298199220304005244">Pomoć za upotrebu OS-a Chromium</translation>

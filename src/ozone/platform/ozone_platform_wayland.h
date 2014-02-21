@@ -7,7 +7,9 @@
 
 #include "ozone/impl/desktop_factory_wayland.h"
 #include "ozone/impl/ozone_display.h"
+#include "ozone/impl/surface_factory_wayland.h"
 #include "ozone/platform/ozone_export_wayland.h"
+#include "ozone/ui/ime/input_method_context_factory_wayland.h"
 #include "ui/events/ozone/event_factory_ozone.h"
 #include "ui/ozone/ozone_platform.h"
 
@@ -23,12 +25,17 @@ class OzonePlatformWayland : public OzonePlatform {
 
   virtual gfx::SurfaceFactoryOzone* GetSurfaceFactoryOzone() OVERRIDE;
   virtual ui::EventFactoryOzone* GetEventFactoryOzone() OVERRIDE;
+  virtual ui::InputMethodContextFactoryOzone*
+      GetInputMethodContextFactoryOzone() OVERRIDE;
 
  private:
-  ozonewayland::OzoneDisplay surface_factory_ozone_;
+  ozonewayland::OzoneDisplay display_;
+  ozonewayland::SurfaceFactoryWayland surface_factory_ozone_;
 
   // TODO(kalyan): Use EventFactoryOzone. This is a stub that does nothing.
-  EventFactoryOzone event_factory_ozone_;
+  ui::EventFactoryOzone event_factory_ozone_;
+
+  ozonewayland::InputMethodContextFactoryWayland input_method_context_factory_;
 
 #if defined(TOOLKIT_VIEWS) && !defined(OS_CHROMEOS)
   ozonewayland::DesktopFactoryWayland desktop_factory_ozone_;

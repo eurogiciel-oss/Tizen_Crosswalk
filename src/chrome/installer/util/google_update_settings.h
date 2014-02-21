@@ -166,7 +166,7 @@ class GoogleUpdateSettings {
   // it is a multi-install product, in which case it will return "m",
   // "unknown-m", "dev-m", or "beta-m").
   static bool GetChromeChannelAndModifiers(bool system_install,
-                                           string16* channel);
+                                           base::string16* channel);
 
   // This method changes the Google Update "ap" value to move the installation
   // on to or off of one of the recovery channels.
@@ -200,6 +200,10 @@ class GoogleUpdateSettings {
                                       int install_return_code,
                                       installer::ChannelInfo* value);
 
+  // This method updates the values that report how many profiles are in use
+  // and how many of those are signed-in.
+  static void UpdateProfileCounts(int profiles_active, int profiles_signedin);
+
   // For system-level installs, we need to be able to communicate the results
   // of the Toast Experiments back to Google Update. The problem is just that
   // the experiment is run in the context of the user, which doesn't have
@@ -225,7 +229,7 @@ class GoogleUpdateSettings {
 
   // Returns Google Update's uninstall command line, or an empty string if none
   // is found.
-  static string16 GetUninstallCommandLine(bool system_install);
+  static base::string16 GetUninstallCommandLine(bool system_install);
 
   // Returns the version of Google Update that is installed.
   static Version GetGoogleUpdateVersion(bool system_install);
@@ -262,7 +266,7 @@ class GoogleUpdateSettings {
   // (even if the label does not need to be set for this particular distribution
   // type).
   static bool SetExperimentLabels(bool system_install,
-                                  const string16& experiment_labels);
+                                  const base::string16& experiment_labels);
 
   // Reads the Google Update experiment_labels value in the ClientState key for
   // this Chrome product and writes it into |experiment_labels|. If the key or
@@ -271,7 +275,7 @@ class GoogleUpdateSettings {
   // this will do nothing to |experiment_labels|. This will return true if the
   // label did not exist, or was successfully read.
   static bool ReadExperimentLabels(bool system_install,
-                                   string16* experiment_labels);
+                                   base::string16* experiment_labels);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(GoogleUpdateSettings);

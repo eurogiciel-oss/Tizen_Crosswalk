@@ -57,7 +57,6 @@
 #endif
 
 namespace base {
-
 namespace internal {
 
 // Helper functions that abstract the cross-platform APIs.  Do not use directly.
@@ -68,10 +67,10 @@ struct BASE_EXPORT ThreadLocalPlatform {
   typedef pthread_key_t SlotType;
 #endif
 
-  static void AllocateSlot(SlotType& slot);
-  static void FreeSlot(SlotType& slot);
-  static void* GetValueFromSlot(SlotType& slot);
-  static void SetValueInSlot(SlotType& slot, void* value);
+  static void AllocateSlot(SlotType* slot);
+  static void FreeSlot(SlotType slot);
+  static void* GetValueFromSlot(SlotType slot);
+  static void SetValueInSlot(SlotType slot, void* value);
 };
 
 }  // namespace internal
@@ -81,7 +80,7 @@ template <typename Type>
 class ThreadLocalPointer {
  public:
   ThreadLocalPointer() : slot_() {
-    internal::ThreadLocalPlatform::AllocateSlot(slot_);
+    internal::ThreadLocalPlatform::AllocateSlot(&slot_);
   }
 
   ~ThreadLocalPointer() {
@@ -107,31 +106,31 @@ class ThreadLocalPointer {
 };
 #else
 template <typename Type>
-class ThreadLocalPointer {
- public:
-  ThreadLocalPointer() {}
+ class ThreadLocalPointer {
+  public:
+   ThreadLocalPointer() {}
 
-  ~ThreadLocalPointer() { slot_.Free(); }
+   ~ThreadLocalPointer() { slot_.Free(); }
 
-  Type* Get() {
-    return static_cast<Type*>(slot_.Get());
-  }
+   Type* Get() {
+     return static_cast<Type*>(slot_.Get());
+   }
 
-  void Set(Type* ptr) {
-    slot_.Set(const_cast<void*>(static_cast<const void*>(ptr)));
-  }
+   void Set(Type* ptr) {
+     slot_.Set(const_cast<void*>(static_cast<const void*>(ptr)));
+   }
 
- private:
-  ThreadLocalStorage::Slot slot_;
+  private:
+   ThreadLocalStorage::Slot slot_;
 
-  DISALLOW_COPY_AND_ASSIGN(ThreadLocalPointer<Type>);
+   DISALLOW_COPY_AND_ASSIGN(ThreadLocalPointer<Type>);
 };
 #endif  // !OS_ANDROID
 
 class ThreadLocalBoolean {
  public:
-  ThreadLocalBoolean() { }
-  ~ThreadLocalBoolean() { }
+  ThreadLocalBoolean() {}
+  ~ThreadLocalBoolean() {}
 
   bool Get() {
     return tlp_.Get() != NULL;

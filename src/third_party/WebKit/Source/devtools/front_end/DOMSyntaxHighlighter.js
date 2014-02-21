@@ -39,6 +39,11 @@ WebInspector.DOMSyntaxHighlighter = function(mimeType, stripExtraWhitespace)
 }
 
 WebInspector.DOMSyntaxHighlighter.prototype = {
+    /**
+     * @param {string} content
+     * @param {string} className
+     * @return {!Element}
+     */
     createSpan: function(content, className)
     {
         var span = document.createElement("span");
@@ -54,21 +59,30 @@ WebInspector.DOMSyntaxHighlighter.prototype = {
         var lines = node.textContent.split("\n");
         node.removeChildren();
 
+        /**
+         * @param {string} token
+         * @param {?string} tokenType
+         * @param {number} column
+         * @param {number} newColumn
+         * @this {WebInspector.DOMSyntaxHighlighter}
+         */
+        function processToken(token, tokenType, column, newColumn)
+        {
+            if (!tokenType)
+                return;
+
+            if (column > plainTextStart) {
+                var plainText = line.substring(plainTextStart, column);
+                node.appendChild(document.createTextNode(plainText));
+            }
+            node.appendChild(this.createSpan(token, tokenType));
+            plainTextStart = newColumn;
+        }
+
         var tokenize = WebInspector.CodeMirrorUtils.createTokenizer(this._mimeType);
         for (var i = lines[0].length ? 0 : 1; i < lines.length; ++i) {
             var line = lines[i];
             var plainTextStart = 0;
-            function processToken(token, tokenType, column, newColumn)
-            {
-                if (tokenType) {
-                    if (column > plainTextStart) {
-                        var plainText = line.substring(plainTextStart, column);
-                        node.appendChild(document.createTextNode(plainText));
-                    }
-                    node.appendChild(this.createSpan(token, tokenType));
-                    plainTextStart = newColumn;
-                }
-            }
             tokenize(line, processToken.bind(this));
             if (plainTextStart < line.length) {
                 var plainText = line.substring(plainTextStart, line.length);

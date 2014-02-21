@@ -33,6 +33,7 @@
 namespace WebCore {
 
 class CSSStyleSheet;
+class DocumentStyleSheetCollector;
 class StyleSheet;
 class StyleSheetCollection;
 class StyleEngine;
@@ -44,9 +45,10 @@ public:
     explicit DocumentStyleSheetCollection(TreeScope&);
 
     bool updateActiveStyleSheets(StyleEngine*, StyleResolverUpdateMode);
+    void collectStyleSheets(StyleEngine*, DocumentStyleSheetCollector&);
 
 private:
-    void collectStyleSheets(StyleEngine*, Vector<RefPtr<StyleSheet> >& styleSheets, Vector<RefPtr<CSSStyleSheet> >& activeSheets);
+    void collectStyleSheetsFromCandidates(StyleEngine*, DocumentStyleSheetCollector&);
 };
 
 }

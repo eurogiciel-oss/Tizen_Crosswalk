@@ -38,25 +38,24 @@ protected:
     {
     }
 
-    virtual void finish()
+    virtual void finish() OVERRIDE
     {
         if (!isStopped())
             document()->finishedParsing();
     }
 
 private:
-    virtual size_t flush() OVERRIDE
+    virtual void flush() OVERRIDE
     {
         // Make sure appendBytes is called at least once.
         appendBytes(0, 0);
-        return 0;
     }
 
-    virtual void insert(const SegmentedString&)
+    virtual void insert(const SegmentedString&) OVERRIDE
     {
     }
 
-    virtual void append(PassRefPtr<StringImpl>)
+    virtual void append(PassRefPtr<StringImpl>) OVERRIDE
     {
         ASSERT_NOT_REACHED();
     }

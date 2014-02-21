@@ -31,7 +31,7 @@
 #include "media/audio/win/device_enumeration_win.h"
 #include "media/audio/win/wavein_input_win.h"
 #include "media/audio/win/waveout_output_win.h"
-#include "media/base/bind_to_loop.h"
+#include "media/base/bind_to_current_loop.h"
 #include "media/base/channel_layout.h"
 #include "media/base/limits.h"
 #include "media/base/media_switches.h"
@@ -73,8 +73,8 @@ static int GetVersionPartAsInt(DWORDLONG num) {
 
 // Returns a string containing the given device's description and installed
 // driver version.
-static string16 GetDeviceAndDriverInfo(HDEVINFO device_info,
-                                       SP_DEVINFO_DATA* device_data) {
+static base::string16 GetDeviceAndDriverInfo(HDEVINFO device_info,
+                                             SP_DEVINFO_DATA* device_data) {
   // Save the old install params setting and set a flag for the
   // SetupDiBuildDriverInfoList below to return only the installed drivers.
   SP_DEVINSTALL_PARAMS old_device_install_params;
@@ -88,13 +88,13 @@ static string16 GetDeviceAndDriverInfo(HDEVINFO device_info,
 
   SP_DRVINFO_DATA driver_data;
   driver_data.cbSize = sizeof(driver_data);
-  string16 device_and_driver_info;
+  base::string16 device_and_driver_info;
   if (SetupDiBuildDriverInfoList(device_info, device_data,
                                  SPDIT_COMPATDRIVER)) {
     if (SetupDiEnumDriverInfo(device_info, device_data, SPDIT_COMPATDRIVER, 0,
                               &driver_data)) {
       DWORDLONG version = driver_data.DriverVersion;
-      device_and_driver_info = string16(driver_data.Description) + L" v" +
+      device_and_driver_info = base::string16(driver_data.Description) + L" v" +
           base::IntToString16(GetVersionPartAsInt((version >> 48))) + L"." +
           base::IntToString16(GetVersionPartAsInt((version >> 32))) + L"." +
           base::IntToString16(GetVersionPartAsInt((version >> 16))) + L"." +
@@ -127,28 +127,26 @@ static int NumberOfWaveOutBuffers() {
   return (base::win::GetVersion() == base::win::VERSION_VISTA) ? 4 : 3;
 }
 
-AudioManagerWin::AudioManagerWin() {
-  if (!CoreAudioUtil::IsSupported()) {
-    // Use the Wave API for device enumeration if XP or lower.
-    enumeration_type_ = kWaveEnumeration;
-  } else {
-    // Use the MMDevice API for device enumeration if Vista or higher.
-    enumeration_type_ = kMMDeviceEnumeration;
-  }
-
+AudioManagerWin::AudioManagerWin(AudioLogFactory* audio_log_factory)
+    : AudioManagerBase(audio_log_factory),
+      enumeration_type_(kUninitializedEnumeration) {
   SetMaxOutputStreamsAllowed(kMaxOutputStreams);
+
+  // WARNING: This is executed on the UI loop, do not add any code here which
+  // loads libraries or attempts to call out into the OS.  Instead add such code
+  // to the InitializeOnAudioThread() method below.
 
   // Task must be posted last to avoid races from handing out "this" to the
   // audio thread.
-  GetMessageLoop()->PostTask(FROM_HERE, base::Bind(
-      &AudioManagerWin::CreateDeviceListener, base::Unretained(this)));
+  GetTaskRunner()->PostTask(FROM_HERE, base::Bind(
+      &AudioManagerWin::InitializeOnAudioThread, base::Unretained(this)));
 }
 
 AudioManagerWin::~AudioManagerWin() {
   // It's safe to post a task here since Shutdown() will wait for all tasks to
   // complete before returning.
-  GetMessageLoop()->PostTask(FROM_HERE, base::Bind(
-      &AudioManagerWin::DestroyDeviceListener, base::Unretained(this)));
+  GetTaskRunner()->PostTask(FROM_HERE, base::Bind(
+      &AudioManagerWin::ShutdownOnAudioThread, base::Unretained(this)));
   Shutdown();
 }
 
@@ -160,22 +158,30 @@ bool AudioManagerWin::HasAudioInputDevices() {
   return (::waveInGetNumDevs() != 0);
 }
 
-void AudioManagerWin::CreateDeviceListener() {
-  // AudioDeviceListenerWin must be initialized on a COM thread and should only
-  // be used if WASAPI / Core Audio is supported.
+void AudioManagerWin::InitializeOnAudioThread() {
+  DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+
   if (CoreAudioUtil::IsSupported()) {
-    output_device_listener_.reset(new AudioDeviceListenerWin(BindToLoop(
-        GetMessageLoop(), base::Bind(
-            &AudioManagerWin::NotifyAllOutputDeviceChangeListeners,
-            base::Unretained(this)))));
+    // Use the MMDevice API for device enumeration if Vista or higher.
+    enumeration_type_ = kMMDeviceEnumeration;
+
+    // AudioDeviceListenerWin must be initialized on a COM thread and should
+    // only be used if WASAPI / Core Audio is supported.
+    output_device_listener_.reset(new AudioDeviceListenerWin(BindToCurrentLoop(
+        base::Bind(&AudioManagerWin::NotifyAllOutputDeviceChangeListeners,
+                   base::Unretained(this)))));
+  } else {
+    // Use the Wave API for device enumeration if XP or lower.
+    enumeration_type_ = kWaveEnumeration;
   }
 }
 
-void AudioManagerWin::DestroyDeviceListener() {
+void AudioManagerWin::ShutdownOnAudioThread() {
+  DCHECK(GetTaskRunner()->BelongsToCurrentThread());
   output_device_listener_.reset();
 }
 
-string16 AudioManagerWin::GetAudioInputDeviceModel() {
+base::string16 AudioManagerWin::GetAudioInputDeviceModel() {
   // Get the default audio capture device and its device interface name.
   DWORD device_id = 0;
   waveInMessage(reinterpret_cast<HWAVEIN>(WAVE_MAPPER),
@@ -185,13 +191,13 @@ string16 AudioManagerWin::GetAudioInputDeviceModel() {
   waveInMessage(reinterpret_cast<HWAVEIN>(device_id),
                 DRV_QUERYDEVICEINTERFACESIZE,
                 reinterpret_cast<DWORD_PTR>(&device_interface_name_size), 0);
-  size_t bytes_in_char16 = sizeof(string16::value_type);
+  size_t bytes_in_char16 = sizeof(base::string16::value_type);
   DCHECK_EQ(0u, device_interface_name_size % bytes_in_char16);
   if (device_interface_name_size <= bytes_in_char16)
-    return string16();  // No audio capture device.
+    return base::string16();  // No audio capture device.
 
-  string16 device_interface_name;
-  string16::value_type* name_ptr = WriteInto(&device_interface_name,
+  base::string16 device_interface_name;
+  base::string16::value_type* name_ptr = WriteInto(&device_interface_name,
       device_interface_name_size / bytes_in_char16);
   waveInMessage(reinterpret_cast<HWAVEIN>(device_id),
                 DRV_QUERYDEVICEINTERFACE,
@@ -203,7 +209,7 @@ string16 AudioManagerWin::GetAudioInputDeviceModel() {
   HDEVINFO device_info = SetupDiGetClassDevs(
       &AM_KSCATEGORY_AUDIO, 0, 0, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
   if (device_info == INVALID_HANDLE_VALUE)
-    return string16();
+    return base::string16();
 
   DWORD interface_index = 0;
   SP_DEVICE_INTERFACE_DATA interface_data;
@@ -228,7 +234,7 @@ string16 AudioManagerWin::GetAudioInputDeviceModel() {
                                          interface_detail,
                                          interface_detail_size, NULL,
                                          &device_data))
-      return string16();
+      return base::string16();
 
     bool device_found = (device_interface_name == interface_detail->DevicePath);
 
@@ -236,7 +242,7 @@ string16 AudioManagerWin::GetAudioInputDeviceModel() {
       return GetDeviceAndDriverInfo(device_info, &device_data);
   }
 
-  return string16();
+  return base::string16();
 }
 
 void AudioManagerWin::ShowAudioInputSettings() {
@@ -502,7 +508,7 @@ AudioParameters AudioManagerWin::GetPreferredOutputStreamParameters(
 
   return AudioParameters(
       AudioParameters::AUDIO_PCM_LOW_LATENCY, channel_layout, input_channels,
-      sample_rate, bits_per_sample, buffer_size);
+      sample_rate, bits_per_sample, buffer_size, AudioParameters::NO_EFFECTS);
 }
 
 AudioInputStream* AudioManagerWin::CreatePCMWaveInAudioInputStream(
@@ -524,8 +530,8 @@ AudioInputStream* AudioManagerWin::CreatePCMWaveInAudioInputStream(
 }
 
 /// static
-AudioManager* CreateAudioManager() {
-  return new AudioManagerWin();
+AudioManager* CreateAudioManager(AudioLogFactory* audio_log_factory) {
+  return new AudioManagerWin(audio_log_factory);
 }
 
 }  // namespace media

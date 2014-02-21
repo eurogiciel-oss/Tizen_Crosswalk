@@ -47,8 +47,14 @@ void vp9_subtract_sby(MACROBLOCK *x, BLOCK_SIZE bsize);
 void vp9_subtract_sbuv(MACROBLOCK *x, BLOCK_SIZE bsize);
 void vp9_subtract_sb(MACROBLOCK *x, BLOCK_SIZE bsize);
 
+void vp9_encode_block_intra(int plane, int block, BLOCK_SIZE plane_bsize,
+                            TX_SIZE tx_size, void *arg);
+
 void vp9_encode_intra_block_y(MACROBLOCK *x, BLOCK_SIZE bsize);
 void vp9_encode_intra_block_uv(MACROBLOCK *x, BLOCK_SIZE bsize);
 
-
+int vp9_encode_intra(MACROBLOCK *x, int use_16x16_pred);
+void vp9_setup_interp_filters(MACROBLOCKD *xd,
+                              INTERPOLATION_TYPE mcomp_filter_type,
+                              VP9_COMMON *cm);
 #endif  // VP9_ENCODER_VP9_ENCODEMB_H_

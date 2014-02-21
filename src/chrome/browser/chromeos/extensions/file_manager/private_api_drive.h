@@ -14,7 +14,6 @@
 namespace drive {
 class FileCacheEntry;
 class ResourceEntry;
-struct DriveAppInfo;
 struct SearchResultInfo;
 }
 
@@ -160,18 +159,6 @@ class FileBrowserPrivateSearchDriveMetadataFunction
   // Callback for SearchMetadata();
   void OnSearchMetadata(drive::FileError error,
                         scoped_ptr<drive::MetadataSearchResultVector> results);
-};
-
-class FileBrowserPrivateClearDriveCacheFunction
-    : public LoggedAsyncExtensionFunction {
- public:
-  DECLARE_EXTENSION_FUNCTION("fileBrowserPrivate.clearDriveCache",
-                             FILEBROWSERPRIVATE_CLEARDRIVECACHE)
-
- protected:
-  virtual ~FileBrowserPrivateClearDriveCacheFunction() {}
-
-  virtual bool RunImpl() OVERRIDE;
 };
 
 // Implements the chrome.fileBrowserPrivate.getDriveConnectionState method.

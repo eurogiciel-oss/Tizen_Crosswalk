@@ -31,6 +31,7 @@ class CC_EXPORT LayerTreeSettings {
   bool show_overdraw_in_tracing;
   bool can_use_lcd_text;
   bool should_clear_root_render_pass;
+  bool gpu_rasterization;
 
   enum ScrollbarAnimator {
     NoAnimator,
@@ -53,7 +54,6 @@ class CC_EXPORT LayerTreeSettings {
   float top_controls_hide_threshold;
   double refresh_rate;
   size_t max_partial_texture_updates;
-  size_t num_raster_threads;
   gfx::Size default_tile_size;
   gfx::Size max_untiled_layer_size;
   gfx::Size minimum_occlusion_tracking_size;
@@ -62,12 +62,10 @@ class CC_EXPORT LayerTreeSettings {
   size_t max_tiles_for_interest_area;
   size_t max_unused_resource_memory_percentage;
   int highp_threshold_min;
-  bool force_direct_layer_drawing;  // With Skia GPU backend.
   bool strict_layer_property_change_checking;
   bool use_map_image;
   bool ignore_root_layer_flings;
   bool use_rgba_4444_textures;
-  bool always_overscroll;
   bool touch_hit_testing;
   size_t texture_id_allocation_chunk_size;
 

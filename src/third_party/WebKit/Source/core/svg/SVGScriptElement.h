@@ -26,7 +26,6 @@
 #include "core/svg/SVGAnimatedBoolean.h"
 #include "core/svg/SVGAnimatedString.h"
 #include "core/svg/SVGElement.h"
-#include "core/svg/SVGExternalResourcesRequired.h"
 #include "core/svg/SVGURIReference.h"
 
 namespace WebCore {
@@ -36,10 +35,9 @@ class ScriptLoader;
 class SVGScriptElement FINAL
     : public SVGElement
     , public SVGURIReference
-    , public SVGExternalResourcesRequired
     , public ScriptLoaderClient {
 public:
-    static PassRefPtr<SVGScriptElement> create(const QualifiedName&, Document&, bool wasInsertedByParser);
+    static PassRefPtr<SVGScriptElement> create(Document&, bool wasInsertedByParser);
 
     String type() const;
     void setType(const String&);
@@ -47,46 +45,40 @@ public:
     ScriptLoader* loader() const { return m_loader.get(); }
 
 private:
-    SVGScriptElement(const QualifiedName&, Document&, bool wasInsertedByParser, bool alreadyStarted);
+    SVGScriptElement(Document&, bool wasInsertedByParser, bool alreadyStarted);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void didNotifySubtreeInsertionsToDocument() OVERRIDE;
-    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0);
+    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0) OVERRIDE;
 
-    virtual void svgAttributeChanged(const QualifiedName&);
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
     virtual bool isURLAttribute(const Attribute&) const OVERRIDE;
-    virtual void finishParsingChildren();
+    virtual bool isStructurallyExternal() const OVERRIDE { return hasSourceAttribute(); }
+    virtual void finishParsingChildren() OVERRIDE;
 
-    virtual void addSubresourceAttributeURLs(ListHashSet<KURL>&) const;
+    virtual bool haveLoadedRequiredResources() OVERRIDE;
 
-    virtual bool haveLoadedRequiredResources() { return SVGExternalResourcesRequired::haveLoadedRequiredResources(); }
+    virtual String sourceAttributeValue() const OVERRIDE;
+    virtual String charsetAttributeValue() const OVERRIDE;
+    virtual String typeAttributeValue() const OVERRIDE;
+    virtual String languageAttributeValue() const OVERRIDE;
+    virtual String forAttributeValue() const OVERRIDE;
+    virtual String eventAttributeValue() const OVERRIDE;
+    virtual bool asyncAttributeValue() const OVERRIDE;
+    virtual bool deferAttributeValue() const OVERRIDE;
+    virtual bool hasSourceAttribute() const OVERRIDE;
 
-    virtual String sourceAttributeValue() const;
-    virtual String charsetAttributeValue() const;
-    virtual String typeAttributeValue() const;
-    virtual String languageAttributeValue() const;
-    virtual String forAttributeValue() const;
-    virtual String eventAttributeValue() const;
-    virtual bool asyncAttributeValue() const;
-    virtual bool deferAttributeValue() const;
-    virtual bool hasSourceAttribute() const;
+    virtual void dispatchLoadEvent() OVERRIDE;
 
-    virtual void dispatchLoadEvent() { SVGExternalResourcesRequired::dispatchLoadEvent(this); }
-
-    virtual PassRefPtr<Element> cloneElementWithoutAttributesAndChildren();
+    virtual PassRefPtr<Element> cloneElementWithoutAttributesAndChildren() OVERRIDE;
     virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE { return false; }
 
-    // SVGExternalResourcesRequired
-    virtual void setHaveFiredLoadEvent(bool) OVERRIDE;
-    virtual bool isParserInserted() const OVERRIDE;
-    virtual bool haveFiredLoadEvent() const OVERRIDE;
-    virtual Timer<SVGElement>* svgLoadEventTimer() OVERRIDE;
+    virtual Timer<SVGElement>* svgLoadEventTimer() OVERRIDE { return &m_svgLoadEventTimer; }
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGScriptElement)
         DECLARE_ANIMATED_STRING(Href, href)
-        DECLARE_ANIMATED_BOOLEAN(ExternalResourcesRequired, externalResourcesRequired)
     END_DECLARE_ANIMATED_PROPERTIES
 
     String m_type;

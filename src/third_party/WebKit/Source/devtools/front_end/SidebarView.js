@@ -106,11 +106,11 @@ WebInspector.SidebarView.prototype = {
     },
 
     /**
-     * @return {Array.<Element>}
+     * @return {!Array.<!Element>}
      */
     elementsToRestoreScrollPositionsFor: function()
     {
-        return [ this.mainElement, this.sidebarElement ];
+        return [ this.mainElement(), this.sidebarElement() ];
     },
 
     __proto__: WebInspector.SplitView.prototype

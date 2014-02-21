@@ -15,11 +15,15 @@
 
 class AppListControllerDelegate;
 class ExtensionAppItem;
-class ExtensionSet;
 class Profile;
+
+namespace app_list {
+class AppListSyncableService;
+}
 
 namespace extensions {
 class Extension;
+class ExtensionSet;
 class InstallTracker;
 }
 
@@ -32,23 +36,25 @@ class ImageSkia;
 class ExtensionAppModelBuilder : public extensions::InstallObserver,
                                  public app_list::AppListItemListObserver {
  public:
-  ExtensionAppModelBuilder(Profile* profile,
-                           app_list::AppListModel* model,
-                           AppListControllerDelegate* controller);
+  explicit ExtensionAppModelBuilder(AppListControllerDelegate* controller);
   virtual ~ExtensionAppModelBuilder();
 
-  // Rebuilds the model with the given profile.
-  void SwitchProfile(Profile* profile);
+  // Initialize to use app-list sync and sets |service_| to |service|.
+  void InitializeWithService(app_list::AppListSyncableService* service);
+
+  // Initialize to use extension sync and sets |service_| to NULL. Used in
+  // tests and when AppList sync is not enabled.
+  void InitializeWithProfile(Profile* profile, app_list::AppListModel* model);
 
  private:
   typedef std::vector<ExtensionAppItem*> ExtensionAppList;
 
+  // Builds the model with the current profile.
+  void BuildModel();
+
   // extensions::InstallObserver
-  virtual void OnBeginExtensionInstall(const std::string& extension_id,
-                                       const std::string& extension_name,
-                                       const gfx::ImageSkia& installing_icon,
-                                       bool is_app,
-                                       bool is_platform_app) OVERRIDE;
+  virtual void OnBeginExtensionInstall(
+      const ExtensionInstallParams& params) OVERRIDE;
   virtual void OnDownloadProgress(const std::string& extension_id,
                                   int percent_downloaded) OVERRIDE;
   virtual void OnInstallFailure(const std::string& extension_id) OVERRIDE;
@@ -68,10 +74,16 @@ class ExtensionAppModelBuilder : public extensions::InstallObserver,
   // AppListItemListObserver
   virtual void OnListItemMoved(size_t from_index,
                                size_t to_index,
-                               app_list::AppListItemModel* item) OVERRIDE;
+                               app_list::AppListItem* item) OVERRIDE;
+
+  ExtensionAppItem* CreateAppItem(const std::string& extension_id,
+                                  const std::string& extension_name,
+                                  const gfx::ImageSkia& installing_icon,
+                                  bool is_platform_app);
 
   // Adds apps in |extensions| to |apps|.
-  void AddApps(const ExtensionSet* extensions, ExtensionAppList* apps);
+  void AddApps(const extensions::ExtensionSet* extensions,
+               ExtensionAppList* apps);
 
   // Populates the model with apps.
   void PopulateApps();
@@ -95,9 +107,11 @@ class ExtensionAppModelBuilder : public extensions::InstallObserver,
   // Returns app instance matching |extension_id| or NULL.
   ExtensionAppItem* GetExtensionAppItem(const std::string& extension_id);
 
+  // Unowned pointers to the service that owns this and associated profile.
+  app_list::AppListSyncableService* service_;
   Profile* profile_;
 
-  // Unowned pointer to the app list controller (passed to created items).
+  // Unowned pointer to the app list controller.
   AppListControllerDelegate* controller_;
 
   // Unowned pointer to the app list model.

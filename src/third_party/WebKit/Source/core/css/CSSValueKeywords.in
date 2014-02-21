@@ -663,17 +663,12 @@ media-fullscreen-volume-slider-thumb
 media-mute-button
 media-play-button
 media-overlay-play-button
-media-seek-back-button
-media-seek-forward-button
-media-rewind-button
-media-return-to-realtime-button
 media-toggle-closed-captions-button
 media-slider
 media-sliderthumb
 media-volume-slider-container
 media-volume-slider
 media-volume-sliderthumb
-media-volume-slider-mute-button
 media-controls-background
 media-controls-fullscreen-background
 media-current-time-display
@@ -722,6 +717,9 @@ content
 content-box
 padding
 padding-box
+
+// CSS_SHAPES
+margin-box
 
 //
 // background-size
@@ -805,6 +803,7 @@ visibleStroke
 painted
 fill
 stroke
+bounding-box
 //all
 //none
 
@@ -912,6 +911,9 @@ optimizeQuality
 nonzero
 evenodd
 outside-shape
+at
+// closest-side
+// farthest-side
 
 // -webkit-region-fragment
 // auto
@@ -1009,3 +1011,27 @@ isolate
 // touch-action-delay
 // none
 script
+
+// touch-action
+pan-x
+pan-y
+
+// justify-self
+// auto
+// stretch
+// baseline
+// center
+// start
+// end
+self-start
+self-end
+// flex-start
+// flex-end
+// left
+// right
+true
+safe
+
+// scroll-behavior
+instant
+smooth

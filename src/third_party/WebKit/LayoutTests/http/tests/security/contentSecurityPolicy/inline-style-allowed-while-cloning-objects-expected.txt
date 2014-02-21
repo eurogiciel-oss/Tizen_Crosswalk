@@ -1,7 +1,10 @@
-CONSOLE ERROR: Refused to apply inline style because it violates the following Content Security Policy directive: "style-src 'self'".
+CONSOLE ERROR: Refused to apply inline style because it violates the following Content Security Policy directive: "style-src 'self'". Either the 'unsafe-inline' keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution.
 
-CONSOLE ERROR: line 77: Refused to apply inline style because it violates the following Content Security Policy directive: "style-src 'self'".
+CONSOLE ERROR: line 77: Refused to apply inline style because it violates the following Content Security Policy directive: "style-src 'self'". Either the 'unsafe-inline' keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution.
 
+PASS successfullyParsed is true
+
+TEST COMPLETE
 This test ensures that styles can be set by object.cloneNode()
 PASS node1.style.background is "yellow"
 PASS node2.style.background is "yellow"

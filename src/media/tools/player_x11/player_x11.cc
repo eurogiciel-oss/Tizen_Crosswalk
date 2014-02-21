@@ -28,7 +28,7 @@
 #include "media/filters/ffmpeg_demuxer.h"
 #include "media/filters/ffmpeg_video_decoder.h"
 #include "media/filters/file_data_source.h"
-#include "media/filters/video_renderer_base.h"
+#include "media/filters/video_renderer_impl.h"
 #include "media/tools/player_x11/data_source_logger.h"
 
 // Include X11 headers here because X11/Xlib.h #define's Status
@@ -108,21 +108,22 @@ static void SaveStatusAndSignal(base::WaitableEvent* event,
 }
 
 // TODO(vrk): Re-enabled audio. (crbug.com/112159)
-void InitPipeline(media::Pipeline* pipeline,
-                  const scoped_refptr<base::MessageLoopProxy>& message_loop,
-                  media::Demuxer* demuxer,
-                  const PaintCB& paint_cb,
-                  bool /* enable_audio */,
-                  base::MessageLoop* paint_message_loop) {
+void InitPipeline(
+    media::Pipeline* pipeline,
+    const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
+    media::Demuxer* demuxer,
+    const PaintCB& paint_cb,
+    bool /* enable_audio */,
+    base::MessageLoop* paint_message_loop) {
   // Create our filter factories.
   scoped_ptr<media::FilterCollection> collection(
       new media::FilterCollection());
   collection->SetDemuxer(demuxer);
 
   ScopedVector<media::VideoDecoder> video_decoders;
-  video_decoders.push_back(new media::FFmpegVideoDecoder(message_loop));
-  scoped_ptr<media::VideoRenderer> video_renderer(new media::VideoRendererBase(
-      message_loop,
+  video_decoders.push_back(new media::FFmpegVideoDecoder(task_runner));
+  scoped_ptr<media::VideoRenderer> video_renderer(new media::VideoRendererImpl(
+      task_runner,
       video_decoders.Pass(),
       media::SetDecryptorReadyCB(),
       base::Bind(&Paint, paint_message_loop, paint_cb),
@@ -131,13 +132,12 @@ void InitPipeline(media::Pipeline* pipeline,
   collection->SetVideoRenderer(video_renderer.Pass());
 
   ScopedVector<media::AudioDecoder> audio_decoders;
-  audio_decoders.push_back(new media::FFmpegAudioDecoder(message_loop));
+  audio_decoders.push_back(new media::FFmpegAudioDecoder(task_runner));
   scoped_ptr<media::AudioRenderer> audio_renderer(new media::AudioRendererImpl(
-      message_loop,
-      new media::NullAudioSink(message_loop),
+      task_runner,
+      new media::NullAudioSink(task_runner),
       audio_decoders.Pass(),
-      media::SetDecryptorReadyCB(),
-      true));
+      media::SetDecryptorReadyCB()));
   collection->SetAudioRenderer(audio_renderer.Pass());
 
   base::WaitableEvent event(true, false);
@@ -246,7 +246,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  scoped_ptr<media::AudioManager> audio_manager(media::AudioManager::Create());
+  scoped_ptr<media::AudioManager> audio_manager(
+      media::AudioManager::CreateForTesting());
   g_audio_manager = audio_manager.get();
 
   logging::LoggingSettings settings;

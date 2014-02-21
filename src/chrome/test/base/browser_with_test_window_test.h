@@ -43,6 +43,12 @@ class AuraTestHelper;
 }
 #endif
 
+#if defined(TOOLKIT_VIEWS)
+namespace views {
+class ViewsDelegate;
+}
+#endif
+
 namespace content {
 class NavigationController;
 class WebContents;
@@ -122,10 +128,9 @@ class BrowserWithTestWindowTest : public testing::Test {
   void NavigateAndCommitActiveTab(const GURL& url);
 
   // Set the |title| of the current tab.
-  void NavigateAndCommitActiveTabWithTitle(
-      Browser* browser,
-      const GURL& url,
-      const string16& title);
+  void NavigateAndCommitActiveTabWithTitle(Browser* browser,
+                                           const GURL& url,
+                                           const base::string16& title);
 
   // Destroys the browser, window, and profile created by this class. This is
   // invoked from the destructor.
@@ -140,6 +145,18 @@ class BrowserWithTestWindowTest : public testing::Test {
   // Creates the BrowserWindow used by this test. The caller owns the return
   // value. Can return NULL to use the default window created by Browser.
   virtual BrowserWindow* CreateBrowserWindow();
+
+  // Creates the browser given |profile|, |host_desktop_type| and
+  // |browser_window|. The caller owns the return value.
+  virtual Browser* CreateBrowser(Profile* profile,
+                                 chrome::HostDesktopType host_desktop_type,
+                                 BrowserWindow* browser_window);
+
+#if defined(TOOLKIT_VIEWS)
+  // Creates the ViewsDelegate to use, may be overriden to create a different
+  // ViewsDelegate.
+  virtual views::ViewsDelegate* CreateViewsDelegate();
+#endif
 
  private:
   // We need to create a MessageLoop, otherwise a bunch of things fails.
@@ -168,6 +185,10 @@ class BrowserWithTestWindowTest : public testing::Test {
 #endif
 #if defined(USE_AURA)
   scoped_ptr<aura::test::AuraTestHelper> aura_test_helper_;
+#endif
+
+#if defined(TOOLKIT_VIEWS)
+  scoped_ptr<views::ViewsDelegate> views_delegate_;
 #endif
 
 #if defined(OS_WIN)

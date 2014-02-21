@@ -28,6 +28,7 @@
 
 #include "bindings/v8/ExceptionState.h"
 #include "bindings/v8/ScriptWrappable.h"
+#include "bindings/v8/V8Binding.h"
 #include "wtf/Noncopyable.h"
 #include "wtf/Vector.h"
 #include "wtf/text/WTFString.h"
@@ -48,30 +49,35 @@ public:
     virtual String item(const String& name) = 0;
     virtual bool contains(const String& name) = 0;
     virtual void setItem(const String& name, const String& value, ExceptionState&) = 0;
-    virtual void deleteItem(const String& name, ExceptionState&) = 0;
-    bool anonymousNamedSetter(const String& name, const String& value, ExceptionState& es)
+    virtual bool deleteItem(const String& name) = 0;
+    bool anonymousNamedSetter(const String& name, const String& value, ExceptionState& exceptionState)
     {
-        setItem(name, value, es);
+        setItem(name, value, exceptionState);
         return true;
     }
-    bool anonymousNamedDeleter(const AtomicString& name, ExceptionState&)
+    DeleteResult anonymousNamedDeleter(const AtomicString& name)
     {
-        // FIXME: Remove ExceptionState parameter.
-
-        TrackExceptionState es;
-        deleteItem(name, es);
-        bool result = !es.hadException();
-        // DOMStringMap deleter should ignore exception.
-        // Behavior of Firefox and Opera are same.
-        // delete document.body.dataset["-foo"] // false instead of DOM Exception 12
-        // LayoutTests/fast/dom/HTMLSelectElement/select-selectedIndex-multiple.html
-        return result;
+        bool knownProperty = deleteItem(name);
+        return knownProperty ? DeleteSuccess : DeleteUnknownProperty;
     }
     void namedPropertyEnumerator(Vector<String>& names, ExceptionState&)
     {
         getNames(names);
     }
     bool namedPropertyQuery(const AtomicString&, ExceptionState&);
+
+    String anonymousIndexedGetter(uint32_t index)
+    {
+        return item(String::number(index));
+    }
+    bool anonymousIndexedSetter(uint32_t index, const String& value, ExceptionState& exceptionState)
+    {
+        return anonymousNamedSetter(String::number(index), value, exceptionState);
+    }
+    DeleteResult anonymousIndexedDeleter(uint32_t index)
+    {
+        return anonymousNamedDeleter(AtomicString::number(index));
+    }
 
     virtual Element* element() = 0;
 

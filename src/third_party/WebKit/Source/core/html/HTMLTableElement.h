@@ -39,7 +39,6 @@ class HTMLTableSectionElement;
 class HTMLTableElement FINAL : public HTMLElement {
 public:
     static PassRefPtr<HTMLTableElement> create(Document&);
-    static PassRefPtr<HTMLTableElement> create(const QualifiedName&, Document&);
 
     HTMLTableCaptionElement* caption() const;
     void setCaption(PassRefPtr<HTMLTableCaptionElement>, ExceptionState&);
@@ -63,14 +62,14 @@ public:
     PassRefPtr<HTMLCollection> rows();
     PassRefPtr<HTMLCollection> tBodies();
 
-    String rules() const;
-    String summary() const;
+    const AtomicString& rules() const;
+    const AtomicString& summary() const;
 
     const StylePropertySet* additionalCellStyle();
     const StylePropertySet* additionalGroupStyle(bool rows);
 
 private:
-    HTMLTableElement(const QualifiedName&, Document&);
+    explicit HTMLTableElement(Document&);
 
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
     virtual bool isPresentationAttribute(const QualifiedName&) const OVERRIDE;
@@ -79,8 +78,6 @@ private:
 
     // Used to obtain either a solid or outset border decl and to deal with the frame and rules attributes.
     virtual const StylePropertySet* additionalPresentationAttributeStyle() OVERRIDE;
-
-    virtual void addSubresourceAttributeURLs(ListHashSet<KURL>&) const;
 
     enum TableRules { UnsetRules, NoneRules, GroupsRules, RowsRules, ColsRules, AllRules };
     enum CellBorders { NoBorders, SolidBorders, InsetBorders, SolidBordersColsOnly, SolidBordersRowsOnly };
@@ -100,16 +97,6 @@ private:
     unsigned short m_padding;
     RefPtr<StylePropertySet> m_sharedCellStyle;
 };
-
-inline bool isHTMLTableElement(const Node* node)
-{
-    return node->hasTagName(HTMLNames::tableTag);
-}
-
-inline bool isHTMLTableElement(const Element* element)
-{
-    return element->hasTagName(HTMLNames::tableTag);
-}
 
 DEFINE_NODE_TYPE_CASTS(HTMLTableElement, hasTagName(HTMLNames::tableTag));
 

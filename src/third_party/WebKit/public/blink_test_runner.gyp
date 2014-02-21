@@ -30,13 +30,13 @@
 {
     'targets': [
         {
-            'target_name': 'blink_test_runner',
+            'target_name': 'blink_test_support',
             'type': 'none',
             'dependencies': [
-                '../Source/testing/testing.gyp:TestRunner',
+                '../Source/web/web.gyp:webkit_test_support',
             ],
             'export_dependent_settings': [
-                '../Source/testing/testing.gyp:TestRunner',
+                '../Source/web/web.gyp:webkit_test_support',
             ],
         },
     ],

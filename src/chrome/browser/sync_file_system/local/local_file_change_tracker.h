@@ -68,6 +68,7 @@ class LocalFileChangeTracker
                           int max_urls);
 
   // Returns all changes recorded for the given |url|.
+  // Note that this also returns demoted changes.
   // This should be called after writing is disabled.
   void GetChangesForURL(const fileapi::FileSystemURL& url,
                         FileChangeList* changes);
@@ -86,17 +87,29 @@ class LocalFileChangeTracker
   // commits the updated change status to database.
   void ResetToMirrorAndCommitChangesForURL(const fileapi::FileSystemURL& url);
 
+  // Re-inserts changes into the separate demoted_changes_ queue. They won't
+  // be fetched by GetNextChangedURLs() unless PromoteDemotedChanges() is
+  // called.
+  void DemoteChangesForURL(const fileapi::FileSystemURL& url);
+
+  // Promotes all demoted changes to the normal queue. Returns true if it has
+  // promoted any changes.
+  bool PromoteDemotedChanges();
+
   // Called by FileSyncService at the startup time to restore last dirty changes
   // left after the last shutdown (if any).
   SyncStatusCode Initialize(fileapi::FileSystemContext* file_system_context);
+
+  // Resets all the changes recorded for the given |origin| and |type|.
+  // TODO(kinuko,nhiroki): Ideally this should be automatically called in
+  // DeleteFileSystem via QuotaUtil::DeleteOriginDataOnFileThread.
+  void ResetForFileSystem(const GURL& origin, fileapi::FileSystemType type);
 
   // This method is (exceptionally) thread-safe.
   int64 num_changes() const {
     base::AutoLock lock(num_changes_lock_);
     return num_changes_;
   }
-
-  void UpdateNumChanges();
 
  private:
   class TrackerDB;
@@ -117,6 +130,8 @@ class LocalFileChangeTracker
       fileapi::FileSystemURL::Comparator>
           FileChangeMap;
   typedef std::map<int64, fileapi::FileSystemURL> ChangeSeqMap;
+
+  void UpdateNumChanges();
 
   // This does mostly same as calling GetNextChangedURLs with max_url=0
   // except that it returns urls in set rather than in deque.
@@ -148,8 +163,8 @@ class LocalFileChangeTracker
   FileChangeMap changes_;
   ChangeSeqMap change_seqs_;
 
-  // For mirrors.
-  FileChangeMap mirror_changes_;
+  FileChangeMap mirror_changes_;  // For mirrors.
+  FileChangeMap demoted_changes_;  // For demoted changes.
 
   scoped_ptr<TrackerDB> tracker_db_;
 

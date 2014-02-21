@@ -4,7 +4,7 @@
 
 #include "ash/wm/workspace/workspace_event_handler.h"
 
-#include "ash/screen_ash.h"
+#include "ash/screen_util.h"
 #include "ash/shell.h"
 #include "ash/test/ash_test_base.h"
 #include "ash/wm/window_state.h"
@@ -12,6 +12,7 @@
 #include "ash/wm/workspace_controller.h"
 #include "ash/wm/workspace_controller_test_helper.h"
 #include "ui/aura/client/aura_constants.h"
+#include "ui/aura/client/window_move_client.h"
 #include "ui/aura/root_window.h"
 #include "ui/aura/test/event_generator.h"
 #include "ui/aura/test/test_window_delegate.h"
@@ -35,8 +36,8 @@ class WorkspaceEventHandlerTest : public test::AshTestBase {
   aura::Window* CreateTestWindow(aura::WindowDelegate* delegate,
                                  const gfx::Rect& bounds) {
     aura::Window* window = new aura::Window(delegate);
-    window->SetType(aura::client::WINDOW_TYPE_NORMAL);
-    window->Init(ui::LAYER_TEXTURED);
+    window->SetType(ui::wm::WINDOW_TYPE_NORMAL);
+    window->Init(aura::WINDOW_LAYER_TEXTURED);
     ParentWindowInPrimaryRootWindow(window);
     window->SetBounds(bounds);
     window->Show();
@@ -155,10 +156,10 @@ TEST_F(WorkspaceEventHandlerTest, DoubleClickSingleAxisResizeEdge) {
 
   // Verify the double clicking the resize edge works on 2nd display too.
   UpdateDisplay("200x200,400x300");
-  gfx::Rect work_area2 = ScreenAsh::GetSecondaryDisplay().work_area();
+  gfx::Rect work_area2 = ScreenUtil::GetSecondaryDisplay().work_area();
   restored_bounds.SetRect(220,20, 50, 50);
-  window->SetBoundsInScreen(restored_bounds, ScreenAsh::GetSecondaryDisplay());
-  aura::RootWindow* second_root = Shell::GetAllRootWindows()[1];
+  window->SetBoundsInScreen(restored_bounds, ScreenUtil::GetSecondaryDisplay());
+  aura::Window* second_root = Shell::GetAllRootWindows()[1];
   EXPECT_EQ(second_root, window->GetRootWindow());
   aura::test::EventGenerator generator2(second_root, window.get());
 
@@ -271,13 +272,15 @@ TEST_F(WorkspaceEventHandlerTest, DoubleClickCaptionTogglesMaximize) {
   WindowPropertyObserver observer(window.get());
   ui::MouseEvent press(ui::ET_MOUSE_PRESSED, generator.current_location(),
                        generator.current_location(),
-                       ui::EF_MIDDLE_MOUSE_BUTTON | ui::EF_IS_DOUBLE_CLICK);
+                       ui::EF_MIDDLE_MOUSE_BUTTON | ui::EF_IS_DOUBLE_CLICK,
+                       ui::EF_MIDDLE_MOUSE_BUTTON);
   aura::WindowEventDispatcher* dispatcher = root->GetDispatcher();
-  dispatcher->AsRootWindowHostDelegate()->OnHostMouseEvent(&press);
+  dispatcher->AsWindowTreeHostDelegate()->OnHostMouseEvent(&press);
   ui::MouseEvent release(ui::ET_MOUSE_RELEASED, generator.current_location(),
                          generator.current_location(),
-                         ui::EF_IS_DOUBLE_CLICK);
-  dispatcher->AsRootWindowHostDelegate()->OnHostMouseEvent(&release);
+                         ui::EF_IS_DOUBLE_CLICK,
+                         ui::EF_MIDDLE_MOUSE_BUTTON);
+  dispatcher->AsWindowTreeHostDelegate()->OnHostMouseEvent(&release);
 
   EXPECT_FALSE(window_state->IsMaximized());
   EXPECT_EQ("1,2 30x40", window->bounds().ToString());
@@ -336,9 +339,9 @@ TEST_F(WorkspaceEventHandlerTest, DeleteWhileInRunLoop) {
   scoped_ptr<aura::Window> window(CreateTestWindow(&wd, bounds));
   wd.set_window_component(HTCAPTION);
 
-  ASSERT_TRUE(aura::client::GetWindowMoveClient(window->parent()));
+  ASSERT_TRUE(aura::client::GetWindowMoveClient(window->GetRootWindow()));
   base::MessageLoop::current()->DeleteSoon(FROM_HERE, window.get());
-  aura::client::GetWindowMoveClient(window->parent())
+  aura::client::GetWindowMoveClient(window->GetRootWindow())
       ->RunMoveLoop(window.release(),
                     gfx::Vector2d(),
                     aura::client::WINDOW_MOVE_SOURCE_MOUSE);

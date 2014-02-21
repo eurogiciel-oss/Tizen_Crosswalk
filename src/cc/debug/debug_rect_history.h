@@ -53,10 +53,11 @@ enum DebugRectType {
   TOUCH_EVENT_HANDLER_RECT_TYPE,
   WHEEL_EVENT_HANDLER_RECT_TYPE,
   NON_FAST_SCROLLABLE_RECT_TYPE,
+  ANIMATION_BOUNDS_RECT_TYPE,
 };
 
 struct DebugRect {
-  DebugRect(DebugRectType new_type, gfx::RectF new_rect)
+  DebugRect(DebugRectType new_type, const gfx::RectF& new_rect)
       : type(new_type), rect(new_rect) {}
 
   DebugRectType type;
@@ -103,6 +104,8 @@ class DebugRectHistory {
   void SaveWheelEventHandlerRectsCallback(LayerImpl* layer);
   void SaveNonFastScrollableRects(LayerImpl* layer);
   void SaveNonFastScrollableRectsCallback(LayerImpl* layer);
+  void SaveLayerAnimationBoundsRects(
+      const LayerImplList& render_surface_layer_list);
 
   std::vector<DebugRect> debug_rects_;
 

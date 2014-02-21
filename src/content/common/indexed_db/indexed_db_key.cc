@@ -9,15 +9,16 @@
 
 namespace content {
 
-using WebKit::WebIDBKey;
-using WebKit::WebIDBKeyType;
-using WebKit::WebIDBKeyTypeArray;
-using WebKit::WebIDBKeyTypeDate;
-using WebKit::WebIDBKeyTypeInvalid;
-using WebKit::WebIDBKeyTypeMin;
-using WebKit::WebIDBKeyTypeNull;
-using WebKit::WebIDBKeyTypeNumber;
-using WebKit::WebIDBKeyTypeString;
+using blink::WebIDBKey;
+using blink::WebIDBKeyType;
+using blink::WebIDBKeyTypeArray;
+using blink::WebIDBKeyTypeBinary;
+using blink::WebIDBKeyTypeDate;
+using blink::WebIDBKeyTypeInvalid;
+using blink::WebIDBKeyTypeMin;
+using blink::WebIDBKeyTypeNull;
+using blink::WebIDBKeyTypeNumber;
+using blink::WebIDBKeyTypeString;
 
 namespace {
 
@@ -49,6 +50,29 @@ IndexedDBKey::IndexedDBKey()
       number_(0),
       size_estimate_(kOverheadSize) {}
 
+IndexedDBKey::IndexedDBKey(const IndexedDBKey& other)
+    : type_(other.type_),
+      array_(other.array_),
+      binary_(other.binary_),
+      string_(other.string_),
+      date_(other.date_),
+      number_(other.number_),
+      size_estimate_(other.size_estimate_) {
+  DCHECK((!IsValid() && !other.IsValid()) || Compare(other) == 0);
+}
+
+IndexedDBKey& IndexedDBKey::operator=(const IndexedDBKey& other) {
+  type_ = other.type_;
+  array_ = other.array_;
+  binary_ = other.binary_;
+  string_ = other.string_;
+  date_ = other.date_;
+  number_ = other.number_;
+  size_estimate_ = other.size_estimate_;
+  DCHECK((!IsValid() && !other.IsValid()) || Compare(other) == 0);
+  return *this;
+}
+
 IndexedDBKey::IndexedDBKey(WebIDBKeyType type)
     : type_(type), date_(0), number_(0), size_estimate_(kOverheadSize) {
   DCHECK(type == WebIDBKeyTypeNull || type == WebIDBKeyTypeInvalid);
@@ -69,11 +93,17 @@ IndexedDBKey::IndexedDBKey(const KeyArray& keys)
       number_(0),
       size_estimate_(kOverheadSize + CalculateArraySize(keys)) {}
 
-IndexedDBKey::IndexedDBKey(const string16& key)
+IndexedDBKey::IndexedDBKey(const std::string& key)
+    : type_(WebIDBKeyTypeBinary),
+      binary_(key),
+      size_estimate_(kOverheadSize +
+                     (key.length() * sizeof(std::string::value_type))) {}
+
+IndexedDBKey::IndexedDBKey(const base::string16& key)
     : type_(WebIDBKeyTypeString),
       string_(key),
       size_estimate_(kOverheadSize +
-                     (key.length() * sizeof(string16::value_type))) {}
+                     (key.length() * sizeof(base::string16::value_type))) {}
 
 IndexedDBKey::~IndexedDBKey() {}
 
@@ -94,8 +124,10 @@ int IndexedDBKey::Compare(const IndexedDBKey& other) const {
       if (array_.size() > other.array_.size())
         return 1;
       return 0;
+    case WebIDBKeyTypeBinary:
+      return binary_.compare(other.binary_);
     case WebIDBKeyTypeString:
-      return -other.string_.compare(string_);
+      return string_.compare(other.string_);
     case WebIDBKeyTypeDate:
       return (date_ < other.date_) ? -1 : (date_ > other.date_) ? 1 : 0;
     case WebIDBKeyTypeNumber:

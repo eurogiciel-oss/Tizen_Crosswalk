@@ -14,15 +14,10 @@
 
 class SkString;
 
-#ifdef SK_SCALAR_IS_FLOAT
-    typedef SkScalar SkPersp;
-    #define SkScalarToPersp(x) (x)
-    #define SkPerspToScalar(x) (x)
-#else
-    typedef SkFract SkPersp;
-    #define SkScalarToPersp(x) SkFixedToFract(x)
-    #define SkPerspToScalar(x) SkFractToFixed(x)
-#endif
+// TODO: can we remove these 3 (need to check chrome/android)
+typedef SkScalar SkPersp;
+#define SkScalarToPersp(x) (x)
+#define SkPerspToScalar(x) (x)
 
 /** \class SkMatrix
 
@@ -543,13 +538,7 @@ public:
         return 0 == memcmp(fMat, m.fMat, sizeof(fMat));
     }
 
-#ifdef SK_SCALAR_IS_FIXED
-    friend bool operator==(const SkMatrix& a, const SkMatrix& b) {
-        return a.cheapEqualTo(b);
-    }
-#else
     friend bool operator==(const SkMatrix& a, const SkMatrix& b);
-#endif
     friend bool operator!=(const SkMatrix& a, const SkMatrix& b) {
         return !(a == b);
     }
@@ -559,12 +548,27 @@ public:
         kMaxFlattenSize = 9 * sizeof(SkScalar) + sizeof(uint32_t)
     };
     // return the number of bytes written, whether or not buffer is null
-    uint32_t writeToMemory(void* buffer) const;
-    // return the number of bytes read
-    uint32_t readFromMemory(const void* buffer);
+    size_t writeToMemory(void* buffer) const;
+    /**
+     * Reads data from the buffer parameter
+     *
+     * @param buffer Memory to read from
+     * @param length Amount of memory available in the buffer
+     * @return number of bytes read (must be a multiple of 4) or
+     *         0 if there was not enough memory available
+     */
+    size_t readFromMemory(const void* buffer, size_t length);
 
     SkDEVCODE(void dump() const;)
     SkDEVCODE(void toString(SkString*) const;)
+
+    /**
+     * Calculates the minimum stretching factor of the matrix. If the matrix has
+     * perspective -1 is returned.
+     *
+     * @return minumum strecthing factor
+     */
+    SkScalar getMinStretch() const;
 
     /**
      * Calculates the maximum stretching factor of the matrix. If the matrix has

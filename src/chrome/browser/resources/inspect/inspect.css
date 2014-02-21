@@ -74,6 +74,10 @@ img {
   padding-bottom: 10px;
 }
 
+#devices-help {
+  margin-top: 10px;
+}
+
 .device-header {
   -webkit-box-align: baseline;
   -webkit-box-orient: horizontal;
@@ -197,20 +201,21 @@ img {
   margin-top: 5px;
 }
 
-a {
+.action {
   color: rgb(17, 85, 204);
+  cursor: pointer;
   margin-right: 15px;
 }
 
-a:not(:hover) {
-  text-decoration: none;
+.action:hover {
+  text-decoration: underline;
 }
 
 .list:not(.pages) .subrow {
   height: 19px;
 }
 
-a.disabled {
+.action.disabled {
   opacity: 0.5;
   pointer-events: none;
 }
@@ -234,12 +239,10 @@ a.disabled {
 }
 
 #device-settings {
+  align-items: center;
   border-bottom: 1px solid #eee;
+  display: flex;
   padding: 5px 0;
-}
-
-#device-settings input {
-  vertical-align: middle;
 }
 
 #device-settings button {
@@ -354,15 +357,11 @@ a.disabled {
   opacity: 0.5;
 }
 
-#port-forwarding-enable {
-  vertical-align: middle;
-}
-
-#port-forwarding-config-buttons > button {
-  float: right;
+#port-forwarding-config-buttons {
+  align-items: center;
+  display: flex;
 }
 
 #port-forwarding-config-buttons > label {
-  position: relative;
-  top: 5px;
+  flex-grow: 1
 }

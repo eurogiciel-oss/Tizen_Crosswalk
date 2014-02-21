@@ -34,8 +34,7 @@ namespace sync_file_system {
 class LocalFileChangeTrackerTest : public testing::Test {
  public:
   LocalFileChangeTrackerTest()
-      : message_loop_(base::MessageLoop::TYPE_IO),
-        file_system_(GURL("http://example.com"),
+      : file_system_(GURL("http://example.com"),
                      base::MessageLoopProxy::current().get(),
                      base::MessageLoopProxy::current().get()) {}
 
@@ -101,8 +100,12 @@ class LocalFileChangeTrackerTest : public testing::Test {
     change_tracker()->CollectLastDirtyChanges(file_system_context());
   }
 
+  void GetAllChangedURLs(fileapi::FileSystemURLSet* urls) {
+    change_tracker()->GetAllChangedURLs(urls);
+  }
+
   ScopedEnableSyncFSDirectoryOperation enable_directory_operation_;
-  base::MessageLoop message_loop_;
+  base::MessageLoopForIO message_loop_;
   CannedSyncableFileSystem file_system_;
 
  private:
@@ -112,7 +115,7 @@ class LocalFileChangeTrackerTest : public testing::Test {
 };
 
 TEST_F(LocalFileChangeTrackerTest, GetChanges) {
-  EXPECT_EQ(base::PLATFORM_FILE_OK, file_system_.OpenFileSystem());
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
 
   // Test URLs (no parent/child relationships, as we test such cases
   // mainly in LocalFileSyncStatusTest).
@@ -175,6 +178,40 @@ TEST_F(LocalFileChangeTrackerTest, GetChanges) {
   EXPECT_EQ(URL(kPath5), urls_to_process[3]);
   EXPECT_EQ(URL(kPath4), urls_to_process[4]);
 
+  // No changes to promote yet, we've demoted no changes.
+  EXPECT_FALSE(change_tracker()->PromoteDemotedChanges());
+
+  // Demote changes for kPath1 and kPath3.
+  change_tracker()->DemoteChangesForURL(URL(kPath1));
+  change_tracker()->DemoteChangesForURL(URL(kPath3));
+
+  // Now we'll get no changes for kPath1 and kPath3 (it's in a separate queue).
+  urls_to_process.clear();
+  change_tracker()->GetNextChangedURLs(&urls_to_process, 0);
+  ASSERT_EQ(3U, urls_to_process.size());
+  EXPECT_EQ(URL(kPath2), urls_to_process[0]);
+  EXPECT_EQ(URL(kPath5), urls_to_process[1]);
+  EXPECT_EQ(URL(kPath4), urls_to_process[2]);
+
+  // Promote changes.
+  EXPECT_TRUE(change_tracker()->PromoteDemotedChanges());
+
+  // Now we should have kPath1 and kPath3.
+  urls_to_process.clear();
+  change_tracker()->GetNextChangedURLs(&urls_to_process, 0);
+  ASSERT_EQ(5U, urls_to_process.size());
+  EXPECT_EQ(URL(kPath2), urls_to_process[0]);
+  EXPECT_EQ(URL(kPath5), urls_to_process[1]);
+  EXPECT_EQ(URL(kPath4), urls_to_process[2]);
+  EXPECT_TRUE(URL(kPath1) == urls_to_process[3] ||
+              URL(kPath1) == urls_to_process[4]);
+  EXPECT_TRUE(URL(kPath3) == urls_to_process[3] ||
+              URL(kPath3) == urls_to_process[4]);
+
+  // No changes to promote any more.
+  EXPECT_FALSE(change_tracker()->PromoteDemotedChanges());
+
+
   VerifyAndClearChange(URL(kPath1),
                FileChange(FileChange::FILE_CHANGE_DELETE,
                           sync_file_system::SYNC_FILE_TYPE_DIRECTORY));
@@ -193,7 +230,7 @@ TEST_F(LocalFileChangeTrackerTest, GetChanges) {
 }
 
 TEST_F(LocalFileChangeTrackerTest, RestoreCreateAndModifyChanges) {
-  EXPECT_EQ(base::PLATFORM_FILE_OK, file_system_.OpenFileSystem());
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
 
   FileSystemURLSet urls;
 
@@ -211,17 +248,17 @@ TEST_F(LocalFileChangeTrackerTest, RestoreCreateAndModifyChanges) {
   ScopedTextBlob blob(url_request_context, "blob_id:test", kData);
 
   // Create files and nested directories.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath0)));       // Creates a file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath1)));  // Creates a dir.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath2)));  // Creates another dir.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath3)));       // Creates a file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.TruncateFile(URL(kPath3), 1));  // Modifies the file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath4)));    // Creates another file.
   EXPECT_EQ(static_cast<int64>(kData.size()),         // Modifies the file.
             file_system_.Write(&url_request_context,
@@ -262,7 +299,7 @@ TEST_F(LocalFileChangeTrackerTest, RestoreCreateAndModifyChanges) {
 }
 
 TEST_F(LocalFileChangeTrackerTest, RestoreRemoveChanges) {
-  EXPECT_EQ(base::PLATFORM_FILE_OK, file_system_.OpenFileSystem());
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
 
   FileSystemURLSet urls;
 
@@ -277,27 +314,27 @@ TEST_F(LocalFileChangeTrackerTest, RestoreRemoveChanges) {
   ASSERT_EQ(0U, urls.size());
 
   // Creates and removes a same file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath0)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Remove(URL(kPath0), false /* recursive */));
 
   // Creates and removes a same directory.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath1)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Remove(URL(kPath1), false /* recursive */));
 
   // Creates files and nested directories, then removes the parent directory.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath2)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath3)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath4)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath5)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Remove(URL(kPath2), true /* recursive */));
 
   file_system_.GetChangedURLsInTracker(&urls);
@@ -338,7 +375,7 @@ TEST_F(LocalFileChangeTrackerTest, RestoreRemoveChanges) {
 }
 
 TEST_F(LocalFileChangeTrackerTest, RestoreCopyChanges) {
-  EXPECT_EQ(base::PLATFORM_FILE_OK, file_system_.OpenFileSystem());
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
 
   FileSystemURLSet urls;
 
@@ -362,17 +399,17 @@ TEST_F(LocalFileChangeTrackerTest, RestoreCopyChanges) {
   ScopedTextBlob blob(url_request_context, "blob_id:test", kData);
 
   // Create files and nested directories.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath0)));       // Creates a file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath1)));  // Creates a dir.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath2)));  // Creates another dir.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath3)));       // Creates a file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.TruncateFile(URL(kPath3), 1));  // Modifies the file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath4)));    // Creates another file.
   EXPECT_EQ(static_cast<int64>(kData.size()),
             file_system_.Write(&url_request_context,   // Modifies the file.
@@ -392,9 +429,9 @@ TEST_F(LocalFileChangeTrackerTest, RestoreCopyChanges) {
   EXPECT_TRUE(urls.empty());
 
   // Copy the file and the parent directory.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Copy(URL(kPath0), URL(kPath0Copy)));  // Copy the file.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Copy(URL(kPath1), URL(kPath1Copy)));  // Copy the dir.
 
   file_system_.GetChangedURLsInTracker(&urls);
@@ -429,7 +466,7 @@ TEST_F(LocalFileChangeTrackerTest, RestoreCopyChanges) {
 }
 
 TEST_F(LocalFileChangeTrackerTest, RestoreMoveChanges) {
-  EXPECT_EQ(base::PLATFORM_FILE_OK, file_system_.OpenFileSystem());
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
 
   FileSystemURLSet urls;
 
@@ -449,15 +486,15 @@ TEST_F(LocalFileChangeTrackerTest, RestoreMoveChanges) {
   ASSERT_EQ(0U, urls.size());
 
   // Create files and nested directories.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath0)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath1)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath2)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath3)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath4)));
 
   // Verify we have 5 changes for preparation.
@@ -474,9 +511,9 @@ TEST_F(LocalFileChangeTrackerTest, RestoreMoveChanges) {
   EXPECT_TRUE(urls.empty());
 
   // Move the file and the parent directory.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Move(URL(kPath0), URL(kPath5)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Move(URL(kPath1), URL(kPath6)));
 
   file_system_.GetChangedURLsInTracker(&urls);
@@ -523,7 +560,7 @@ TEST_F(LocalFileChangeTrackerTest, RestoreMoveChanges) {
 }
 
 TEST_F(LocalFileChangeTrackerTest, NextChangedURLsWithRecursiveCopy) {
-  EXPECT_EQ(base::PLATFORM_FILE_OK, file_system_.OpenFileSystem());
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
 
   FileSystemURLSet urls;
 
@@ -536,13 +573,13 @@ TEST_F(LocalFileChangeTrackerTest, NextChangedURLsWithRecursiveCopy) {
   const char kPath2Copy[] = "dir b/dir";
 
   // Creates kPath0,1,2 and then copies them all.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath0)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath1)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath2)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Copy(URL(kPath0), URL(kPath0Copy)));
 
   std::deque<FileSystemURL> urls_to_process;
@@ -564,26 +601,24 @@ TEST_F(LocalFileChangeTrackerTest, NextChangedURLsWithRecursiveCopy) {
 }
 
 TEST_F(LocalFileChangeTrackerTest, NextChangedURLsWithRecursiveRemove) {
-  EXPECT_EQ(base::PLATFORM_FILE_OK, file_system_.OpenFileSystem());
-
-  FileSystemURLSet urls;
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
 
   const char kPath0[] = "dir a";
   const char kPath1[] = "dir a/file1";
   const char kPath2[] = "dir a/file2";
 
   // Creates kPath0,1,2 and then removes them all.
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateDirectory(URL(kPath0)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath1)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.CreateFile(URL(kPath2)));
-  EXPECT_EQ(base::PLATFORM_FILE_OK,
+  EXPECT_EQ(base::File::FILE_OK,
             file_system_.Remove(URL(kPath0), true /* recursive */));
 
-  std::deque<FileSystemURL> urls_to_process;
-  change_tracker()->GetNextChangedURLs(&urls_to_process, 0);
+  FileSystemURLSet urls;
+  GetAllChangedURLs(&urls);
 
   // This is actually not really desirable, but since the directory
   // creation and deletion have been offset now we only have two
@@ -595,13 +630,51 @@ TEST_F(LocalFileChangeTrackerTest, NextChangedURLsWithRecursiveRemove) {
   // TODO(kinuko): For micro optimization we could probably restore the ADD
   // change type (other than ADD_OR_UPDATE) and offset file ADD+DELETE
   // changes too.
-  ASSERT_EQ(2U, urls_to_process.size());
+  ASSERT_EQ(2U, urls.size());
 
   // The exact order of recursive removal cannot be determined.
-  EXPECT_TRUE(URL(kPath1) == urls_to_process[0] ||
-              URL(kPath2) == urls_to_process[0]);
-  EXPECT_TRUE(URL(kPath1) == urls_to_process[1] ||
-              URL(kPath2) == urls_to_process[1]);
+  EXPECT_TRUE(ContainsKey(urls, URL(kPath1)));
+  EXPECT_TRUE(ContainsKey(urls, URL(kPath2)));
+}
+
+TEST_F(LocalFileChangeTrackerTest, ResetForFileSystem) {
+  EXPECT_EQ(base::File::FILE_OK, file_system_.OpenFileSystem());
+
+  const char kPath0[] = "dir a";
+  const char kPath1[] = "dir a/file";
+  const char kPath2[] = "dir a/subdir";
+  const char kPath3[] = "dir b";
+
+  EXPECT_EQ(base::File::FILE_OK,
+            file_system_.CreateDirectory(URL(kPath0)));
+  EXPECT_EQ(base::File::FILE_OK,
+            file_system_.CreateFile(URL(kPath1)));
+  EXPECT_EQ(base::File::FILE_OK,
+            file_system_.CreateDirectory(URL(kPath2)));
+  EXPECT_EQ(base::File::FILE_OK,
+            file_system_.CreateDirectory(URL(kPath3)));
+
+  FileSystemURLSet urls;
+  GetAllChangedURLs(&urls);
+  EXPECT_EQ(4u, urls.size());
+  EXPECT_TRUE(ContainsKey(urls, URL(kPath0)));
+  EXPECT_TRUE(ContainsKey(urls, URL(kPath1)));
+  EXPECT_TRUE(ContainsKey(urls, URL(kPath2)));
+  EXPECT_TRUE(ContainsKey(urls, URL(kPath3)));
+
+  // Reset all changes for the file system.
+  change_tracker()->ResetForFileSystem(
+      file_system_.origin(), file_system_.type());
+
+  GetAllChangedURLs(&urls);
+  EXPECT_TRUE(urls.empty());
+
+  // Make sure they're gone from the database too.
+  DropChangesInTracker();
+  RestoreChangesFromTrackerDB();
+
+  GetAllChangedURLs(&urls);
+  EXPECT_TRUE(urls.empty());
 }
 
 }  // namespace sync_file_system

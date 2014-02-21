@@ -44,7 +44,7 @@ class TestCodecObserver : public webrtc::ViEEncoderObserver,
   unsigned int last_outgoing_bitrate_;
   unsigned int last_incoming_framerate_;
   unsigned int last_incoming_bitrate_;
-  unsigned int video_auto_muted_called_;
+  unsigned int suspend_change_called_;
 
   webrtc::VideoCodec incoming_codec_;
 
@@ -60,7 +60,7 @@ class TestCodecObserver : public webrtc::ViEEncoderObserver,
         last_outgoing_bitrate_(0),
         last_incoming_framerate_(0),
         last_incoming_bitrate_(0),
-        video_auto_muted_called_(0) {
+        suspend_change_called_(0) {
     memset(&incoming_codec_, 0, sizeof(incoming_codec_));
   }
   virtual void IncomingCodecChanged(const int video_channel,
@@ -100,8 +100,8 @@ class TestCodecObserver : public webrtc::ViEEncoderObserver,
     last_outgoing_bitrate_ += bitrate;
   }
 
-  virtual void VideoAutoMuted(int video_channel, bool is_muted) {
-    video_auto_muted_called_++;
+  virtual void SuspendChange(int video_channel, bool is_suspended) OVERRIDE {
+    suspend_change_called_++;
   }
 
   virtual void RequestNewKeyFrame(const int video_channel) {
@@ -258,10 +258,16 @@ void ViEAutoTest::ViECodecStandardTest() {
   }
   AutoTestSleep(kAutoTestSleepTimeMs);
 
-  // Verify the delay estimate is larger than 0.
-  int delay_ms = 0;
-  EXPECT_EQ(0, codec->GetReceiveSideDelay(video_channel, &delay_ms));
-  EXPECT_GT(delay_ms, 0);
+  // Verify the delay estimates are larger than 0.
+  int avg_send_delay = 0;
+  int max_send_delay = 0;
+  EXPECT_TRUE(codec->GetSendSideDelay(video_channel, &avg_send_delay,
+                                      &max_send_delay));
+  EXPECT_GT(avg_send_delay, 0);
+  EXPECT_GE(max_send_delay, avg_send_delay);
+  int receive_delay_ms = 0;
+  EXPECT_EQ(0, codec->GetReceiveSideDelay(video_channel, &receive_delay_ms));
+  EXPECT_GT(receive_delay_ms, 0);
 
   EXPECT_EQ(0, base->StopSend(video_channel));
   EXPECT_EQ(0, codec->DeregisterEncoderObserver(video_channel));

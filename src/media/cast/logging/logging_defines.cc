@@ -9,20 +9,47 @@
 namespace media {
 namespace cast {
 
+CastLoggingConfig::CastLoggingConfig(bool sender)
+    : is_sender(sender),
+      enable_raw_data_collection(false),
+      enable_stats_data_collection(false),
+      enable_uma_stats(false),
+      enable_tracing(false) {}
+
+CastLoggingConfig::~CastLoggingConfig() {}
+
+CastLoggingConfig GetDefaultCastSenderLoggingConfig() {
+  CastLoggingConfig config(true);
+  return config;
+}
+
+CastLoggingConfig GetDefaultCastReceiverLoggingConfig() {
+  CastLoggingConfig config(false);
+  return config;
+}
+
 std::string CastLoggingToString(CastLoggingEvent event) {
   switch (event) {
-    case(kRtt):
-      return "Rtt";
+    case(kUnknown):
+      // Can happen if the sender and receiver of RTCP log messages are not
+      // aligned.
+      return "Unknown";
+    case(kRttMs):
+      return "RttMs";
     case(kPacketLoss):
       return "PacketLoss";
-    case(kJitter):
-      return "Jitter";
-    case(kAckReceived):
-      return "AckReceived";
-    case(kAckSent):
-      return "AckSent";
-    case(kLastEvent):
-      return "LastEvent";
+    case(kJitterMs):
+      return "JitterMs";
+    case(kVideoAckReceived):
+      return "VideoAckReceived";
+    case(kRembBitrate):
+      return "RembBitrate";
+    case(kAudioAckSent):
+      return "AudioAckSent";
+    case(kVideoAckSent):
+      return "VideoAckSent";
+    case(kAudioFrameReceived):
+      return "AudioFrameReceived";
     case(kAudioFrameCaptured):
       return "AudioFrameCaptured";
     case(kAudioFrameEncoded):
@@ -33,6 +60,8 @@ std::string CastLoggingToString(CastLoggingEvent event) {
       return "AudioFrameDecoded";
     case(kVideoFrameCaptured):
       return "VideoFrameCaptured";
+    case(kVideoFrameReceived):
+      return "VideoFrameReceived";
     case(kVideoFrameSentToEncoder):
       return "VideoFrameSentToEncoder";
     case(kVideoFrameEncoded):
@@ -45,10 +74,14 @@ std::string CastLoggingToString(CastLoggingEvent event) {
       return "PacketSentToPacer";
     case(kPacketSentToNetwork):
       return "PacketSentToNetwork";
-    case(kPacketRetransmited):
+    case(kPacketRetransmitted):
       return "PacketRetransmited";
-    case(kPacketReceived):
-      return "PacketReceived";
+    case(kAudioPacketReceived):
+      return "AudioPacketReceived";
+    case(kVideoPacketReceived):
+      return "VideoPacketReceived";
+    case(kDuplicatePacketReceived):
+      return "DuplicatePacketReceived";
     default:
       NOTREACHED();
       return "";
@@ -66,6 +99,9 @@ PacketEvent::~PacketEvent() {}
 
 GenericEvent::GenericEvent() {}
 GenericEvent::~GenericEvent() {}
+
+ReceiverRtcpEvent::ReceiverRtcpEvent() {}
+ReceiverRtcpEvent::~ReceiverRtcpEvent() {}
 
 FrameLogStats::FrameLogStats()
     : framerate_fps(0),

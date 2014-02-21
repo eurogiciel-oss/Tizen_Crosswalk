@@ -161,16 +161,17 @@ void AccessibilityTreeFormatter::AddProperties(const BrowserAccessibility& node,
   dict->Set(kSizeDictAttr, PopulateSize(cocoa_node).release());
 }
 
-string16 AccessibilityTreeFormatter::ToString(const base::DictionaryValue& dict,
-                                              const string16& indent) {
-  string16 line;
+base::string16 AccessibilityTreeFormatter::ToString(
+    const base::DictionaryValue& dict,
+    const base::string16& indent) {
+  base::string16 line;
   NSArray* defaultAttributes =
       [NSArray arrayWithObjects:NSAccessibilityTitleAttribute,
                                 NSAccessibilityValueAttribute,
                                 nil];
   string s_value;
   dict.GetString(SysNSStringToUTF8(NSAccessibilityRoleAttribute), &s_value);
-  WriteAttribute(true, UTF8ToUTF16(s_value), &line);
+  WriteAttribute(true, base::UTF8ToUTF16(s_value), &line);
 
   string subroleAttribute = SysNSStringToUTF8(NSAccessibilitySubroleAttribute);
   if (dict.GetString(subroleAttribute, &s_value)) {
@@ -217,7 +218,7 @@ string16 AccessibilityTreeFormatter::ToString(const base::DictionaryValue& dict,
                    &line);
   }
 
-  return indent + line + ASCIIToUTF16("\n");
+  return indent + line + base::ASCIIToUTF16("\n");
 }
 
 // static

@@ -89,7 +89,7 @@ bool SkEmbossMaskFilter::filterMask(SkMask* dst, const SkMask& src,
 
     dst->fFormat = SkMask::k3D_Format;
     if (margin) {
-        margin->set(SkScalarCeil(3*sigma), SkScalarCeil(3*sigma));
+        margin->set(SkScalarCeilToInt(3*sigma), SkScalarCeilToInt(3*sigma));
     }
 
     if (src.fImage == NULL) {
@@ -135,17 +135,6 @@ SkEmbossMaskFilter::SkEmbossMaskFilter(SkFlattenableReadBuffer& buffer)
     buffer.readByteArray(&fLight, sizeof(Light));
     SkASSERT(fLight.fPad == 0); // for the font-cache lookup to be clean
     fBlurSigma = buffer.readScalar();
-#ifndef DELETE_THIS_CODE_WHEN_SKPS_ARE_REBUILT_AT_V13_AND_ALL_OTHER_INSTANCES_TOO
-    // Fixing this must be done in two stages. When the skps are recaptured in V13,
-    // remove the ConvertRadiusToSigma but retain the absolute value.
-    // At the same time, switch the code in flatten to write a positive value.
-    // When the skps are captured in V14 the absolute value can be removed.
-    if (fBlurSigma > 0) {
-        fBlurSigma = SkBlurMask::ConvertRadiusToSigma(fBlurSigma);
-    } else {
-        fBlurSigma = -fBlurSigma;
-    }
-#endif
 }
 
 void SkEmbossMaskFilter::flatten(SkFlattenableWriteBuffer& buffer) const {
@@ -154,7 +143,7 @@ void SkEmbossMaskFilter::flatten(SkFlattenableWriteBuffer& buffer) const {
     Light tmpLight = fLight;
     tmpLight.fPad = 0;    // for the font-cache lookup to be clean
     buffer.writeByteArray(&tmpLight, sizeof(tmpLight));
-    buffer.writeScalar(-fBlurSigma);
+    buffer.writeScalar(fBlurSigma);
 }
 
 #ifdef SK_DEVELOPER

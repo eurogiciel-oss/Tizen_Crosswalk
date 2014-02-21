@@ -9,7 +9,7 @@
       'type': '<(component)',
       'includes': [
         # Include the auto-generated gypi file.
-        '../../third_party/openssl/openssl.gypi'
+        'openssl.gypi'
       ],
       'variables': {
         'openssl_include_dirs': [

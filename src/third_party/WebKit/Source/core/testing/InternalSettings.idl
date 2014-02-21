@@ -24,6 +24,7 @@
  */
 
 [
+    NoInterfaceObject,  // testing interfaces do not appear on global objects
 ] interface InternalSettings : InternalSettingsGenerated {
     // All methods which access Page::settings() can raise an exception
     // when the page cannot be accessed. (Such as during page tear-down.)
@@ -38,7 +39,7 @@
     [RaisesException] void setPictographFontFamily(DOMString family, DOMString script);
     [RaisesException] void setTextAutosizingEnabled(boolean enabled);
     [RaisesException] void setTextAutosizingWindowSizeOverride(long width, long height);
-    [RaisesException] void setTextAutosizingFontScaleFactor(float fontScaleFactor);
+    [RaisesException] void setAccessibilityFontScaleFactor(float fontScaleFactor);
     [RaisesException] void setMediaTypeOverride(DOMString mediaTypeOverride);
     [RaisesException] void setEditingBehavior(DOMString behavior);
     [RaisesException] void setPasswordGenerationDecorationEnabled(boolean enabled);
@@ -50,6 +51,10 @@
     // overflow scroll is ready (crbug.com/254111).
     [RaisesException] void setCompositorDrivenAcceleratedScrollingEnabled(boolean enabled);
 
+    // FIXME: This is a temporary flag and should be removed once squashing is
+    // ready (crbug.com/261605).
+    [RaisesException] void setLayerSquashingEnabled(boolean enabled);
+
     // FIXME: The following are RuntimeEnabledFeatures and likely
     // cannot be changed after process start.  These setters should
     // be removed or moved onto internals.runtimeFlags:
@@ -59,4 +64,5 @@
     void setLangAttributeAwareFormControlUIEnabled(boolean enabled);
     void setOverlayScrollbarsEnabled(boolean enabled);
     void setStyleScopedEnabled(boolean enabled);
+    void setExperimentalContentSecurityPolicyFeaturesEnabled(boolean enabled);
 };

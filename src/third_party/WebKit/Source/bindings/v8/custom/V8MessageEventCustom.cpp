@@ -36,7 +36,6 @@
 #include "V8Window.h"
 #include "bindings/v8/SerializedScriptValue.h"
 #include "bindings/v8/V8Binding.h"
-#include "bindings/v8/V8HiddenPropertyName.h"
 #include "bindings/v8/custom/V8ArrayBufferCustom.h"
 #include "core/events/MessageEvent.h"
 
@@ -49,12 +48,12 @@ void V8MessageEvent::dataAttributeGetterCustom(const v8::PropertyCallbackInfo<v8
     v8::Handle<v8::Value> result;
     switch (event->dataType()) {
     case MessageEvent::DataTypeScriptValue: {
-        result = info.Holder()->GetHiddenValue(V8HiddenPropertyName::data(info.GetIsolate()));
+        result = getHiddenValue(info.GetIsolate(), info.Holder(), "data");
         if (result.IsEmpty()) {
             if (!event->dataAsSerializedScriptValue()) {
                 // If we're in an isolated world and the event was created in the main world,
                 // we need to find the 'data' property on the main world wrapper and clone it.
-                v8::Local<v8::Value> mainWorldData = getHiddenValueFromMainWorldWrapper(info.GetIsolate(), event, V8HiddenPropertyName::data(info.GetIsolate()));
+                v8::Local<v8::Value> mainWorldData = getHiddenValueFromMainWorldWrapper(info.GetIsolate(), event, "data");
                 if (!mainWorldData.IsEmpty())
                     event->setSerializedData(SerializedScriptValue::createAndSwallowExceptions(mainWorldData, info.GetIsolate()));
             }
@@ -77,7 +76,7 @@ void V8MessageEvent::dataAttributeGetterCustom(const v8::PropertyCallbackInfo<v8
 
     case MessageEvent::DataTypeString: {
         String stringValue = event->dataAsString();
-        result = v8String(stringValue, info.GetIsolate());
+        result = v8String(info.GetIsolate(), stringValue);
         break;
     }
 
@@ -93,7 +92,7 @@ void V8MessageEvent::dataAttributeGetterCustom(const v8::PropertyCallbackInfo<v8
     // Overwrite the data attribute so it returns the cached result in future invocations.
     // This custom handler (dataAccessGetter) will not be called again.
     v8::PropertyAttribute dataAttr = static_cast<v8::PropertyAttribute>(v8::DontDelete | v8::ReadOnly);
-    info.Holder()->ForceSet(v8::String::NewSymbol("data"), result, dataAttr);
+    info.Holder()->ForceSet(v8AtomicString(info.GetIsolate(), "data"), result, dataAttr);
     v8SetReturnValue(info, result);
 }
 
@@ -106,16 +105,8 @@ void V8MessageEvent::initMessageEventMethodCustom(const v8::FunctionCallbackInfo
     v8::Handle<v8::Value> dataArg = info[3];
     V8TRYCATCH_FOR_V8STRINGRESOURCE_VOID(V8StringResource<>, originArg, info[4]);
     V8TRYCATCH_FOR_V8STRINGRESOURCE_VOID(V8StringResource<>, lastEventIdArg, info[5]);
-
-    DOMWindow* sourceArg = 0;
-    if (info[6]->IsObject()) {
-        v8::Handle<v8::Object> wrapper = v8::Handle<v8::Object>::Cast(info[6]);
-        v8::Handle<v8::Object> window = wrapper->FindInstanceInPrototypeChain(V8Window::GetTemplate(info.GetIsolate(), worldTypeInMainThread(info.GetIsolate())));
-        if (!window.IsEmpty())
-            sourceArg = V8Window::toNative(window);
-    }
+    DOMWindow* sourceArg = toNativeDOMWindow(info[6], info.GetIsolate());
     OwnPtr<MessagePortArray> portArray;
-
     const int portArrayIndex = 7;
     if (!isUndefinedOrNull(info[portArrayIndex])) {
         portArray = adoptPtr(new MessagePortArray);
@@ -125,7 +116,7 @@ void V8MessageEvent::initMessageEventMethodCustom(const v8::FunctionCallbackInfo
     event->initMessageEvent(typeArg, canBubbleArg, cancelableArg, originArg, lastEventIdArg, sourceArg, portArray.release());
 
     if (!dataArg.IsEmpty()) {
-        info.Holder()->SetHiddenValue(V8HiddenPropertyName::data(info.GetIsolate()), dataArg);
+        setHiddenValue(info.GetIsolate(), info.Holder(), "data", dataArg);
         if (isolatedWorldForIsolate(info.GetIsolate()))
             event->setSerializedData(SerializedScriptValue::createAndSwallowExceptions(dataArg, info.GetIsolate()));
     }

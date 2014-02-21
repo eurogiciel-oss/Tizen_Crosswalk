@@ -56,15 +56,15 @@ void createHiddenDependency(v8::Handle<v8::Object> object, v8::Local<v8::Value> 
 {
     v8::Local<v8::Value> cache = object->GetInternalField(cacheIndex);
     if (cache->IsNull() || cache->IsUndefined()) {
-        cache = v8::Array::New();
+        cache = v8::Array::New(isolate);
         object->SetInternalField(cacheIndex, cache);
     }
 
     v8::Local<v8::Array> cacheArray = v8::Local<v8::Array>::Cast(cache);
-    cacheArray->Set(v8::Integer::New(cacheArray->Length(), isolate), value);
+    cacheArray->Set(v8::Integer::New(isolate, cacheArray->Length()), value);
 }
 
-bool extractTransferables(v8::Local<v8::Value> value, MessagePortArray& ports, ArrayBufferArray& arrayBuffers, bool& notASequence, v8::Isolate* isolate)
+bool extractTransferables(v8::Local<v8::Value> value, int argumentIndex, MessagePortArray& ports, ArrayBufferArray& arrayBuffers, ExceptionState& exceptionState, v8::Isolate* isolate)
 {
     if (isUndefinedOrNull(value)) {
         ports.resize(0);
@@ -76,9 +76,9 @@ bool extractTransferables(v8::Local<v8::Value> value, MessagePortArray& ports, A
     if (value->IsArray()) {
         v8::Local<v8::Array> array = v8::Local<v8::Array>::Cast(value);
         length = array->Length();
-    } else {
-        if (toV8Sequence(value, length, notASequence, isolate).IsEmpty())
-            return false;
+    } else if (toV8Sequence(value, length, isolate).IsEmpty()) {
+        exceptionState.throwTypeError(ExceptionMessages::notAnArrayTypeArgumentOrValue(argumentIndex + 1));
+        return false;
     }
 
     v8::Local<v8::Object> transferrables = v8::Local<v8::Object>::Cast(value);
@@ -88,22 +88,27 @@ bool extractTransferables(v8::Local<v8::Value> value, MessagePortArray& ports, A
         v8::Local<v8::Value> transferrable = transferrables->Get(i);
         // Validation of non-null objects, per HTML5 spec 10.3.3.
         if (isUndefinedOrNull(transferrable)) {
-            setDOMException(DataCloneError, isolate);
+            exceptionState.throwDOMException(DataCloneError, "Value at index " + String::number(i) + " is an untransferable " + (transferrable->IsUndefined() ? "'undefined'" : "'null'") + " value.");
             return false;
         }
         // Validation of Objects implementing an interface, per WebIDL spec 4.1.15.
-        if (V8MessagePort::HasInstance(transferrable, isolate, worldType(isolate))) {
+        if (V8MessagePort::hasInstance(transferrable, isolate)) {
             RefPtr<MessagePort> port = V8MessagePort::toNative(v8::Handle<v8::Object>::Cast(transferrable));
             // Check for duplicate MessagePorts.
             if (ports.contains(port)) {
-                setDOMException(DataCloneError, isolate);
+                exceptionState.throwDOMException(DataCloneError, "Message port at index " + String::number(i) + " is a duplicate of an earlier port.");
                 return false;
             }
             ports.append(port.release());
-        } else if (V8ArrayBuffer::HasInstance(transferrable, isolate, worldType(isolate)))
-            arrayBuffers.append(V8ArrayBuffer::toNative(v8::Handle<v8::Object>::Cast(transferrable)));
-        else {
-            setDOMException(DataCloneError, isolate);
+        } else if (V8ArrayBuffer::hasInstance(transferrable, isolate)) {
+            RefPtr<ArrayBuffer> arrayBuffer = V8ArrayBuffer::toNative(v8::Handle<v8::Object>::Cast(transferrable));
+            if (arrayBuffers.contains(arrayBuffer)) {
+                exceptionState.throwDOMException(DataCloneError, "ArrayBuffer at index " + String::number(i) + " is a duplicate of an earlier ArrayBuffer.");
+                return false;
+            }
+            arrayBuffers.append(arrayBuffer.release());
+        } else {
+            exceptionState.throwDOMException(DataCloneError, "Value at index " + String::number(i) + " does not have a transferable type.");
             return false;
         }
     }
@@ -116,10 +121,6 @@ bool getMessagePortArray(v8::Local<v8::Value> value, const String& propertyName,
         ports.resize(0);
         return true;
     }
-    if (!value->IsArray()) {
-        throwTypeError(ExceptionMessages::notASequenceTypeProperty(propertyName), isolate);
-        return false;
-    }
     bool success = false;
     ports = toRefPtrNativeArray<MessagePort, V8MessagePort>(value, propertyName, isolate, &success);
     return success;
@@ -130,10 +131,6 @@ bool getMessagePortArray(v8::Local<v8::Value> value, int argumentIndex, MessageP
     if (isUndefinedOrNull(value)) {
         ports.resize(0);
         return true;
-    }
-    if (!value->IsArray()) {
-        throwTypeError(ExceptionMessages::notAnArrayTypeArgumentOrValue(argumentIndex), isolate);
-        return false;
     }
     bool success = false;
     ports = toRefPtrNativeArray<MessagePort, V8MessagePort>(value, argumentIndex, isolate, &success);
@@ -147,7 +144,7 @@ void removeHiddenDependency(v8::Handle<v8::Object> object, v8::Local<v8::Value> 
         return;
     v8::Local<v8::Array> cacheArray = v8::Local<v8::Array>::Cast(cache);
     for (int i = cacheArray->Length() - 1; i >= 0; --i) {
-        v8::Local<v8::Value> cached = cacheArray->Get(v8::Integer::New(i, isolate));
+        v8::Local<v8::Value> cached = cacheArray->Get(v8::Integer::New(isolate, i));
         if (cached->StrictEquals(value)) {
             cacheArray->Delete(i);
             return;
@@ -176,6 +173,16 @@ ExecutionContext* getExecutionContext()
         return &controller->workerGlobalScope();
 
     return currentDocument();
+}
+
+v8::Handle<v8::Function> getBoundFunction(v8::Handle<v8::Function> function)
+{
+    v8::Handle<v8::Value> boundFunction = function->GetBoundFunction();
+    if (boundFunction->IsFunction()) {
+        return v8::Handle<v8::Function>::Cast(boundFunction);
+    } else {
+        return function;
+    }
 }
 
 } // namespace WebCore

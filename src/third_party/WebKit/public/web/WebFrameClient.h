@@ -31,22 +31,22 @@
 #ifndef WebFrameClient_h
 #define WebFrameClient_h
 
-#include "../platform/WebCommon.h"
-#include "../platform/WebFileSystem.h"
-#include "../platform/WebFileSystemType.h"
-#include "../platform/WebURLError.h"
-#include "../platform/WebURLRequest.h"
 #include "WebDOMMessageEvent.h"
 #include "WebDataSource.h"
 #include "WebIconURL.h"
 #include "WebNavigationPolicy.h"
 #include "WebNavigationType.h"
 #include "WebSecurityOrigin.h"
-#include "WebStorageQuotaType.h"
 #include "WebTextDirection.h"
+#include "public/platform/WebCommon.h"
+#include "public/platform/WebFileSystem.h"
+#include "public/platform/WebFileSystemType.h"
+#include "public/platform/WebStorageQuotaType.h"
+#include "public/platform/WebURLError.h"
+#include "public/platform/WebURLRequest.h"
 #include <v8.h>
 
-namespace WebKit {
+namespace blink {
 
 class WebApplicationCacheHost;
 class WebApplicationCacheHostClient;
@@ -115,9 +115,9 @@ public:
     // is created and initialized. Takes the name of the new frame, the parent
     // frame and returns a new WebFrame. The WebFrame is considered in-use
     // until frameDetached() is called on it.
+    // Note: If you override this, you should almost certainly be overriding
+    // frameDetached().
     virtual WebFrame* createChildFrame(WebFrame* parent, const WebString& frameName) { return 0; }
-    // FIXME: Remove when all embedders use createChildFrame().
-    virtual void didCreateFrame(WebFrame* parent, WebFrame* child) { }
 
     // This frame set its opener to null, disowning it.
     // See http://html.spec.whatwg.org/#dom-opener.
@@ -184,7 +184,7 @@ public:
     // The window object for the frame has been cleared of any extra
     // properties that may have been set by script from the previously
     // loaded document.
-    virtual void didClearWindowObject(WebFrame*) { }
+    virtual void didClearWindowObject(WebFrame* frame, int worldId) { }
 
     // The document element has been created.
     virtual void didCreateDocumentElement(WebFrame*) { }
@@ -240,7 +240,7 @@ public:
         WebFrame*, unsigned identifier, const WebURLResponse&) { }
 
     virtual void didChangeResourcePriority(
-        WebFrame*, unsigned identifier, const WebKit::WebURLRequest::Priority&) { }
+        WebFrame*, unsigned identifier, const blink::WebURLRequest::Priority&) { }
 
     // The resource request given by identifier succeeded.
     virtual void didFinishResourceLoad(
@@ -377,6 +377,6 @@ protected:
     ~WebFrameClient() { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

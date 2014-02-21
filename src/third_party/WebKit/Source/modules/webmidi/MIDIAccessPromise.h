@@ -48,7 +48,7 @@ class ExecutionContext;
 
 struct MIDIOptions;
 
-class MIDIAccessPromise : public RefCounted<MIDIAccessPromise>, public ScriptWrappable, public ActiveDOMObject {
+class MIDIAccessPromise FINAL : public RefCounted<MIDIAccessPromise>, public ScriptWrappable, public ActiveDOMObject {
 public:
     static PassRefPtr<MIDIAccessPromise> create(ExecutionContext*, const Dictionary&);
     virtual ~MIDIAccessPromise();
@@ -62,7 +62,7 @@ public:
     void fulfill();
     void reject(PassRefPtr<DOMError>);
 
-    void then(PassRefPtr<MIDISuccessCallback>, PassRefPtr<MIDIErrorCallback>);
+    void then(PassOwnPtr<MIDISuccessCallback>, PassOwnPtr<MIDIErrorCallback>);
 
 private:
     enum State {
@@ -77,8 +77,8 @@ private:
     void clear();
 
     State m_state;
-    RefPtr<MIDISuccessCallback> m_successCallback;
-    RefPtr<MIDIErrorCallback> m_errorCallback;
+    OwnPtr<MIDISuccessCallback> m_successCallback;
+    OwnPtr<MIDIErrorCallback> m_errorCallback;
     OwnPtr<MIDIOptions> m_options;
     RefPtr<DOMError> m_error;
     RefPtr<MIDIAccess> m_access;

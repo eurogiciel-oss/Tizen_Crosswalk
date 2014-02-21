@@ -40,6 +40,7 @@ Output: V8X.h and V8X.cpp
 
 import os
 import posixpath
+import re
 import sys
 
 # jinja2 is in chromium's third_party directory.
@@ -52,84 +53,82 @@ import jinja2
 templates_dir = os.path.join(module_path, os.pardir, os.pardir, 'templates')
 
 import v8_callback_interface
-from v8_globals import includes
+from v8_globals import includes, interfaces
 import v8_interface
 import v8_types
-from v8_utilities import cpp_name, generate_conditional_string, v8_class_name
+from v8_utilities import capitalize, cpp_name, conditional_string, v8_class_name
 
 
-class CodeGeneratorV8:
-    def __init__(self, definitions, interface_name, output_directory, relative_dir_posix, idl_directories, verbose=False):
-        self.idl_definitions = definitions
-        self.interface_name = interface_name
-        self.idl_directories = idl_directories
-        self.output_directory = output_directory
-        self.verbose = verbose
-        # FIXME: remove definitions check when remove write_dummy_header_and_cpp
-        if not definitions:
-            return
-        try:
-            self.interface = definitions.interfaces[interface_name]
-        except KeyError:
-            raise Exception('%s not in IDL definitions' % interface_name)
-        if self.interface.is_callback:
-            header_template_filename = 'callback_interface.h'
-            cpp_template_filename = 'callback_interface.cpp'
-            self.generate_contents = v8_callback_interface.generate_callback_interface
-        else:
-            header_template_filename = 'interface.h'
-            cpp_template_filename = 'interface.cpp'
-            self.generate_contents = v8_interface.generate_interface
-        jinja_env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(templates_dir),
-            keep_trailing_newline=True,  # newline-terminate generated files
-            lstrip_blocks=True,  # so can indent control flow tags
-            trim_blocks=True)
-        jinja_env.filters['conditional'] = conditional_if_endif
-        self.header_template = jinja_env.get_template(header_template_filename)
-        self.cpp_template = jinja_env.get_template(cpp_template_filename)
+def write_header_and_cpp(definitions, interface_name, interfaces_info, output_directory, idl_directories, verbose=False):
+    try:
+        interface = definitions.interfaces[interface_name]
+    except KeyError:
+        raise Exception('%s not in IDL definitions' % interface_name)
 
-        class_name = cpp_name(self.interface)
-        self.include_for_cpp_class = posixpath.join(relative_dir_posix, class_name + '.h')
-        enumerations = definitions.enumerations
-        if enumerations:
-            v8_types.set_enum_types(enumerations)
+    # Store other interfaces for introspection
+    interfaces.update(definitions.interfaces)
 
-    def write_dummy_header_and_cpp(self):
-        # FIXME: fix GYP so these files aren't needed and remove this method
-        target_interface_name = self.interface_name
-        header_basename = 'V8%s.h' % target_interface_name
-        cpp_basename = 'V8%s.cpp' % target_interface_name
-        contents = """/*
-    This file is generated just to tell build scripts that {header_basename} and
-    {cpp_basename} are created for {target_interface_name}.idl, and thus
-    prevent the build scripts from trying to generate {header_basename} and
-    {cpp_basename} at every build. This file must not be tried to compile.
-*/
-""".format(**locals())
-        self.write_file(header_basename, contents)
-        self.write_file(cpp_basename, contents)
+    # Set up Jinja
+    if interface.is_callback:
+        header_template_filename = 'callback_interface.h'
+        cpp_template_filename = 'callback_interface.cpp'
+        generate_contents = v8_callback_interface.generate_callback_interface
+    else:
+        header_template_filename = 'interface.h'
+        cpp_template_filename = 'interface.cpp'
+        generate_contents = v8_interface.generate_interface
+    jinja_env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(templates_dir),
+        keep_trailing_newline=True,  # newline-terminate generated files
+        lstrip_blocks=True,  # so can indent control flow tags
+        trim_blocks=True)
+    jinja_env.filters.update({
+        'blink_capitalize': capitalize,
+        'conditional': conditional_if_endif,
+        'runtime_enabled': runtime_enabled_if,
+        })
+    header_template = jinja_env.get_template(header_template_filename)
+    cpp_template = jinja_env.get_template(cpp_template_filename)
 
-    def write_header_and_cpp(self):
-        interface = self.interface
-        template_contents = self.generate_contents(interface)
-        template_contents['conditional_string'] = generate_conditional_string(interface)
-        template_contents['header_includes'].add(self.include_for_cpp_class)
-        template_contents['header_includes'] = sorted(template_contents['header_includes'])
-        template_contents['cpp_includes'] = sorted(includes)
+    # Set type info, both local and global
+    interface_info = interfaces_info[interface_name]
 
-        header_basename = v8_class_name(interface) + '.h'
-        header_file_text = self.header_template.render(template_contents)
-        self.write_file(header_basename, header_file_text)
+    v8_types.set_callback_functions(definitions.callback_functions.keys())
+    v8_types.set_enums((enum.name, enum.values)
+                       for enum in definitions.enumerations.values())
+    v8_types.set_ancestors(dict(
+        (interface_name, interface_info['ancestors'])
+        for interface_name, interface_info in interfaces_info.iteritems()
+        if 'ancestors' in interface_info))
+    v8_types.set_callback_interfaces(set(
+        interface_name
+        for interface_name, interface_info in interfaces_info.iteritems()
+        if interface_info['is_callback_interface']))
+    v8_types.set_implemented_as_interfaces(dict(
+        (interface_name, interface_info['implemented_as'])
+        for interface_name, interface_info in interfaces_info.iteritems()
+        if 'implemented_as' in interface_info))
 
-        cpp_basename = v8_class_name(interface) + '.cpp'
-        cpp_file_text = self.cpp_template.render(template_contents)
-        self.write_file(cpp_basename, cpp_file_text)
+    # Generate contents (input parameters for Jinja)
+    template_contents = generate_contents(interface)
+    template_contents['header_includes'].add(interface_info['include_path'])
+    template_contents['header_includes'] = sorted(template_contents['header_includes'])
+    includes.update(interface_info.get('dependencies_include_paths', []))
+    template_contents['cpp_includes'] = sorted(includes)
 
-    def write_file(self, basename, file_text):
-        filename = os.path.join(self.output_directory, basename)
+    # Render Jinja templates and write files
+    def write_file(basename, file_text):
+        filename = os.path.join(output_directory, basename)
         with open(filename, 'w') as output_file:
             output_file.write(file_text)
+
+    header_basename = v8_class_name(interface) + '.h'
+    header_file_text = header_template.render(template_contents)
+    write_file(header_basename, header_file_text)
+
+    cpp_basename = v8_class_name(interface) + '.cpp'
+    cpp_file_text = cpp_template.render(template_contents)
+    write_file(cpp_basename, cpp_file_text)
 
 
 # [Conditional]
@@ -140,3 +139,13 @@ def conditional_if_endif(code, conditional_string):
     return ('#if %s\n' % conditional_string +
             code +
             '#endif // %s\n' % conditional_string)
+
+
+# [RuntimeEnabled]
+def runtime_enabled_if(code, runtime_enabled_function_name):
+    if not runtime_enabled_function_name:
+        return code
+    # Indent if statement to level of original code
+    indent = re.match(' *', code).group(0)
+    return ('%sif (%s())\n' % (indent, runtime_enabled_function_name) +
+            '    %s' % code)

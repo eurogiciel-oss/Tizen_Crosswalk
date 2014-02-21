@@ -20,6 +20,7 @@
 #include "chrome/browser/ui/omnibox/omnibox_popup_model_observer.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/views/frame/browser_frame.h"
+#include "chrome/browser/ui/views/frame/contents_web_view.h"
 #include "chrome/browser/ui/views/frame/immersive_mode_controller.h"
 #include "chrome/browser/ui/views/frame/scroll_end_effect_controller.h"
 #include "chrome/browser/ui/views/load_complete_listener.h"
@@ -28,7 +29,6 @@
 #include "ui/gfx/native_widget_types.h"
 #include "ui/gfx/sys_color_change_listener.h"
 #include "ui/views/controls/button/button.h"
-#include "ui/views/controls/single_split_view_listener.h"
 #include "ui/views/controls/webview/unhandled_keyboard_event_handler.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/widget/widget_observer.h"
@@ -45,7 +45,7 @@
 class BookmarkBarView;
 class Browser;
 class BrowserViewLayout;
-class ContentsContainer;
+class ContentsLayoutManager;
 class DownloadShelfView;
 class FullscreenExitBubbleViews;
 class InfoBarContainerView;
@@ -92,9 +92,7 @@ class BrowserView : public BrowserWindow,
                     public views::WidgetDelegate,
                     public views::WidgetObserver,
                     public views::ClientView,
-                    public ImmersiveModeController::Delegate,
                     public InfoBarContainer::Delegate,
-                    public views::SingleSplitViewListener,
                     public gfx::SysColorChangeListener,
                     public LoadCompleteListener::Delegate,
                     public OmniboxPopupModelObserver {
@@ -136,10 +134,6 @@ class BrowserView : public BrowserWindow,
   // background image is drawn -- slightly outside the "true" bounds
   // horizontally. Note that this returns the bounds for the toolbar area.
   gfx::Rect GetToolbarBounds() const;
-
-  // Returns the bounds of the content area, in the coordinates of the
-  // BrowserView's parent.
-  gfx::Rect GetClientAreaBounds() const;
 
   // Returns the constraining bounding box that should be used to lay out the
   // FindBar within. This is _not_ the size of the find bar, just the bounding
@@ -252,6 +246,11 @@ class BrowserView : public BrowserWindow,
     return window_switcher_button_;
   }
 
+  // Called after the widget's fullscreen state is changed without going through
+  // FullscreenController. This method does any processing which was skipped.
+  // Only exiting fullscreen in this way is currently supported.
+  void FullscreenStateChanged();
+
   // Called from BookmarkBarView/DownloadShelfView during their show/hide
   // animations.
   void ToolbarSizeChanged(bool is_animating);
@@ -277,6 +276,7 @@ class BrowserView : public BrowserWindow,
   virtual void UpdateDevTools() OVERRIDE;
   virtual void UpdateLoadingAnimations(bool should_animate) OVERRIDE;
   virtual void SetStarredState(bool is_starred) OVERRIDE;
+  virtual void SetTranslateIconToggled(bool is_lit) OVERRIDE;
   virtual void OnActiveTabChanged(content::WebContents* old_contents,
                                   content::WebContents* new_contents,
                                   int index,
@@ -318,7 +318,6 @@ class BrowserView : public BrowserWindow,
   virtual bool IsTabStripEditable() const OVERRIDE;
   virtual bool IsToolbarVisible() const OVERRIDE;
   virtual gfx::Rect GetRootWindowResizerRect() const OVERRIDE;
-  virtual void DisableInactiveFrame() OVERRIDE;
   virtual void ConfirmAddSearchProvider(TemplateURL* template_url,
                                         Profile* profile) OVERRIDE;
   virtual void ShowUpdateChromeDialog() OVERRIDE;
@@ -327,12 +326,13 @@ class BrowserView : public BrowserWindow,
   virtual void ShowBookmarkPrompt() OVERRIDE;
   virtual void ShowTranslateBubble(
       content::WebContents* contents,
-      TranslateBubbleModel::ViewState view_state) OVERRIDE;
+      TranslateBubbleModel::ViewState view_state,
+      TranslateErrors::Type error_type) OVERRIDE;
 #if defined(ENABLE_ONE_CLICK_SIGNIN)
   virtual void ShowOneClickSigninBubble(
       OneClickSigninBubbleType type,
-      const string16& email,
-      const string16& error_message,
+      const base::string16& email,
+      const base::string16& error_message,
       const StartSyncCallback& start_sync_callback) OVERRIDE;
 #endif
   // TODO(beng): Not an override, move somewhere else.
@@ -395,8 +395,8 @@ class BrowserView : public BrowserWindow,
   virtual bool CanResize() const OVERRIDE;
   virtual bool CanMaximize() const OVERRIDE;
   virtual bool CanActivate() const OVERRIDE;
-  virtual string16 GetWindowTitle() const OVERRIDE;
-  virtual string16 GetAccessibleWindowTitle() const OVERRIDE;
+  virtual base::string16 GetWindowTitle() const OVERRIDE;
+  virtual base::string16 GetAccessibleWindowTitle() const OVERRIDE;
   virtual views::View* GetInitiallyFocusedView() OVERRIDE;
   virtual bool ShouldShowWindowTitle() const OVERRIDE;
   virtual gfx::ImageSkia GetWindowAppIcon() OVERRIDE;
@@ -427,19 +427,10 @@ class BrowserView : public BrowserWindow,
   virtual int NonClientHitTest(const gfx::Point& point) OVERRIDE;
   virtual gfx::Size GetMinimumSize() OVERRIDE;
 
-  // ImmersiveModeController::Delegate overrides:
-  virtual FullscreenController* GetFullscreenController() OVERRIDE;
-  virtual void FullscreenStateChanged() OVERRIDE;
-  virtual void SetImmersiveStyle(bool immersive) OVERRIDE;
-  virtual content::WebContents* GetWebContents() OVERRIDE;
-
   // InfoBarContainer::Delegate overrides
   virtual SkColor GetInfoBarSeparatorColor() const OVERRIDE;
   virtual void InfoBarContainerStateChanged(bool is_animating) OVERRIDE;
   virtual bool DrawInfoBarArrows(int* x) const OVERRIDE;
-
-  // views::SingleSplitViewListener overrides:
-  virtual bool SplitHandleMoved(views::SingleSplitView* sender) OVERRIDE;
 
   // gfx::SysColorChangeListener overrides:
   virtual void OnSysColorChange() OVERRIDE;
@@ -460,11 +451,9 @@ class BrowserView : public BrowserWindow,
   virtual void OnOmniboxPopupShownOrHidden() OVERRIDE;
 
   // Testing interface:
-  views::SingleSplitView* GetContentsSplitForTest() { return contents_split_; }
-  ContentsContainer* GetContentsContainerForTest() {
-    return contents_container_;
-  }
+  views::View* GetContentsContainerForTest() { return contents_container_; }
   views::WebView* GetContentsWebViewForTest() { return contents_web_view_; }
+  views::WebView* GetDevToolsWebViewForTest() { return devtools_web_view_; }
 
  private:
   // Do not friend BrowserViewLayout. Use the BrowserViewLayoutDelegate
@@ -496,8 +485,8 @@ class BrowserView : public BrowserWindow,
   // Returns the BrowserViewLayout.
   BrowserViewLayout* GetBrowserViewLayout() const;
 
-  // Layout the Status Bubble.
-  void LayoutStatusBubble();
+  // Returns the ContentsLayoutManager.
+  ContentsLayoutManager* GetContentsLayoutManager() const;
 
   // Prepare to show the Bookmark Bar for the specified WebContents.
   // Returns true if the Bookmark Bar can be shown (i.e. it's supported for this
@@ -520,17 +509,10 @@ class BrowserView : public BrowserWindow,
   // devtools window for inspected |web_contents| that has docked devtools
   // and hide it for NULL or not inspected |web_contents|. It will also make
   // sure devtools window size and position are restored for given tab.
-  void UpdateDevToolsForContents(content::WebContents* web_contents);
-
-  // Shows docked devtools.
-  void ShowDevToolsContainer();
-
-  // Hides docked devtools.
-  void HideDevToolsContainer();
-
-  // Reads split position from the current tab's devtools window and applies
-  // it to the devtools split.
-  void UpdateDevToolsSplitPosition();
+  // This method will not update actual DevTools WebContents, if not
+  // |update_devtools_web_contents|. In this case, manual update is required.
+  void UpdateDevToolsForContents(content::WebContents* web_contents,
+                                 bool update_devtools_web_contents);
 
   // Updates various optional child Views, e.g. Bookmarks Bar, Info Bar or the
   // Download Shelf in response to a change notification from the specified
@@ -576,12 +558,7 @@ class BrowserView : public BrowserWindow,
   // Calls |method| which is either RenderWidgetHost::Cut, ::Copy, or ::Paste,
   // first trying the content WebContents, then the devtools WebContents, and
   // lastly the Views::Textfield if one is focused.
-  // |windows_msg_id| is temporary until Win Aura is the default on Windows,
-  // since until then the omnibox doesn't use Views::Textfield.
   void DoCutCopyPaste(void (content::RenderWidgetHost::*method)(),
-#if defined(OS_WIN)
-                      int windows_msg_id,
-#endif
                       int command_id);
 
   // Calls |method| which is either RenderWidgetHost::Cut, ::Copy, or ::Paste on
@@ -620,16 +597,11 @@ class BrowserView : public BrowserWindow,
   // |------------------------------------------------------------------|
   // | Bookmarks (bookmark_bar_view_) [1]                               |
   // |------------------------------------------------------------------|
-  // | Debugger splitter (contents_split_)                              |
+  // | Contents container (contents_container_)                         |
   // |  --------------------------------------------------------------  |
-  // |  | Page content (contents_container_)                         |  |
-  // |  |  --------------------------------------------------------  |  |
-  // |  |  | contents_web_view_                                   |  |  |
-  // |  |  --------------------------------------------------------  |  |
-  // |  --------------------------------------------------------------  |
-  // |  --------------------------------------------------------------  |
-  // |  | Debugger (devtools_container_)                             |  |
-  // |  |                                                            |  |
+  // |  |  devtools_web_view_                                        |  |
+  // |  |------------------------------------------------------------|  |
+  // |  |  contents_web_view_                                        |  |
   // |  --------------------------------------------------------------  |
   // |------------------------------------------------------------------|
   // | Active downloads (download_shelf_)                               |
@@ -673,27 +645,22 @@ class BrowserView : public BrowserWindow,
   InfoBarContainerView* infobar_container_;
 
   // The view that contains the selected WebContents.
-  views::WebView* contents_web_view_;
+  ContentsWebView* contents_web_view_;
 
   // The view that contains devtools window for the selected WebContents.
-  views::WebView* devtools_container_;
+  views::WebView* devtools_web_view_;
 
-  // The view managing the |contents_web_view_|.
-  ContentsContainer* contents_container_;
-
-  // Split view containing the contents container and devtools container.
-  views::SingleSplitView* contents_split_;
-
-  // Side to dock devtools to.
-  DevToolsDockSide devtools_dock_side_;
+  // The view managing the devtools and contents positions.
+  // Handled by ContentsLayoutManager.
+  views::View* contents_container_;
 
   // Docked devtools window instance. NULL when current tab is not inspected
   // or is inspected with undocked version of DevToolsWindow.
   DevToolsWindow* devtools_window_;
 
   // Tracks and stores the last focused view which is not the
-  // devtools_container_ or any of its children. Used to restore focus once
-  // the devtools_container_ is hidden.
+  // devtools_web_view_ or any of its children. Used to restore focus once
+  // the devtools_web_view_ is hidden.
   scoped_ptr<views::ExternalFocusTracker> devtools_focus_tracker_;
 
   // The Status information bubble that appears at the bottom of the window.
@@ -712,7 +679,7 @@ class BrowserView : public BrowserWindow,
 
   scoped_ptr<FullscreenExitBubbleViews> fullscreen_bubble_;
 
-#if defined(OS_WIN) && !defined(USE_AURA)
+#if defined(OS_WIN)
   // This object is used to perform periodic actions in a worker
   // thread. It is currently used to monitor hung plugin windows.
   WorkerThreadTicker ticker_;

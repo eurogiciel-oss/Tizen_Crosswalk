@@ -13,11 +13,11 @@
 #include "base/values.h"
 #include "cc/animation/layer_animation_controller.h"
 #include "cc/animation/layer_animation_value_observer.h"
+#include "cc/animation/layer_animation_value_provider.h"
 #include "cc/base/cc_export.h"
 #include "cc/base/region.h"
 #include "cc/base/scoped_ptr_vector.h"
 #include "cc/input/input_handler.h"
-#include "cc/layers/compositing_reasons.h"
 #include "cc/layers/draw_properties.h"
 #include "cc/layers/layer_lists.h"
 #include "cc/layers/layer_position_constraint.h"
@@ -35,6 +35,10 @@
 #include "ui/gfx/transform.h"
 
 namespace base {
+namespace debug {
+class ConvertableToTraceFormat;
+}
+
 class DictionaryValue;
 }
 
@@ -42,11 +46,11 @@ namespace cc {
 
 class LayerTreeHostImpl;
 class LayerTreeImpl;
+class MicroBenchmarkImpl;
 class QuadSink;
 class Renderer;
 class ScrollbarAnimationController;
 class ScrollbarLayerImplBase;
-class Layer;
 
 struct AppendQuadsData;
 
@@ -57,7 +61,8 @@ enum DrawMode {
   DRAW_MODE_RESOURCELESS_SOFTWARE
 };
 
-class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
+class CC_EXPORT LayerImpl : public LayerAnimationValueObserver,
+                            public LayerAnimationValueProvider {
  public:
   typedef LayerImplList RenderSurfaceListType;
   typedef LayerImplList LayerListType;
@@ -71,10 +76,16 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
 
   int id() const { return layer_id_; }
 
+  // LayerAnimationValueProvider implementation.
+  virtual gfx::Vector2dF ScrollOffsetForAnimation() const OVERRIDE;
+
   // LayerAnimationValueObserver implementation.
   virtual void OnFilterAnimated(const FilterOperations& filters) OVERRIDE;
   virtual void OnOpacityAnimated(float opacity) OVERRIDE;
   virtual void OnTransformAnimated(const gfx::Transform& transform) OVERRIDE;
+  virtual void OnScrollOffsetAnimated(
+      const gfx::Vector2dF& scroll_offset) OVERRIDE;
+  virtual void OnAnimationWaitingForDeletion() OVERRIDE;
   virtual bool IsActive() const OVERRIDE;
 
   // Tree structure.
@@ -85,7 +96,8 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   LayerImpl* child_at(size_t index) const { return children_[index]; }
   void AddChild(scoped_ptr<LayerImpl> child);
   scoped_ptr<LayerImpl> RemoveChild(LayerImpl* child);
-  void set_parent(LayerImpl* parent) { parent_ = parent; }
+  void SetParent(LayerImpl* parent);
+
   // Warning: This does not preserve tree structure invariants.
   void ClearChildList();
 
@@ -178,7 +190,7 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   bool force_render_surface() const { return force_render_surface_; }
   void SetForceRenderSurface(bool force) { force_render_surface_ = force; }
 
-  void SetAnchorPoint(gfx::PointF anchor_point);
+  void SetAnchorPoint(const gfx::PointF& anchor_point);
   gfx::PointF anchor_point() const { return anchor_point_; }
 
   void SetAnchorPointZ(float anchor_point_z);
@@ -211,7 +223,18 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   bool OpacityIsAnimating() const;
   bool OpacityIsAnimatingOnImplOnly() const;
 
-  void SetPosition(gfx::PointF position);
+  void SetBlendMode(SkXfermode::Mode);
+  SkXfermode::Mode blend_mode() const { return blend_mode_; }
+  bool uses_default_blend_mode() const {
+    return blend_mode_ == SkXfermode::kSrcOver_Mode;
+  }
+
+  void SetIsRootForIsolatedGroup(bool root);
+  bool is_root_for_isolated_group() const {
+    return is_root_for_isolated_group_;
+  }
+
+  void SetPosition(const gfx::PointF& position);
   gfx::PointF position() const { return position_; }
 
   void SetIsContainerForFixedPositionLayers(bool container) {
@@ -222,7 +245,7 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
     return is_container_for_fixed_position_layers_;
   }
 
-  void SetFixedContainerSizeDelta(gfx::Vector2dF delta) {
+  void SetFixedContainerSizeDelta(const gfx::Vector2dF& delta) {
     fixed_container_size_delta_ = delta;
   }
   gfx::Vector2dF fixed_container_size_delta() const {
@@ -249,18 +272,6 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   void SetSublayerTransform(const gfx::Transform& sublayer_transform);
   const gfx::Transform& sublayer_transform() const {
     return sublayer_transform_;
-  }
-
-  // Debug layer name.
-  void SetDebugName(const std::string& debug_name) { debug_name_ = debug_name; }
-  std::string debug_name() const { return debug_name_; }
-
-  void SetCompositingReasons(CompositingReasons reasons) {
-      compositing_reasons_ = reasons;
-  }
-
-  CompositingReasons compositing_reasons() const {
-      return compositing_reasons_;
   }
 
   bool ShowDebugBorders() const;
@@ -353,13 +364,13 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
 
   void SetScrollOffset(gfx::Vector2d scroll_offset);
   void SetScrollOffsetAndDelta(gfx::Vector2d scroll_offset,
-                               gfx::Vector2dF scroll_delta);
+                               const gfx::Vector2dF& scroll_delta);
   gfx::Vector2d scroll_offset() const { return scroll_offset_; }
 
   void SetMaxScrollOffset(gfx::Vector2d max_scroll_offset);
   gfx::Vector2d max_scroll_offset() const { return max_scroll_offset_; }
 
-  void SetScrollDelta(gfx::Vector2dF scroll_delta);
+  void SetScrollDelta(const gfx::Vector2dF& scroll_delta);
   gfx::Vector2dF ScrollDelta() const;
 
   gfx::Vector2dF TotalScrollOffset() const;
@@ -369,7 +380,7 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
 
   // Returns the delta of the scroll that was outside of the bounds of the
   // initial scroll
-  gfx::Vector2dF ScrollBy(gfx::Vector2dF scroll);
+  gfx::Vector2dF ScrollBy(const gfx::Vector2dF& scroll);
 
   void SetScrollable(bool scrollable) { scrollable_ = scrollable; }
   bool scrollable() const { return scrollable_; }
@@ -416,7 +427,7 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   bool DrawCheckerboardForMissingTiles() const;
 
   InputHandler::ScrollStatus TryScroll(
-      gfx::PointF screen_space_point,
+      const gfx::PointF& screen_space_point,
       InputHandler::ScrollInputType type) const;
 
   void SetDoubleSided(bool double_sided);
@@ -428,9 +439,8 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   bool TransformIsAnimatingOnImplOnly() const;
 
   // Note this rect is in layer space (not content space).
-  void set_update_rect(const gfx::RectF& update_rect) {
-    update_rect_ = update_rect;
-  }
+  void SetUpdateRect(const gfx::RectF& update_rect);
+
   const gfx::RectF& update_rect() const { return update_rect_; }
 
   virtual base::DictionaryValue* LayerTreeAsJson() const;
@@ -449,16 +459,19 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
     return layer_animation_controller_.get();
   }
 
+  const LayerAnimationController* layer_animation_controller() const {
+    return layer_animation_controller_.get();
+  }
+
   virtual Region VisibleContentOpaqueRegion() const;
 
   virtual void DidBecomeActive();
 
   virtual void DidBeginTracing();
 
-  // Indicates that the surface previously used to render this layer
-  // was lost and that a new one has been created. Won't be called
-  // until the new surface has been created successfully.
-  virtual void DidLoseOutputSurface();
+  // Release resources held by this layer. Called when the output surface
+  // that rendered this layer was lost or a rendering mode switch has occured.
+  virtual void ReleaseResources();
 
   ScrollbarAnimationController* scrollbar_animation_controller() const {
     return scrollbar_animation_controller_.get();
@@ -486,9 +499,22 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   scoped_ptr<base::Value> AsValue() const;
   virtual size_t GPUMemoryUsageInBytes() const;
 
-  // TODO(danakj): Be true only if needed. crbug.com/259511
-  bool needs_push_properties() const { return true; }
-  bool descendant_needs_push_properties() const { return true; }
+  void SetNeedsPushProperties();
+  void AddDependentNeedsPushProperties();
+  void RemoveDependentNeedsPushProperties();
+  bool parent_should_know_need_push_properties() const {
+    return needs_push_properties() || descendant_needs_push_properties();
+  }
+
+  bool needs_push_properties() const { return needs_push_properties_; }
+  bool descendant_needs_push_properties() const {
+    return num_dependents_need_push_properties_ > 0;
+  }
+
+  virtual void RunMicroBenchmark(MicroBenchmarkImpl* benchmark);
+
+  virtual void SetDebugInfo(
+      scoped_refptr<base::debug::ConvertableToTraceFormat> other);
 
  protected:
   LayerImpl(LayerTreeImpl* layer_impl, int id);
@@ -514,6 +540,8 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   void NoteLayerPropertyChangedForDescendants();
 
  private:
+  void NoteLayerPropertyChangedForDescendantsInternal();
+
   void UpdateScrollbarPositions();
 
   virtual const char* LayerTypeAsString() const;
@@ -548,38 +576,40 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   gfx::Size bounds_;
   gfx::Vector2d scroll_offset_;
   LayerScrollOffsetDelegate* scroll_offset_delegate_;
-  bool scrollable_;
-  bool should_scroll_on_main_thread_;
-  bool have_wheel_event_handlers_;
-  bool user_scrollable_horizontal_;
-  bool user_scrollable_vertical_;
+  bool scrollable_ : 1;
+  bool should_scroll_on_main_thread_ : 1;
+  bool have_wheel_event_handlers_ : 1;
+  bool user_scrollable_horizontal_ : 1;
+  bool user_scrollable_vertical_ : 1;
+  bool stacking_order_changed_ : 1;
+  // Whether the "back" of this layer should draw.
+  bool double_sided_ : 1;
+
+  // Tracks if drawing-related properties have changed since last redraw.
+  bool layer_property_changed_ : 1;
+
+  bool masks_to_bounds_ : 1;
+  bool contents_opaque_ : 1;
+  bool is_root_for_isolated_group_ : 1;
+  bool preserves_3d_ : 1;
+  bool use_parent_backface_visibility_ : 1;
+  bool draw_checkerboard_for_missing_tiles_ : 1;
+  bool draws_content_ : 1;
+  bool hide_layer_and_subtree_ : 1;
+  bool force_render_surface_ : 1;
+
+  // Set for the layer that other layers are fixed to.
+  bool is_container_for_fixed_position_layers_ : 1;
   Region non_fast_scrollable_region_;
   Region touch_event_handler_region_;
   SkColor background_color_;
-  bool stacking_order_changed_;
 
-  // Whether the "back" of this layer should draw.
-  bool double_sided_;
-
-  // Tracks if drawing-related properties have changed since last redraw.
-  bool layer_property_changed_;
-
-  bool masks_to_bounds_;
-  bool contents_opaque_;
   float opacity_;
+  SkXfermode::Mode blend_mode_;
   gfx::PointF position_;
-  bool preserves_3d_;
-  bool use_parent_backface_visibility_;
-  bool draw_checkerboard_for_missing_tiles_;
   gfx::Transform sublayer_transform_;
   gfx::Transform transform_;
 
-  bool draws_content_;
-  bool hide_layer_and_subtree_;
-  bool force_render_surface_;
-
-  // Set for the layer that other layers are fixed to.
-  bool is_container_for_fixed_position_layers_;
   // This property is effective when
   // is_container_for_fixed_position_layers_ == true,
   gfx::Vector2dF fixed_container_size_delta_;
@@ -595,20 +625,27 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   // to sort layers from back to front.
   float draw_depth_;
 
-  // Debug layer name.
-  std::string debug_name_;
-  CompositingReasons compositing_reasons_;
-
   FilterOperations filters_;
   FilterOperations background_filters_;
 
  protected:
+  friend class TreeSynchronizer;
+
+  // This flag is set when the layer needs to push properties to the active
+  // side.
+  bool needs_push_properties_;
+
+  // The number of direct children or dependent layers that need to be recursed
+  // to in order for them or a descendent of them to push properties to the
+  // active side.
+  int num_dependents_need_push_properties_;
+
   DrawMode current_draw_mode_;
 
  private:
   // Rect indicating what was repainted/updated during update.
   // Note that plugin layers bypass this and leave it empty.
-  // Uses layer's content space.
+  // Uses layer (not content) space.
   gfx::RectF update_rect_;
 
   // Manages animations for this layer.
@@ -627,6 +664,8 @@ class CC_EXPORT LayerImpl : LayerAnimationValueObserver {
   // Group of properties that need to be computed based on the layer tree
   // hierarchy before layers can be drawn.
   DrawProperties<LayerImpl> draw_properties_;
+
+  scoped_refptr<base::debug::ConvertableToTraceFormat> debug_info_;
 
   DISALLOW_COPY_AND_ASSIGN(LayerImpl);
 };

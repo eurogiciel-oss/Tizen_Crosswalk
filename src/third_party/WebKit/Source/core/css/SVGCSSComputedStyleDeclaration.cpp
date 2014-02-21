@@ -46,14 +46,17 @@ static PassRefPtr<CSSPrimitiveValue> glyphOrientationToCSSPrimitiveValue(EGlyphO
     }
 }
 
-static PassRefPtr<CSSValue> strokeDashArrayToCSSValueList(const Vector<SVGLength>& dashes)
+static PassRefPtr<CSSValue> strokeDashArrayToCSSValueList(PassRefPtr<SVGLengthList> passDashes)
 {
-    if (dashes.isEmpty())
+    RefPtr<SVGLengthList> dashes = passDashes;
+
+    if (dashes->isEmpty())
         return CSSPrimitiveValue::createIdentifier(CSSValueNone);
 
     RefPtr<CSSValueList> list = CSSValueList::createCommaSeparated();
-    const Vector<SVGLength>::const_iterator end = dashes.end();
-    for (Vector<SVGLength>::const_iterator it = dashes.begin(); it != end; ++it)
+    SVGLengthList::ConstIterator it = dashes->begin();
+    SVGLengthList::ConstIterator itEnd = dashes->end();
+    for (; it != itEnd; ++it)
         list->append(SVGLength::toCSSPrimitiveValue(*it));
 
     return list.release();
@@ -80,11 +83,11 @@ static PassRefPtr<CSSValue> paintOrderToCSSValueList(EPaintOrder paintorder)
     return list.release();
 }
 
-PassRefPtr<SVGPaint> CSSComputedStyleDeclaration::adjustSVGPaintForCurrentColor(PassRefPtr<SVGPaint> newPaint, RenderStyle* style) const
+PassRefPtr<SVGPaint> CSSComputedStyleDeclaration::adjustSVGPaintForCurrentColor(PassRefPtr<SVGPaint> newPaint, RenderStyle& style) const
 {
     RefPtr<SVGPaint> paint = newPaint;
     if (paint->paintType() == SVGPaint::SVG_PAINTTYPE_CURRENTCOLOR || paint->paintType() == SVGPaint::SVG_PAINTTYPE_URI_CURRENTCOLOR)
-        paint->setColor(style->color());
+        paint->setColor(style.color());
     return paint.release();
 }
 
@@ -154,13 +157,13 @@ PassRefPtr<CSSValue> CSSComputedStyleDeclaration::getSVGPropertyCSSValue(CSSProp
                 return CSSPrimitiveValue::create(svgStyle->filterResource(), CSSPrimitiveValue::CSS_URI);
             return CSSPrimitiveValue::createIdentifier(CSSValueNone);
         case CSSPropertyFloodColor:
-            return currentColorOrValidColor(style, svgStyle->floodColor());
+            return currentColorOrValidColor(*style, svgStyle->floodColor());
         case CSSPropertyLightingColor:
-            return currentColorOrValidColor(style, svgStyle->lightingColor());
+            return currentColorOrValidColor(*style, svgStyle->lightingColor());
         case CSSPropertyStopColor:
-            return currentColorOrValidColor(style, svgStyle->stopColor());
+            return currentColorOrValidColor(*style, svgStyle->stopColor());
         case CSSPropertyFill:
-            return adjustSVGPaintForCurrentColor(SVGPaint::create(svgStyle->fillPaintType(), svgStyle->fillPaintUri(), svgStyle->fillPaintColor()), style);
+            return adjustSVGPaintForCurrentColor(SVGPaint::create(svgStyle->fillPaintType(), svgStyle->fillPaintUri(), svgStyle->fillPaintColor()), *style);
         case CSSPropertyKerning:
             return SVGLength::toCSSPrimitiveValue(svgStyle->kerning());
         case CSSPropertyMarkerEnd:
@@ -176,7 +179,7 @@ PassRefPtr<CSSValue> CSSComputedStyleDeclaration::getSVGPropertyCSSValue(CSSProp
                 return CSSPrimitiveValue::create(svgStyle->markerStartResource(), CSSPrimitiveValue::CSS_URI);
             return CSSPrimitiveValue::createIdentifier(CSSValueNone);
         case CSSPropertyStroke:
-            return adjustSVGPaintForCurrentColor(SVGPaint::create(svgStyle->strokePaintType(), svgStyle->strokePaintUri(), svgStyle->strokePaintColor()), style);
+            return adjustSVGPaintForCurrentColor(SVGPaint::create(svgStyle->strokePaintType(), svgStyle->strokePaintUri(), svgStyle->strokePaintColor()), *style);
         case CSSPropertyStrokeDasharray:
             return strokeDashArrayToCSSValueList(svgStyle->strokeDashArray());
         case CSSPropertyStrokeDashoffset:
@@ -226,7 +229,7 @@ PassRefPtr<CSSValue> CSSComputedStyleDeclaration::getSVGPropertyCSSValue(CSSProp
         // in either this switch statement or the one in CSSComputedStyleDelcaration::getPropertyCSSValue
         ASSERT_WITH_MESSAGE(0, "unimplemented propertyID: %d", propertyID);
     }
-    LOG_ERROR("unimplemented propertyID: %d", propertyID);
+    WTF_LOG_ERROR("unimplemented propertyID: %d", propertyID);
     return 0;
 }
 

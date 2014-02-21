@@ -265,6 +265,8 @@ base.exportTo('tracing.importer', function() {
       thread.sliceGroup.pushCompleteSlice(event.cat, event.name,
           event.ts / 1000,
           event.dur === undefined ? undefined : event.dur / 1000,
+          event.tts === undefined ? undefined : event.tts / 1000,
+          event.tdur === undefined ? undefined : event.tdur / 1000,
           this.deepCopyIfNeeded_(event.args));
     },
 
@@ -274,8 +276,9 @@ base.exportTo('tracing.importer', function() {
         process.name = event.args.name;
       } else if (event.name == 'process_labels') {
         var process = this.model_.getOrCreateProcess(event.pid);
-        process.labels.push.apply(
-            process.labels, event.args.labels.split(','));
+        var labels = event.args.labels.split(',');
+        for (var i = 0; i < labels.length; i++)
+          process.addLabelIfNeeded(labels[i]);
       } else if (event.name == 'process_sort_index') {
         var process = this.model_.getOrCreateProcess(event.pid);
         process.sortIndex = event.args.sort_index;

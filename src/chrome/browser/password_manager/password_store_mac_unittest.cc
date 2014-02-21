@@ -19,6 +19,8 @@
 #include "crypto/mock_apple_keychain.h"
 
 using autofill::PasswordForm;
+using base::ASCIIToUTF16;
+using base::WideToUTF16;
 using content::BrowserThread;
 using crypto::MockAppleKeychain;
 using testing::_;
@@ -29,9 +31,6 @@ namespace {
 
 class MockPasswordStoreConsumer : public PasswordStoreConsumer {
  public:
-  MOCK_METHOD2(OnPasswordStoreRequestDone,
-               void(CancelableRequestProvider::Handle,
-                    const std::vector<autofill::PasswordForm*>&));
   MOCK_METHOD1(OnGetPasswordStoreResults,
                void(const std::vector<autofill::PasswordForm*>&));
 };
@@ -1117,7 +1116,7 @@ TEST_F(PasswordStoreMacTest, TestStoreUpdate) {
       QuitUIMessageLoop());
   EXPECT_CALL(consumer, OnGetPasswordStoreResults(_)).WillOnce(
       DoAll(WithArg<0>(STLDeleteElements0()), QuitUIMessageLoop()));
-  store_->GetLogins(*joint_form, &consumer);
+  store_->GetLogins(*joint_form, PasswordStore::ALLOW_PROMPT, &consumer);
   base::MessageLoop::current()->Run();
 
   MacKeychainPasswordFormAdapter keychain_adapter(keychain_);

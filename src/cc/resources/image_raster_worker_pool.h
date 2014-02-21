@@ -14,34 +14,40 @@ class CC_EXPORT ImageRasterWorkerPool : public RasterWorkerPool {
   virtual ~ImageRasterWorkerPool();
 
   static scoped_ptr<RasterWorkerPool> Create(
-      ResourceProvider* resource_provider, size_t num_threads) {
-    return make_scoped_ptr<RasterWorkerPool>(
-        new ImageRasterWorkerPool(resource_provider, num_threads));
+      ResourceProvider* resource_provider,
+      ContextProvider* context_provider,
+      unsigned texture_target) {
+    return make_scoped_ptr<RasterWorkerPool>(new ImageRasterWorkerPool(
+        resource_provider, context_provider, texture_target));
   }
 
   // Overridden from RasterWorkerPool:
   virtual void ScheduleTasks(RasterTask::Queue* queue) OVERRIDE;
+  virtual unsigned GetResourceTarget() const OVERRIDE;
   virtual ResourceFormat GetResourceFormat() const OVERRIDE;
   virtual void OnRasterTasksFinished() OVERRIDE;
   virtual void OnRasterTasksRequiredForActivationFinished() OVERRIDE;
 
  private:
   ImageRasterWorkerPool(ResourceProvider* resource_provider,
-                        size_t num_threads);
+                        ContextProvider* context_provider,
+                        unsigned texture_target);
 
-  void OnRasterTaskCompleted(
-      scoped_refptr<internal::RasterWorkerPoolTask> task, bool was_canceled);
+  void OnRasterTaskCompleted(scoped_refptr<internal::RasterWorkerPoolTask> task,
+                             bool was_canceled);
 
   scoped_ptr<base::Value> StateAsValue() const;
 
   static void CreateGraphNodeForImageTask(
       internal::WorkerPoolTask* image_task,
-      const TaskVector& decode_tasks,
+      const internal::Task::Vector& decode_tasks,
       unsigned priority,
       bool is_required_for_activation,
       internal::GraphNode* raster_required_for_activation_finished_node,
       internal::GraphNode* raster_finished_node,
       TaskGraph* graph);
+
+  const unsigned texture_target_;
 
   TaskMap image_tasks_;
 

@@ -2,7 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/message_loop/message_loop.h"
+#include "base/run_loop.h"
 #include "sync/internal_api/public/base/model_type_test_util.h"
+#include "sync/notifier/invalidation_util.h"
+#include "sync/notifier/mock_ack_handler.h"
+#include "sync/notifier/object_id_invalidation_map.h"
 #include "sync/sessions/nudge_tracker.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -19,6 +24,14 @@ testing::AssertionResult ModelTypeSetEquals(ModelTypeSet a, ModelTypeSet b) {
         << ", does not match rigth side: " << ModelTypeSetToString(b);
   }
 }
+
+syncer::Invalidation BuildUnknownVersionInvalidation(ModelType type) {
+  invalidation::ObjectId id;
+  bool result = RealModelTypeToObjectId(type, &id);
+  DCHECK(result);
+  return Invalidation::InitUnknownVersion(id);
+}
+
 
 }  // namespace
 
@@ -56,7 +69,7 @@ class NudgeTrackerTest : public ::testing::Test {
 
   void SetInvalidationsInSync() {
     nudge_tracker_.OnInvalidationsEnabled();
-    nudge_tracker_.RecordSuccessfulSyncCycle();
+    nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   }
 
  protected:
@@ -68,7 +81,7 @@ class NudgeTrackerTest : public ::testing::Test {
 TEST_F(NudgeTrackerTest, EmptyNudgeTracker) {
   // Now we're at the normal, "idle" state.
   EXPECT_FALSE(nudge_tracker_.IsSyncRequired());
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
   EXPECT_EQ(sync_pb::GetUpdatesCallerInfo::UNKNOWN,
             nudge_tracker_.updates_source());
 
@@ -113,6 +126,7 @@ TEST_F(NudgeTrackerTest, SourcePriorities) {
             nudge_tracker_.updates_source());
 }
 
+// Verifies the management of invalidation hints and GU trigger fields.
 TEST_F(NudgeTrackerTest, HintCoalescing) {
   // Easy case: record one hint.
   {
@@ -167,11 +181,11 @@ TEST_F(NudgeTrackerTest, HintCoalescing) {
   }
 }
 
-TEST_F(NudgeTrackerTest, DropHintsLocally) {
-  ObjectIdInvalidationMap invalidation_map =
-      BuildInvalidationMap(BOOKMARKS, 1, "hint");
-
+// Test the dropping of invalidation hints.  Receives invalidations one by one.
+TEST_F(NudgeTrackerTest, DropHintsLocally_OneAtATime) {
   for (size_t i = 0; i < GetHintBufferSize(); ++i) {
+    ObjectIdInvalidationMap invalidation_map =
+        BuildInvalidationMap(BOOKMARKS, i, "hint");
     nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
   }
   {
@@ -190,9 +204,9 @@ TEST_F(NudgeTrackerTest, DropHintsLocally) {
   {
     sync_pb::GetUpdateTriggers gu_trigger;
     nudge_tracker_.FillProtoMessage(BOOKMARKS, &gu_trigger);
-    EXPECT_EQ(GetHintBufferSize(),
-              static_cast<size_t>(gu_trigger.notification_hint_size()));
     EXPECT_TRUE(gu_trigger.client_dropped_hints());
+    ASSERT_EQ(GetHintBufferSize(),
+              static_cast<size_t>(gu_trigger.notification_hint_size()));
 
     // Verify the newest hint was not dropped and is the last in the list.
     EXPECT_EQ("new_hint", gu_trigger.notification_hint(GetHintBufferSize()-1));
@@ -202,42 +216,133 @@ TEST_F(NudgeTrackerTest, DropHintsLocally) {
   }
 }
 
-// TODO(rlarocque): Add trickles support.  See crbug.com/223437.
-// TEST_F(NudgeTrackerTest, DropHintsAtServer);
+// Test the dropping of invalidation hints.
+// Receives invalidations in large batches.
+TEST_F(NudgeTrackerTest, DropHintsLocally_ManyHints) {
+  ObjectIdInvalidationMap invalidation_map;
+  for (size_t i = 0; i < GetHintBufferSize(); ++i) {
+    invalidation_map.Insert(BuildInvalidation(BOOKMARKS, i, "hint"));
+  }
+  nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
+  {
+    sync_pb::GetUpdateTriggers gu_trigger;
+    nudge_tracker_.FillProtoMessage(BOOKMARKS, &gu_trigger);
+    EXPECT_EQ(GetHintBufferSize(),
+              static_cast<size_t>(gu_trigger.notification_hint_size()));
+    EXPECT_FALSE(gu_trigger.client_dropped_hints());
+  }
+
+  // Force an overflow.
+  ObjectIdInvalidationMap invalidation_map2;
+  invalidation_map2.Insert(BuildInvalidation(BOOKMARKS, 1000, "new_hint"));
+  invalidation_map2.Insert(BuildInvalidation(BOOKMARKS, 1001, "newer_hint"));
+  nudge_tracker_.RecordRemoteInvalidation(invalidation_map2);
+
+  {
+    sync_pb::GetUpdateTriggers gu_trigger;
+    nudge_tracker_.FillProtoMessage(BOOKMARKS, &gu_trigger);
+    EXPECT_TRUE(gu_trigger.client_dropped_hints());
+    ASSERT_EQ(GetHintBufferSize(),
+              static_cast<size_t>(gu_trigger.notification_hint_size()));
+
+    // Verify the newest hints were not dropped and are the last in the list.
+    EXPECT_EQ("newer_hint",
+              gu_trigger.notification_hint(GetHintBufferSize()-1));
+    EXPECT_EQ("new_hint", gu_trigger.notification_hint(GetHintBufferSize()-2));
+
+    // Verify the oldest hint, too.
+    EXPECT_EQ("hint", gu_trigger.notification_hint(0));
+  }
+}
+
+// Tests the receipt of 'unknown version' invalidations.
+TEST_F(NudgeTrackerTest, DropHintsAtServer_Alone) {
+  ObjectIdInvalidationMap invalidation_map;
+  invalidation_map.Insert(BuildUnknownVersionInvalidation(BOOKMARKS));
+
+  // Record the unknown version invalidation.
+  nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
+  {
+    sync_pb::GetUpdateTriggers gu_trigger;
+    nudge_tracker_.FillProtoMessage(BOOKMARKS, &gu_trigger);
+    EXPECT_TRUE(gu_trigger.server_dropped_hints());
+    EXPECT_FALSE(gu_trigger.client_dropped_hints());
+    ASSERT_EQ(0, gu_trigger.notification_hint_size());
+  }
+
+  // Clear status then verify.
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
+  {
+    sync_pb::GetUpdateTriggers gu_trigger;
+    nudge_tracker_.FillProtoMessage(BOOKMARKS, &gu_trigger);
+    EXPECT_FALSE(gu_trigger.client_dropped_hints());
+    EXPECT_FALSE(gu_trigger.server_dropped_hints());
+    ASSERT_EQ(0, gu_trigger.notification_hint_size());
+  }
+}
+
+// Tests the receipt of 'unknown version' invalidations.  This test also
+// includes a known version invalidation to mix things up a bit.
+TEST_F(NudgeTrackerTest, DropHintsAtServer_WithOtherInvalidations) {
+  ObjectIdInvalidationMap invalidation_map;
+  invalidation_map.Insert(BuildUnknownVersionInvalidation(BOOKMARKS));
+  invalidation_map.Insert(BuildInvalidation(BOOKMARKS, 10, "hint"));
+
+  // Record the two invalidations, one with unknown version, the other unknown.
+  nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
+  {
+    sync_pb::GetUpdateTriggers gu_trigger;
+    nudge_tracker_.FillProtoMessage(BOOKMARKS, &gu_trigger);
+    EXPECT_TRUE(gu_trigger.server_dropped_hints());
+    EXPECT_FALSE(gu_trigger.client_dropped_hints());
+    ASSERT_EQ(1, gu_trigger.notification_hint_size());
+    EXPECT_EQ("hint", gu_trigger.notification_hint(0));
+  }
+
+  // Clear status then verify.
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
+  {
+    sync_pb::GetUpdateTriggers gu_trigger;
+    nudge_tracker_.FillProtoMessage(BOOKMARKS, &gu_trigger);
+    EXPECT_FALSE(gu_trigger.client_dropped_hints());
+    EXPECT_FALSE(gu_trigger.server_dropped_hints());
+    ASSERT_EQ(0, gu_trigger.notification_hint_size());
+  }
+}
 
 // Checks the behaviour of the invalidations-out-of-sync flag.
 TEST_F(NudgeTrackerTest, EnableDisableInvalidations) {
   // Start with invalidations offline.
   nudge_tracker_.OnInvalidationsDisabled();
   EXPECT_TRUE(InvalidationsOutOfSync());
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // Simply enabling invalidations does not bring us back into sync.
   nudge_tracker_.OnInvalidationsEnabled();
   EXPECT_TRUE(InvalidationsOutOfSync());
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // We must successfully complete a sync cycle while invalidations are enabled
   // to be sure that we're in sync.
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_FALSE(InvalidationsOutOfSync());
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // If the invalidator malfunctions, we go become unsynced again.
   nudge_tracker_.OnInvalidationsDisabled();
   EXPECT_TRUE(InvalidationsOutOfSync());
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // A sync cycle while invalidations are disabled won't reset the flag.
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_TRUE(InvalidationsOutOfSync());
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // Nor will the re-enabling of invalidations be sufficient, even now that
   // we've had a successful sync cycle.
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_TRUE(InvalidationsOutOfSync());
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 }
 
 // Tests that locally modified types are correctly written out to the
@@ -251,7 +356,7 @@ TEST_F(NudgeTrackerTest, WriteLocallyModifiedTypesToProto) {
   EXPECT_EQ(1, ProtoLocallyModifiedCount(PREFERENCES));
 
   // Record a successful sync cycle.  Verify the count is cleared.
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_EQ(0, ProtoLocallyModifiedCount(PREFERENCES));
 }
 
@@ -266,7 +371,7 @@ TEST_F(NudgeTrackerTest, WriteRefreshRequestedTypesToProto) {
   EXPECT_EQ(1, ProtoRefreshRequestedCount(SESSIONS));
 
   // Record a successful sync cycle.  Verify the count is cleared.
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_EQ(0, ProtoRefreshRequestedCount(SESSIONS));
 }
 
@@ -277,13 +382,13 @@ TEST_F(NudgeTrackerTest, IsSyncRequired) {
   // Local changes.
   nudge_tracker_.RecordLocalChange(ModelTypeSet(SESSIONS));
   EXPECT_TRUE(nudge_tracker_.IsSyncRequired());
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_FALSE(nudge_tracker_.IsSyncRequired());
 
   // Refresh requests.
   nudge_tracker_.RecordLocalRefreshRequest(ModelTypeSet(SESSIONS));
   EXPECT_TRUE(nudge_tracker_.IsSyncRequired());
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_FALSE(nudge_tracker_.IsSyncRequired());
 
   // Invalidations.
@@ -291,33 +396,33 @@ TEST_F(NudgeTrackerTest, IsSyncRequired) {
       BuildInvalidationMap(PREFERENCES, 1, "hint");
   nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
   EXPECT_TRUE(nudge_tracker_.IsSyncRequired());
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_FALSE(nudge_tracker_.IsSyncRequired());
 }
 
 // Basic tests for the IsGetUpdatesRequired() flag.
 TEST_F(NudgeTrackerTest, IsGetUpdatesRequired) {
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // Local changes.
   nudge_tracker_.RecordLocalChange(ModelTypeSet(SESSIONS));
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
-  nudge_tracker_.RecordSuccessfulSyncCycle();
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // Refresh requests.
   nudge_tracker_.RecordLocalRefreshRequest(ModelTypeSet(SESSIONS));
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
-  nudge_tracker_.RecordSuccessfulSyncCycle();
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // Invalidations.
   ObjectIdInvalidationMap invalidation_map =
       BuildInvalidationMap(PREFERENCES, 1, "hint");
   nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
-  nudge_tracker_.RecordSuccessfulSyncCycle();
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 }
 
 // Test IsSyncRequired() responds correctly to data type throttling.
@@ -343,7 +448,7 @@ TEST_F(NudgeTrackerTest, IsSyncRequired_Throttling) {
   EXPECT_TRUE(nudge_tracker_.IsSyncRequired());
 
   // A successful sync cycle means we took care of bookmarks.
-  nudge_tracker_.RecordSuccessfulSyncCycle();
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
   EXPECT_FALSE(nudge_tracker_.IsSyncRequired());
 
   // But we still haven't dealt with sessions.  We'll need to remember
@@ -360,32 +465,32 @@ TEST_F(NudgeTrackerTest, IsGetUpdatesRequired_Throttling) {
   const base::TimeDelta throttle_length = base::TimeDelta::FromMinutes(10);
   const base::TimeTicks t1 = t0 + throttle_length;
 
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // A refresh request to sessions enables the flag.
   nudge_tracker_.RecordLocalRefreshRequest(ModelTypeSet(SESSIONS));
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // But the throttling of sessions unsets it.
   nudge_tracker_.SetTypesThrottledUntil(ModelTypeSet(SESSIONS),
                                        throttle_length,
                                        t0);
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // A refresh request for bookmarks means we have reason to sync again.
   nudge_tracker_.RecordLocalRefreshRequest(ModelTypeSet(BOOKMARKS));
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // A successful sync cycle means we took care of bookmarks.
-  nudge_tracker_.RecordSuccessfulSyncCycle();
-  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired());
+  nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 
   // But we still haven't dealt with sessions.  We'll need to remember
   // that sessions are out of sync and re-enable the flag when their
   // throttling interval expires.
   nudge_tracker_.UpdateTypeThrottlingState(t1);
   EXPECT_FALSE(nudge_tracker_.IsTypeThrottled(SESSIONS));
-  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired());
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(base::TimeTicks::Now()));
 }
 
 // Tests throttling-related getter functions when no types are throttled.
@@ -459,6 +564,197 @@ TEST_F(NudgeTrackerTest, OverlappingThrottleIntervals) {
   // Expire the second interval.
   nudge_tracker_.UpdateTypeThrottlingState(t2);
   EXPECT_TRUE(nudge_tracker_.GetThrottledTypes().Empty());
+}
+
+TEST_F(NudgeTrackerTest, Retry) {
+  const base::TimeTicks retry_time = base::TimeTicks::FromInternalValue(12345);
+  const base::TimeTicks pre_retry_time =
+      retry_time - base::TimeDelta::FromSeconds(1);
+  const base::TimeTicks post_retry_time =
+      retry_time + base::TimeDelta::FromSeconds(1);
+  nudge_tracker_.set_next_retry_time(retry_time);
+
+  EXPECT_FALSE(nudge_tracker_.IsRetryRequired(pre_retry_time));
+  EXPECT_FALSE(nudge_tracker_.IsGetUpdatesRequired(pre_retry_time));
+  nudge_tracker_.RecordSuccessfulSyncCycle(pre_retry_time);
+
+  EXPECT_TRUE(nudge_tracker_.IsRetryRequired(post_retry_time));
+  EXPECT_TRUE(nudge_tracker_.IsGetUpdatesRequired(post_retry_time));
+  nudge_tracker_.RecordSuccessfulSyncCycle(post_retry_time);
+  EXPECT_FALSE(nudge_tracker_.IsRetryRequired(
+      post_retry_time + base::TimeDelta::FromSeconds(1)));
+}
+
+class NudgeTrackerAckTrackingTest : public NudgeTrackerTest {
+ public:
+  NudgeTrackerAckTrackingTest() {}
+
+  bool IsInvalidationUnacknowledged(const syncer::Invalidation& invalidation) {
+    // Run pending tasks before checking with the MockAckHandler.
+    // The WeakHandle may have posted some tasks for it.
+    base::RunLoop().RunUntilIdle();
+    return mock_ack_handler_.IsUnacked(invalidation);
+  }
+
+  bool IsInvalidationAcknowledged(const syncer::Invalidation& invalidation) {
+    // Run pending tasks before checking with the MockAckHandler.
+    // The WeakHandle may have posted some tasks for it.
+    base::RunLoop().RunUntilIdle();
+    return mock_ack_handler_.IsAcknowledged(invalidation);
+  }
+
+  bool IsInvalidationDropped(const syncer::Invalidation& invalidation) {
+    // Run pending tasks before checking with the MockAckHandler.
+    // The WeakHandle may have posted some tasks for it.
+    base::RunLoop().RunUntilIdle();
+    return mock_ack_handler_.IsDropped(invalidation);
+  }
+
+  bool AllInvalidationsAccountedFor() {
+    return mock_ack_handler_.AllInvalidationsAccountedFor();
+  }
+
+  Invalidation SendInvalidation(
+      ModelType type,
+      int64 version,
+      const std::string& hint) {
+    // Build and register the invalidation.
+    syncer::Invalidation invalidation = BuildInvalidation(type, version, hint);
+    mock_ack_handler_.RegisterInvalidation(&invalidation);
+
+    // Send it to the NudgeTracker.
+    ObjectIdInvalidationMap invalidation_map;
+    invalidation_map.Insert(invalidation);
+    nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
+
+    // Return it to the test framework for use in assertions.
+    return invalidation;
+  }
+
+  Invalidation SendUnknownVersionInvalidation(ModelType type) {
+    // Build and register the invalidation.
+    syncer::Invalidation invalidation = BuildUnknownVersionInvalidation(type);
+    mock_ack_handler_.RegisterInvalidation(&invalidation);
+
+    // Send it to the NudgeTracker.
+    ObjectIdInvalidationMap invalidation_map;
+    invalidation_map.Insert(invalidation);
+    nudge_tracker_.RecordRemoteInvalidation(invalidation_map);
+
+    // Return it to the test framework for use in assertions.
+    return invalidation;
+  }
+
+  void RecordSuccessfulSyncCycle() {
+    nudge_tracker_.RecordSuccessfulSyncCycle(base::TimeTicks::Now());
+  }
+
+ private:
+  syncer::MockAckHandler mock_ack_handler_;
+  base::MessageLoop loop_;
+};
+
+// Test the acknowledgement of a single invalidation.
+TEST_F(NudgeTrackerAckTrackingTest, SimpleAcknowledgement) {
+  Invalidation inv = SendInvalidation(BOOKMARKS, 10, "hint");
+
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv));
+
+  RecordSuccessfulSyncCycle();
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv));
+
+  EXPECT_TRUE(AllInvalidationsAccountedFor());
+}
+
+// Test the acknowledgement of many invalidations.
+TEST_F(NudgeTrackerAckTrackingTest, ManyAcknowledgements) {
+  Invalidation inv1 = SendInvalidation(BOOKMARKS, 10, "hint");
+  Invalidation inv2 = SendInvalidation(BOOKMARKS, 14, "hint2");
+  Invalidation inv3 = SendInvalidation(PREFERENCES, 8, "hint3");
+
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv1));
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv2));
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv3));
+
+  RecordSuccessfulSyncCycle();
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv1));
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv2));
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv3));
+
+  EXPECT_TRUE(AllInvalidationsAccountedFor());
+}
+
+// Test dropping when the buffer overflows and subsequent drop recovery.
+TEST_F(NudgeTrackerAckTrackingTest, OverflowAndRecover) {
+  std::vector<Invalidation> invalidations;
+
+  Invalidation inv10 = SendInvalidation(BOOKMARKS, 10, "hint");
+  for (size_t i = 1; i < GetHintBufferSize(); ++i) {
+    invalidations.push_back(SendInvalidation(BOOKMARKS, i+10, "hint"));
+  }
+
+  for (std::vector<Invalidation>::iterator it = invalidations.begin();
+       it != invalidations.end(); ++it) {
+    EXPECT_TRUE(IsInvalidationUnacknowledged(*it));
+  }
+
+  // This invalidation, though arriving the most recently, has the oldest
+  // version number so it should be dropped first.
+  Invalidation inv5 = SendInvalidation(BOOKMARKS, 5, "old_hint");
+  EXPECT_TRUE(IsInvalidationDropped(inv5));
+
+  // This invalidation has a larger version number, so it will force a
+  // previously delivered invalidation to be dropped.
+  Invalidation inv100 = SendInvalidation(BOOKMARKS, 100, "new_hint");
+  EXPECT_TRUE(IsInvalidationDropped(inv10));
+
+  // This should recover from the drop and bring us back into sync.
+  RecordSuccessfulSyncCycle();
+
+  for (std::vector<Invalidation>::iterator it = invalidations.begin();
+       it != invalidations.end(); ++it) {
+    EXPECT_TRUE(IsInvalidationAcknowledged(*it));
+  }
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv100));
+
+  EXPECT_TRUE(AllInvalidationsAccountedFor());
+}
+
+// Test receipt of an unknown version invalidation from the server.
+TEST_F(NudgeTrackerAckTrackingTest, UnknownVersionFromServer_Simple) {
+  Invalidation inv = SendUnknownVersionInvalidation(BOOKMARKS);
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv));
+  RecordSuccessfulSyncCycle();
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv));
+  EXPECT_TRUE(AllInvalidationsAccountedFor());
+}
+
+// Test receipt of multiple unknown version invalidations from the server.
+TEST_F(NudgeTrackerAckTrackingTest, UnknownVersionFromServer_Complex) {
+  Invalidation inv1 = SendUnknownVersionInvalidation(BOOKMARKS);
+  Invalidation inv2 = SendInvalidation(BOOKMARKS, 10, "hint");
+  Invalidation inv3 = SendUnknownVersionInvalidation(BOOKMARKS);
+  Invalidation inv4 = SendUnknownVersionInvalidation(BOOKMARKS);
+  Invalidation inv5 = SendInvalidation(BOOKMARKS, 20, "hint2");
+
+  // These invalidations have been overridden, so they got acked early.
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv1));
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv3));
+
+  // These invalidations are still waiting to be used.
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv2));
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv4));
+  EXPECT_TRUE(IsInvalidationUnacknowledged(inv5));
+
+  // Finish the sync cycle and expect all remaining invalidations to be acked.
+  RecordSuccessfulSyncCycle();
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv1));
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv2));
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv3));
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv4));
+  EXPECT_TRUE(IsInvalidationAcknowledged(inv5));
+
+  EXPECT_TRUE(AllInvalidationsAccountedFor());
 }
 
 }  // namespace sessions

@@ -5,14 +5,17 @@
 #ifndef CHROME_BROWSER_CHROMEOS_FILE_MANAGER_VOLUME_MANAGER_H_
 #define CHROME_BROWSER_CHROMEOS_FILE_MANAGER_VOLUME_MANAGER_H_
 
+#include <string>
+#include <vector>
+
 #include "base/basictypes.h"
 #include "base/files/file_path.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/observer_list.h"
 #include "base/prefs/pref_change_registrar.h"
 #include "chrome/browser/chromeos/drive/drive_integration_service.h"
-#include "chromeos/disks/disk_mount_manager.h"
 #include "chromeos/dbus/cros_disks_client.h"
+#include "chromeos/disks/disk_mount_manager.h"
 #include "components/browser_context_keyed_service/browser_context_keyed_service.h"
 
 class Profile;
@@ -41,11 +44,15 @@ enum VolumeType {
   VOLUME_TYPE_DOWNLOADS_DIRECTORY,
   VOLUME_TYPE_REMOVABLE_DISK_PARTITION,
   VOLUME_TYPE_MOUNTED_ARCHIVE_FILE,
+  VOLUME_TYPE_CLOUD_DEVICE
 };
 
 struct VolumeInfo {
   VolumeInfo();
   ~VolumeInfo();
+
+  // The ID of the volume.
+  std::string volume_id;
 
   // The type of mounted volume.
   VolumeType type;
@@ -116,6 +123,11 @@ class VolumeManager : public BrowserContextKeyedService,
 
   // Returns the information about all volumes currently mounted.
   std::vector<VolumeInfo> GetVolumeInfoList() const;
+
+  // Finds VolumeInfo for the given volume ID. If found, returns true and the
+  // result is written into |result|. Returns false otherwise.
+  bool FindVolumeInfoById(const std::string& volume_id,
+                          VolumeInfo* result) const;
 
   // drive::DriveIntegrationServiceObserver overrides.
   virtual void OnFileSystemMounted() OVERRIDE;

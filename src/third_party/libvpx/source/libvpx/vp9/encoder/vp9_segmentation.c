@@ -58,6 +58,15 @@ void vp9_set_segment_data(VP9_PTR ptr,
   // vpx_memcpy(cpi->mb.e_mbd.segment_feature_mask, 0,
   //            sizeof(cpi->mb.e_mbd.segment_feature_mask));
 }
+void vp9_disable_segfeature(struct segmentation *seg, int segment_id,
+                            SEG_LVL_FEATURES feature_id) {
+  seg->feature_mask[segment_id] &= ~(1 << feature_id);
+}
+
+void vp9_clear_segdata(struct segmentation *seg, int segment_id,
+                       SEG_LVL_FEATURES feature_id) {
+  seg->feature_data[segment_id][feature_id] = 0;
+}
 
 // Based on set of segment counts calculate a probability tree
 static void calc_segtree_probs(int *segcounts, vp9_prob *segment_tree_probs) {
@@ -149,7 +158,7 @@ static void count_segs(VP9_COMP *cpi, const TileInfo *const tile,
 
     // Store the prediction status for this mb and update counts
     // as appropriate
-    vp9_set_pred_flag_seg_id(xd, pred_flag);
+    xd->mi_8x8[0]->mbmi.seg_id_predicted = pred_flag;
     temporal_predictor_count[pred_context][pred_flag]++;
 
     if (!pred_flag)

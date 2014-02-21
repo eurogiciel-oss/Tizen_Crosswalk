@@ -48,15 +48,17 @@ public:
     static bool supportsKeySystem(const String&);
     static PassOwnPtr<ContentDecryptionModule> create(const String& keySystem);
 
-    ContentDecryptionModule(PassOwnPtr<WebKit::WebContentDecryptionModule>);
+    ContentDecryptionModule(PassOwnPtr<blink::WebContentDecryptionModule>);
     ~ContentDecryptionModule();
 
     // ContentDecryptionModule
     bool supportsMIMEType(const String&);
     PassOwnPtr<ContentDecryptionModuleSession> createSession(ContentDecryptionModuleSessionClient*);
 
+    blink::WebContentDecryptionModule* contentDecryptionModule() { return m_cdm.get(); }
+
 private:
-    OwnPtr<WebKit::WebContentDecryptionModule> m_cdm;
+    OwnPtr<blink::WebContentDecryptionModule> m_cdm;
 };
 
 } // namespace WebCore

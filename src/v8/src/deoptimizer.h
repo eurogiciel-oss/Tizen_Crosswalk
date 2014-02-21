@@ -333,15 +333,9 @@ class Deoptimizer : public Malloced {
                          int object_index,
                          int field_index);
 
-  enum DeoptimizerTranslatedValueType {
-    TRANSLATED_VALUE_IS_NATIVE,
-    TRANSLATED_VALUE_IS_TAGGED
-  };
-
   void DoTranslateCommand(TranslationIterator* iterator,
-      int frame_index,
-      unsigned output_offset,
-      DeoptimizerTranslatedValueType value_type = TRANSLATED_VALUE_IS_TAGGED);
+                          int frame_index,
+                          unsigned output_offset);
 
   unsigned ComputeInputFrameSize() const;
   unsigned ComputeFixedSize(JSFunction* function) const;
@@ -455,7 +449,7 @@ class Deoptimizer : public Malloced {
   DisallowHeapAllocation* disallow_heap_allocation_;
 #endif  // DEBUG
 
-  bool trace_;
+  CodeTracer::Scope* trace_scope_;
 
   static const int table_entry_size_;
 
@@ -549,6 +543,11 @@ class FrameDescription {
   intptr_t GetContext() const { return context_; }
   void SetContext(intptr_t context) { context_ = context; }
 
+  intptr_t GetConstantPool() const { return constant_pool_; }
+  void SetConstantPool(intptr_t constant_pool) {
+    constant_pool_ = constant_pool;
+  }
+
   Smi* GetState() const { return state_; }
   void SetState(Smi* state) { state_ = state; }
 
@@ -611,6 +610,7 @@ class FrameDescription {
   intptr_t pc_;
   intptr_t fp_;
   intptr_t context_;
+  intptr_t constant_pool_;
   StackFrame::Type type_;
   Smi* state_;
 

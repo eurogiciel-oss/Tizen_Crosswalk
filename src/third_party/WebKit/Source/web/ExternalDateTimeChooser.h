@@ -33,19 +33,20 @@ namespace WebCore {
 class DateTimeChooserClient;
 }
 
-namespace WebKit {
+namespace blink {
 
 class ChromeClientImpl;
 class WebString;
 class WebViewClient;
 
-class ExternalDateTimeChooser : public WebCore::DateTimeChooser {
+class ExternalDateTimeChooser FINAL : public WebCore::DateTimeChooser {
 public:
     static PassRefPtr<ExternalDateTimeChooser> create(ChromeClientImpl*, WebViewClient*, WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&);
     virtual ~ExternalDateTimeChooser();
 
     // The following functions are for DateTimeChooserCompletion.
     void didChooseValue(const WebString&);
+    void didChooseValue(double);
     void didCancelChooser();
 
 private:

@@ -37,7 +37,7 @@ namespace WebCore {
 
 class ExceptionState;
 
-class NumberInputType : public TextFieldInputType {
+class NumberInputType FINAL : public TextFieldInputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -70,6 +70,7 @@ private:
     virtual bool isNumberField() const OVERRIDE;
     virtual void minOrMaxAttributeChanged() OVERRIDE;
     virtual void stepAttributeChanged() OVERRIDE;
+    virtual bool supportsSelectionAPI() const OVERRIDE;
 };
 
 } // namespace WebCore

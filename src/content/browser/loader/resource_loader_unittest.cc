@@ -11,6 +11,7 @@
 #include "content/public/test/mock_resource_context.h"
 #include "content/public/test/test_browser_thread_bundle.h"
 #include "content/test/test_content_browser_client.h"
+#include "ipc/ipc_message.h"
 #include "net/base/request_priority.h"
 #include "net/cert/x509_certificate.h"
 #include "net/ssl/client_cert_store.h"
@@ -93,6 +94,12 @@ class ResourceHandlerStub : public ResourceHandler {
     return true;
   }
 
+  virtual bool OnBeforeNetworkStart(int request_id,
+                                    const GURL& url,
+                                    bool* defer) OVERRIDE {
+    return true;
+  }
+
   virtual bool OnWillRead(int request_id,
                           scoped_refptr<net::IOBuffer>* buf,
                           int* buf_size,
@@ -106,10 +113,10 @@ class ResourceHandlerStub : public ResourceHandler {
     return true;
   }
 
-  virtual bool OnResponseCompleted(int request_id,
+  virtual void OnResponseCompleted(int request_id,
                                    const net::URLRequestStatus& status,
-                                   const std::string& security_info) OVERRIDE {
-    return true;
+                                   const std::string& security_info,
+                                   bool* defer) OVERRIDE {
   }
 
   virtual void OnDataDownloaded(int request_id,
@@ -178,16 +185,6 @@ class ResourceLoaderTest : public testing::Test,
       net::AuthChallengeInfo* auth_info) OVERRIDE {
     return NULL;
   }
-  virtual bool AcceptAuthRequest(
-      ResourceLoader* loader,
-      net::AuthChallengeInfo* auth_info) OVERRIDE {
-    return false;
-  };
-  virtual bool AcceptSSLClientCertificateRequest(
-      ResourceLoader* loader,
-      net::SSLCertRequestInfo* cert_info) OVERRIDE {
-    return true;
-  }
   virtual bool HandleExternalProtocol(ResourceLoader* loader,
                                       const GURL& url) OVERRIDE {
     return false;
@@ -222,6 +219,7 @@ TEST_F(ResourceLoaderTest, ClientCertStoreLookup) {
                                           &resource_context_,
                                           kRenderProcessId,
                                           kRenderViewId,
+                                          MSG_ROUTING_NONE,
                                           false);
 
   // Set up the test client cert store.
@@ -287,6 +285,7 @@ TEST_F(ResourceLoaderTest, ClientCertStoreNull) {
                                           &resource_context_,
                                           kRenderProcessId,
                                           kRenderViewId,
+                                          MSG_ROUTING_NONE,
                                           false);
 
   // Ownership of the |request| is about to be turned over to ResourceLoader. We

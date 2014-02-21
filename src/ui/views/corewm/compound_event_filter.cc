@@ -11,10 +11,15 @@
 #include "ui/aura/client/drag_drop_client.h"
 #include "ui/aura/env.h"
 #include "ui/aura/root_window.h"
+#include "ui/aura/window.h"
 #include "ui/aura/window_delegate.h"
 #include "ui/aura/window_tracker.h"
 #include "ui/base/hit_test.h"
 #include "ui/events/event.h"
+
+#if defined(OS_CHROMEOS) && defined(USE_X11)
+#include "ui/events/x/touch_factory_x11.h"
+#endif
 
 namespace views {
 namespace corewm {
@@ -70,13 +75,23 @@ bool ShouldHideCursorOnKeyEvent(const ui::KeyEvent& event) {
 }
 
 // Returns true if the cursor should be hidden on touch events.
-bool ShouldHideCursorOnTouch() {
+bool ShouldHideCursorOnTouch(const ui::TouchEvent& event) {
 #if defined(OS_CHROMEOS)
+#if defined(USE_X11)
+  int device_id = event.source_device_id();
+  if (device_id >= 0 &&
+      !ui::TouchFactory::GetInstance()->IsMultiTouchDevice(device_id)) {
+    // If the touch event is coming from a mouse-device (i.e. not a real
+    // touch-device), then do not hide the cursor.
+    return false;
+  }
+#endif  // defined(USE_X11)
   return true;
 #else
-  // Not necessary on windows as windows does it for us. If we do need this
-  // funcionality on linux (non-chromeos) we need to make sure
-  // CompoundEventFilter shows on the right root (it currently doesn't always).
+  // Windows hides the cursor on touch, but we cannot track the cursor
+  // visibility or enabledness state reliably until we are able to
+  // properly flag all incoming mouse messages in HWNDMessageHandler.
+  // TODO(ananta|tdanderson): crbug.com/332430
   return false;
 #endif
 }
@@ -86,7 +101,7 @@ bool ShouldHideCursorOnTouch() {
 ////////////////////////////////////////////////////////////////////////////////
 // CompoundEventFilter, public:
 
-CompoundEventFilter::CompoundEventFilter() : cursor_hidden_by_filter_(false) {
+CompoundEventFilter::CompoundEventFilter() {
 }
 
 CompoundEventFilter::~CompoundEventFilter() {
@@ -145,12 +160,17 @@ void CompoundEventFilter::UpdateCursor(aura::Window* target,
       aura::client::GetCursorClient(root_window);
   if (cursor_client) {
     gfx::NativeCursor cursor = target->GetCursor(event->location());
-    if (event->flags() & ui::EF_IS_NON_CLIENT) {
-      int window_component =
-          target->delegate()->GetNonClientComponent(event->location());
-      cursor = CursorForWindowComponent(window_component);
+    if ((event->flags() & ui::EF_IS_NON_CLIENT)) {
+      if (target->delegate()) {
+        int window_component =
+            target->delegate()->GetNonClientComponent(event->location());
+        cursor = CursorForWindowComponent(window_component);
+      } else {
+        // Allow the OS to handle non client cursors if we don't have a
+        // a delegate to handle the non client hittest.
+        return;
+      }
     }
-
     cursor_client->SetCursor(cursor);
   }
 }
@@ -193,19 +213,10 @@ void CompoundEventFilter::SetCursorVisibilityOnEvent(aura::Window* target,
   if (!client)
     return;
 
-  if (show && cursor_hidden_by_filter_) {
-    cursor_hidden_by_filter_ = false;
+  if (show)
     client->ShowCursor();
-  } else if (!show && !cursor_hidden_by_filter_) {
-    cursor_hidden_by_filter_ = true;
+  else
     client->HideCursor();
-  } else if (show && !client->IsCursorVisible() && !client->IsCursorLocked()) {
-    // TODO(tdanderson): Remove this temporary logging once the issues related
-    // to a disappearing mouse cursor on the Pixel login screen / Pixel
-    // wakeup have been resolved. See crbug.com/275826.
-    LOG(ERROR) << "Event of type " << event->type() << " did not show cursor."
-               << " Mouse enabled state is " << client->IsMouseEventsEnabled();
-  }
 }
 
 void CompoundEventFilter::SetMouseEventsEnableStateOnEvent(aura::Window* target,
@@ -266,8 +277,8 @@ void CompoundEventFilter::OnScrollEvent(ui::ScrollEvent* event) {
 
 void CompoundEventFilter::OnTouchEvent(ui::TouchEvent* event) {
   FilterTouchEvent(event);
-  if (ShouldHideCursorOnTouch() && !event->handled() &&
-      event->type() == ui::ET_TOUCH_PRESSED &&
+  if (!event->handled() && event->type() == ui::ET_TOUCH_PRESSED &&
+      ShouldHideCursorOnTouch(*event) &&
       !aura::Env::GetInstance()->IsMouseButtonDown()) {
     SetMouseEventsEnableStateOnEvent(
         static_cast<aura::Window*>(event->target()), event, false);

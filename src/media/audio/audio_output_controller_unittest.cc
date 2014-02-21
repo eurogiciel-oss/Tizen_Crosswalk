@@ -93,7 +93,7 @@ ACTION(PopulateBuffer) {
 class AudioOutputControllerTest : public testing::Test {
  public:
   AudioOutputControllerTest()
-      : audio_manager_(AudioManager::Create()),
+      : audio_manager_(AudioManager::CreateForTesting()),
         create_event_(false, false),
         play_event_(false, false),
         read_event_(false, false),
@@ -166,7 +166,7 @@ class AudioOutputControllerTest : public testing::Test {
 
     // Simulate a device change event to AudioOutputController from the
     // AudioManager.
-    audio_manager_->GetMessageLoop()->PostTask(
+    audio_manager_->GetTaskRunner()->PostTask(
         FROM_HERE,
         base::Bind(&AudioOutputController::OnDeviceChange, controller_));
   }

@@ -27,9 +27,10 @@
 #include "core/css/CSSKeyframeRule.h"
 
 #include "core/css/CSSKeyframesRule.h"
-#include "core/css/CSSParser.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/PropertySetCSSStyleDeclaration.h"
 #include "core/css/StylePropertySet.h"
+#include "core/frame/UseCounter.h"
 #include "wtf/text/StringBuilder.h"
 
 namespace WebCore {
@@ -76,7 +77,7 @@ const Vector<double>& StyleKeyframe::keys() const
         // Keys can only be cleared by setting the key text from JavaScript
         // and this can never be null.
         ASSERT(!m_keyText.isNull());
-        m_keys = CSSParser(HTMLStandardMode).parseKeyframeKeyList(m_keyText);
+        m_keys = BisonCSSParser(HTMLStandardMode).parseKeyframeKeyList(m_keyText);
     }
     // If an invalid key string was set, m_keys may be empty.
     ASSERT(m_keys);
@@ -95,7 +96,7 @@ MutableStylePropertySet* StyleKeyframe::mutableProperties()
 {
     if (!m_properties->isMutable())
         m_properties = m_properties->mutableCopy();
-    return static_cast<MutableStylePropertySet*>(m_properties.get());
+    return toMutableStylePropertySet(m_properties);
 }
 
 void StyleKeyframe::setProperties(PassRefPtr<StylePropertySet> properties)

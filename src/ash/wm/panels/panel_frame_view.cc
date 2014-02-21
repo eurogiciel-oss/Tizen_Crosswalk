@@ -11,7 +11,6 @@
 #include "ui/base/hit_test.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/canvas.h"
-#include "ui/gfx/font.h"
 #include "ui/views/controls/image_view.h"
 #include "ui/views/widget/native_widget_aura.h"
 #include "ui/views/widget/widget.h"
@@ -26,9 +25,10 @@ PanelFrameView::PanelFrameView(views::Widget* frame, FrameType frame_type)
     : frame_(frame),
       caption_button_container_(NULL),
       window_icon_(NULL),
-      title_font_(gfx::Font(views::NativeWidgetAura::GetWindowTitleFont())),
+      title_font_list_(views::NativeWidgetAura::GetWindowTitleFontList()),
       frame_border_hit_test_controller_(
           new FrameBorderHitTestController(frame_)) {
+  DCHECK(!frame_->widget_delegate()->CanMaximize());
   if (frame_type != FRAME_NONE)
     InitHeaderPainter();
 }
@@ -100,7 +100,7 @@ void PanelFrameView::UpdateWindowIcon() {
 void PanelFrameView::UpdateWindowTitle() {
   if (!header_painter_)
     return;
-  header_painter_->SchedulePaintForTitle(title_font_);
+  header_painter_->SchedulePaintForTitle(title_font_list_);
 }
 
 int PanelFrameView::NonClientHitTest(const gfx::Point& point) {
@@ -115,19 +115,16 @@ void PanelFrameView::OnPaint(gfx::Canvas* canvas) {
     return;
   bool paint_as_active = ShouldPaintAsActive();
   int theme_frame_id = 0;
-  if (header_painter_->ShouldUseMinimalHeaderStyle(HeaderPainter::THEMED_NO))
-    theme_frame_id = IDR_AURA_WINDOW_HEADER_BASE_MINIMAL;
-  else if (paint_as_active)
+  if (paint_as_active)
     theme_frame_id = IDR_AURA_WINDOW_HEADER_BASE_ACTIVE;
   else
     theme_frame_id = IDR_AURA_WINDOW_HEADER_BASE_INACTIVE;
 
   header_painter_->PaintHeader(
       canvas,
-      paint_as_active ? HeaderPainter::ACTIVE : HeaderPainter::INACTIVE,
       theme_frame_id,
       0);
-  header_painter_->PaintTitleBar(canvas, title_font_);
+  header_painter_->PaintTitleBar(canvas, title_font_list_);
   header_painter_->PaintHeaderContentSeparator(canvas);
 }
 

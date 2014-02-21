@@ -18,20 +18,19 @@
 #include "base/version.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/extensions/external_provider_impl.h"
-#include "chrome/browser/extensions/external_provider_interface.h"
 #include "chrome/browser/extensions/updater/extension_downloader.h"
-#include "chrome/browser/policy/cloud/mock_cloud_policy_store.h"
-#include "chrome/browser/policy/policy_map.h"
-#include "chrome/browser/policy/policy_types.h"
 #include "chrome/common/chrome_paths.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/test/base/testing_browser_process.h"
+#include "components/policy/core/common/cloud/mock_cloud_policy_store.h"
+#include "components/policy/core/common/policy_map.h"
+#include "components/policy/core/common/policy_types.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_source.h"
-#include "content/public/browser/render_process_host.h"
 #include "content/public/test/test_browser_thread_bundle.h"
 #include "content/public/test/test_utils.h"
+#include "extensions/browser/external_provider_interface.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest.h"
 #include "net/url_request/test_url_fetcher_factory.h"
 #include "net/url_request/url_fetcher_delegate.h"
@@ -113,6 +112,8 @@ class DeviceLocalAccountExternalPolicyLoaderTest : public testing::Test {
   scoped_refptr<DeviceLocalAccountExternalPolicyLoader> loader_;
   MockExternalPolicyProviderVisitor visitor_;
   scoped_ptr<extensions::ExternalProviderImpl> provider_;
+
+  content::InProcessUtilityThreadHelper in_process_utility_thread_helper_;
 };
 
 DeviceLocalAccountExternalPolicyLoaderTest::
@@ -127,7 +128,7 @@ DeviceLocalAccountExternalPolicyLoaderTest::
 void DeviceLocalAccountExternalPolicyLoaderTest::SetUp() {
   ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
   cache_dir_ = temp_dir_.path().Append(kCacheDir);
-  ASSERT_TRUE(file_util::CreateDirectoryAndGetError(cache_dir_, NULL));
+  ASSERT_TRUE(base::CreateDirectoryAndGetError(cache_dir_, NULL));
   request_context_getter_ =
       new net::TestURLRequestContextGetter(base::MessageLoopProxy::current());
   TestingBrowserProcess::GetGlobal()->SetSystemRequestContext(
@@ -143,13 +144,10 @@ void DeviceLocalAccountExternalPolicyLoaderTest::SetUp() {
       extensions::Manifest::EXTERNAL_POLICY_DOWNLOAD,
       extensions::Extension::NO_FLAGS));
 
-  content::RenderProcessHost::SetRunRendererInProcess(true);
-
   VerifyAndResetVisitorCallExpectations();
 }
 
 void DeviceLocalAccountExternalPolicyLoaderTest::TearDown() {
-  content::RenderProcessHost::SetRunRendererInProcess(false);
   TestingBrowserProcess::GetGlobal()->SetSystemRequestContext(NULL);
 }
 
@@ -202,6 +200,7 @@ TEST_F(DeviceLocalAccountExternalPolicyLoaderTest, ForceInstallListEmpty) {
   EXPECT_CALL(visitor_, OnExternalProviderReady(provider_.get()))
       .Times(1);
   loader_->StartCache(base::MessageLoopProxy::current());
+  base::RunLoop().RunUntilIdle();
   VerifyAndResetVisitorCallExpectations();
 
   // Stop the cache. Verify that the loader announces an empty extension list.

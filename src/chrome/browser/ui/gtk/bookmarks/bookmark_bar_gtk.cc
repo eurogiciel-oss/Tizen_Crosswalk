@@ -64,8 +64,8 @@
 #include "ui/gfx/image/cairo_cached_surface.h"
 #include "ui/gfx/image/image.h"
 
+using base::UserMetricsAction;
 using content::PageNavigator;
-using content::UserMetricsAction;
 using content::WebContents;
 
 namespace {
@@ -305,7 +305,7 @@ void BookmarkBarGtk::Init() {
   model_ = BookmarkModelFactory::GetForProfile(profile);
   model_->AddObserver(this);
   if (model_->loaded())
-    Loaded(model_, false);
+    BookmarkModelLoaded(model_, false);
   // else case: we'll receive notification back from the BookmarkModel when done
   // loading, then we'll populate the bar.
 }
@@ -879,7 +879,8 @@ void BookmarkBarGtk::ClearToolbarDropHighlighting() {
                                       NULL, 0);
 }
 
-void BookmarkBarGtk::Loaded(BookmarkModel* model, bool ids_reassigned) {
+void BookmarkBarGtk::BookmarkModelLoaded(BookmarkModel* model,
+                                         bool ids_reassigned) {
   // If |instructions_| has been nulled, we are in the middle of browser
   // shutdown. Do nothing.
   if (!instructions_)
@@ -1379,7 +1380,7 @@ void BookmarkBarGtk::OnDragReceived(GtkWidget* widget,
       // so that it doesn't look like we can drag onto the bookmark bar.
       if (!url.is_valid())
         break;
-      string16 title = GetNameForURL(url);
+      base::string16 title = GetNameForURL(url);
       model_->AddURL(dest_node, index, title, url);
       dnd_success = TRUE;
       break;

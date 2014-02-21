@@ -22,7 +22,7 @@ namespace aura {
 class Window;
 }
 namespace gfx {
-class Font;
+class FontList;
 }
 
 namespace views {
@@ -44,7 +44,7 @@ class VIEWS_EXPORT NativeWidgetAura
 
   // TODO(beng): Find a better place for this, and the similar method on
   //             NativeWidgetWin.
-  static gfx::Font GetWindowTitleFont();
+  static gfx::FontList GetWindowTitleFontList();
 
   // Called internally by NativeWidgetAura and DesktopNativeWidgetAura to
   // associate |native_widget| with |window|.
@@ -79,7 +79,7 @@ class VIEWS_EXPORT NativeWidgetAura
   virtual void GetWindowPlacement(
       gfx::Rect* bounds,
       ui::WindowShowState* maximized) const OVERRIDE;
-  virtual void SetWindowTitle(const string16& title) OVERRIDE;
+  virtual bool SetWindowTitle(const base::string16& title) OVERRIDE;
   virtual void SetWindowIcons(const gfx::ImageSkia& window_icon,
                               const gfx::ImageSkia& app_icon) OVERRIDE;
   virtual void InitModalType(ui::ModalType modal_type) OVERRIDE;
@@ -194,7 +194,7 @@ class VIEWS_EXPORT NativeWidgetAura
  private:
   class ActiveWindowObserver;
 
-  void SetInitialFocus();
+  void SetInitialFocus(ui::WindowShowState show_state);
 
   internal::NativeWidgetDelegate* delegate_;
 

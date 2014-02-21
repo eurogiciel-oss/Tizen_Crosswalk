@@ -31,7 +31,6 @@ class SystemURLRequestContextGetter;
 namespace chrome_browser_net {
 class DnsProbeService;
 class HttpPipeliningCompatibilityClient;
-class LoadTimeStats;
 }
 
 namespace extensions {
@@ -41,6 +40,7 @@ class EventRouterForwarder;
 namespace net {
 class CertVerifier;
 class CookieStore;
+class CTVerifier;
 class FtpTransactionFactory;
 class HostMappingRules;
 class HostResolver;
@@ -118,6 +118,7 @@ class IOThread : public content::BrowserThreadDelegate {
     // used to enforce pinning for system requests and will only use built-in
     // pins.
     scoped_ptr<net::TransportSecurityState> transport_security_state;
+    scoped_ptr<net::CTVerifier> cert_transparency_verifier;
     scoped_refptr<net::SSLConfigService> ssl_config_service;
     scoped_ptr<net::HttpAuthHandlerFactory> http_auth_handler_factory;
     scoped_ptr<net::HttpServerProperties> http_server_properties;
@@ -148,7 +149,6 @@ class IOThread : public content::BrowserThreadDelegate {
         extension_event_router_forwarder;
     scoped_ptr<chrome_browser_net::HttpPipeliningCompatibilityClient>
         http_pipelining_compatibility_client;
-    scoped_ptr<chrome_browser_net::LoadTimeStats> load_time_stats;
     scoped_ptr<net::HostMappingRules> host_mapping_rules;
     scoped_ptr<net::HttpUserAgentSettings> http_user_agent_settings;
     bool ignore_certificate_errors;
@@ -165,6 +165,9 @@ class IOThread : public content::BrowserThreadDelegate {
     Optional<string> trusted_spdy_proxy;
     Optional<bool> enable_quic;
     Optional<bool> enable_quic_https;
+    Optional<bool> enable_quic_port_selection;
+    Optional<size_t> quic_max_packet_length;
+    Optional<net::QuicVersionVector> quic_supported_versions;
     Optional<net::HostPortPair> origin_to_force_quic_on;
     bool enable_user_alternate_protocol_ports;
     // NetErrorTabHelper uses |dns_probe_service| to send DNS probes when a
@@ -258,13 +261,34 @@ class IOThread : public content::BrowserThreadDelegate {
 
   void UpdateDnsClientEnabled();
 
+  // Configures QUIC options based on the flags in |command_line| as
+  // well as the QUIC field trial group.
+  void ConfigureQuic(const CommandLine& command_line);
+
   // Returns true if QUIC should be enabled, either as a result
   // of a field trial or a command line flag.
-  bool ShouldEnableQuic(const CommandLine& command_line);
+  bool ShouldEnableQuic(const CommandLine& command_line,
+                        base::StringPiece quic_trial_group);
 
   // Returns true if HTTPS over QUIC should be enabled, either as a result
   // of a field trial or a command line flag.
-  bool ShouldEnableQuicHttps(const CommandLine& command_line);
+  bool ShouldEnableQuicHttps(const CommandLine& command_line,
+                             base::StringPiece quic_trial_group);
+
+  // Returns true if the selection of the ephemeral port in bind() should be
+  // performed by Chromium, and false if the OS should select the port.  The OS
+  // option is used to prevent Windows from posting a security security warning
+  // dialog.
+  bool ShouldEnableQuicPortSelection(const CommandLine& command_line);
+
+  // Returns the maximum length for QUIC packets, based on any flags in
+  // |command_line| or the field trial.  Returns 0 if there is an error
+  // parsing any of the options, or if the default value should be used.
+  size_t GetQuicMaxPacketLength(const CommandLine& command_line,
+                                base::StringPiece quic_trial_group);
+
+  // Returns the quic versions specified by any flags in |command_line|.
+  net::QuicVersion GetQuicVersion(const CommandLine& command_line);
 
   // The NetLog is owned by the browser process, to allow logging from other
   // threads during shutdown, but is used most frequently on the IOThread.
@@ -291,6 +315,8 @@ class IOThread : public content::BrowserThreadDelegate {
   BooleanPrefMember system_enable_referrers_;
 
   BooleanPrefMember dns_client_enabled_;
+
+  BooleanPrefMember quick_check_enabled_;
 
   // Store HTTP Auth-related policies in this thread.
   std::string auth_schemes_;

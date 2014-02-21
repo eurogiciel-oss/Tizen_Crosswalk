@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import hashlib
 import json
@@ -12,11 +12,11 @@ import sys
 import threading
 import unittest
 
-import auto_stub
-
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT_DIR)
+sys.path.insert(0, os.path.join(ROOT_DIR, 'third_party'))
 
+from depot_tools import auto_stub
 import swarming
 from utils import net
 
@@ -25,7 +25,6 @@ ALGO = hashlib.sha1
 FILE_NAME = u'test.isolated'
 FILE_HASH = u'1' * 40
 TEST_NAME = u'unit_tests'
-STDOUT_FOR_TRIGGER_LEN = 180
 
 
 TEST_CASE_SUCCESS = (
@@ -138,6 +137,15 @@ def get_swarm_results(keys):
   return list(swarming.yield_results('http://host:9001', keys, 10., None))
 
 
+def main(args):
+  """Bypassies swarming.main()'s exception handling.
+
+  It gets in the way when debugging test failures.
+  """
+  dispatcher = swarming.subcommand.CommandDispatcher('swarming')
+  return dispatcher.execute(swarming.OptionParserSwarming(), args)
+
+
 class TestCase(auto_stub.TestCase):
   """Base class that defines the url_open mock."""
   def setUp(self):
@@ -145,13 +153,25 @@ class TestCase(auto_stub.TestCase):
     self._lock = threading.Lock()
     self.requests = []
     self.mock(swarming.net, 'url_open', self._url_open)
+    self.mock(swarming.time, 'sleep', lambda x: None)
+    self.mock(sys, 'stdout', StringIO.StringIO())
+    self.mock(sys, 'stderr', StringIO.StringIO())
 
   def tearDown(self):
     try:
       if not self.has_failed():
+        self._check_output('', '')
         self.assertEqual([], self.requests)
     finally:
       super(TestCase, self).tearDown()
+
+  def _check_output(self, out, err):
+    self.assertEqual(out, sys.stdout.getvalue())
+    self.assertEqual(err, sys.stderr.getvalue())
+
+    # Flush their content by mocking them again.
+    self.mock(sys, 'stdout', StringIO.StringIO())
+    self.mock(sys, 'stderr', StringIO.StringIO())
 
   def _url_open(self, url, **kwargs):
     logging.info('url_open(%s)', url)
@@ -165,7 +185,13 @@ class TestCase(auto_stub.TestCase):
           _, _, returned = self.requests.pop(index)
           break
       else:
-        self.fail('Failed to find url %s' % url)
+        self.fail(
+            'Failed to find url %s\n%s\nRemaining:\n%s' % (
+              url,
+              json.dumps(kwargs, indent=2, sort_keys=True),
+              json.dumps(
+                [(i[0], i[1]) for i in self.requests],
+                indent=2, sort_keys=True)))
     return returned
 
 
@@ -180,11 +206,11 @@ class TestGetTestKeys(TestCase):
       ) for _ in range(net.URL_OPEN_MAX_ATTEMPTS)
     ]
     try:
-      swarming.get_test_keys('http://host:9001', 'my_test')
+      swarming.get_task_keys('http://host:9001', 'my_test')
       self.fail()
     except swarming.Failure as e:
       msg = (
-          'Error: Unable to find any tests with the name, my_test, on swarm '
+          'Error: Unable to find any task with the name, my_test, on swarming '
           'server')
       self.assertEqual(msg, e.args[0])
 
@@ -203,7 +229,7 @@ class TestGetTestKeys(TestCase):
         StringIO.StringIO(json.dumps(keys)),
       ),
     ]
-    actual = swarming.get_test_keys('http://host:9001', 'my_test')
+    actual = swarming.get_task_keys('http://host:9001', 'my_test')
     self.assertEqual(keys, actual)
 
   def test_find_keys(self):
@@ -215,7 +241,7 @@ class TestGetTestKeys(TestCase):
         StringIO.StringIO(json.dumps(keys)),
       ),
     ]
-    actual = swarming.get_test_keys('http://host:9001', 'my_test')
+    actual = swarming.get_task_keys('http://host:9001', 'my_test')
     self.assertEqual(keys, actual)
 
 
@@ -355,14 +381,13 @@ class TestGetSwarmResults(TestCase):
     self.assertEqual(expected, sorted(actual))
 
   def test_collect_nothing(self):
-    self.mock(swarming, 'get_test_keys', lambda *_: [1, 2])
+    self.mock(swarming, 'get_task_keys', lambda *_: [1, 2])
     self.mock(swarming, 'yield_results', lambda *_: [])
-    self.assertEquals(
+    self.assertEqual(
         1, swarming.collect('url', 'test_name', 'timeout', 'decorate'))
 
   def test_collect_success(self):
-    self.mock(swarming, 'get_test_keys', lambda *_: [1, 2])
-    self.mock(sys, 'stdout', StringIO.StringIO())
+    self.mock(swarming, 'get_task_keys', lambda *_: [1, 2])
     data = {
       'config_instance_index': 0,
       'exit_codes': '0',
@@ -370,12 +395,20 @@ class TestGetSwarmResults(TestCase):
       'output': 'Foo',
     }
     self.mock(swarming, 'yield_results', lambda *_: [(0, data)])
-    self.assertEquals(
+    self.assertEqual(
         0, swarming.collect('url', 'test_name', 'timeout', 'decorate'))
+    self._check_output(
+        '\n================================================================\n'
+        'Begin output from shard index 0 (machine tag: 0, id: unknown)\n'
+        '================================================================\n\n'
+        'Foo================================================================\n'
+        'End output from shard index 0 (machine tag: 0, id: unknown). Return 0'
+          '\n'
+        '================================================================\n\n',
+        '')
 
   def test_collect_fail(self):
-    self.mock(swarming, 'get_test_keys', lambda *_: [1, 2])
-    self.mock(sys, 'stdout', StringIO.StringIO())
+    self.mock(swarming, 'get_task_keys', lambda *_: [1, 2])
     data = {
       'config_instance_index': 0,
       'exit_codes': '0,8',
@@ -383,8 +416,17 @@ class TestGetSwarmResults(TestCase):
       'output': 'Foo',
     }
     self.mock(swarming, 'yield_results', lambda *_: [(0, data)])
-    self.assertEquals(
+    self.assertEqual(
         8, swarming.collect('url', 'test_name', 'timeout', 'decorate'))
+    self._check_output(
+        '\n================================================================\n'
+        'Begin output from shard index 0 (machine tag: 0, id: unknown)\n'
+        '================================================================\n\n'
+        'Foo================================================================\n'
+        'End output from shard index 0 (machine tag: 0, id: unknown). Return 8'
+          '\n'
+        '================================================================\n\n',
+        '')
 
 
 def chromium_tasks(retrieval_url):
@@ -412,25 +454,24 @@ def chromium_tasks(retrieval_url):
 
 def generate_expected_json(
     shards,
-    slave_os,
+    dimensions,
+    env,
     working_dir,
     isolate_server,
     profile):
-  os_value = unicode(swarming.PLATFORM_MAPPING_SWARMING[slave_os])
   expected = {
     u'cleanup': u'root',
     u'configurations': [
       {
-        u'config_name': os_value,
-        u'dimensions': {
-          u'os': os_value,
-        },
+        u'config_name': u'isolated',
+        u'dimensions': dimensions,
         u'min_instances': shards,
         u'priority': 101,
       },
     ],
     u'data': [],
-    u'env_vars': {},
+    u'encoding': u'UTF-8',
+    u'env_vars': env.copy(),
     u'restart_on_failure': True,
     u'test_case_name': TEST_NAME,
     u'tests': chromium_tasks(isolate_server),
@@ -448,6 +489,12 @@ class MockedStorage(object):
   def __init__(self, warm_cache):
     self._warm_cache = warm_cache
 
+  def __enter__(self):
+    pass
+
+  def __exit__(self, *_args):
+    pass
+
   def upload_items(self, items):
     return [] if self._warm_cache else items
 
@@ -455,34 +502,21 @@ class MockedStorage(object):
     return 'http://localhost:8081/fetch_url'
 
 
-class ManifestTest(auto_stub.TestCase):
-  def setUp(self):
-    self.mock(swarming.time, 'sleep', lambda x: None)
-    self.mock(sys, 'stdout', StringIO.StringIO())
-    self.mock(sys, 'stderr', StringIO.StringIO())
-
-  def tearDown(self):
-    if not self.has_failed():
-      self._check_output('', '')
-    super(ManifestTest, self).tearDown()
-
-  def _check_output(self, out, err):
-    self.assertEqual(out, sys.stdout.getvalue())
-    self.assertEqual(err, sys.stderr.getvalue())
-
-    # Flush their content by mocking them again.
-    self.mock(sys, 'stdout', StringIO.StringIO())
-    self.mock(sys, 'stderr', StringIO.StringIO())
-
+class ManifestTest(TestCase):
   def test_basic_manifest(self):
+    env = {
+      u'GTEST_SHARD_INDEX': u'%(instance_index)s',
+      u'GTEST_TOTAL_SHARDS': u'%(num_instances)s',
+    }
+    dimensions = {'os': 'Windows'}
     manifest = swarming.Manifest(
-        isolated_hash=FILE_HASH,
-        test_name=TEST_NAME,
-        shards=2,
-        test_filter='*',
-        slave_os='Windows',
-        working_dir='swarm_tests',
         isolate_server='http://localhost:8081',
+        isolated_hash=FILE_HASH,
+        task_name=TEST_NAME,
+        shards=2,
+        env=env,
+        dimensions=dimensions,
+        working_dir='swarm_tests',
         verbose=False,
         profile=False,
         priority=101,
@@ -493,7 +527,8 @@ class ManifestTest(auto_stub.TestCase):
 
     expected = generate_expected_json(
         shards=2,
-        slave_os='win32',
+        dimensions={u'os': u'Windows'},
+        env={},
         working_dir='swarm_tests',
         isolate_server=u'http://localhost:8081',
         profile=False)
@@ -503,14 +538,15 @@ class ManifestTest(auto_stub.TestCase):
     """A basic linux manifest test to ensure that windows specific values
        aren't used.
     """
+    dimensions = {'os': 'Linux'}
     manifest = swarming.Manifest(
-        isolated_hash=FILE_HASH,
-        test_name=TEST_NAME,
-        shards=1,
-        test_filter='*',
-        slave_os='Linux',
-        working_dir='swarm_tests',
         isolate_server='http://localhost:8081',
+        isolated_hash=FILE_HASH,
+        task_name=TEST_NAME,
+        shards=1,
+        env={},
+        dimensions=dimensions,
+        working_dir='swarm_tests',
         verbose=False,
         profile=False,
         priority=101,
@@ -521,21 +557,23 @@ class ManifestTest(auto_stub.TestCase):
 
     expected = generate_expected_json(
         shards=1,
-        slave_os='linux2',
+        dimensions={u'os': u'Linux'},
+        env={},
         working_dir='swarm_tests',
         isolate_server=u'http://localhost:8081',
         profile=False)
     self.assertEqual(expected, manifest_json)
 
   def test_basic_linux_profile(self):
+    dimensions = {'os': 'Linux'}
     manifest = swarming.Manifest(
-        isolated_hash=FILE_HASH,
-        test_name=TEST_NAME,
-        shards=1,
-        test_filter='*',
-        slave_os='Linux',
-        working_dir='swarm_tests',
         isolate_server='http://localhost:8081',
+        isolated_hash=FILE_HASH,
+        task_name=TEST_NAME,
+        shards=1,
+        env={},
+        dimensions=dimensions,
+        working_dir='swarm_tests',
         verbose=False,
         profile=True,
         priority=101,
@@ -546,7 +584,8 @@ class ManifestTest(auto_stub.TestCase):
 
     expected = generate_expected_json(
         shards=1,
-        slave_os='linux2',
+        dimensions={u'os': u'Linux'},
+        env={},
         working_dir='swarm_tests',
         isolate_server=u'http://localhost:8081',
         profile=True)
@@ -558,66 +597,126 @@ class ManifestTest(auto_stub.TestCase):
         lambda *_: MockedStorage(warm_cache=False))
 
     result = swarming.process_manifest(
-        file_hash_or_isolated=FILE_HASH,
-        test_name=TEST_NAME,
-        shards=1,
-        test_filter='*',
-        slave_os='linux2',
-        working_dir='swarm_tests',
-        isolate_server='http://localhost:8081',
         swarming='http://localhost:8082',
+        isolate_server='http://localhost:8081',
+        isolated_hash=FILE_HASH,
+        task_name=TEST_NAME,
+        shards=1,
+        dimensions={},
+        env={},
+        working_dir='swarm_tests',
         verbose=False,
         profile=False,
         priority=101,
         algo=ALGO)
     self.assertEqual(0, result)
-
-    # Just assert it printed enough, since it contains variable output.
-    out = sys.stdout.getvalue()
-    self.assertTrue(
-        len(out) > STDOUT_FOR_TRIGGER_LEN,
-        (out, sys.stderr.getvalue()))
-    self.assertTrue('Upload complete' in out)
-    self.mock(sys, 'stdout', StringIO.StringIO())
 
   def test_process_manifest_success_zip_already_uploaded(self):
     self.mock(swarming.net, 'url_read', lambda url, data=None: '{}')
     self.mock(swarming.isolateserver, 'get_storage',
         lambda *_: MockedStorage(warm_cache=True))
 
+    dimensions = {'os': 'linux2'}
     result = swarming.process_manifest(
-        file_hash_or_isolated=FILE_HASH,
-        test_name=TEST_NAME,
-        shards=1,
-        test_filter='*',
-        slave_os='linux2',
-        working_dir='swarm_tests',
-        isolate_server='http://localhost:8081',
         swarming='http://localhost:8082',
+        isolate_server='http://localhost:8081',
+        isolated_hash=FILE_HASH,
+        task_name=TEST_NAME,
+        shards=1,
+        dimensions=dimensions,
+        env={},
+        working_dir='swarm_tests',
         verbose=False,
         profile=False,
         priority=101,
         algo=ALGO)
     self.assertEqual(0, result)
 
-    # Just assert it printed enough, since it contains variable output.
-    out = sys.stdout.getvalue()
-    self.assertTrue(len(out) > STDOUT_FOR_TRIGGER_LEN)
-    self.assertTrue('Zip file already on server' in out)
-    self.mock(sys, 'stdout', StringIO.StringIO())
 
-  def test_no_request(self):
-    try:
-      swarming.main([
-          'trigger', '--swarming', 'https://example.com',
-          '--isolate-server', 'https://example.com'])
-      self.fail()
-    except SystemExit as e:
-      self.assertEqual(2, e.code)
-      self._check_output(
-          '',
-          'Usage: swarming.py trigger [options]\n\n'
-          'swarming.py: error: At least one --task is required.\n')
+class MainTest(TestCase):
+  def test_trigger_no_request(self):
+    with self.assertRaises(SystemExit):
+      main([
+            'trigger', '--swarming', 'https://host',
+            '--isolate-server', 'https://host',
+          ])
+    self._check_output(
+        '',
+        'Usage: swarming.py trigger [options] (hash|isolated)\n\n'
+        'swarming.py: error: Must pass one .isolated file or its hash (sha1).'
+        '\n')
+
+  def test_trigger_env(self):
+    self.mock(swarming.isolateserver, 'get_storage',
+        lambda *_: MockedStorage(warm_cache=False))
+    j = generate_expected_json(
+        shards=1,
+        dimensions={'os': 'Mac'},
+        env={'foo': 'bar'},
+        working_dir='swarm_tests',
+        isolate_server='https://host2',
+        profile=False)
+    j['data'] = [['http://localhost:8081/fetch_url', 'swarm_data.zip']]
+    data = {
+      'request': json.dumps(j, sort_keys=True, separators=(',',':')),
+    }
+    self.requests = [
+      (
+        'https://host1/test',
+        {'data': data},
+        # The actual output is ignored as long as it is valid json.
+        StringIO.StringIO('{}'),
+      ),
+    ]
+    ret = main([
+        'trigger',
+        '--swarming', 'https://host1',
+        '--isolate-server', 'https://host2',
+        '--shards', '1',
+        '--priority', '101',
+        '--env', 'foo', 'bar',
+        '--dimension', 'os', 'Mac',
+        '--task-name', TEST_NAME,
+        FILE_HASH,
+      ])
+    actual = sys.stdout.getvalue()
+    self.assertEqual(0, ret, (actual, sys.stderr.getvalue()))
+
+  def test_trigger_dimension_filter(self):
+    self.mock(swarming.isolateserver, 'get_storage',
+        lambda *_: MockedStorage(warm_cache=False))
+    j = generate_expected_json(
+        shards=1,
+        dimensions={'foo': 'bar', 'os': 'Mac'},
+        env={},
+        working_dir='swarm_tests',
+        isolate_server='https://host2',
+        profile=False)
+    j['data'] = [['http://localhost:8081/fetch_url', 'swarm_data.zip']]
+    data = {
+      'request': json.dumps(j, sort_keys=True, separators=(',',':')),
+    }
+    self.requests = [
+      (
+        'https://host1/test',
+        {'data': data},
+        # The actual output is ignored as long as it is valid json.
+        StringIO.StringIO('{}'),
+      ),
+    ]
+    ret = main([
+        'trigger',
+        '--swarming', 'https://host1',
+        '--isolate-server', 'https://host2',
+        '--shards', '1',
+        '--priority', '101',
+        '--dimension', 'foo', 'bar',
+        '--dimension', 'os', 'Mac',
+        '--task-name', TEST_NAME,
+        FILE_HASH,
+      ])
+    actual = sys.stdout.getvalue()
+    self.assertEqual(0, ret, (actual, sys.stderr.getvalue()))
 
 
 if __name__ == '__main__':

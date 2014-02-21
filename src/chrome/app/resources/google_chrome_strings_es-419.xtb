@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="es-419">
+<translation id="3234920859344197194">Este sitio utiliza el complemento Chrome Frame, que dejará de recibir actualizaciones de seguridad y estabilidad dentro de poco. Desinstala este complemento y utiliza un navegador más moderno.</translation>
 <translation id="8914504000324227558">Volver a iniciar Chrome</translation>
 <translation id="8000275528373650868">Para usar Google Chrome, se necesita Windows Vista o Windows XP con SP2 o superior.</translation>
 <translation id="8485767968786176057">En este caso, la dirección que aparece en el certificado no coincide con la dirección del sitio web al que intentó ir tu navegador. Una posible razón de esto es que tus comunicaciones están siendo interceptadas por un atacante que presenta un certificado para un sitio web diferente, lo que causaría la falta de coincidencia. Otra posible razón es que el servidor está configurado para devolver el mismo certificado para varios sitios web, incluido el que estás intentando visitar, a pesar de que ese certificado no es válido para todos esos sitios web. Google Chrome puede afirmar que accediste a &lt;strong&gt; <ph name="DOMAIN2"/> &lt;/ strong&gt;, pero no puede comprobar que sea el mismo sitio que &lt;strong&gt; <ph name="DOMAIN"/> &lt;/ strong&gt;, al que intentabas acceder. Si continúas, Chrome no verificará si hay otros nombres que no coinciden.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">Permitir que Google Chrome se ejecute en segundo plano</translation>
 <translation id="2896252579017640304">Iniciar aplicaciones de Chrome</translation>
 <translation id="2370289711218562573">Google Chrome está importando favoritos y marcadores:</translation>
-<translation id="8762286861469007470">Detector de portales cautivos de Chrome</translation>
 <translation id="2721687379934343312">En dispositivos Mac, las contraseñas se guardan en la aplicación Keychain. Los usuarios de Chrome con los que compartes esta cuenta del sistema operativo X pueden acceder a las contraseñas o sincronizarlas.</translation>
 <translation id="1761870329818521071">No se puede instalar la misma versión de Google Chrome Frame que se está ejecutando actualmente. Cierra Google Chrome Frame e intenta nuevamente.</translation>
 <translation id="6014844626092547096">Accediste a Chrome. El administrador inhabilitó la sincronización.</translation>
@@ -57,10 +57,10 @@
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Se guardó la información de facturación en Chrome</translation>
 <translation id="7098166902387133879">Google Chrome está usando tu micrófono.</translation>
-<translation id="3590194807845837023">Desbloquear perfil y volver a iniciar</translation>
 <translation id="4053720452172726777">Personaliza y controla Google Chrome</translation>
 <translation id="6423071462708908582">Intentaste acceder a &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, pero el servidor presentó un certificado caducado. No sabemos si se produjo un error en el certificado desde que caducó. Esto significa que Google Chrome no puede garantizar que estés estableciendo una comunicación con &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; y no con un intruso. Ahora el reloj de tu equipo marca las <ph name="CURRENT_TIME"/>. ¿Esta información es correcta? Si no lo es, debes corregir el error y actualizar la página.</translation>
 <translation id="3197823471738295152">El dispositivo está actualizado.</translation>
+<translation id="8286862437124483331">Google Chrome está intentando mostrar contraseñas. Para permitirlo, ingresa tu contraseña de Windows.</translation>
 <translation id="3889417619312448367">Desinstalar Google Chrome</translation>
 <translation id="1434626383986940139">Aplicaciones de Chrome Canary</translation>
 <translation id="8551886023433311834">El dispositivo está casi actualizado. Reinícialo para completar la actualización.</translation>
@@ -179,7 +179,6 @@ Si accedes de todos modos, se fusionará la información de Google Chrome, como 
 <translation id="2189123953385179981">Google ChromeOS no admite lanzar una aplicación externa para manejar vínculos <ph name="SCHEME"/>. El vínculo solicitado es <ph name="PROTOLINK"/>.</translation>
 <translation id="7396375882099008034">Permite que Chrome acceda a la red en tu configuración de antivirus o de firewall.</translation>
 <translation id="9102715433345326100">Chrome bloqueó este archivo porque es malicioso.</translation>
-<translation id="3170677364322086041">Este sitio utiliza el complemento Chrome Frame discontinuado que ya no recibe actualizaciones de seguridad ni estabilidad. Debes desinstalarlo y actualizar a un navegador más reciente.</translation>
 <translation id="8205111949707227942">Opcional: Ayúdanos a mejorar Chrome SO enviando automáticamente estadísticas de uso e informes sobre fallos a Google.</translation>
 <translation id="7253415505590551024">Actualmente hay descargas en curso. ¿Quieres salir de Google Chrome y cancelarlas?</translation>
 <translation id="7196020411877309443">¿Por qué estoy viendo esto?</translation>
@@ -196,6 +195,7 @@ Si accedes de todos modos, se fusionará la información de Google Chrome, como 
           Configuración LAN
           y desmarca la casilla de verificación &quot;Usar un servidor proxy para tu LAN&quot;.</translation>
 <translation id="7825851276765848807">La instalación falló debido a un error no especificado. Descarga Google Chrome otra vez.</translation>
+<translation id="4919523385405675060">Este sitio utiliza el complemento Chrome Frame, que dejará de recibir actualizaciones de seguridad y estabilidad dentro de poco. Desinstala este complemento y descarga un navegador compatible.</translation>
 <translation id="1061257178446858647">Has iniciado sesión en Chrome. Tus marcadores, tu historial y otras opciones de configuración se sincronizarán con tu cuenta de Google.</translation>
 <translation id="3335672657969596251">Google Chrome no es compatible con <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Cierra la sesión y vuelve a iniciarla para que se aplique el cambio.</translation>

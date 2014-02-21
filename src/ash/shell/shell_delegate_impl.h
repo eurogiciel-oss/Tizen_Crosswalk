@@ -10,6 +10,10 @@
 #include "ash/shell_delegate.h"
 #include "base/compiler_specific.h"
 
+namespace content {
+class BrowserContext;
+}
+
 namespace keyboard {
 class KeyboardControllerProxy;
 }
@@ -17,7 +21,7 @@ class KeyboardControllerProxy;
 namespace ash {
 namespace shell {
 
-class LauncherDelegateImpl;
+class ShelfDelegateImpl;
 class WindowWatcher;
 
 class ShellDelegateImpl : public ash::ShellDelegate {
@@ -26,6 +30,9 @@ class ShellDelegateImpl : public ash::ShellDelegate {
   virtual ~ShellDelegateImpl();
 
   void SetWatcher(WindowWatcher* watcher);
+  void set_browser_context(content::BrowserContext* browser_context) {
+    browser_context_ = browser_context;
+  }
 
   virtual bool IsFirstRunAfterBoot() const OVERRIDE;
   virtual bool IsIncognitoAllowed() const OVERRIDE;
@@ -36,10 +43,9 @@ class ShellDelegateImpl : public ash::ShellDelegate {
   virtual void Exit() OVERRIDE;
   virtual keyboard::KeyboardControllerProxy*
       CreateKeyboardControllerProxy() OVERRIDE;
-  virtual content::BrowserContext* GetCurrentBrowserContext() OVERRIDE;
+  virtual content::BrowserContext* GetActiveBrowserContext() OVERRIDE;
   virtual app_list::AppListViewDelegate* CreateAppListViewDelegate() OVERRIDE;
-  virtual ash::LauncherDelegate* CreateLauncherDelegate(
-      ash::LauncherModel* model) OVERRIDE;
+  virtual ShelfDelegate* CreateShelfDelegate(ShelfModel* model) OVERRIDE;
   virtual ash::SystemTrayDelegate* CreateSystemTrayDelegate() OVERRIDE;
   virtual ash::UserWallpaperDelegate* CreateUserWallpaperDelegate() OVERRIDE;
   virtual ash::CapsLockDelegate* CreateCapsLockDelegate() OVERRIDE;
@@ -48,17 +54,19 @@ class ShellDelegateImpl : public ash::ShellDelegate {
   virtual ash::NewWindowDelegate* CreateNewWindowDelegate() OVERRIDE;
   virtual ash::MediaDelegate* CreateMediaDelegate() OVERRIDE;
   virtual aura::client::UserActionClient* CreateUserActionClient() OVERRIDE;
-  virtual void RecordUserMetricsAction(UserMetricsAction action) OVERRIDE;
   virtual ui::MenuModel* CreateContextMenu(
-      aura::Window* root_window) OVERRIDE;
-  virtual RootWindowHostFactory* CreateRootWindowHostFactory() OVERRIDE;
+      aura::Window* root_window,
+      ash::ShelfItemDelegate* item_delegate,
+      ash::LauncherItem* item) OVERRIDE;
+  virtual WindowTreeHostFactory* CreateWindowTreeHostFactory() OVERRIDE;
   virtual base::string16 GetProductName() const OVERRIDE;
 
  private:
   // Used to update Launcher. Owned by main.
   WindowWatcher* watcher_;
 
-  LauncherDelegateImpl* launcher_delegate_;
+  ShelfDelegateImpl* shelf_delegate_;
+  content::BrowserContext* browser_context_;
 
   DISALLOW_COPY_AND_ASSIGN(ShellDelegateImpl);
 };

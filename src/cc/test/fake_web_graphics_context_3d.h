@@ -7,13 +7,14 @@
 
 #include <string>
 
-#include "third_party/WebKit/public/platform/WebGraphicsContext3D.h"
+#include "base/macros.h"
+#include "third_party/khronos/GLES2/gl2.h"
 
 namespace cc {
 
-// WebGraphicsContext3D base class for use in unit tests.
+// Base class for use in unit tests.
 // All operations are no-ops (returning 0 if necessary).
-class FakeWebGraphicsContext3D : public WebKit::WebGraphicsContext3D {
+class FakeWebGraphicsContext3D {
  public:
   FakeWebGraphicsContext3D();
   virtual ~FakeWebGraphicsContext3D();
@@ -22,588 +23,572 @@ class FakeWebGraphicsContext3D : public WebKit::WebGraphicsContext3D {
 
   virtual bool isGLES2Compliant();
 
-  virtual WebKit::WebGLId getPlatformTextureId();
+  virtual GLuint getPlatformTextureId();
 
   virtual void prepareTexture() {}
 
   virtual void postSubBufferCHROMIUM(int x, int y, int width, int height) {}
 
-  virtual void synthesizeGLError(WebKit::WGC3Denum) {}
+  virtual void synthesizeGLError(GLenum) {}
 
   virtual bool isContextLost();
-  virtual WebKit::WGC3Denum getGraphicsResetStatusARB();
 
   virtual void* mapBufferSubDataCHROMIUM(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dintptr offset,
-      WebKit::WGC3Dsizeiptr size,
-      WebKit::WGC3Denum access);
+      GLenum target,
+      GLintptr offset,
+      GLsizeiptr size,
+      GLenum access);
 
   virtual void unmapBufferSubDataCHROMIUM(const void*) {}
   virtual void* mapTexSubImage2DCHROMIUM(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint level,
-      WebKit::WGC3Dint xoffset,
-      WebKit::WGC3Dint yoffset,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Denum format,
-      WebKit::WGC3Denum type,
-      WebKit::WGC3Denum access);
+      GLenum target,
+      GLint level,
+      GLint xoffset,
+      GLint yoffset,
+      GLsizei width,
+      GLsizei height,
+      GLenum format,
+      GLenum type,
+      GLenum access);
   virtual void unmapTexSubImage2DCHROMIUM(const void*) {}
 
   virtual void setVisibilityCHROMIUM(bool visible) {}
 
   virtual void discardFramebufferEXT(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dsizei num_attachments,
-      const WebKit::WGC3Denum* attachments) {}
+      GLenum target,
+      GLsizei num_attachments,
+      const GLenum* attachments) {}
 
-  virtual WebKit::WebString getRequestableExtensionsCHROMIUM();
   virtual void requestExtensionCHROMIUM(const char*) {}
 
   virtual void blitFramebufferCHROMIUM(
-      WebKit::WGC3Dint src_x0,
-      WebKit::WGC3Dint src_y0,
-      WebKit::WGC3Dint src_x1,
-      WebKit::WGC3Dint src_y1,
-      WebKit::WGC3Dint dst_x0,
-      WebKit::WGC3Dint dst_y0,
-      WebKit::WGC3Dint dst_x1,
-      WebKit::WGC3Dint dst_y1,
-      WebKit::WGC3Dbitfield mask,
-      WebKit::WGC3Denum filter) {}
+      GLint src_x0,
+      GLint src_y0,
+      GLint src_x1,
+      GLint src_y1,
+      GLint dst_x0,
+      GLint dst_y0,
+      GLint dst_x1,
+      GLint dst_y1,
+      GLbitfield mask,
+      GLenum filter) {}
   virtual void renderbufferStorageMultisampleCHROMIUM(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dsizei samples,
-      WebKit::WGC3Denum internalformat,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height) {}
+      GLenum target,
+      GLsizei samples,
+      GLenum internalformat,
+      GLsizei width,
+      GLsizei height) {}
 
-  virtual void activeTexture(WebKit::WGC3Denum texture) {}
-  virtual void attachShader(WebKit::WebGLId program, WebKit::WebGLId shader);
+  virtual void activeTexture(GLenum texture) {}
+  virtual void attachShader(GLuint program, GLuint shader);
   virtual void bindAttribLocation(
-      WebKit::WebGLId program,
-      WebKit::WGC3Duint index,
-      const WebKit::WGC3Dchar* name) {}
-  virtual void bindBuffer(WebKit::WGC3Denum target, WebKit::WebGLId buffer);
+      GLuint program,
+      GLuint index,
+      const GLchar* name) {}
+  virtual void bindBuffer(GLenum target, GLuint buffer);
   virtual void bindFramebuffer(
-      WebKit::WGC3Denum target, WebKit::WebGLId framebuffer);
+      GLenum target, GLuint framebuffer);
   virtual void bindRenderbuffer(
-      WebKit::WGC3Denum target, WebKit::WebGLId renderbuffer);
+      GLenum target, GLuint renderbuffer);
   virtual void bindTexture(
-      WebKit::WGC3Denum target,
-      WebKit::WebGLId texture_id);
+      GLenum target,
+      GLuint texture_id);
   virtual void blendColor(
-      WebKit::WGC3Dclampf red,
-      WebKit::WGC3Dclampf green,
-      WebKit::WGC3Dclampf blue,
-      WebKit::WGC3Dclampf alpha) {}
-  virtual void blendEquation(WebKit::WGC3Denum mode) {}
+      GLclampf red,
+      GLclampf green,
+      GLclampf blue,
+      GLclampf alpha) {}
+  virtual void blendEquation(GLenum mode) {}
   virtual void blendEquationSeparate(
-      WebKit::WGC3Denum mode_rgb,
-      WebKit::WGC3Denum mode_alpha) {}
+      GLenum mode_rgb,
+      GLenum mode_alpha) {}
   virtual void blendFunc(
-      WebKit::WGC3Denum sfactor,
-      WebKit::WGC3Denum dfactor) {}
+      GLenum sfactor,
+      GLenum dfactor) {}
   virtual void blendFuncSeparate(
-      WebKit::WGC3Denum src_rgb,
-      WebKit::WGC3Denum dst_rgb,
-      WebKit::WGC3Denum src_alpha,
-      WebKit::WGC3Denum dst_alpha) {}
+      GLenum src_rgb,
+      GLenum dst_rgb,
+      GLenum src_alpha,
+      GLenum dst_alpha) {}
 
   virtual void bufferData(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dsizeiptr size,
+      GLenum target,
+      GLsizeiptr size,
       const void* data,
-      WebKit::WGC3Denum usage) {}
+      GLenum usage) {}
   virtual void bufferSubData(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dintptr offset,
-      WebKit::WGC3Dsizeiptr size,
+      GLenum target,
+      GLintptr offset,
+      GLsizeiptr size,
       const void* data) {}
 
-  virtual WebKit::WGC3Denum checkFramebufferStatus(WebKit::WGC3Denum target);
+  virtual GLenum checkFramebufferStatus(GLenum target);
 
-  virtual void clear(WebKit::WGC3Dbitfield mask) {}
+  virtual void clear(GLbitfield mask) {}
   virtual void clearColor(
-      WebKit::WGC3Dclampf red,
-      WebKit::WGC3Dclampf green,
-      WebKit::WGC3Dclampf blue,
-      WebKit::WGC3Dclampf alpha) {}
-  virtual void clearDepth(WebKit::WGC3Dclampf depth) {}
-  virtual void clearStencil(WebKit::WGC3Dint s) {}
+      GLclampf red,
+      GLclampf green,
+      GLclampf blue,
+      GLclampf alpha) {}
+  virtual void clearDepth(GLclampf depth) {}
+  virtual void clearStencil(GLint s) {}
   virtual void colorMask(
-      WebKit::WGC3Dboolean red,
-      WebKit::WGC3Dboolean green,
-      WebKit::WGC3Dboolean blue,
-      WebKit::WGC3Dboolean alpha) {}
-  virtual void compileShader(WebKit::WebGLId shader) {}
+      GLboolean red,
+      GLboolean green,
+      GLboolean blue,
+      GLboolean alpha) {}
+  virtual void compileShader(GLuint shader) {}
 
   virtual void compressedTexImage2D(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint level,
-      WebKit::WGC3Denum internal_format,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Dint border,
-      WebKit::WGC3Dsizei image_size,
+      GLenum target,
+      GLint level,
+      GLenum internal_format,
+      GLsizei width,
+      GLsizei height,
+      GLint border,
+      GLsizei image_size,
       const void* data) {}
   virtual void compressedTexSubImage2D(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint level,
-      WebKit::WGC3Dint xoffset,
-      WebKit::WGC3Dint yoffset,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Denum format,
-      WebKit::WGC3Dsizei image_size,
+      GLenum target,
+      GLint level,
+      GLint xoffset,
+      GLint yoffset,
+      GLsizei width,
+      GLsizei height,
+      GLenum format,
+      GLsizei image_size,
       const void* data) {}
   virtual void copyTexImage2D(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint level,
-      WebKit::WGC3Denum internalformat,
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Dint border) {}
+      GLenum target,
+      GLint level,
+      GLenum internalformat,
+      GLint x,
+      GLint y,
+      GLsizei width,
+      GLsizei height,
+      GLint border) {}
   virtual void copyTexSubImage2D(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint level,
-      WebKit::WGC3Dint xoffset,
-      WebKit::WGC3Dint yoffset,
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height) {}
-  virtual void cullFace(WebKit::WGC3Denum mode) {}
-  virtual void depthFunc(WebKit::WGC3Denum func) {}
-  virtual void depthMask(WebKit::WGC3Dboolean flag) {}
+      GLenum target,
+      GLint level,
+      GLint xoffset,
+      GLint yoffset,
+      GLint x,
+      GLint y,
+      GLsizei width,
+      GLsizei height) {}
+  virtual void cullFace(GLenum mode) {}
+  virtual void depthFunc(GLenum func) {}
+  virtual void depthMask(GLboolean flag) {}
   virtual void depthRange(
-      WebKit::WGC3Dclampf z_near,
-      WebKit::WGC3Dclampf z_far) {}
-  virtual void detachShader(WebKit::WebGLId program, WebKit::WebGLId shader) {}
-  virtual void disable(WebKit::WGC3Denum cap) {}
-  virtual void disableVertexAttribArray(WebKit::WGC3Duint index) {}
+      GLclampf z_near,
+      GLclampf z_far) {}
+  virtual void detachShader(GLuint program, GLuint shader) {}
+  virtual void disable(GLenum cap) {}
+  virtual void disableVertexAttribArray(GLuint index) {}
   virtual void drawArrays(
-      WebKit::WGC3Denum mode,
-      WebKit::WGC3Dint first,
-      WebKit::WGC3Dsizei count) {}
+      GLenum mode,
+      GLint first,
+      GLsizei count) {}
   virtual void drawElements(
-      WebKit::WGC3Denum mode,
-      WebKit::WGC3Dsizei count,
-      WebKit::WGC3Denum type,
-      WebKit::WGC3Dintptr offset) {}
+      GLenum mode,
+      GLsizei count,
+      GLenum type,
+      GLintptr offset) {}
 
-  virtual void enable(WebKit::WGC3Denum cap) {}
-  virtual void enableVertexAttribArray(WebKit::WGC3Duint index) {}
+  virtual void enable(GLenum cap) {}
+  virtual void enableVertexAttribArray(GLuint index) {}
   virtual void finish() {}
   virtual void flush() {}
+  virtual void shallowFlushCHROMIUM() {}
   virtual void framebufferRenderbuffer(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum attachment,
-      WebKit::WGC3Denum renderbuffertarget,
-      WebKit::WebGLId renderbuffer) {}
+      GLenum target,
+      GLenum attachment,
+      GLenum renderbuffertarget,
+      GLuint renderbuffer) {}
   virtual void framebufferTexture2D(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum attachment,
-      WebKit::WGC3Denum textarget,
-      WebKit::WebGLId texture,
-      WebKit::WGC3Dint level) {}
-  virtual void frontFace(WebKit::WGC3Denum mode) {}
-  virtual void generateMipmap(WebKit::WGC3Denum target) {}
+      GLenum target,
+      GLenum attachment,
+      GLenum textarget,
+      GLuint texture,
+      GLint level) {}
+  virtual void frontFace(GLenum mode) {}
+  virtual void generateMipmap(GLenum target) {}
 
-  virtual bool getActiveAttrib(
-      WebKit::WebGLId program,
-      WebKit::WGC3Duint index, ActiveInfo&);
-  virtual bool getActiveUniform(
-      WebKit::WebGLId program,
-      WebKit::WGC3Duint index,
-      ActiveInfo&);
   virtual void getAttachedShaders(
-      WebKit::WebGLId program,
-      WebKit::WGC3Dsizei max_count,
-      WebKit::WGC3Dsizei* count,
-      WebKit::WebGLId* shaders) {}
-  virtual WebKit::WGC3Dint getAttribLocation(
-      WebKit::WebGLId program,
-      const WebKit::WGC3Dchar* name);
+      GLuint program,
+      GLsizei max_count,
+      GLsizei* count,
+      GLuint* shaders) {}
+  virtual GLint getAttribLocation(
+      GLuint program,
+      const GLchar* name);
   virtual void getBooleanv(
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dboolean* value) {}
+      GLenum pname,
+      GLboolean* value) {}
   virtual void getBufferParameteriv(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value) {}
-  virtual Attributes getContextAttributes();
-  virtual WebKit::WGC3Denum getError();
+      GLenum target,
+      GLenum pname,
+      GLint* value) {}
+  virtual GLenum getError();
   virtual void getFloatv(
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dfloat* value) {}
+      GLenum pname,
+      GLfloat* value) {}
   virtual void getFramebufferAttachmentParameteriv(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum attachment,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value) {}
+      GLenum target,
+      GLenum attachment,
+      GLenum pname,
+      GLint* value) {}
 
   virtual void getIntegerv(
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value);
+      GLenum pname,
+      GLint* value);
 
   virtual void getProgramiv(
-      WebKit::WebGLId program,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value);
+      GLuint program,
+      GLenum pname,
+      GLint* value);
 
-  virtual WebKit::WebString getProgramInfoLog(WebKit::WebGLId program);
   virtual void getRenderbufferParameteriv(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value) {}
+      GLenum target,
+      GLenum pname,
+      GLint* value) {}
 
   virtual void getShaderiv(
-      WebKit::WebGLId shader,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value);
+      GLuint shader,
+      GLenum pname,
+      GLint* value);
 
-  virtual WebKit::WebString getShaderInfoLog(WebKit::WebGLId shader);
   virtual void getShaderPrecisionFormat(
-      WebKit::WGC3Denum shadertype,
-      WebKit::WGC3Denum precisiontype,
-      WebKit::WGC3Dint* range,
-      WebKit::WGC3Dint* precision);
-  virtual WebKit::WebString getShaderSource(WebKit::WebGLId shader);
-  virtual WebKit::WebString getString(WebKit::WGC3Denum name);
+      GLenum shadertype,
+      GLenum precisiontype,
+      GLint* range,
+      GLint* precision);
   virtual void getTexParameterfv(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dfloat* value) {}
+      GLenum target,
+      GLenum pname,
+      GLfloat* value) {}
   virtual void getTexParameteriv(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value) {}
+      GLenum target,
+      GLenum pname,
+      GLint* value) {}
   virtual void getUniformfv(
-      WebKit::WebGLId program,
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dfloat* value) {}
+      GLuint program,
+      GLint location,
+      GLfloat* value) {}
   virtual void getUniformiv(
-      WebKit::WebGLId program,
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dint* value) {}
-  virtual WebKit::WGC3Dint getUniformLocation(
-      WebKit::WebGLId program,
-      const WebKit::WGC3Dchar* name);
+      GLuint program,
+      GLint location,
+      GLint* value) {}
+  virtual GLint getUniformLocation(
+      GLuint program,
+      const GLchar* name);
   virtual void getVertexAttribfv(
-      WebKit::WGC3Duint index,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dfloat* value) {}
+      GLuint index,
+      GLenum pname,
+      GLfloat* value) {}
   virtual void getVertexAttribiv(
-      WebKit::WGC3Duint index,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* value) {}
-  virtual WebKit::WGC3Dsizeiptr getVertexAttribOffset(
-      WebKit::WGC3Duint index,
-      WebKit::WGC3Denum pname);
+      GLuint index,
+      GLenum pname,
+      GLint* value) {}
+  virtual GLsizeiptr getVertexAttribOffset(
+      GLuint index,
+      GLenum pname);
 
-  virtual void hint(WebKit::WGC3Denum target, WebKit::WGC3Denum mode) {}
-  virtual WebKit::WGC3Dboolean isBuffer(WebKit::WebGLId buffer);
-  virtual WebKit::WGC3Dboolean isEnabled(WebKit::WGC3Denum cap);
-  virtual WebKit::WGC3Dboolean isFramebuffer(WebKit::WebGLId framebuffer);
-  virtual WebKit::WGC3Dboolean isProgram(WebKit::WebGLId program);
-  virtual WebKit::WGC3Dboolean isRenderbuffer(WebKit::WebGLId renderbuffer);
-  virtual WebKit::WGC3Dboolean isShader(WebKit::WebGLId shader);
-  virtual WebKit::WGC3Dboolean isTexture(WebKit::WebGLId texture);
-  virtual void lineWidth(WebKit::WGC3Dfloat) {}
-  virtual void linkProgram(WebKit::WebGLId program) {}
-  virtual void pixelStorei(WebKit::WGC3Denum pname, WebKit::WGC3Dint param) {}
+  virtual void hint(GLenum target, GLenum mode) {}
+  virtual GLboolean isBuffer(GLuint buffer);
+  virtual GLboolean isEnabled(GLenum cap);
+  virtual GLboolean isFramebuffer(GLuint framebuffer);
+  virtual GLboolean isProgram(GLuint program);
+  virtual GLboolean isRenderbuffer(GLuint renderbuffer);
+  virtual GLboolean isShader(GLuint shader);
+  virtual GLboolean isTexture(GLuint texture);
+  virtual void lineWidth(GLfloat) {}
+  virtual void linkProgram(GLuint program) {}
+  virtual void pixelStorei(GLenum pname, GLint param) {}
   virtual void polygonOffset(
-      WebKit::WGC3Dfloat factor,
-      WebKit::WGC3Dfloat units) {}
+      GLfloat factor,
+      GLfloat units) {}
 
   virtual void readPixels(
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Denum format,
-      WebKit::WGC3Denum type,
+      GLint x,
+      GLint y,
+      GLsizei width,
+      GLsizei height,
+      GLenum format,
+      GLenum type,
       void* pixels) {}
 
   virtual void releaseShaderCompiler() {}
 
   virtual void renderbufferStorage(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum internalformat,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height) {}
+      GLenum target,
+      GLenum internalformat,
+      GLsizei width,
+      GLsizei height) {}
   virtual void sampleCoverage(
-      WebKit::WGC3Dclampf value,
-      WebKit::WGC3Dboolean invert) {}
+      GLclampf value,
+      GLboolean invert) {}
   virtual void scissor(
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height) {}
+      GLint x,
+      GLint y,
+      GLsizei width,
+      GLsizei height) {}
   virtual void shaderSource(
-      WebKit::WebGLId shader,
-      const WebKit::WGC3Dchar* string) {}
+      GLuint shader,
+      const GLchar* string) {}
   virtual void stencilFunc(
-      WebKit::WGC3Denum func,
-      WebKit::WGC3Dint ref,
-      WebKit::WGC3Duint mask) {}
+      GLenum func,
+      GLint ref,
+      GLuint mask) {}
   virtual void stencilFuncSeparate(
-      WebKit::WGC3Denum face,
-      WebKit::WGC3Denum func,
-      WebKit::WGC3Dint ref,
-      WebKit::WGC3Duint mask) {}
-  virtual void stencilMask(WebKit::WGC3Duint mask) {}
+      GLenum face,
+      GLenum func,
+      GLint ref,
+      GLuint mask) {}
+  virtual void stencilMask(GLuint mask) {}
   virtual void stencilMaskSeparate(
-      WebKit::WGC3Denum face,
-      WebKit::WGC3Duint mask) {}
+      GLenum face,
+      GLuint mask) {}
   virtual void stencilOp(
-      WebKit::WGC3Denum fail,
-      WebKit::WGC3Denum zfail,
-      WebKit::WGC3Denum zpass) {}
+      GLenum fail,
+      GLenum zfail,
+      GLenum zpass) {}
   virtual void stencilOpSeparate(
-      WebKit::WGC3Denum face,
-      WebKit::WGC3Denum fail,
-      WebKit::WGC3Denum zfail,
-      WebKit::WGC3Denum zpass) {}
+      GLenum face,
+      GLenum fail,
+      GLenum zfail,
+      GLenum zpass) {}
 
   virtual void texImage2D(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint level,
-      WebKit::WGC3Denum internalformat,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Dint border,
-      WebKit::WGC3Denum format,
-      WebKit::WGC3Denum type,
+      GLenum target,
+      GLint level,
+      GLenum internalformat,
+      GLsizei width,
+      GLsizei height,
+      GLint border,
+      GLenum format,
+      GLenum type,
       const void* pixels) {}
 
   virtual void texParameterf(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dfloat param) {}
+      GLenum target,
+      GLenum pname,
+      GLfloat param) {}
   virtual void texParameteri(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint param) {}
+      GLenum target,
+      GLenum pname,
+      GLint param) {}
 
   virtual void texSubImage2D(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint level,
-      WebKit::WGC3Dint xoffset,
-      WebKit::WGC3Dint yoffset,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Denum format,
-      WebKit::WGC3Denum type,
+      GLenum target,
+      GLint level,
+      GLint xoffset,
+      GLint yoffset,
+      GLsizei width,
+      GLsizei height,
+      GLenum format,
+      GLenum type,
       const void* pixels) {}
 
-  virtual void uniform1f(WebKit::WGC3Dint location, WebKit::WGC3Dfloat x) {}
+  virtual void uniform1f(GLint location, GLfloat x) {}
   virtual void uniform1fv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dfloat* v) {}
-  virtual void uniform1i(WebKit::WGC3Dint location, WebKit::WGC3Dint x) {}
+      GLint location,
+      GLsizei count,
+      const GLfloat* v) {}
+  virtual void uniform1i(GLint location, GLint x) {}
   virtual void uniform1iv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dint* v) {}
+      GLint location,
+      GLsizei count,
+      const GLint* v) {}
   virtual void uniform2f(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dfloat x,
-      WebKit::WGC3Dfloat y) {}
+      GLint location,
+      GLfloat x,
+      GLfloat y) {}
   virtual void uniform2fv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dfloat* v) {}
+      GLint location,
+      GLsizei count,
+      const GLfloat* v) {}
   virtual void uniform2i(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y) {}
+      GLint location,
+      GLint x,
+      GLint y) {}
   virtual void uniform2iv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dint* v) {}
+      GLint location,
+      GLsizei count,
+      const GLint* v) {}
   virtual void uniform3f(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dfloat x,
-      WebKit::WGC3Dfloat y,
-      WebKit::WGC3Dfloat z) {}
+      GLint location,
+      GLfloat x,
+      GLfloat y,
+      GLfloat z) {}
   virtual void uniform3fv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dfloat* v) {}
+      GLint location,
+      GLsizei count,
+      const GLfloat* v) {}
   virtual void uniform3i(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y,
-      WebKit::WGC3Dint z) {}
+      GLint location,
+      GLint x,
+      GLint y,
+      GLint z) {}
   virtual void uniform3iv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dint* v) {}
+      GLint location,
+      GLsizei count,
+      const GLint* v) {}
   virtual void uniform4f(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dfloat x,
-      WebKit::WGC3Dfloat y,
-      WebKit::WGC3Dfloat z,
-      WebKit::WGC3Dfloat w) {}
+      GLint location,
+      GLfloat x,
+      GLfloat y,
+      GLfloat z,
+      GLfloat w) {}
   virtual void uniform4fv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dfloat* v) {}
+      GLint location,
+      GLsizei count,
+      const GLfloat* v) {}
   virtual void uniform4i(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y,
-      WebKit::WGC3Dint z,
-      WebKit::WGC3Dint w) {}
+      GLint location,
+      GLint x,
+      GLint y,
+      GLint z,
+      GLint w) {}
   virtual void uniform4iv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      const WebKit::WGC3Dint* v) {}
+      GLint location,
+      GLsizei count,
+      const GLint* v) {}
   virtual void uniformMatrix2fv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      WebKit::WGC3Dboolean transpose,
-      const WebKit::WGC3Dfloat* value) {}
+      GLint location,
+      GLsizei count,
+      GLboolean transpose,
+      const GLfloat* value) {}
   virtual void uniformMatrix3fv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      WebKit::WGC3Dboolean transpose,
-      const WebKit::WGC3Dfloat* value) {}
+      GLint location,
+      GLsizei count,
+      GLboolean transpose,
+      const GLfloat* value) {}
   virtual void uniformMatrix4fv(
-      WebKit::WGC3Dint location,
-      WebKit::WGC3Dsizei count,
-      WebKit::WGC3Dboolean transpose,
-      const WebKit::WGC3Dfloat* value) {}
+      GLint location,
+      GLsizei count,
+      GLboolean transpose,
+      const GLfloat* value) {}
 
-  virtual void useProgram(WebKit::WebGLId program);
-  virtual void validateProgram(WebKit::WebGLId program) {}
+  virtual void useProgram(GLuint program);
+  virtual void validateProgram(GLuint program) {}
 
-  virtual void vertexAttrib1f(WebKit::WGC3Duint index, WebKit::WGC3Dfloat x) {}
+  virtual void vertexAttrib1f(GLuint index, GLfloat x) {}
   virtual void vertexAttrib1fv(
-      WebKit::WGC3Duint index,
-      const WebKit::WGC3Dfloat* values) {}
+      GLuint index,
+      const GLfloat* values) {}
   virtual void vertexAttrib2f(
-      WebKit::WGC3Duint index,
-      WebKit::WGC3Dfloat x,
-      WebKit::WGC3Dfloat y) {}
+      GLuint index,
+      GLfloat x,
+      GLfloat y) {}
   virtual void vertexAttrib2fv(
-      WebKit::WGC3Duint index,
-      const WebKit::WGC3Dfloat* values) {}
+      GLuint index,
+      const GLfloat* values) {}
   virtual void vertexAttrib3f(
-      WebKit::WGC3Duint index,
-      WebKit::WGC3Dfloat x,
-      WebKit::WGC3Dfloat y,
-      WebKit::WGC3Dfloat z) {}
+      GLuint index,
+      GLfloat x,
+      GLfloat y,
+      GLfloat z) {}
   virtual void vertexAttrib3fv(
-      WebKit::WGC3Duint index,
-      const WebKit::WGC3Dfloat* values) {}
+      GLuint index,
+      const GLfloat* values) {}
   virtual void vertexAttrib4f(
-      WebKit::WGC3Duint index,
-      WebKit::WGC3Dfloat x,
-      WebKit::WGC3Dfloat y,
-      WebKit::WGC3Dfloat z,
-      WebKit::WGC3Dfloat w) {}
+      GLuint index,
+      GLfloat x,
+      GLfloat y,
+      GLfloat z,
+      GLfloat w) {}
   virtual void vertexAttrib4fv(
-      WebKit::WGC3Duint index,
-      const WebKit::WGC3Dfloat* values) {}
+      GLuint index,
+      const GLfloat* values) {}
   virtual void vertexAttribPointer(
-      WebKit::WGC3Duint index,
-      WebKit::WGC3Dint size,
-      WebKit::WGC3Denum type,
-      WebKit::WGC3Dboolean normalized,
-      WebKit::WGC3Dsizei stride,
-      WebKit::WGC3Dintptr offset) {}
+      GLuint index,
+      GLint size,
+      GLenum type,
+      GLboolean normalized,
+      GLsizei stride,
+      GLintptr offset) {}
 
   virtual void viewport(
-      WebKit::WGC3Dint x,
-      WebKit::WGC3Dint y,
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height) {}
+      GLint x,
+      GLint y,
+      GLsizei width,
+      GLsizei height) {}
 
-  virtual void genBuffers(WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
-  virtual void genFramebuffers(WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
-  virtual void genRenderbuffers(WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
-  virtual void genTextures(WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
+  virtual void genBuffers(GLsizei count, GLuint* ids);
+  virtual void genFramebuffers(GLsizei count, GLuint* ids);
+  virtual void genRenderbuffers(GLsizei count, GLuint* ids);
+  virtual void genTextures(GLsizei count, GLuint* ids);
 
-  virtual void deleteBuffers(WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
+  virtual void deleteBuffers(GLsizei count, GLuint* ids);
   virtual void deleteFramebuffers(
-      WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
+      GLsizei count, GLuint* ids);
   virtual void deleteRenderbuffers(
-      WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
-  virtual void deleteTextures(WebKit::WGC3Dsizei count, WebKit::WebGLId* ids);
+      GLsizei count, GLuint* ids);
+  virtual void deleteTextures(GLsizei count, GLuint* ids);
 
-  virtual WebKit::WebGLId createBuffer();
-  virtual WebKit::WebGLId createFramebuffer();
-  virtual WebKit::WebGLId createRenderbuffer();
-  virtual WebKit::WebGLId createTexture();
+  virtual GLuint createBuffer();
+  virtual GLuint createFramebuffer();
+  virtual GLuint createRenderbuffer();
+  virtual GLuint createTexture();
 
-  virtual void deleteBuffer(WebKit::WebGLId id);
-  virtual void deleteFramebuffer(WebKit::WebGLId id);
-  virtual void deleteRenderbuffer(WebKit::WebGLId id);
-  virtual void deleteTexture(WebKit::WebGLId id);
+  virtual void deleteBuffer(GLuint id);
+  virtual void deleteFramebuffer(GLuint id);
+  virtual void deleteRenderbuffer(GLuint id);
+  virtual void deleteTexture(GLuint id);
 
-  virtual WebKit::WebGLId createProgram();
-  virtual WebKit::WebGLId createShader(WebKit::WGC3Denum);
+  virtual GLuint createProgram();
+  virtual GLuint createShader(GLenum);
 
-  virtual void deleteProgram(WebKit::WebGLId id);
-  virtual void deleteShader(WebKit::WebGLId id);
+  virtual void deleteProgram(GLuint id);
+  virtual void deleteShader(GLuint id);
 
   virtual void texStorage2DEXT(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Dint levels,
-      WebKit::WGC3Duint internalformat,
-      WebKit::WGC3Dint width,
-      WebKit::WGC3Dint height) {}
+      GLenum target,
+      GLint levels,
+      GLuint internalformat,
+      GLint width,
+      GLint height) {}
 
-  virtual WebKit::WebGLId createQueryEXT();
-  virtual void deleteQueryEXT(WebKit::WebGLId query) {}
-  virtual WebKit::WGC3Dboolean isQueryEXT(WebKit::WebGLId query);
+  virtual GLuint createQueryEXT();
+  virtual void deleteQueryEXT(GLuint query) {}
+  virtual GLboolean isQueryEXT(GLuint query);
   virtual void beginQueryEXT(
-      WebKit::WGC3Denum target,
-      WebKit::WebGLId query) {}
-  virtual void endQueryEXT(WebKit::WGC3Denum target);
+      GLenum target,
+      GLuint query) {}
+  virtual void endQueryEXT(GLenum target);
   virtual void getQueryivEXT(
-      WebKit::WGC3Denum target,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* params) {}
+      GLenum target,
+      GLenum pname,
+      GLint* params) {}
   virtual void getQueryObjectuivEXT(
-      WebKit::WebGLId query,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Duint* params);
+      GLuint query,
+      GLenum pname,
+      GLuint* params);
 
-  virtual void setContextLostCallback(
-      WebGraphicsContextLostCallback* callback);
+  virtual void loseContextCHROMIUM(GLenum current,
+                                   GLenum other);
 
-  virtual void loseContextCHROMIUM(WebKit::WGC3Denum current,
-                                   WebKit::WGC3Denum other);
+  virtual void drawBuffersEXT(GLsizei m,
+                              const GLenum* bufs) {}
 
-  virtual void drawBuffersEXT(WebKit::WGC3Dsizei m,
-                              const WebKit::WGC3Denum* bufs) {}
-
-  virtual void bindTexImage2DCHROMIUM(WebKit::WGC3Denum target,
-                                      WebKit::WGC3Dint image_id) {}
+  virtual void bindTexImage2DCHROMIUM(GLenum target,
+                                      GLint image_id) {}
 
   // GL_CHROMIUM_gpu_memory_buffer
-  virtual WebKit::WGC3Duint createImageCHROMIUM(
-      WebKit::WGC3Dsizei width,
-      WebKit::WGC3Dsizei height,
-      WebKit::WGC3Denum internalformat);
-  virtual void destroyImageCHROMIUM(WebKit::WGC3Duint image_id) {}
+  virtual GLuint createImageCHROMIUM(
+      GLsizei width,
+      GLsizei height,
+      GLenum internalformat);
+  virtual void destroyImageCHROMIUM(GLuint image_id) {}
   virtual void getImageParameterivCHROMIUM(
-      WebKit::WGC3Duint image_id,
-      WebKit::WGC3Denum pname,
-      WebKit::WGC3Dint* params) {}
+      GLuint image_id,
+      GLenum pname,
+      GLint* params) {}
   virtual void* mapImageCHROMIUM(
-      WebKit::WGC3Duint image_id,
-      WebKit::WGC3Denum access);
-  virtual void unmapImageCHROMIUM(WebKit::WGC3Duint image_id) {}
+      GLuint image_id,
+      GLenum access);
+  virtual void unmapImageCHROMIUM(GLuint image_id) {}
 
  private:
   DISALLOW_COPY_AND_ASSIGN(FakeWebGraphicsContext3D);

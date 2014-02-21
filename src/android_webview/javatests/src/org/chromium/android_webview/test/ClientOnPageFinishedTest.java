@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -61,12 +61,12 @@ public class ClientOnPageFinishedTest extends AwTestBase {
 
         onReceivedErrorHelper.waitForCallback(onReceivedErrorCallCount,
                                               1 /* numberOfCallsToWaitFor */,
-                                              WAIT_TIMEOUT_SECONDS,
-                                              TimeUnit.SECONDS);
+                                              WAIT_TIMEOUT_MS,
+                                              TimeUnit.MILLISECONDS);
         onPageFinishedHelper.waitForCallback(onPageFinishedCallCount,
-                                              1 /* numberOfCallsToWaitFor */,
-                                              WAIT_TIMEOUT_SECONDS,
-                                              TimeUnit.SECONDS);
+                                             1 /* numberOfCallsToWaitFor */,
+                                             WAIT_TIMEOUT_MS,
+                                             TimeUnit.MILLISECONDS);
         assertEquals(1, onReceivedErrorHelper.getCallCount());
     }
 
@@ -84,17 +84,59 @@ public class ClientOnPageFinishedTest extends AwTestBase {
             final String testPath = "/test.html";
             final String syncPath = "/sync.html";
 
-            webServer.setResponse(testPath, testHtml, null);
+            final String testUrl = webServer.setResponse(testPath, testHtml, null);
             final String syncUrl = webServer.setResponse(syncPath, testHtml, null);
 
             assertEquals(0, onPageFinishedHelper.getCallCount());
             final int pageWithSubresourcesCallCount = onPageFinishedHelper.getCallCount();
             loadDataAsync(mAwContents,
-                          "<html><iframe src=\"" + testPath + "\" /></html>",
+                          "<html><iframe src=\"" + testUrl + "\" /></html>",
                           "text/html",
                           false);
 
             onPageFinishedHelper.waitForCallback(pageWithSubresourcesCallCount);
+
+            // Rather than wait a fixed time to see that an onPageFinished callback isn't issued
+            // we load another valid page. Since callbacks arrive sequentially if the next callback
+            // we get is for the synchronizationUrl we know that the previous load did not schedule
+            // a callback for the iframe.
+            final int synchronizationPageCallCount = onPageFinishedHelper.getCallCount();
+            loadUrlAsync(mAwContents, syncUrl);
+
+            onPageFinishedHelper.waitForCallback(synchronizationPageCallCount);
+            assertEquals(syncUrl, onPageFinishedHelper.getUrl());
+            assertEquals(2, onPageFinishedHelper.getCallCount());
+
+        } finally {
+            if (webServer != null) webServer.shutdown();
+        }
+    }
+
+    @MediumTest
+    @Feature({"AndroidWebView"})
+    public void testOnPageFinishedNotCalledForHistoryApi() throws Throwable {
+        TestCallbackHelperContainer.OnPageFinishedHelper onPageFinishedHelper =
+                mContentsClient.getOnPageFinishedHelper();
+        enableJavaScriptOnUiThread(mAwContents);
+
+        TestWebServer webServer = null;
+        try {
+            webServer = new TestWebServer(false);
+
+            final String testHtml = "<html><head>Header</head><body>Body</body></html>";
+            final String testPath = "/test.html";
+            final String historyPath = "/history.html";
+            final String syncPath = "/sync.html";
+
+            final String testUrl = webServer.setResponse(testPath, testHtml, null);
+            final String historyUrl = webServer.getResponseUrl(historyPath);
+            final String syncUrl = webServer.setResponse(syncPath, testHtml, null);
+
+            assertEquals(0, onPageFinishedHelper.getCallCount());
+            loadUrlSync(mAwContents, onPageFinishedHelper, testUrl);
+
+            executeJavaScriptAndWaitForResult(mAwContents, mContentsClient,
+                    "history.pushState(null, null, '" + historyUrl + "');");
 
             // Rather than wait a fixed time to see that an onPageFinished callback isn't issued
             // we load another valid page. Since callbacks arrive sequentially if the next callback

@@ -55,32 +55,21 @@ class ASH_EXPORT WorkspaceWindowResizer : public WindowResizer {
   virtual ~WorkspaceWindowResizer();
 
   static WorkspaceWindowResizer* Create(
-      aura::Window* window,
-      const gfx::Point& location_in_parent,
-      int window_component,
-      aura::client::WindowMoveSource source,
+      wm::WindowState* window_state,
       const std::vector<aura::Window*>& attached_windows);
 
   // WindowResizer:
   virtual void Drag(const gfx::Point& location_in_parent,
                     int event_flags) OVERRIDE;
-  virtual void CompleteDrag(int event_flags) OVERRIDE;
+  virtual void CompleteDrag() OVERRIDE;
   virtual void RevertDrag() OVERRIDE;
-  virtual aura::Window* GetTarget() OVERRIDE;
-  virtual const gfx::Point& GetInitialLocation() const OVERRIDE;
 
  private:
-  WorkspaceWindowResizer(const Details& details,
+  WorkspaceWindowResizer(wm::WindowState* window_state,
                          const std::vector<aura::Window*>& attached_windows);
 
  private:
-  FRIEND_TEST_ALL_PREFIXES(WorkspaceWindowResizerTest, CancelSnapPhantom);
-  FRIEND_TEST_ALL_PREFIXES(WorkspaceWindowResizerTest, PhantomSnapMaxSize);
-  FRIEND_TEST_ALL_PREFIXES(WorkspaceWindowResizerTest, PhantomWindowShow);
-
-  // Returns the final bounds to place the window at. This differs from
-  // the current when snapping.
-  gfx::Rect GetFinalBounds(const gfx::Rect& bounds) const;
+  friend class WorkspaceWindowResizerTest;
 
   // Lays out the attached windows. |bounds| is the bounds of the main window.
   void LayoutAttachedWindows(gfx::Rect* bounds);
@@ -165,16 +154,17 @@ class ASH_EXPORT WorkspaceWindowResizer : public WindowResizer {
   // Undocks the window if |should_dock| is false.
   void SetDraggedWindowDocked(bool should_dock);
 
-  aura::Window* window() const { return details_.window; }
-
-  wm::WindowState* window_state() { return details_.window_state; }
-
-  const Details details_;
+  wm::WindowState* window_state() { return window_state_; }
 
   const std::vector<aura::Window*> attached_windows_;
 
+  bool did_lock_cursor_;
+
   // Set to true once Drag() is invoked and the bounds of the window change.
   bool did_move_or_resize_;
+
+  // True if the window initially had |bounds_changed_by_user_| set in state.
+  bool initial_bounds_changed_by_user_;
 
   // The initial size of each of the windows in |attached_windows_| along the
   // primary axis.
@@ -220,6 +210,9 @@ class ASH_EXPORT WorkspaceWindowResizer : public WindowResizer {
   // Used to determine if this has been deleted during a drag such as when a tab
   // gets dragged into another browser window.
   base::WeakPtrFactory<WorkspaceWindowResizer> weak_ptr_factory_;
+
+  // Current instance for use by the WorkspaceWindowResizerTest.
+  static WorkspaceWindowResizer* instance_;
 
   DISALLOW_COPY_AND_ASSIGN(WorkspaceWindowResizer);
 };

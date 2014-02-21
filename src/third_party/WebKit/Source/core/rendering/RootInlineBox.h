@@ -28,6 +28,7 @@ namespace WebCore {
 
 class EllipsisBox;
 class HitTestResult;
+class RenderBlockFlow;
 class RenderRegion;
 
 struct BidiStatus;
@@ -35,7 +36,7 @@ struct GapRects;
 
 class RootInlineBox : public InlineFlowBox {
 public:
-    explicit RootInlineBox(RenderBlock*);
+    explicit RootInlineBox(RenderBlockFlow*);
 
     virtual void destroy() OVERRIDE FINAL;
 
@@ -116,7 +117,7 @@ public:
     virtual int baselinePosition(FontBaseline baselineType) const OVERRIDE FINAL;
     virtual LayoutUnit lineHeight() const OVERRIDE FINAL;
 
-    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom);
+    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom) OVERRIDE;
     virtual bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, LayoutUnit lineTop, LayoutUnit lineBottom) OVERRIDE FINAL;
 
     using InlineBox::hasSelectedChildren;
@@ -128,7 +129,7 @@ public:
 
     GapRects lineSelectionGap(RenderBlock* rootBlock, const LayoutPoint& rootBlockPhysicalPosition, const LayoutSize& offsetFromRootBlock, LayoutUnit selTop, LayoutUnit selHeight, const PaintInfo*);
 
-    RenderBlock* block() const;
+    RenderBlockFlow* block() const;
 
     InlineBox* closestLeafChildForPoint(const IntPoint&, bool onlyEditableLeaves);
     InlineBox* closestLeafChildForLogicalLeftPosition(int, bool onlyEditableLeaves = false);
@@ -188,7 +189,7 @@ public:
     Node* getLogicalEndBoxWithNode(InlineBox*&) const;
 
 #ifndef NDEBUG
-    virtual const char* boxName() const;
+    virtual const char* boxName() const OVERRIDE;
 #endif
 private:
     LayoutUnit lineSnapAdjustment(LayoutUnit delta = 0) const;

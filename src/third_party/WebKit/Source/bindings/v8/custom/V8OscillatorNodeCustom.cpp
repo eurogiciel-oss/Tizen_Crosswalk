@@ -26,6 +26,7 @@
 #if ENABLE(WEB_AUDIO)
 #include "V8OscillatorNode.h"
 
+#include "bindings/v8/ExceptionState.h"
 #include "bindings/v8/V8Binding.h"
 #include "modules/webaudio/OscillatorNode.h"
 
@@ -33,26 +34,31 @@ namespace WebCore {
 
 void V8OscillatorNode::typeAttributeSetterCustom(v8::Local<v8::Value> value, const v8::PropertyCallbackInfo<void>& info)
 {
+    ExceptionState exceptionState(ExceptionState::SetterContext, "type", "OscillatorNode", info.Holder(), info.GetIsolate());
     v8::Handle<v8::Object> holder = info.Holder();
     OscillatorNode* imp = V8OscillatorNode::toNative(holder);
 
     if (value->IsNumber()) {
-        bool ok = false;
-        uint32_t type = toUInt32(value, ok);
-        if (!ok || !imp->setType(type))
-            throwTypeError("Illegal OscillatorNode type", info.GetIsolate());
+        uint32_t type = toUInt32(value, exceptionState);
+        if (exceptionState.throwIfNeeded())
+            return;
+        if (!imp->setType(type)) {
+            exceptionState.throwTypeError("Illegal OscillatorNode type");
+            exceptionState.throwIfNeeded();
+        }
         return;
     }
 
     if (value->IsString()) {
-        String type = toWebCoreString(value);
+        String type = toCoreString(value.As<v8::String>());
         if (type == "sine" || type == "square" || type == "sawtooth" || type == "triangle") {
             imp->setType(type);
             return;
         }
     }
 
-    throwTypeError("Illegal OscillatorNode type", info.GetIsolate());
+    exceptionState.throwTypeError("Illegal OscillatorNode type");
+    exceptionState.throwIfNeeded();
 }
 
 } // namespace WebCore

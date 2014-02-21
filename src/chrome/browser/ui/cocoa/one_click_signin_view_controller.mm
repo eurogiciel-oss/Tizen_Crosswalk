@@ -16,7 +16,7 @@
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
 #include "skia/ext/skia_utils_mac.h"
-#import "third_party/GTM/AppKit/GTMUILocalizerAndLayoutTweaker.h"
+#import "third_party/google_toolbox_for_mac/src/AppKit/GTMUILocalizerAndLayoutTweaker.h"
 #include "ui/base/l10n/l10n_util_mac.h"
 
 namespace {
@@ -44,7 +44,7 @@ void ShiftOriginY(NSView* view, CGFloat amount) {
          syncCallback:(const BrowserWindow::StartSyncCallback&)syncCallback
         closeCallback:(const base::Closure&)closeCallback
          isSyncDialog:(BOOL)isSyncDialog
-                email:(const string16&)email
+                email:(const base::string16&)email
          errorMessage:(NSString*)errorMessage {
   if ((self = [super initWithNibName:nibName
                               bundle:base::mac::FrameworkBundle()])) {
@@ -161,6 +161,11 @@ void ShiftOriginY(NSView* view, CGFloat amount) {
       [GTMUILocalizerAndLayoutTweaker
           sizeToFitFixedWidthTextField:messageTextField_];
 
+  ShiftOriginY(titleTextField_, totalYOffset);
+  totalYOffset +=
+      [GTMUILocalizerAndLayoutTweaker
+          sizeToFitFixedWidthTextField:titleTextField_];
+
   if (closeButton_)
     ShiftOriginY(closeButton_, totalYOffset);
 
@@ -224,6 +229,11 @@ void ShiftOriginY(NSView* view, CGFloat amount) {
                                      font:font
                              messageColor:[NSColor blackColor]
                                 linkColor:linkColor];
+
+
+  // Make the "Advanced" link font as large as the "Learn More" link.
+  [[advancedLink_ cell] setFont:font];
+  [advancedLink_ sizeToFit];
 
   // Size to fit.
   [[informativePlaceholderTextField_ cell] setAttributedStringValue:

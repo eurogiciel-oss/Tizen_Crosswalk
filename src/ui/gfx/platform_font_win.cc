@@ -167,6 +167,13 @@ std::string PlatformFontWin::GetFontName() const {
   return font_ref_->font_name();
 }
 
+std::string PlatformFontWin::GetActualFontNameForTesting() const {
+  // With the current implementation on Windows, HFontRef::font_name() returns
+  // the font name taken from the HFONT handle, but it's not the name that comes
+  // from the font's metadata.  See http://crbug.com/327287
+  return font_ref_->font_name();
+}
+
 std::string PlatformFontWin::GetLocalizedFontName() const {
   base::win::ScopedCreateDC memory_dc(CreateCompatibleDC(NULL));
   if (!memory_dc.Get())
@@ -204,7 +211,7 @@ void PlatformFontWin::InitWithCopyOfHFONT(HFONT hfont) {
 void PlatformFontWin::InitWithFontNameAndSize(const std::string& font_name,
                                               int font_size) {
   HFONT hf = ::CreateFont(-font_size, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                          UTF8ToUTF16(font_name).c_str());
+                          base::UTF8ToUTF16(font_name).c_str());
   font_ref_ = CreateHFontRef(hf);
 }
 
@@ -282,7 +289,7 @@ PlatformFontWin::HFontRef::HFontRef(HFONT hfont,
 
   LOGFONT font_info;
   GetObject(hfont_, sizeof(LOGFONT), &font_info);
-  font_name_ = UTF16ToUTF8(base::string16(font_info.lfFaceName));
+  font_name_ = base::UTF16ToUTF8(base::string16(font_info.lfFaceName));
   if (font_info.lfHeight < 0)
     requested_font_size_ = -font_info.lfHeight;
 }

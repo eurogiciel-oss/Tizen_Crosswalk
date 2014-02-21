@@ -96,10 +96,19 @@ public:
     unsigned childNodeCount() const;
     Node* childNode(unsigned index) const;
 
+    PassRefPtr<Element> querySelector(const AtomicString& selectors, ExceptionState&);
+    PassRefPtr<NodeList> querySelectorAll(const AtomicString& selectors, ExceptionState&);
+
     void insertBefore(PassRefPtr<Node> newChild, Node* refChild, ExceptionState& = ASSERT_NO_EXCEPTION);
     void replaceChild(PassRefPtr<Node> newChild, Node* oldChild, ExceptionState& = ASSERT_NO_EXCEPTION);
     void removeChild(Node* child, ExceptionState& = ASSERT_NO_EXCEPTION);
     void appendChild(PassRefPtr<Node> newChild, ExceptionState& = ASSERT_NO_EXCEPTION);
+
+    PassRefPtr<NodeList> getElementsByTagName(const AtomicString&);
+    PassRefPtr<NodeList> getElementsByTagNameNS(const AtomicString& namespaceURI, const AtomicString& localName);
+    PassRefPtr<NodeList> getElementsByName(const AtomicString& elementName);
+    PassRefPtr<NodeList> getElementsByClassName(const AtomicString& classNames);
+    PassRefPtr<RadioNodeList> radioNodeList(const AtomicString&, bool onlyMatchImgElements = false);
 
     // These methods are only used during parsing.
     // They don't send DOM mutation events or handle reparenting.
@@ -115,9 +124,10 @@ public:
 
     virtual void attach(const AttachContext& = AttachContext()) OVERRIDE;
     virtual void detach(const AttachContext& = AttachContext()) OVERRIDE;
-    virtual LayoutRect boundingBox() const OVERRIDE;
+    virtual LayoutRect boundingBox() const OVERRIDE FINAL;
     virtual void setFocus(bool) OVERRIDE;
-    virtual void setActive(bool active = true, bool pause = false) OVERRIDE;
+    void focusStateChanged();
+    virtual void setActive(bool = true) OVERRIDE;
     virtual void setHovered(bool = true) OVERRIDE;
 
     // -----------------------------------------------------------------------------
@@ -128,8 +138,6 @@ public:
     virtual void childrenChanged(bool createdByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0);
 
     void disconnectDescendantFrames();
-
-    virtual bool childShouldCreateRenderer(const Node& child) const { return true; }
 
 protected:
     ContainerNode(TreeScope*, ConstructionType = CreateContainer);
@@ -147,6 +155,14 @@ protected:
 private:
     void removeBetween(Node* previousChild, Node* nextChild, Node& oldChild);
     void insertBeforeCommon(Node& nextChild, Node& oldChild);
+    void updateTreeAfterInsertion(Node& child);
+    void willRemoveChildren();
+    void willRemoveChild(Node& child);
+
+    inline bool checkAcceptChildGuaranteedNodeTypes(const Node& newChild, ExceptionState&) const;
+    inline bool checkAcceptChild(const Node* newChild, const Node* oldChild, ExceptionState&) const;
+    inline bool containsConsideringHostElements(const Node&) const;
+    inline bool isChildTypeAllowed(const Node& child) const;
 
     void attachChildren(const AttachContext& = AttachContext());
     void detachChildren(const AttachContext& = AttachContext());

@@ -23,12 +23,12 @@
 #ifndef ImageResource_h
 #define ImageResource_h
 
-#include "core/fetch/Resource.h"
-#include "core/platform/graphics/ImageObserver.h"
-#include "core/platform/graphics/IntSizeHash.h"
+#include "core/fetch/ResourcePtr.h"
 #include "core/svg/graphics/SVGImageCache.h"
 #include "platform/geometry/IntRect.h"
+#include "platform/geometry/IntSizeHash.h"
 #include "platform/geometry/LayoutSize.h"
+#include "platform/graphics/ImageObserver.h"
 #include "wtf/HashMap.h"
 
 namespace WebCore {
@@ -41,15 +41,17 @@ class MemoryCache;
 class RenderObject;
 class SecurityOrigin;
 
-class ImageResource : public Resource, public ImageObserver {
+class ImageResource FINAL : public Resource, public ImageObserver {
     friend class MemoryCache;
 
 public:
+    typedef ImageResourceClient ClientType;
+
     ImageResource(const ResourceRequest&);
     ImageResource(WebCore::Image*);
     virtual ~ImageResource();
 
-    virtual void load(ResourceFetcher*, const ResourceLoaderOptions&);
+    virtual void load(ResourceFetcher*, const ResourceLoaderOptions&) OVERRIDE;
 
     WebCore::Image* image(); // Returns the nullImage() if the image is not available yet.
     WebCore::Image* imageForRenderer(const RenderObject*); // Returns the nullImage() if the image is not available yet.
@@ -79,30 +81,30 @@ public:
 
     bool isAccessAllowed(SecurityOrigin*);
 
-    virtual void didAddClient(ResourceClient*);
-    virtual void didRemoveClient(ResourceClient*);
+    virtual void didAddClient(ResourceClient*) OVERRIDE;
+    virtual void didRemoveClient(ResourceClient*) OVERRIDE;
 
-    virtual void allClientsRemoved();
-    virtual void destroyDecodedData();
+    virtual void allClientsRemoved() OVERRIDE;
+    virtual void destroyDecodedData() OVERRIDE;
 
     virtual void appendData(const char*, int) OVERRIDE;
-    virtual void error(Resource::Status);
-    virtual void responseReceived(const ResourceResponse&);
+    virtual void error(Resource::Status) OVERRIDE;
+    virtual void responseReceived(const ResourceResponse&) OVERRIDE;
     virtual void finishOnePart() OVERRIDE;
 
     // For compatibility, images keep loading even if there are HTTP errors.
-    virtual bool shouldIgnoreHTTPStatusCodeErrors() const { return true; }
+    virtual bool shouldIgnoreHTTPStatusCodeErrors() const OVERRIDE { return true; }
 
-    virtual bool isImage() const { return true; }
+    virtual bool isImage() const OVERRIDE { return true; }
     virtual bool stillNeedsLoad() const OVERRIDE { return !errorOccurred() && status() == Unknown && !isLoading(); }
 
     // ImageObserver
-    virtual void decodedSizeChanged(const WebCore::Image*, int delta);
-    virtual void didDraw(const WebCore::Image*);
+    virtual void decodedSizeChanged(const WebCore::Image*, int delta) OVERRIDE;
+    virtual void didDraw(const WebCore::Image*) OVERRIDE;
 
-    virtual bool shouldPauseAnimation(const WebCore::Image*);
-    virtual void animationAdvanced(const WebCore::Image*);
-    virtual void changedInRect(const WebCore::Image*, const IntRect&);
+    virtual bool shouldPauseAnimation(const WebCore::Image*) OVERRIDE;
+    virtual void animationAdvanced(const WebCore::Image*) OVERRIDE;
+    virtual void changedInRect(const WebCore::Image*, const IntRect&) OVERRIDE;
 
 private:
     void clear();
@@ -126,6 +128,8 @@ private:
     bool m_loadingMultipartContent;
     bool m_hasDevicePixelRatioHeaderValue;
 };
+
+DEFINE_RESOURCE_TYPE_CASTS(Image);
 
 }
 

@@ -12,6 +12,7 @@
 #include "base/memory/scoped_vector.h"
 #include "base/run_loop.h"
 #include "base/stl_util.h"
+#include "base/test/test_file_util.h"
 #include "net/base/auth.h"
 #include "net/base/net_log_unittest.h"
 #include "net/base/request_priority.h"
@@ -79,20 +80,25 @@ class SpdyNetworkTransactionTest
     : public ::testing::TestWithParam<SpdyNetworkTransactionTestParams> {
  protected:
   SpdyNetworkTransactionTest() : spdy_util_(GetParam().protocol) {
+    LOG(INFO) << __FUNCTION__;
   }
 
   virtual ~SpdyNetworkTransactionTest() {
+    LOG(INFO) << __FUNCTION__;
     // UploadDataStream posts deletion tasks back to the message loop on
     // destruction.
     upload_data_stream_.reset();
     base::RunLoop().RunUntilIdle();
+    LOG(INFO) << __FUNCTION__;
   }
 
   virtual void SetUp() {
+    LOG(INFO) << __FUNCTION__;
     google_get_request_initialized_ = false;
     google_post_request_initialized_ = false;
     google_chunked_post_request_initialized_ = false;
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
+    LOG(INFO) << __FUNCTION__;
   }
 
   struct TransactionHelperResult {
@@ -158,6 +164,7 @@ class SpdyNetworkTransactionTest
     }
 
     void RunPreTestSetup() {
+      LOG(INFO) << __FUNCTION__;
       if (!session_deps_.get())
         session_deps_.reset(CreateSpdySessionDependencies(test_params_));
       if (!session_.get())
@@ -191,13 +198,16 @@ class SpdyNetworkTransactionTest
 
       // We're now ready to use SSL-npn SPDY.
       trans_.reset(new HttpNetworkTransaction(priority_, session_.get()));
+      LOG(INFO) << __FUNCTION__;
     }
 
     // Start the transaction, read some data, finish.
     void RunDefaultTest() {
+      LOG(INFO) << __FUNCTION__;
       if (!StartDefaultTest())
         return;
       FinishDefaultTest();
+      LOG(INFO) << __FUNCTION__;
     }
 
     bool StartDefaultTest() {
@@ -437,7 +447,7 @@ class SpdyNetworkTransactionTest
   const HttpRequestInfo& CreateFilePostRequest() {
     if (!google_post_request_initialized_) {
       base::FilePath file_path;
-      CHECK(file_util::CreateTemporaryFileInDir(temp_dir_.path(), &file_path));
+      CHECK(base::CreateTemporaryFileInDir(temp_dir_.path(), &file_path));
       CHECK_EQ(static_cast<int>(kUploadDataSize),
                file_util::WriteFile(file_path, kUploadData, kUploadDataSize));
 
@@ -459,6 +469,33 @@ class SpdyNetworkTransactionTest
     return google_post_request_;
   }
 
+  const HttpRequestInfo& CreateUnreadableFilePostRequest() {
+    if (google_post_request_initialized_)
+      return google_post_request_;
+
+    base::FilePath file_path;
+    CHECK(base::CreateTemporaryFileInDir(temp_dir_.path(), &file_path));
+    CHECK_EQ(static_cast<int>(kUploadDataSize),
+             file_util::WriteFile(file_path, kUploadData, kUploadDataSize));
+    CHECK(file_util::MakeFileUnreadable(file_path));
+
+    ScopedVector<UploadElementReader> element_readers;
+    element_readers.push_back(
+        new UploadFileElementReader(base::MessageLoopProxy::current().get(),
+                                    file_path,
+                                    0,
+                                    kUploadDataSize,
+                                    base::Time()));
+    upload_data_stream_.reset(
+        new UploadDataStream(element_readers.Pass(), 0));
+
+    google_post_request_.method = "POST";
+    google_post_request_.url = GURL(kDefaultURL);
+    google_post_request_.upload_data_stream = upload_data_stream_.get();
+    google_post_request_initialized_ = true;
+    return google_post_request_;
+  }
+
   const HttpRequestInfo& CreateComplexPostRequest() {
     if (!google_post_request_initialized_) {
       const int kFileRangeOffset = 1;
@@ -466,7 +503,7 @@ class SpdyNetworkTransactionTest
       CHECK_LT(kFileRangeOffset + kFileRangeLength, kUploadDataSize);
 
       base::FilePath file_path;
-      CHECK(file_util::CreateTemporaryFileInDir(temp_dir_.path(), &file_path));
+      CHECK(base::CreateTemporaryFileInDir(temp_dir_.path(), &file_path));
       CHECK_EQ(static_cast<int>(kUploadDataSize),
                file_util::WriteFile(file_path, kUploadData, kUploadDataSize));
 
@@ -671,15 +708,20 @@ INSTANTIATE_TEST_CASE_P(
 
 // Verify HttpNetworkTransaction constructor.
 TEST_P(SpdyNetworkTransactionTest, Constructor) {
+  LOG(INFO) << __FUNCTION__;
   scoped_ptr<SpdySessionDependencies> session_deps(
       CreateSpdySessionDependencies(GetParam()));
+  LOG(INFO) << __FUNCTION__;
   scoped_refptr<HttpNetworkSession> session(
       SpdySessionDependencies::SpdyCreateSession(session_deps.get()));
+  LOG(INFO) << __FUNCTION__;
   scoped_ptr<HttpTransaction> trans(
       new HttpNetworkTransaction(DEFAULT_PRIORITY, session.get()));
+  LOG(INFO) << __FUNCTION__;
 }
 
 TEST_P(SpdyNetworkTransactionTest, Get) {
+  LOG(INFO) << __FUNCTION__;
   // Construct the request.
   scoped_ptr<SpdyFrame> req(
       spdy_util_.ConstructSpdyGet(NULL, 0, false, 1, LOWEST, true));
@@ -1785,6 +1827,28 @@ TEST_P(SpdyNetworkTransactionTest, FilePost) {
   EXPECT_EQ("hello!", out.response_data);
 }
 
+// Test that a POST with a unreadable file fails.
+TEST_P(SpdyNetworkTransactionTest, UnreadableFilePost) {
+  MockWrite writes[] = {
+    MockWrite(ASYNC, 0, 0)  // EOF
+  };
+  MockRead reads[] = {
+    MockRead(ASYNC, 0, 0)  // EOF
+  };
+
+  DelayedSocketData data(1, reads, arraysize(reads), writes, arraysize(writes));
+  NormalSpdyTransactionHelper helper(CreateUnreadableFilePostRequest(),
+                                     DEFAULT_PRIORITY,
+                                     BoundNetLog(), GetParam(), NULL);
+  helper.RunPreTestSetup();
+  helper.AddData(&data);
+  helper.RunDefaultTest();
+
+  base::RunLoop().RunUntilIdle();
+  helper.VerifyDataNotConsumed();
+  EXPECT_EQ(ERR_ACCESS_DENIED, helper.output().rv);
+}
+
 // Test that a complex POST works.
 TEST_P(SpdyNetworkTransactionTest, ComplexPost) {
   scoped_ptr<SpdyFrame> req(
@@ -1921,7 +1985,11 @@ TEST_P(SpdyNetworkTransactionTest, NullPost) {
   scoped_ptr<SpdyFrame> req(
       spdy_util_.ConstructSpdyPost(kRequestUrl, 1, 0, LOWEST, NULL, 0));
   // Set the FIN bit since there will be no body.
-  test::SetFrameFlags(req.get(), CONTROL_FLAG_FIN, spdy_util_.spdy_version());
+  int flags = CONTROL_FLAG_FIN;
+  if (spdy_util_.spdy_version() >= SPDY4) {
+    flags |= HEADERS_FLAG_PRIORITY;
+  }
+  test::SetFrameFlags(req.get(), flags, spdy_util_.spdy_version());
   MockWrite writes[] = {
     CreateMockWrite(*req),
   };
@@ -1963,7 +2031,11 @@ TEST_P(SpdyNetworkTransactionTest, EmptyPost) {
       spdy_util_.ConstructSpdyPost(
           kRequestUrl, 1, kContentLength, LOWEST, NULL, 0));
   // Set the FIN bit since there will be no body.
-  test::SetFrameFlags(req.get(), CONTROL_FLAG_FIN, spdy_util_.spdy_version());
+  int flags = CONTROL_FLAG_FIN;
+  if (spdy_util_.spdy_version() >= SPDY4) {
+    flags |= HEADERS_FLAG_PRIORITY;
+  }
+  test::SetFrameFlags(req.get(), flags, spdy_util_.spdy_version());
   MockWrite writes[] = {
     CreateMockWrite(*req),
   };
@@ -2105,7 +2177,7 @@ TEST_P(SpdyNetworkTransactionTest, ResponseWithTwoSynReplies) {
   scoped_ptr<SpdyFrame> req(
       spdy_util_.ConstructSpdyGet(NULL, 0, false, 1, LOWEST, true));
   scoped_ptr<SpdyFrame> rst(
-      spdy_util_.ConstructSpdyRstStream(1, RST_STREAM_STREAM_IN_USE));
+      spdy_util_.ConstructSpdyRstStream(1, RST_STREAM_PROTOCOL_ERROR));
   MockWrite writes[] = {
     CreateMockWrite(*req),
     CreateMockWrite(*rst),
@@ -2985,6 +3057,11 @@ TEST_P(SpdyNetworkTransactionTest, ServerPushMultipleDataFrameInterrupted) {
 }
 
 TEST_P(SpdyNetworkTransactionTest, ServerPushInvalidAssociatedStreamID0) {
+  if (spdy_util_.spdy_version() == SPDY4) {
+    // TODO(jgraettinger): We don't support associated stream
+    // checks in SPDY4 yet.
+    return;
+  }
   scoped_ptr<SpdyFrame> stream1_syn(
       spdy_util_.ConstructSpdyGet(NULL, 0, false, 1, LOWEST, true));
   scoped_ptr<SpdyFrame> stream1_body(
@@ -3046,6 +3123,11 @@ TEST_P(SpdyNetworkTransactionTest, ServerPushInvalidAssociatedStreamID0) {
 }
 
 TEST_P(SpdyNetworkTransactionTest, ServerPushInvalidAssociatedStreamID9) {
+  if (spdy_util_.spdy_version() == SPDY4) {
+    // TODO(jgraettinger): We don't support associated stream
+    // checks in SPDY4 yet.
+    return;
+  }
   scoped_ptr<SpdyFrame> stream1_syn(
       spdy_util_.ConstructSpdyGet(NULL, 0, false, 1, LOWEST, true));
   scoped_ptr<SpdyFrame> stream1_body(
@@ -4955,7 +5037,8 @@ TEST_P(SpdyNetworkTransactionTest, SpdyBasicAuth) {
   EXPECT_EQ("MyRealm", auth_challenge->realm);
 
   // Restart with a username/password.
-  AuthCredentials credentials(ASCIIToUTF16("foo"), ASCIIToUTF16("bar"));
+  AuthCredentials credentials(base::ASCIIToUTF16("foo"),
+                              base::ASCIIToUTF16("bar"));
   TestCompletionCallback callback_restart;
   const int rv_restart = trans->RestartWithAuth(
       credentials, callback_restart.callback());
@@ -5530,6 +5613,11 @@ TEST_P(SpdyNetworkTransactionTest, SynReplyWithLateHeaders) {
 }
 
 TEST_P(SpdyNetworkTransactionTest, ServerPushCrossOriginCorrectness) {
+  if (spdy_util_.spdy_version() == SPDY4) {
+    // TODO(jgraettinger): We don't support associated stream
+    // checks in SPDY4 yet.
+    return;
+  }
   // In this test we want to verify that we can't accidentally push content
   // which can't be pushed by this content server.
   // This test assumes that:

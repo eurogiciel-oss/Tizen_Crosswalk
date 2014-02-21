@@ -31,12 +31,10 @@
 
 #include "core/rendering/RenderLayerFilterInfo.h"
 
-#include "core/fetch/DocumentResource.h"
 #include "core/fetch/DocumentResourceReference.h"
-#include "core/platform/graphics/filters/custom/CustomFilterOperation.h"
-#include "core/platform/graphics/filters/custom/CustomFilterProgram.h"
 #include "core/rendering/FilterEffectRenderer.h"
 #include "core/rendering/RenderLayer.h"
+#include "core/rendering/svg/ReferenceFilterBuilder.h"
 #include "core/rendering/svg/RenderSVGResourceContainer.h"
 #include "core/svg/SVGFilterElement.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
@@ -95,7 +93,6 @@ RenderLayerFilterInfo::RenderLayerFilterInfo(RenderLayer* layer)
 
 RenderLayerFilterInfo::~RenderLayerFilterInfo()
 {
-    removeCustomFilterClients();
     removeReferenceFilterClients();
 }
 
@@ -116,10 +113,10 @@ void RenderLayerFilterInfo::updateReferenceFilterClients(const FilterOperations&
     removeReferenceFilterClients();
     for (size_t i = 0; i < operations.size(); ++i) {
         RefPtr<FilterOperation> filterOperation = operations.operations().at(i);
-        if (filterOperation->getOperationType() != FilterOperation::REFERENCE)
+        if (filterOperation->type() != FilterOperation::REFERENCE)
             continue;
-        ReferenceFilterOperation* referenceFilterOperation = static_cast<ReferenceFilterOperation*>(filterOperation.get());
-        DocumentResourceReference* documentReference = referenceFilterOperation->documentResourceReference();
+        ReferenceFilterOperation* referenceFilterOperation = toReferenceFilterOperation(filterOperation.get());
+        DocumentResourceReference* documentReference = ReferenceFilterBuilder::documentResourceReference(referenceFilterOperation);
         DocumentResource* cachedSVGDocument = documentReference ? documentReference->document() : 0;
 
         if (cachedSVGDocument) {
@@ -154,41 +151,6 @@ void RenderLayerFilterInfo::removeReferenceFilterClients()
             toSVGFilterElement(filter)->removeClient(m_layer->renderer()->node());
     }
     m_internalSVGReferences.clear();
-}
-
-void RenderLayerFilterInfo::notifyCustomFilterProgramLoaded(CustomFilterProgram*)
-{
-    RenderObject* renderer = m_layer->renderer();
-    toElement(renderer->node())->scheduleLayerUpdate();
-    renderer->repaint();
-}
-
-void RenderLayerFilterInfo::updateCustomFilterClients(const FilterOperations& operations)
-{
-    if (!operations.size()) {
-        removeCustomFilterClients();
-        return;
-    }
-    CustomFilterProgramList cachedCustomFilterPrograms;
-    for (size_t i = 0; i < operations.size(); ++i) {
-        const FilterOperation* filterOperation = operations.at(i);
-        if (filterOperation->getOperationType() != FilterOperation::CUSTOM)
-            continue;
-        const CustomFilterOperation* customFilterOperation = static_cast<const CustomFilterOperation*>(filterOperation);
-        RefPtr<CustomFilterProgram> program = customFilterOperation->program();
-        cachedCustomFilterPrograms.append(program);
-        program->addClient(this);
-    }
-    // Remove the old clients here, after we've added the new ones, so that we don't flicker if some shaders are unchanged.
-    removeCustomFilterClients();
-    m_cachedCustomFilterPrograms.swap(cachedCustomFilterPrograms);
-}
-
-void RenderLayerFilterInfo::removeCustomFilterClients()
-{
-    for (size_t i = 0; i < m_cachedCustomFilterPrograms.size(); ++i)
-        m_cachedCustomFilterPrograms.at(i)->removeClient(this);
-    m_cachedCustomFilterPrograms.clear();
 }
 
 } // namespace WebCore

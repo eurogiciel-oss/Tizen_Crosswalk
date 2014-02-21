@@ -15,8 +15,9 @@
       'type': '<(component)',
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
-        '<(DEPTH)/ui/gfx/gfx.gyp:gfx',
         '<(DEPTH)/ui/events/events.gyp:events',
+        '<(DEPTH)/ui/gfx/gfx.gyp:gfx',
+        '<(DEPTH)/ui/gfx/gfx.gyp:gfx_geometry',
         '<(DEPTH)/skia/skia.gyp:skia',
         '<@(external_ozone_platform_deps)',
       ],
@@ -40,6 +41,9 @@
         'platform/test/ozone_platform_test.cc',
         'platform/test/ozone_platform_test.h',
         '<@(external_ozone_platform_files)',
+      ],
+      'includes': [
+        'ime/ime.gypi',
       ],
       'actions': [
         {

@@ -13,6 +13,10 @@ testGridDefinitionsValues(document.getElementById("gridWithMinMaxAndFixed"), "mi
 testGridDefinitionsValues(document.getElementById("gridWithMinMaxAndMinMaxContent"), "minmax(min-content, 30%) 15px", "120px minmax(35%, max-content)");
 testGridDefinitionsValues(document.getElementById("gridWithFractionFraction"), "1fr 2fr", "3fr 4fr");
 testGridDefinitionsValues(document.getElementById("gridWithFractionMinMax"), "minmax(min-content, 45px) 2fr", "3fr minmax(14px, max-content)");
+testGridDefinitionsValues(document.getElementById("gridWithCalcCalc"), "200px 100px", "150px 75px");
+testGridDefinitionsValues(document.getElementById("gridWithCalcAndFixed"), "50% 80px", "88px 25%");
+testGridDefinitionsValues(document.getElementById("gridWithCalcAndMinMax"), "calc(30px + 20%) minmax(min-content, 80px)", "minmax(25%, max-content) calc(10% - 7px)");
+testGridDefinitionsValues(document.getElementById("gridWithCalcInsideMinMax"), "minmax(calc(23px + 10%), 400px) 120px", "150px minmax(5%, calc(50% - 125px))");
 
 debug("");
 debug("Test the initial value");
@@ -58,15 +62,15 @@ function testInherit()
 {
     var parentElement = document.createElement("div");
     document.body.appendChild(parentElement);
-    parentElement.style.gridDefinitionColumns = "50px 1fr 'last'";
-    parentElement.style.gridDefinitionRows = "101% 'middle' 45px";
-    testGridDefinitionsValues(parentElement, "50px 1fr last", "101% middle 45px");
+    parentElement.style.gridDefinitionColumns = "50px 1fr (last)";
+    parentElement.style.gridDefinitionRows = "101% (middle) 45px";
+    testGridDefinitionsValues(parentElement, "50px 1fr (last)", "101% (middle) 45px");
 
     element = document.createElement("div");
     parentElement.appendChild(element);
     element.style.gridDefinitionColumns = "inherit";
     element.style.gridDefinitionRows = "inherit";
-    testGridDefinitionsValues(element, "50px 1fr last", "101% middle 45px");
+    testGridDefinitionsValues(element, "50px 1fr (last)", "101% (middle) 45px");
 
     document.body.removeChild(parentElement);
 }
@@ -78,9 +82,9 @@ function testInitial()
 {
     element = document.createElement("div");
     document.body.appendChild(element);
-    element.style.gridDefinitionColumns = "150% 'middle' 55px";
-    element.style.gridDefinitionRows = "1fr 'line' 2fr 'line'";
-    testGridDefinitionsValues(element, "150% middle 55px", "1fr line 2fr line");
+    element.style.gridDefinitionColumns = "150% (middle) 55px";
+    element.style.gridDefinitionRows = "1fr (line) 2fr (line)";
+    testGridDefinitionsValues(element, "150% (middle) 55px", "1fr (line) 2fr (line)");
 
     element.style.gridDefinitionColumns = "initial";
     element.style.gridDefinitionRows = "initial";

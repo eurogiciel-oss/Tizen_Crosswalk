@@ -15,7 +15,6 @@
 #include "media/base/demuxer.h"
 #include "media/base/ranges.h"
 #include "media/base/stream_parser.h"
-#include "media/base/text_track.h"
 #include "media/filters/source_buffer_stream.h"
 
 namespace media {
@@ -38,19 +37,19 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer {
   //   is ready to receive media data via AppenData().
   // |need_key_cb| Run when the demuxer determines that an encryption key is
   //   needed to decrypt the content.
-  // |add_text_track_cb| Run when demuxer detects the presence of an inband
-  //   text track.
+  // |enable_text| Process inband text tracks in the normal way when true,
+  //   otherwise ignore them.
   // |log_cb| Run when parsing error messages need to be logged to the error
   //   console.
   ChunkDemuxer(const base::Closure& open_cb,
                const NeedKeyCB& need_key_cb,
-               const AddTextTrackCB& add_text_track_cb,
                const LogCB& log_cb);
   virtual ~ChunkDemuxer();
 
   // Demuxer implementation.
   virtual void Initialize(DemuxerHost* host,
-                          const PipelineStatusCB& cb) OVERRIDE;
+                          const PipelineStatusCB& cb,
+                          bool enable_text_tracks) OVERRIDE;
   virtual void Stop(const base::Closure& callback) OVERRIDE;
   virtual void Seek(base::TimeDelta time, const PipelineStatusCB&  cb) OVERRIDE;
   virtual void OnAudioRendererDisabled() OVERRIDE;
@@ -125,6 +124,17 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer {
   // middle of parsing a media segment.
   bool SetTimestampOffset(const std::string& id, base::TimeDelta offset);
 
+  // Set the append mode to be applied to subsequent buffers appended to the
+  // source buffer associated with |id|. If |sequence_mode| is true, caller
+  // is requesting "sequence" mode. Otherwise, caller is requesting "segments"
+  // mode. Returns true if the mode update was allowed. Returns false if
+  // the mode cannot be updated because we're in the middle of parsing a media
+  // segment.
+  // In "sequence" mode, appended media will be treated as adjacent in time.
+  // In "segments" mode, timestamps in appended media determine coded frame
+  // placement.
+  bool SetSequenceMode(const std::string& id, bool sequence_mode);
+
   // Called to signal changes in the "end of stream"
   // state. UnmarkEndOfStream() must not be called if a matching
   // MarkEndOfStream() has not come before it.
@@ -138,6 +148,8 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer {
 
   void Shutdown();
 
+  // Sets the memory limit on each stream. |memory_limit| is the
+  // maximum number of bytes each stream is allowed to hold in its buffer.
   void SetMemoryLimitsForTesting(int memory_limit);
 
   // Returns the ranges representing the buffered data in the demuxer.
@@ -177,14 +189,10 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer {
   // has not been created before. Returns NULL otherwise.
   ChunkDemuxerStream* CreateDemuxerStream(DemuxerStream::Type type);
 
-  bool OnTextBuffers(TextTrack* text_track,
-                     const StreamParser::BufferQueue& buffers);
+  void OnNewTextTrack(ChunkDemuxerStream* text_stream,
+                      const TextTrackConfig& config);
   void OnNewMediaSegment(const std::string& source_id,
                          base::TimeDelta start_timestamp);
-
-  // Computes the intersection between the video & audio
-  // buffered ranges.
-  Ranges<base::TimeDelta> ComputeIntersection() const;
 
   // Applies |time_offset| to the timestamps of |buffers|.
   void AdjustBufferTimestamps(const StreamParser::BufferQueue& buffers,
@@ -223,6 +231,10 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer {
   // Seeks all SourceBufferStreams to |seek_time|.
   void SeekAllSources(base::TimeDelta seek_time);
 
+  // Shuts down all DemuxerStreams by calling Shutdown() on
+  // all objects in |source_state_map_|.
+  void ShutdownAllStreams();
+
   mutable base::Lock lock_;
   State state_;
   bool cancel_next_seek_;
@@ -230,7 +242,7 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer {
   DemuxerHost* host_;
   base::Closure open_cb_;
   NeedKeyCB need_key_cb_;
-  AddTextTrackCB add_text_track_cb_;
+  bool enable_text_;
   // Callback used to report error strings that can help the web developer
   // figure out what is wrong with the content.
   LogCB log_cb_;

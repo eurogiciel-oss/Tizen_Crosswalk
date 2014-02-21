@@ -24,15 +24,16 @@
 
 #include "SVGNames.h"
 #include "XMLNames.h"
-#include "core/platform/graphics/SVGGlyph.h"
-#include "core/platform/graphics/WidthIterator.h"
 #include "core/rendering/RenderObject.h"
 #include "core/rendering/svg/SVGTextRunRenderingContext.h"
 #include "core/svg/SVGAltGlyphElement.h"
 #include "core/svg/SVGFontElement.h"
 #include "core/svg/SVGFontFaceElement.h"
 #include "core/svg/SVGGlyphElement.h"
-#include "platform/graphics/TextRun.h"
+#include "platform/fonts/SVGGlyph.h"
+#include "platform/fonts/SimpleFontData.h"
+#include "platform/fonts/WidthIterator.h"
+#include "platform/text/TextRun.h"
 #include "wtf/text/StringBuilder.h"
 #include "wtf/unicode/CharacterNames.h"
 #include "wtf/unicode/Unicode.h"
@@ -43,7 +44,8 @@ using namespace Unicode;
 namespace WebCore {
 
 SVGFontData::SVGFontData(SVGFontFaceElement* fontFaceElement)
-    : m_svgFontFaceElement(fontFaceElement)
+    : CustomFontData(false)
+    , m_svgFontFaceElement(fontFaceElement)
     , m_horizontalOriginX(fontFaceElement->horizontalOriginX())
     , m_horizontalOriginY(fontFaceElement->horizontalOriginY())
     , m_horizontalAdvanceX(fontFaceElement->horizontalAdvanceX())
@@ -163,7 +165,7 @@ bool SVGFontData::applySVGGlyphSelection(WidthIterator& iterator, GlyphData& gly
 
     String language;
     bool isVerticalText = false;
-    Vector<String> altGlyphNames;
+    Vector<AtomicString> altGlyphNames;
 
     if (renderObject) {
         RenderObject* parentRenderObject = renderObject->isText() ? renderObject->parent() : renderObject;
@@ -174,8 +176,7 @@ bool SVGFontData::applySVGGlyphSelection(WidthIterator& iterator, GlyphData& gly
             language = parentRenderObjectElement->getAttribute(XMLNames::langAttr);
 
             if (parentRenderObjectElement->hasTagName(SVGNames::altGlyphTag)) {
-                SVGAltGlyphElement* altGlyph = static_cast<SVGAltGlyphElement*>(parentRenderObjectElement);
-                if (!altGlyph->hasValidGlyphElements(altGlyphNames))
+                if (!toSVGAltGlyphElement(parentRenderObjectElement)->hasValidGlyphElements(altGlyphNames))
                     altGlyphNames.clear();
             }
         }

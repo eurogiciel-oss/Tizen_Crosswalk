@@ -33,22 +33,22 @@
 
 #include "core/page/ContextMenuClient.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebViewImpl;
 struct WebContextMenuData;
 
-class ContextMenuClientImpl : public  WebCore::ContextMenuClient {
+class ContextMenuClientImpl FINAL : public WebCore::ContextMenuClient {
 public:
     ContextMenuClientImpl(WebViewImpl* webView) : m_webView(webView) {}
     virtual ~ContextMenuClientImpl() {}
-    virtual void showContextMenu(const WebCore::ContextMenu*);
-    virtual void clearContextMenu();
+    virtual void showContextMenu(const WebCore::ContextMenu*) OVERRIDE;
+    virtual void clearContextMenu() OVERRIDE;
 private:
     void populateCustomMenuItems(const WebCore::ContextMenu*, WebContextMenuData*);
     WebViewImpl* m_webView;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // ContextMenuClientImpl_h

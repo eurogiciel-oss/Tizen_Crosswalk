@@ -17,6 +17,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/message_loop/message_loop.h"
 #include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "content/browser/fileapi/chrome_blob_storage_context.h"
 #include "content/browser/histogram_internals_request_job.h"
 #include "content/browser/net/view_blob_internals_job_factory.h"
@@ -59,10 +60,8 @@ bool SchemeIsInSchemes(const std::string& scheme,
   return std::find(schemes.begin(), schemes.end(), scheme) != schemes.end();
 }
 
-// Parse a URL into the components used to resolve its request. |source_name|
-// is the hostname and |path| is the remaining portion of the URL.
-void URLToRequest(const GURL& url, std::string* source_name,
-                  std::string* path) {
+// Returns whether |url| passes some sanity checks and is a valid GURL.
+bool CheckURLIsValid(const GURL& url) {
   std::vector<std::string> additional_schemes;
   DCHECK(url.SchemeIs(chrome::kChromeDevToolsScheme) ||
          url.SchemeIs(chrome::kChromeUIScheme) ||
@@ -72,14 +71,15 @@ void URLToRequest(const GURL& url, std::string* source_name,
 
   if (!url.is_valid()) {
     NOTREACHED();
-    return;
+    return false;
   }
 
-  // Our input looks like: chrome://source_name/extra_bits?foo .
-  // So the url's "host" is our source, and everything after the host is
-  // the path.
-  source_name->assign(url.host());
+  return true;
+}
 
+// Parse |url| to get the path which will be used to resolve the request. The
+// path is the remaining portion after the scheme and hostname.
+void URLToRequestPath(const GURL& url, std::string* path) {
   const std::string& spec = url.possibly_invalid_spec();
   const url_parse::Parsed& parsed = url.parsed_for_possibly_invalid_spec();
   // + 1 to skip the slash at the beginning of the path.
@@ -147,6 +147,10 @@ class URLRequestChromeJob : public net::URLRequestJob,
     deny_xframe_options_ = deny_xframe_options;
   }
 
+  void set_send_content_type_header(bool send_content_type_header) {
+    send_content_type_header_ = send_content_type_header;
+  }
+
   // Returns true when job was generated from an incognito profile.
   bool is_incognito() const {
     return is_incognito_;
@@ -188,6 +192,9 @@ class URLRequestChromeJob : public net::URLRequestJob,
   // If true, sets  the "X-Frame-Options: DENY" header.
   bool deny_xframe_options_;
 
+  // If true, sets the "Content-Type: <mime-type>" header.
+  bool send_content_type_header_;
+
   // True when job is generated from an incognito profile.
   const bool is_incognito_;
 
@@ -211,6 +218,7 @@ URLRequestChromeJob::URLRequestChromeJob(net::URLRequest* request,
       content_security_policy_object_source_("object-src 'none';"),
       content_security_policy_frame_source_("frame-src 'none';"),
       deny_xframe_options_(true),
+      send_content_type_header_(false),
       is_incognito_(is_incognito),
       backend_(backend),
       weak_factory_(this) {
@@ -267,6 +275,13 @@ void URLRequestChromeJob::GetResponseInfo(net::HttpResponseInfo* info) {
 
   if (!allow_caching_)
     info->headers->AddHeader("Cache-Control: no-cache");
+
+  if (send_content_type_header_ && !mime_type_.empty()) {
+    std::string content_type =
+        base::StringPrintf("%s:%s", net::HttpRequestHeaders::kContentType,
+                           mime_type_.c_str());
+    info->headers->AddHeader(content_type);
+  }
 }
 
 void URLRequestChromeJob::MimeTypeAvailable(const std::string& mime_type) {
@@ -482,20 +497,18 @@ bool URLDataManagerBackend::HasPendingJob(
 
 bool URLDataManagerBackend::StartRequest(const net::URLRequest* request,
                                          URLRequestChromeJob* job) {
-  // Parse the URL into a request for a source and path.
-  std::string source_name;
-  std::string path;
-  URLToRequest(request->url(), &source_name, &path);
-
-  // Look up the data source for the request.
-  DataSourceMap::iterator i = data_sources_.find(source_name);
-  if (i == data_sources_.end())
+  if (!CheckURLIsValid(request->url()))
     return false;
 
-  URLDataSourceImpl* source = i->second.get();
+  URLDataSourceImpl* source = GetDataSourceFromURL(request->url());
+  if (!source)
+    return false;
 
   if (!source->source()->ShouldServiceRequest(request))
     return false;
+
+  std::string path;
+  URLToRequestPath(request->url(), &path);
   source->source()->WillServiceRequest(request, &path);
 
   // Save this request so we know where to send the data.
@@ -511,13 +524,15 @@ bool URLDataManagerBackend::StartRequest(const net::URLRequest* request,
       source->source()->GetContentSecurityPolicyFrameSrc());
   job->set_deny_xframe_options(
       source->source()->ShouldDenyXFrameOptions());
+  job->set_send_content_type_header(
+      source->source()->ShouldServeMimeTypeAsContentTypeHeader());
 
   // Look up additional request info to pass down.
   int render_process_id = -1;
-  int render_view_id = -1;
-  ResourceRequestInfo::GetRenderViewForRequest(request,
-                                               &render_process_id,
-                                               &render_view_id);
+  int render_frame_id = -1;
+  ResourceRequestInfo::GetRenderFrameForRequest(request,
+                                                &render_process_id,
+                                                &render_frame_id);
 
   // Forward along the request to the data source.
   base::MessageLoop* target_message_loop =
@@ -531,7 +546,7 @@ bool URLDataManagerBackend::StartRequest(const net::URLRequest* request,
     // on for this path.  Call directly into it from this thread, the IO
     // thread.
     source->source()->StartDataRequest(
-        path, render_process_id, render_view_id,
+        path, render_process_id, render_frame_id,
         base::Bind(&URLDataSourceImpl::SendResponse, source, request_id));
   } else {
     // URLRequestChromeJob should receive mime type before data. This
@@ -550,16 +565,34 @@ bool URLDataManagerBackend::StartRequest(const net::URLRequest* request,
         FROM_HERE,
         base::Bind(&URLDataManagerBackend::CallStartRequest,
                    make_scoped_refptr(source), path, render_process_id,
-                   render_view_id, request_id));
+                   render_frame_id, request_id));
   }
   return true;
+}
+
+URLDataSourceImpl* URLDataManagerBackend::GetDataSourceFromURL(
+    const GURL& url) {
+  // The input usually looks like: chrome://source_name/extra_bits?foo
+  // so do a lookup using the host of the URL.
+  DataSourceMap::iterator i = data_sources_.find(url.host());
+  if (i != data_sources_.end())
+    return i->second.get();
+
+  // No match using the host of the URL, so do a lookup using the scheme for
+  // URLs on the form source_name://extra_bits/foo .
+  i = data_sources_.find(url.scheme());
+  if (i != data_sources_.end())
+    return i->second.get();
+
+  // No matches found, so give up.
+  return NULL;
 }
 
 void URLDataManagerBackend::CallStartRequest(
     scoped_refptr<URLDataSourceImpl> source,
     const std::string& path,
     int render_process_id,
-    int render_view_id,
+    int render_frame_id,
     int request_id) {
   if (BrowserThread::CurrentlyOn(BrowserThread::UI) &&
       render_process_id != -1 &&
@@ -573,7 +606,7 @@ void URLDataManagerBackend::CallStartRequest(
   source->source()->StartDataRequest(
       path,
       render_process_id,
-      render_view_id,
+      render_frame_id,
       base::Bind(&URLDataSourceImpl::SendResponse, source, request_id));
 }
 

@@ -46,7 +46,9 @@
         '../compositor/compositor.gyp:compositor',
         '../events/events.gyp:events',
         '../gfx/gfx.gyp:gfx',
+        '../gfx/gfx.gyp:gfx_geometry',
         '../ui.gyp:ui',
+        '../wm/wm.gyp:wm_public',
         'keyboard_resources',
       ],
       'defines': [
@@ -82,17 +84,19 @@
         '../../content/content.gyp:content',
         '../../skia/skia.gyp:skia',
         '../../testing/gtest.gyp:gtest',
+        '../../url/url.gyp:url_lib',
         '../aura/aura.gyp:aura',
         '../aura/aura.gyp:aura_test_support',
         '../compositor/compositor.gyp:compositor',
         '../gfx/gfx.gyp:gfx',
+        '../gfx/gfx.gyp:gfx_geometry',
+        '../resources/ui_resources.gyp:ui_test_pak',
         '../ui.gyp:ui',
-        '../ui_unittests.gyp:run_ui_unittests',
         'keyboard',
       ],
       'sources': [
+        'test/run_all_unittests.cc',
         'keyboard_controller_unittest.cc',
-        'keyboard_test_suite.cc',
       ],
       'conditions': [
         ['OS=="linux" and linux_use_tcmalloc==1', {
@@ -102,6 +106,11 @@
           'link_settings': {
             'ldflags': ['-rdynamic'],
           },
+        }],
+        ['OS=="win" and win_use_allocator_shim==1', {
+          'dependencies': [
+            '<(DEPTH)/base/allocator/allocator.gyp:allocator',
+          ],
         }],
       ],
     },

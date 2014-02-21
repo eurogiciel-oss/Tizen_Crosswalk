@@ -34,16 +34,6 @@
 #import "core/html/TimeRanges.h"
 #import "core/html/shadow/MediaControlElements.h"
 #import "core/frame/FrameView.h"
-#import "core/platform/graphics/BitmapImage.h"
-#import "core/platform/graphics/GraphicsContextStateSaver.h"
-#import "core/platform/graphics/Image.h"
-#import "core/platform/graphics/ImageBuffer.h"
-#import "core/platform/graphics/StringTruncator.h"
-#import "core/platform/graphics/cg/GraphicsContextCG.h"
-#import "core/platform/graphics/mac/ColorMac.h"
-#import "core/platform/mac/LocalCurrentGraphicsContext.h"
-#import "core/platform/mac/ThemeMac.h"
-#import "core/platform/mac/WebCoreNSCellExtras.h"
 #import "core/rendering/PaintInfo.h"
 #import "core/rendering/RenderLayer.h"
 #import "core/rendering/RenderMedia.h"
@@ -55,7 +45,17 @@
 #import "core/rendering/style/ShadowList.h"
 #import "platform/LayoutTestSupport.h"
 #import "platform/SharedBuffer.h"
+#import "platform/graphics/BitmapImage.h"
+#import "platform/graphics/GraphicsContextStateSaver.h"
+#import "platform/graphics/Image.h"
+#import "platform/graphics/ImageBuffer.h"
+#import "platform/graphics/cg/GraphicsContextCG.h"
+#import "platform/mac/ColorMac.h"
+#import "platform/mac/LocalCurrentGraphicsContext.h"
+#import "platform/mac/ThemeMac.h"
+#import "platform/mac/WebCoreNSCellExtras.h"
 #import "platform/text/PlatformLocale.h"
+#import "platform/text/StringTruncator.h"
 
 #import <AvailabilityMacros.h>
 #import <Carbon/Carbon.h>
@@ -192,6 +192,11 @@ Color RenderThemeChromiumMac::platformInactiveSelectionBackgroundColor() const
 {
     NSColor* color = [[NSColor secondarySelectedControlColor] colorUsingColorSpaceName:NSDeviceRGBColorSpace];
     return Color(static_cast<int>(255.0 * [color redComponent]), static_cast<int>(255.0 * [color greenComponent]), static_cast<int>(255.0 * [color blueComponent]));
+}
+
+Color RenderThemeChromiumMac::platformActiveSelectionForegroundColor() const
+{
+    return Color::black;
 }
 
 Color RenderThemeChromiumMac::platformActiveListBoxSelectionBackgroundColor() const
@@ -394,6 +399,7 @@ Color RenderThemeChromiumMac::systemColor(CSSValueID cssValueId) const
     }
 
     Color color;
+    bool needsFallback = false;
     switch (cssValueId) {
         case CSSValueActiveborder:
             color = convertNSColorToColor([NSColor keyboardFocusIndicatorColor]);
@@ -406,6 +412,7 @@ Color RenderThemeChromiumMac::systemColor(CSSValueID cssValueId) const
             break;
         case CSSValueBackground:
             // Use theme independent default
+            needsFallback = true;
             break;
         case CSSValueButtonface:
             // We use this value instead of NSColor's controlColor to avoid website incompatibilities.
@@ -491,14 +498,14 @@ Color RenderThemeChromiumMac::systemColor(CSSValueID cssValueId) const
             color = convertNSColorToColor([NSColor windowFrameTextColor]);
             break;
         default:
+            needsFallback = true;
             break;
     }
 
-    if (!color.isValid())
+    if (needsFallback)
         color = RenderTheme::systemColor(cssValueId);
 
-    if (color.isValid())
-        m_systemColorCache.set(cssValueId, color.rgb());
+    m_systemColorCache.set(cssValueId, color.rgb());
 
     return color;
 }
@@ -1084,7 +1091,7 @@ bool RenderThemeChromiumMac::paintProgressBar(RenderObject* renderObject, const 
     trackInfo.reserved = 0;
     trackInfo.filler1 = 0;
 
-    OwnPtr<ImageBuffer> imageBuffer = ImageBuffer::create(inflatedRect.size(), 1);
+    OwnPtr<ImageBuffer> imageBuffer = ImageBuffer::create(inflatedRect.size());
     if (!imageBuffer)
         return true;
 
@@ -1155,7 +1162,7 @@ void RenderThemeChromiumMac::paintMenuListButtonGradients(RenderObject* o, const
 
     GraphicsContextStateSaver stateSaver(*paintInfo.context);
 
-    RoundedRect border = o->style()->getRoundedBorderFor(r, o->view());
+    RoundedRect border = o->style()->getRoundedBorderFor(r);
     int radius = border.radii().topLeft().width();
 
     CGColorSpaceRef cspace = deviceRGBColorSpaceRef();
@@ -1868,12 +1875,12 @@ String RenderThemeChromiumMac::fileListNameForWidth(Locale& locale, const FileLi
 
     String strToTruncate;
     if (fileList->isEmpty()) {
-        strToTruncate = locale.queryString(WebKit::WebLocalizedString::FileButtonNoFileSelectedLabel);
+        strToTruncate = locale.queryString(blink::WebLocalizedString::FileButtonNoFileSelectedLabel);
     } else if (fileList->length() == 1) {
         strToTruncate = [[NSFileManager defaultManager] displayNameAtPath:(fileList->item(0)->path())];
     } else {
         // FIXME: Localization of fileList->length().
-        return StringTruncator::rightTruncate(locale.queryString(WebKit::WebLocalizedString::MultipleFileUploadText, String::number(fileList->length())), width, font, StringTruncator::EnableRoundingHacks);
+        return StringTruncator::rightTruncate(locale.queryString(blink::WebLocalizedString::MultipleFileUploadText, String::number(fileList->length())), width, font, StringTruncator::EnableRoundingHacks);
     }
 
     return StringTruncator::centerTruncate(strToTruncate, width, font, StringTruncator::EnableRoundingHacks);
@@ -1887,7 +1894,7 @@ NSView* FlippedView()
 
 RenderTheme& RenderTheme::theme()
 {
-    static RenderTheme* renderTheme = RenderThemeChromiumMac::create().leakRef();
+    DEFINE_STATIC_REF(RenderTheme, renderTheme, (RenderThemeChromiumMac::create()));
     return *renderTheme;
 }
 

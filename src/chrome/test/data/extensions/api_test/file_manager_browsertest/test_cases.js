@@ -23,6 +23,14 @@ var SharedOption = Object.freeze({
 });
 
 /**
+ * @enum {string}
+ */
+var RootPath = Object.seal({
+  DOWNLOADS: '/must-be-filled-in-test-setup',
+  DRIVE: '/must-be-filled-in-test-setup',
+});
+
+/**
  * File system entry information for tests.
  *
  * @param {EntryType} type Entry type.
@@ -312,7 +320,7 @@ testcase.intermediate.fileDisplay = function(path) {
   var appId;
 
   var expectedFilesBefore =
-      TestEntryInfo.getExpectedRows(path == '/drive/root' ?
+      TestEntryInfo.getExpectedRows(path == RootPath.DRIVE ?
           BASIC_DRIVE_ENTRY_SET : BASIC_LOCAL_ENTRY_SET).sort();
 
   var expectedFilesAfter =
@@ -530,7 +538,7 @@ testcase.intermediate.videoOpen = function(path) {
 testcase.intermediate.keyboardCopy = function(path, callback) {
   var filename = 'world.ogv';
   var expectedFilesBefore =
-      TestEntryInfo.getExpectedRows(path == '/drive/root' ?
+      TestEntryInfo.getExpectedRows(path == RootPath.DRIVE ?
           BASIC_DRIVE_ENTRY_SET : BASIC_LOCAL_ENTRY_SET).sort();
   var expectedFilesAfter =
       expectedFilesBefore.concat([['world (1).ogv', '59 KB', 'OGG video']]);
@@ -635,51 +643,51 @@ testcase.intermediate.keyboardDelete = function(path) {
 };
 
 testcase.fileDisplayDownloads = function() {
-  testcase.intermediate.fileDisplay('/Downloads');
+  testcase.intermediate.fileDisplay(RootPath.DOWNLOADS);
 };
 
 testcase.galleryOpenDownloads = function() {
-  testcase.intermediate.galleryOpen('/Downloads');
+  testcase.intermediate.galleryOpen(RootPath.DOWNLOADS);
 };
 
 testcase.audioOpenDownloads = function() {
-  testcase.intermediate.audioOpen('/Downloads');
+  testcase.intermediate.audioOpen(RootPath.DOWNLOADS);
 };
 
 testcase.videoOpenDownloads = function() {
-  testcase.intermediate.videoOpen('/Downloads');
+  testcase.intermediate.videoOpen(RootPath.DOWNLOADS);
 };
 
 testcase.keyboardCopyDownloads = function() {
-  testcase.intermediate.keyboardCopy('/Downloads');
+  testcase.intermediate.keyboardCopy(RootPath.DOWNLOADS);
 };
 
 testcase.keyboardDeleteDownloads = function() {
-  testcase.intermediate.keyboardDelete('/Downloads');
+  testcase.intermediate.keyboardDelete(RootPath.DOWNLOADS);
 };
 
 testcase.fileDisplayDrive = function() {
-  testcase.intermediate.fileDisplay('/drive/root');
+  testcase.intermediate.fileDisplay(RootPath.DRIVE);
 };
 
 testcase.galleryOpenDrive = function() {
-  testcase.intermediate.galleryOpen('/drive/root');
+  testcase.intermediate.galleryOpen(RootPath.DRIVE);
 };
 
 testcase.audioOpenDrive = function() {
-  testcase.intermediate.audioOpen('/drive/root');
+  testcase.intermediate.audioOpen(RootPath.DRIVE);
 };
 
 testcase.videoOpenDrive = function() {
-  testcase.intermediate.videoOpen('/drive/root');
+  testcase.intermediate.videoOpen(RootPath.DRIVE);
 };
 
 testcase.keyboardCopyDrive = function() {
-  testcase.intermediate.keyboardCopy('/drive/root');
+  testcase.intermediate.keyboardCopy(RootPath.DRIVE);
 };
 
 testcase.keyboardDeleteDrive = function() {
-  testcase.intermediate.keyboardDelete('/drive/root');
+  testcase.intermediate.keyboardDelete(RootPath.DRIVE);
 };
 
 /**
@@ -692,7 +700,7 @@ testcase.openSidebarRecent = function() {
   var appId;
   StepsRunner.run([
     function() {
-      var appState = {defaultPath: '/drive/root'};
+      var appState = {defaultPath: RootPath.DRIVE};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Click the icon of the Recent volume.
@@ -730,7 +738,7 @@ testcase.openSidebarOffline = function() {
   var appId;
   StepsRunner.run([
     function() {
-      var appState = {defaultPath: '/drive/root/'};
+      var appState = {defaultPath: RootPath.DRIVE};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Click the icon of the Offline volume.
@@ -767,7 +775,7 @@ testcase.openSidebarSharedWithMe = function() {
   var appId;
   StepsRunner.run([
     function() {
-      var appState = {defaultPath: '/drive/root/'};
+      var appState = {defaultPath: RootPath.DRIVE};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Click the icon of the Shared With Me volume.
@@ -809,7 +817,7 @@ testcase.autocomplete = function() {
 
   StepsRunner.run([
     function() {
-      var appState = {defaultPath: '/drive/root'};
+      var appState = {defaultPath: RootPath.DRIVE};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Perform an auto complete test and wait until the list changes.
@@ -851,7 +859,7 @@ testcase.intermediate.copyBetweenVolumes = function(targetFile,
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Select the source volume.
@@ -949,7 +957,7 @@ testcase.intermediate.share = function(path) {
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/drive/root/'};
+      var appState = {defaultPath: RootPath.DRIVE};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Select the source file.
@@ -982,6 +990,7 @@ testcase.intermediate.share = function(path) {
                          this.next);
     },
     function(result) {
+      chrome.test.assertTrue(!!result);
       callRemoteTestUtil('waitForStyles',
                          appId,
                          [{
@@ -1003,6 +1012,7 @@ testcase.intermediate.share = function(path) {
     },
     // Wait until the share dialog's contents are hidden.
     function(result) {
+      chrome.test.assertTrue(!!result);
       callRemoteTestUtil('waitForElement',
                          appId,
                          ['.share-dialog-webview-wrapper.loaded',
@@ -1173,6 +1183,78 @@ testcase.shareDirectory = function() {
   testcase.intermediate.share('photos');
 };
 
+testcase.executeDefaultTaskOnDrive = function(root) {
+  testcase.intermediate.executeDefaultTask(true);
+};
+
+testcase.executeDefaultTaskOnDownloads = function(root) {
+  testcase.intermediate.executeDefaultTask(false);
+};
+
+/**
+ * Tests executing the default task when there is only one task.
+ */
+testcase.intermediate.executeDefaultTask = function(drive) {
+  var root = drive ? RootPath.DRIVE : RootPath.DOWNLOADS;
+  var taskId = drive ? 'dummytaskid|drive|open-with' : 'dummytaskid|open-with'
+  var appId;
+  StepsRunner.run([
+    // Set up File Manager.
+    function() {
+      var appState = {
+        defaultPath: root
+      };
+      setupAndWaitUntilReady(appState, this.next);
+    },
+    // Override tasks list with a dummy task.
+    function(inAppId, inFileListBefore) {
+      appId = inAppId;
+
+      callRemoteTestUtil(
+          'overrideTasks',
+          appId,
+          [[
+            {
+              driveApp: false,
+              iconUrl: 'chrome://theme/IDR_DEFAULT_FAVICON',  // Dummy icon
+              isDefault: true,
+              taskId: taskId,
+              title: 'The dummy task for test'
+            }
+          ]],
+          this.next);
+    },
+    // Select file.
+    function(result) {
+      chrome.test.assertTrue(result);
+      callRemoteTestUtil(
+          'selectFile', appId, ['hello.txt'], this.next);
+    },
+    // Double-click the file.
+    function(result) {
+      chrome.test.assertTrue(result);
+      callRemoteTestUtil(
+          'fakeMouseDoubleClick',
+          appId,
+          ['#file-list li.table-row[selected] .filename-label span'],
+          this.next);
+    },
+    // Wait until the task is executed.
+    function(result) {
+      chrome.test.assertTrue(!!result);
+      callRemoteTestUtil(
+          'waitUntilTaskExecutes',
+          appId,
+          [taskId],
+          this.next);
+    },
+    // Check the error.
+    function() {
+      checkIfNoErrorsOccured(this.next);
+    }
+  ]);
+};
+
 /**
  * Tests sharing a file on Drive
  */
@@ -1190,7 +1272,7 @@ testcase.suggestAppDialog = function() {
       var data = JSON.parse(json);
 
       var appState = {
-        defaultPath: '/drive/root',
+        defaultPath: RootPath.DRIVE,
         suggestAppsDialogState: {
           overrideCwsContainerUrlForTest: data.url,
           overrideCwsContainerOriginForTest: data.origin
@@ -1231,6 +1313,35 @@ testcase.suggestAppDialog = function() {
           ['#suggest-app-dialog:not(.show-spinner)'],
           this.next);
     },
+    // Override task APIs for test.
+    function(result) {
+      chrome.test.assertTrue(!!result);
+      callRemoteTestUtil(
+          'overrideTasks',
+          appId,
+          [[
+            {
+              driveApp: false,
+              iconUrl: 'chrome://theme/IDR_DEFAULT_FAVICON',  // Dummy icon
+              isDefault: true,
+              taskId: 'dummytaskid|drive|open-with',
+              title: 'The dummy task for test'
+            }
+          ]],
+          this.next);
+    },
+    // Override installWebstoreItem API for test.
+    function(result) {
+      chrome.test.assertTrue(!!result);
+      callRemoteTestUtil(
+          'overrideInstallWebstoreItemApi',
+          appId,
+          [
+            'DUMMY_ITEM_ID_FOR_TEST',  // Same ID in cws_container_mock/main.js.
+            null  // Success
+          ],
+          this.next);
+    },
     // Initiate an installation from the widget.
     function(result) {
       chrome.test.assertTrue(!!result);
@@ -1251,9 +1362,17 @@ testcase.suggestAppDialog = function() {
                           true],  // inverse
                          this.next);
     },
-    // Check the styles
+    // Wait until the task is executed.
     function(result) {
       chrome.test.assertTrue(!!result);
+      callRemoteTestUtil(
+          'waitUntilTaskExecutes',
+          appId,
+          ['dummytaskid|drive|open-with'],
+          this.next);
+    },
+    // Check error
+    function() {
       checkIfNoErrorsOccured(this.next);
     }
   ]);
@@ -1267,7 +1386,7 @@ testcase.hideSearchBox = function() {
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Resize the window.
@@ -1308,7 +1427,7 @@ testcase.restoreSortColumn = function() {
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Sort by name.
@@ -1349,7 +1468,7 @@ testcase.restoreSortColumn = function() {
     },
     // Open another window, where the sorted column should be restored.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Check the sorted style of the header.
@@ -1382,7 +1501,7 @@ testcase.restoreCurrentView = function() {
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Check the initial view.
@@ -1391,6 +1510,13 @@ testcase.restoreCurrentView = function() {
       callRemoteTestUtil('waitForElement',
                          appId,
                          ['.thumbnail-grid[hidden]'],
+                         this.next);
+    },
+    // Opens the gear menu.
+    function() {
+      callRemoteTestUtil('fakeMouseClick',
+                         appId,
+                         ['#gear-button'],
                          this.next);
     },
     // Change the current view.
@@ -1410,7 +1536,7 @@ testcase.restoreCurrentView = function() {
     },
     // Open another window, where the current view is restored.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       callRemoteTestUtil('openMainWindow', null, [appState], this.next);
     },
     // Check the current view.
@@ -1436,10 +1562,10 @@ testcase.traverseNavigationList = function() {
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/drive/root'};
+      var appState = {defaultPath: RootPath.DRIVE};
       setupAndWaitUntilReady(appState, this.next);
     },
-    // Wait for the navigation list.
+    // Wait until Google Drive is selected.
     function(inAppId) {
       appId = inAppId;
       callRemoteTestUtil(
@@ -1449,16 +1575,8 @@ testcase.traverseNavigationList = function() {
                '.volume-icon[volume-type-icon="drive"]'],
           this.next);
     },
-    // Ensure that the 'Gogole Drive' is selected.
+    // Ensure that the current directory is changed to Google Drive.
     function() {
-      callRemoteTestUtil('checkSelectedVolume',
-                         appId,
-                         ['Google Drive', '/drive/root'],
-                         this.next);
-    },
-    // Ensure that the current directory is changed to 'Gogole Drive'.
-    function(result) {
-      chrome.test.assertTrue(result);
       callRemoteTestUtil('waitForFiles',
                          appId,
                          [TestEntryInfo.getExpectedRows(BASIC_DRIVE_ENTRY_SET),
@@ -1466,41 +1584,41 @@ testcase.traverseNavigationList = function() {
                          this.next);
     },
     // Press the UP key.
-    function(result) {
-      chrome.test.assertTrue(result);
+    function() {
       callRemoteTestUtil('fakeKeyDown',
                          appId,
                          ['#navigation-list', 'Up', true],
                          this.next);
     },
-    // Ensure that the 'Gogole Drive' is still selected since it is the first
-    // item.
+    // Ensure that Gogole Drive is selected since it is the first item.
     function(result) {
       chrome.test.assertTrue(result);
-      callRemoteTestUtil('checkSelectedVolume',
-                         appId,
-                         ['Google Drive', '/drive/root'],
-                         this.next);
+      callRemoteTestUtil(
+          'waitForElement',
+          appId,
+          ['#navigation-list > .root-item > ' +
+               '.volume-icon[volume-type-icon="drive"]'],
+          this.next);
     },
     // Press the DOWN key.
-    function(result) {
-      chrome.test.assertTrue(result);
+    function() {
       callRemoteTestUtil('fakeKeyDown',
                          appId,
                          ['#navigation-list', 'Down', true],
                          this.next);
     },
-    // Ensure that the 'Download' is selected.
+    // Ensure that Downloads is selected.
     function(result) {
       chrome.test.assertTrue(result);
-      callRemoteTestUtil('checkSelectedVolume',
-                         appId,
-                         ['Downloads', '/Downloads'],
-                         this.next);
+      callRemoteTestUtil(
+          'waitForElement',
+          appId,
+          ['#navigation-list > .root-item > ' +
+               '.volume-icon[volume-type-icon="downloads"]'],
+          this.next);
     },
-    // Ensure that the current directory is changed to 'Downloads'.
-    function(result) {
-      chrome.test.assertTrue(result);
+    // Ensure that the current directory is changed to Downloads.
+    function() {
       callRemoteTestUtil('waitForFiles',
                          appId,
                          [TestEntryInfo.getExpectedRows(BASIC_LOCAL_ENTRY_SET),
@@ -1508,24 +1626,24 @@ testcase.traverseNavigationList = function() {
                          this.next);
     },
     // Press the DOWN key again.
-    function(result) {
-      chrome.test.assertTrue(result);
+    function() {
       callRemoteTestUtil('fakeKeyDown',
                          appId,
                          ['#navigation-list', 'Down', true],
                          this.next);
     },
-    // Ensure that the 'Downloads' is still selected since it is the last item.
+    // Ensure that Downloads is still selected since it is the last item.
     function(result) {
       chrome.test.assertTrue(result);
-      callRemoteTestUtil('checkSelectedVolume',
-                         appId,
-                         ['Downloads', '/Downloads'],
-                         this.next);
+      callRemoteTestUtil(
+          'waitForElement',
+          appId,
+          ['#navigation-list > .root-item > ' +
+               '.volume-icon[volume-type-icon="downloads"]'],
+          this.next);
     },
     // Check for errors.
-    function(result) {
-      chrome.test.assertTrue(result);
+    function() {
       checkIfNoErrorsOccured(this.next);
     }
   ]);
@@ -1540,7 +1658,7 @@ testcase.restoreGeometry = function() {
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Resize the window to minimal dimensions.
@@ -1570,7 +1688,7 @@ testcase.restoreGeometry = function() {
     },
     // Open another window, where the current view is restored.
     function() {
-      var appState = {defaultPath: '/Downloads'};
+      var appState = {defaultPath: RootPath.DOWNLOADS};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Check the next window's size.
@@ -1592,13 +1710,13 @@ testcase.restoreGeometry = function() {
  * Tests to traverse local directories.
  */
 testcase.traverseDownloads =
-    testcase.intermediate.traverseDirectories.bind(null, '/Downloads');
+    testcase.intermediate.traverseDirectories.bind(null, RootPath.DOWNLOADS);
 
 /**
  * Tests to traverse drive directories.
  */
 testcase.traverseDrive =
-    testcase.intermediate.traverseDirectories.bind(null, '/drive/root');
+    testcase.intermediate.traverseDirectories.bind(null, RootPath.DRIVE);
 
 /**
  * Tests the focus behavior of the search box.
@@ -1608,7 +1726,7 @@ testcase.searchBoxFocus = function() {
   StepsRunner.run([
     // Set up File Manager.
     function() {
-      var appState = {defaultPath: '/drive/root'};
+      var appState = {defaultPath: RootPath.DRIVE};
       setupAndWaitUntilReady(appState, this.next);
     },
     // Check that the file list has the focus on launch.
@@ -1645,6 +1763,42 @@ testcase.searchBoxFocus = function() {
     },
     // Check for errors.
     function(element) {
+      checkIfNoErrorsOccured(this.next);
+    }
+  ]);
+};
+
+/**
+ * Tests if a thumbnail for the selected item shows up in the preview panel.
+ * This thumbnail is fetched via the image loader.
+ */
+testcase.thumbnailsDownloads = function() {
+  var appId;
+  StepsRunner.run([
+    function() {
+      var appState = {defaultPath: RootPath.DOWNLOADS};
+      setupAndWaitUntilReady(appState, this.next);
+    },
+    // Select the image.
+    function(inAppId) {
+      appId = inAppId;
+      callRemoteTestUtil('selectFile',
+                         appId,
+                         ['My Desktop Background.png'],
+                         this.next);
+    },
+    // Wait until the thumbnail shows up.
+    function(result) {
+      chrome.test.assertTrue(result);
+      callRemoteTestUtil('waitForElement',
+                         appId,
+                         ['.preview-thumbnails .img-container img'],
+                         this.next);
+    },
+    // Verify the thumbnail.
+    function(element) {
+      chrome.test.assertTrue(element.attributes.src.indexOf(
+          'data:image/jpeg') === 0);
       checkIfNoErrorsOccured(this.next);
     }
   ]);

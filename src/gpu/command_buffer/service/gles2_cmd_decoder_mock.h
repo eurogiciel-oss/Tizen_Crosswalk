@@ -21,13 +21,12 @@ class GLSurface;
 }
 
 namespace gpu {
-class StreamTextureManager;
-
 namespace gles2 {
 
 class ContextGroup;
 class ErrorState;
 class QueryManager;
+struct ContextState;
 
 class MockGLES2Decoder : public GLES2Decoder {
  public:
@@ -46,18 +45,20 @@ class MockGLES2Decoder : public GLES2Decoder {
   MOCK_METHOD1(ProduceFrontBuffer, bool(const Mailbox& mailbox));
   MOCK_METHOD1(ResizeOffscreenFrameBuffer, bool(const gfx::Size& size));
   MOCK_METHOD0(MakeCurrent, bool());
-  MOCK_METHOD0(ReleaseCurrent, void());
   MOCK_METHOD1(GetServiceIdForTesting, uint32(uint32 client_id));
   MOCK_METHOD0(GetGLES2Util, GLES2Util*());
   MOCK_METHOD0(GetGLSurface, gfx::GLSurface*());
   MOCK_METHOD0(GetGLContext, gfx::GLContext*());
   MOCK_METHOD0(GetContextGroup, ContextGroup*());
+  MOCK_METHOD0(GetContextState, const ContextState*());
+  MOCK_METHOD0(GetCapabilities, Capabilities());
   MOCK_METHOD0(ProcessPendingQueries, bool());
   MOCK_METHOD0(HasMoreIdleWork, bool());
   MOCK_METHOD0(PerformIdleWork, void());
-  MOCK_CONST_METHOD0(RestoreState, void());
+  MOCK_CONST_METHOD1(RestoreState, void(const ContextState* prev_state));
   MOCK_CONST_METHOD0(RestoreActiveTexture, void());
-  MOCK_CONST_METHOD0(RestoreAllTextureUnitBindings, void());
+  MOCK_CONST_METHOD1(
+      RestoreAllTextureUnitBindings, void(const ContextState* state));
   MOCK_CONST_METHOD1(RestoreAttribute, void(unsigned index));
   MOCK_CONST_METHOD0(RestoreBufferBindings, void());
   MOCK_CONST_METHOD0(RestoreFramebufferBindings, void());

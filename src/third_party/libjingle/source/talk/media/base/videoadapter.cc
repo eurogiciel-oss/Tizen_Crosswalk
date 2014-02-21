@@ -376,7 +376,7 @@ bool VideoAdapter::StretchToOutputFrame(const VideoFrame* in_frame) {
 ///////////////////////////////////////////////////////////////////////
 // Implementation of CoordinatedVideoAdapter
 CoordinatedVideoAdapter::CoordinatedVideoAdapter()
-    : cpu_adaptation_(false),
+    : cpu_adaptation_(true),
       cpu_smoothing_(false),
       gd_adaptation_(true),
       view_adaptation_(true),

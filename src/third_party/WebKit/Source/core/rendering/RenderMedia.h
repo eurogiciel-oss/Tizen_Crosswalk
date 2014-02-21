@@ -35,7 +35,6 @@ class HTMLMediaElement;
 class RenderMedia : public RenderImage {
 public:
     explicit RenderMedia(HTMLMediaElement*);
-    RenderMedia(HTMLMediaElement*, const IntSize& intrinsicSize);
     virtual ~RenderMedia();
 
     RenderObject* firstChild() const { ASSERT(children() == virtualChildren()); return children()->firstChild(); }
@@ -47,7 +46,7 @@ public:
     HTMLMediaElement* mediaElement() const;
 
 protected:
-    virtual void layout();
+    virtual void layout() OVERRIDE;
 
 private:
     virtual RenderObjectChildList* virtualChildren() OVERRIDE FINAL { return children(); }
@@ -58,12 +57,10 @@ private:
     virtual bool canHaveGeneratedChildren() const OVERRIDE FINAL { return false; }
     virtual bool canHaveChildren() const OVERRIDE FINAL { return true; }
 
-    virtual const char* renderName() const { return "RenderMedia"; }
+    virtual const char* renderName() const OVERRIDE { return "RenderMedia"; }
     virtual bool isMedia() const OVERRIDE FINAL { return true; }
     virtual bool isImage() const OVERRIDE FINAL { return false; }
-    virtual void paintReplaced(PaintInfo&, const LayoutPoint&);
-
-    virtual bool requiresForcedStyleRecalcPropagation() const OVERRIDE FINAL { return true; }
+    virtual void paintReplaced(PaintInfo&, const LayoutPoint&) OVERRIDE;
 
     RenderObjectChildList m_children;
 };

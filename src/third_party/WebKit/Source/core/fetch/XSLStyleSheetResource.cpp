@@ -30,14 +30,14 @@
 #include "RuntimeEnabledFeatures.h"
 #include "core/fetch/ResourceClientWalker.h"
 #include "core/fetch/StyleSheetResourceClient.h"
-#include "core/fetch/TextResourceDecoder.h"
+#include "core/html/parser/TextResourceDecoder.h"
 #include "platform/SharedBuffer.h"
 #include "wtf/Vector.h"
 
 namespace WebCore {
 
 XSLStyleSheetResource::XSLStyleSheetResource(const ResourceRequest& resourceRequest)
-    : Resource(resourceRequest, XSLStyleSheet)
+    : StyleSheetResource(resourceRequest, XSLStyleSheet)
     , m_decoder(TextResourceDecoder::create("text/xsl"))
 {
     ASSERT(RuntimeEnabledFeatures::xsltEnabled());
@@ -70,7 +70,7 @@ void XSLStyleSheetResource::checkNotify()
 {
     if (m_data.get()) {
         m_sheet = m_decoder->decode(m_data->data(), encodedSize());
-        m_sheet.append(m_decoder->flush());
+        m_sheet = m_sheet + m_decoder->flush();
     }
 
     ResourceClientWalker<StyleSheetResourceClient> w(m_clients);

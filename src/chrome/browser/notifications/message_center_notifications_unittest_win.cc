@@ -43,6 +43,7 @@ class FakeMessageCenterTrayDelegate : public MessageCenterTrayDelegate {
   virtual void HidePopups() OVERRIDE {}
   virtual bool ShowMessageCenter() OVERRIDE { return true; }
   virtual bool ShowNotifierSettings() OVERRIDE { return true; }
+  virtual bool IsContextMenuEnabled() const OVERRIDE { return true; }
   virtual void HideMessageCenter() OVERRIDE {}
   virtual MessageCenterTray* GetMessageCenterTray() OVERRIDE {
     return &tray_;
@@ -103,8 +104,8 @@ class MessageCenterNotificationManagerTest : public testing::Test {
   const ::Notification GetANotification(const std::string& id) {
     return ::Notification(GURL(),
                           GURL(),
-                          string16(),
-                          string16(),
+                          base::string16(),
+                          base::string16(),
                           new MockNotificationDelegate(id));
   }
 

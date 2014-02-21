@@ -240,7 +240,6 @@ public class C2DMManager extends IntentService {
   @Override
   public final void onHandleIntent(Intent intent) {
     if (intent == null) {
-      logger.warning("Ignoring null intent");
       return;
     }
     try {

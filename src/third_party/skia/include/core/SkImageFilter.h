@@ -71,7 +71,7 @@ public:
      *  The matrix is the current matrix on the canvas.
      *
      *  Offset is the amount to translate the resulting image relative to the
-     *  src when it is drawn.
+     *  src when it is drawn. This is an out-param.
      *
      *  If the result image cannot be created, return false, in which case both
      *  the result and offset parameters will be ignored by the caller.
@@ -156,11 +156,33 @@ protected:
 
     virtual ~SkImageFilter();
 
-    explicit SkImageFilter(SkFlattenableReadBuffer& rb);
+    /**
+     *  Constructs a new SkImageFilter read from an SkFlattenableReadBuffer object.
+     *
+     *  @param inputCount    The exact number of inputs expected for this SkImageFilter object.
+     *                       -1 can be used if the filter accepts any number of inputs.
+     *  @param rb            SkFlattenableReadBuffer object from which the SkImageFilter is read.
+     */
+    explicit SkImageFilter(int inputCount, SkFlattenableReadBuffer& rb);
 
     virtual void flatten(SkFlattenableWriteBuffer& wb) const SK_OVERRIDE;
 
-    // Default impl returns false
+    /**
+     *  This is the virtual which should be overridden by the derived class
+     *  to perform image filtering.
+     *
+     *  src is the original primitive bitmap. If the filter has a connected
+     *  input, it should recurse on that input and use that in place of src.
+     *
+     *  The matrix is the current matrix on the canvas.
+     *
+     *  Offset is the amount to translate the resulting image relative to the
+     *  src when it is drawn. This is an out-param.
+     *
+     *  If the result image cannot be created, this should false, in which
+     *  case both the result and offset parameters will be ignored by the
+     *  caller.
+     */
     virtual bool onFilterImage(Proxy*, const SkBitmap& src, const SkMatrix&,
                                SkBitmap* result, SkIPoint* offset);
     // Default impl copies src into dst and returns true

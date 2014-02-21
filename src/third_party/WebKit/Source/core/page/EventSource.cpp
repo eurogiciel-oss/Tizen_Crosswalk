@@ -42,15 +42,15 @@
 #include "core/dom/ExecutionContext.h"
 #include "core/events/Event.h"
 #include "core/events/MessageEvent.h"
-#include "core/fetch/TextResourceDecoder.h"
 #include "core/frame/ContentSecurityPolicy.h"
 #include "core/frame/DOMWindow.h"
 #include "core/frame/Frame.h"
+#include "core/html/parser/TextResourceDecoder.h"
 #include "core/loader/ThreadableLoader.h"
 #include "platform/network/ResourceError.h"
 #include "platform/network/ResourceRequest.h"
 #include "platform/network/ResourceResponse.h"
-#include "weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #include "wtf/text/StringBuilder.h"
 
 namespace WebCore {
@@ -63,7 +63,7 @@ inline EventSource::EventSource(ExecutionContext* context, const KURL& url, cons
     , m_withCredentials(false)
     , m_state(CONNECTING)
     , m_decoder(TextResourceDecoder::create("text/plain", "UTF-8"))
-    , m_reconnectTimer(this, &EventSource::reconnectTimerFired)
+    , m_connectTimer(this, &EventSource::connectTimerFired)
     , m_discardTrailingNewline(false)
     , m_requestInFlight(false)
     , m_reconnectDelay(defaultReconnectDelay)
@@ -72,16 +72,16 @@ inline EventSource::EventSource(ExecutionContext* context, const KURL& url, cons
     eventSourceInit.get("withCredentials", m_withCredentials);
 }
 
-PassRefPtr<EventSource> EventSource::create(ExecutionContext* context, const String& url, const Dictionary& eventSourceInit, ExceptionState& es)
+PassRefPtr<EventSource> EventSource::create(ExecutionContext* context, const String& url, const Dictionary& eventSourceInit, ExceptionState& exceptionState)
 {
     if (url.isEmpty()) {
-        es.throwDOMException(SyntaxError, "Cannot open an EventSource to an empty URL.");
+        exceptionState.throwDOMException(SyntaxError, "Cannot open an EventSource to an empty URL.");
         return 0;
     }
 
     KURL fullURL = context->completeURL(url);
     if (!fullURL.isValid()) {
-        es.throwDOMException(SyntaxError, "Cannot open an EventSource to '" + url + "'. The URL is invalid.");
+        exceptionState.throwDOMException(SyntaxError, "Cannot open an EventSource to '" + url + "'. The URL is invalid.");
         return 0;
     }
 
@@ -93,14 +93,14 @@ PassRefPtr<EventSource> EventSource::create(ExecutionContext* context, const Str
     }
     if (!shouldBypassMainWorldContentSecurityPolicy && !context->contentSecurityPolicy()->allowConnectToSource(fullURL)) {
         // We can safely expose the URL to JavaScript, as this exception is generate synchronously before any redirects take place.
-        es.throwSecurityError("Refused to connect to '" + fullURL.elidedString() + "' because it violates the document's Content Security Policy.");
+        exceptionState.throwSecurityError("Refused to connect to '" + fullURL.elidedString() + "' because it violates the document's Content Security Policy.");
         return 0;
     }
 
     RefPtr<EventSource> source = adoptRef(new EventSource(context, fullURL, eventSourceInit));
 
     source->setPendingActivity(source.get());
-    source->connect();
+    source->scheduleInitialConnect();
     source->suspendIfNeeded();
 
     return source.release();
@@ -110,6 +110,14 @@ EventSource::~EventSource()
 {
     ASSERT(m_state == CLOSED);
     ASSERT(!m_requestInFlight);
+}
+
+void EventSource::scheduleInitialConnect()
+{
+    ASSERT(m_state == CONNECTING);
+    ASSERT(!m_requestInFlight);
+
+    m_connectTimer.startOneShot(0);
 }
 
 void EventSource::connect()
@@ -127,7 +135,6 @@ void EventSource::connect()
     SecurityOrigin* origin = executionContext()->securityOrigin();
 
     ThreadableLoaderOptions options;
-    options.sendLoadCallbacks = SendCallbacks;
     options.sniffContent = DoNotSniffContent;
     options.allowCredentials = (origin->canRequest(m_url) || m_withCredentials) ? AllowStoredCredentials : DoNotAllowStoredCredentials;
     options.credentialsRequested = m_withCredentials ? ClientRequestedCredentials : ClientDidNotRequestCredentials;
@@ -159,11 +166,11 @@ void EventSource::networkRequestEnded()
 void EventSource::scheduleReconnect()
 {
     m_state = CONNECTING;
-    m_reconnectTimer.startOneShot(m_reconnectDelay / 1000.0);
+    m_connectTimer.startOneShot(m_reconnectDelay / 1000.0);
     dispatchEvent(Event::create(EventTypeNames::error));
 }
 
-void EventSource::reconnectTimerFired(Timer<EventSource>*)
+void EventSource::connectTimerFired(Timer<EventSource>*)
 {
     connect();
 }
@@ -191,8 +198,8 @@ void EventSource::close()
     }
 
     // Stop trying to reconnect if EventSource was explicitly closed or if ActiveDOMObject::stop() was called.
-    if (m_reconnectTimer.isActive()) {
-        m_reconnectTimer.stop();
+    if (m_connectTimer.isActive()) {
+        m_connectTimer.stop();
         unsetPendingActivity(this);
     }
 
@@ -274,8 +281,8 @@ void EventSource::didFinishLoading(unsigned long, double)
         // Discard everything that has not been dispatched by now.
         m_receiveBuf.clear();
         m_data.clear();
-        m_eventName = "";
-        m_currentlyParsedEventId = String();
+        m_eventName = emptyAtom;
+        m_currentlyParsedEventId = nullAtom;
     }
     networkRequestEnded();
 }
@@ -306,9 +313,13 @@ void EventSource::didFailRedirectCheck()
 void EventSource::abortConnectionAttempt()
 {
     ASSERT(m_state == CONNECTING);
-    ASSERT(m_requestInFlight);
 
-    m_loader->cancel();
+    if (m_requestInFlight) {
+        m_loader->cancel();
+    } else {
+        m_state = CLOSED;
+        unsetPendingActivity(this);
+    }
 
     ASSERT(m_state == CLOSED);
     dispatchEvent(Event::create(EventTypeNames::error));
@@ -365,13 +376,13 @@ void EventSource::parseEventStreamLine(unsigned bufPos, int fieldLength, int lin
         if (!m_data.isEmpty()) {
             m_data.removeLast();
             if (!m_currentlyParsedEventId.isNull()) {
-                m_lastEventId.swap(m_currentlyParsedEventId);
-                m_currentlyParsedEventId = String();
+                m_lastEventId = m_currentlyParsedEventId;
+                m_currentlyParsedEventId = nullAtom;
             }
             dispatchEvent(createMessageEvent());
         }
         if (!m_eventName.isEmpty())
-            m_eventName = "";
+            m_eventName = emptyAtom;
     } else if (fieldLength) {
         bool noValue = fieldLength < 0;
 
@@ -390,11 +401,11 @@ void EventSource::parseEventStreamLine(unsigned bufPos, int fieldLength, int lin
             if (valueLength)
                 m_data.append(&m_receiveBuf[bufPos], valueLength);
             m_data.append('\n');
-        } else if (field == "event")
-            m_eventName = valueLength ? String(&m_receiveBuf[bufPos], valueLength) : "";
-        else if (field == "id")
-            m_currentlyParsedEventId = valueLength ? String(&m_receiveBuf[bufPos], valueLength) : "";
-        else if (field == "retry") {
+        } else if (field == "event") {
+            m_eventName = valueLength ? AtomicString(&m_receiveBuf[bufPos], valueLength) : "";
+        } else if (field == "id") {
+            m_currentlyParsedEventId = valueLength ? AtomicString(&m_receiveBuf[bufPos], valueLength) : "";
+        } else if (field == "retry") {
             if (!valueLength)
                 m_reconnectDelay = defaultReconnectDelay;
             else {
@@ -416,7 +427,7 @@ void EventSource::stop()
 PassRefPtr<MessageEvent> EventSource::createMessageEvent()
 {
     RefPtr<MessageEvent> event = MessageEvent::create();
-    event->initMessageEvent(m_eventName.isEmpty() ? EventTypeNames::message : AtomicString(m_eventName), false, false, SerializedScriptValue::create(String(m_data)), m_eventStreamOrigin, m_lastEventId, 0, nullptr);
+    event->initMessageEvent(m_eventName.isEmpty() ? EventTypeNames::message : m_eventName, false, false, SerializedScriptValue::create(String(m_data)), m_eventStreamOrigin, m_lastEventId, 0, nullptr);
     m_data.clear();
     return event.release();
 }

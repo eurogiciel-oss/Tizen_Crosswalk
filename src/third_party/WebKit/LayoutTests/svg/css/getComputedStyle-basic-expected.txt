@@ -82,6 +82,8 @@ rect: style.getPropertyValue(empty-cells) : show
 rect: style.getPropertyCSSValue(empty-cells) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(float) : none
 rect: style.getPropertyCSSValue(float) : [object CSSPrimitiveValue]
+rect: style.getPropertyValue(font-kerning) : auto
+rect: style.getPropertyCSSValue(font-kerning) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(font-size) : 16px
 rect: style.getPropertyCSSValue(font-size) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(font-style) : normal
@@ -285,17 +287,15 @@ rect: style.getPropertyCSSValue(-webkit-column-width) : [object CSSPrimitiveValu
 rect: style.getPropertyValue(align-content) : stretch
 rect: style.getPropertyCSSValue(align-content) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(align-items) : stretch
-rect: style.getPropertyCSSValue(align-items) : [object CSSPrimitiveValue]
+rect: style.getPropertyCSSValue(align-items) : [object CSSValueList]
 rect: style.getPropertyValue(align-self) : stretch
-rect: style.getPropertyCSSValue(align-self) : [object CSSPrimitiveValue]
+rect: style.getPropertyCSSValue(align-self) : [object CSSValueList]
 rect: style.getPropertyValue(flex-direction) : row
 rect: style.getPropertyCSSValue(flex-direction) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(flex-wrap) : nowrap
 rect: style.getPropertyCSSValue(flex-wrap) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(justify-content) : flex-start
 rect: style.getPropertyCSSValue(justify-content) : [object CSSPrimitiveValue]
-rect: style.getPropertyValue(-webkit-font-kerning) : auto
-rect: style.getPropertyCSSValue(-webkit-font-kerning) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(-webkit-font-smoothing) : auto
 rect: style.getPropertyCSSValue(-webkit-font-smoothing) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(-webkit-font-variant-ligatures) : normal
@@ -424,8 +424,8 @@ rect: style.getPropertyValue(color-interpolation-filters) : linearrgb
 rect: style.getPropertyCSSValue(color-interpolation-filters) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(color-rendering) : auto
 rect: style.getPropertyCSSValue(color-rendering) : [object CSSPrimitiveValue]
-rect: style.getPropertyValue(fill) : #0000ff
-rect: style.getPropertyCSSValue(fill) : [object SVGPaint]
+rect: style.getPropertyValue(fill) : rgb(0, 0, 255)
+rect: style.getPropertyCSSValue(fill) : [object CSSValue]
 rect: style.getPropertyValue(fill-opacity) : 1
 rect: style.getPropertyCSSValue(fill-opacity) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(fill-rule) : nonzero
@@ -438,8 +438,8 @@ rect: style.getPropertyValue(marker-start) : none
 rect: style.getPropertyCSSValue(marker-start) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(shape-rendering) : auto
 rect: style.getPropertyCSSValue(shape-rendering) : [object CSSPrimitiveValue]
-rect: style.getPropertyValue(stroke) : #ffa500
-rect: style.getPropertyCSSValue(stroke) : [object SVGPaint]
+rect: style.getPropertyValue(stroke) : rgb(255, 165, 0)
+rect: style.getPropertyCSSValue(stroke) : [object CSSValue]
 rect: style.getPropertyValue(stroke-dasharray) : none
 rect: style.getPropertyCSSValue(stroke-dasharray) : [object CSSPrimitiveValue]
 rect: style.getPropertyValue(stroke-dashoffset) : 0
@@ -556,6 +556,8 @@ g: style.getPropertyValue(empty-cells) : show
 g: style.getPropertyCSSValue(empty-cells) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(float) : none
 g: style.getPropertyCSSValue(float) : [object CSSPrimitiveValue]
+g: style.getPropertyValue(font-kerning) : auto
+g: style.getPropertyCSSValue(font-kerning) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(font-size) : 16px
 g: style.getPropertyCSSValue(font-size) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(font-style) : normal
@@ -759,17 +761,15 @@ g: style.getPropertyCSSValue(-webkit-column-width) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(align-content) : stretch
 g: style.getPropertyCSSValue(align-content) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(align-items) : stretch
-g: style.getPropertyCSSValue(align-items) : [object CSSPrimitiveValue]
+g: style.getPropertyCSSValue(align-items) : [object CSSValueList]
 g: style.getPropertyValue(align-self) : stretch
-g: style.getPropertyCSSValue(align-self) : [object CSSPrimitiveValue]
+g: style.getPropertyCSSValue(align-self) : [object CSSValueList]
 g: style.getPropertyValue(flex-direction) : row
 g: style.getPropertyCSSValue(flex-direction) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(flex-wrap) : nowrap
 g: style.getPropertyCSSValue(flex-wrap) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(justify-content) : flex-start
 g: style.getPropertyCSSValue(justify-content) : [object CSSPrimitiveValue]
-g: style.getPropertyValue(-webkit-font-kerning) : auto
-g: style.getPropertyCSSValue(-webkit-font-kerning) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(-webkit-font-smoothing) : auto
 g: style.getPropertyCSSValue(-webkit-font-smoothing) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(-webkit-font-variant-ligatures) : normal
@@ -898,8 +898,8 @@ g: style.getPropertyValue(color-interpolation-filters) : linearrgb
 g: style.getPropertyCSSValue(color-interpolation-filters) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(color-rendering) : auto
 g: style.getPropertyCSSValue(color-rendering) : [object CSSPrimitiveValue]
-g: style.getPropertyValue(fill) : #000000
-g: style.getPropertyCSSValue(fill) : [object SVGPaint]
+g: style.getPropertyValue(fill) : rgb(0, 0, 0)
+g: style.getPropertyCSSValue(fill) : [object CSSValue]
 g: style.getPropertyValue(fill-opacity) : 1
 g: style.getPropertyCSSValue(fill-opacity) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(fill-rule) : nonzero
@@ -912,8 +912,8 @@ g: style.getPropertyValue(marker-start) : none
 g: style.getPropertyCSSValue(marker-start) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(shape-rendering) : auto
 g: style.getPropertyCSSValue(shape-rendering) : [object CSSPrimitiveValue]
-g: style.getPropertyValue(stroke) : #ffa500
-g: style.getPropertyCSSValue(stroke) : [object SVGPaint]
+g: style.getPropertyValue(stroke) : rgb(255, 165, 0)
+g: style.getPropertyCSSValue(stroke) : [object CSSValue]
 g: style.getPropertyValue(stroke-dasharray) : none
 g: style.getPropertyCSSValue(stroke-dasharray) : [object CSSPrimitiveValue]
 g: style.getPropertyValue(stroke-dashoffset) : 0

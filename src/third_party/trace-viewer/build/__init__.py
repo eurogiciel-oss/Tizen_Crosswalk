@@ -1,5 +1,10 @@
 # Copyright (c) 2012 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-from parse_deps import calc_load_sequence
-from generate import *
+import os
+import sys
+
+import tvcm_stub
+
+import tvcm
+from tvcm import *

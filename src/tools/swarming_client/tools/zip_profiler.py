@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Profiler to compare various compression levels with regards to speed
 and final size when compressing the full set of files from a given
@@ -84,7 +84,7 @@ def main():
 
   temp_dir = None
   try:
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = tempfile.mkdtemp(prefix='zip_profiler')
 
     # Create a directory of the required files
     subprocess.check_call([os.path.join(ROOT_DIR, 'isolate.py'),

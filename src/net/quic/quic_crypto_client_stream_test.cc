@@ -9,6 +9,7 @@
 #include "net/quic/crypto/quic_decrypter.h"
 #include "net/quic/crypto/quic_encrypter.h"
 #include "net/quic/quic_protocol.h"
+#include "net/quic/quic_socket_address_coder.h"
 #include "net/quic/test_tools/crypto_test_utils.h"
 #include "net/quic/test_tools/quic_test_utils.h"
 #include "net/quic/test_tools/simple_quic_framer.h"
@@ -24,9 +25,8 @@ const char kServerHostname[] = "example.com";
 class QuicCryptoClientStreamTest : public ::testing::Test {
  public:
   QuicCryptoClientStreamTest()
-      : addr_(),
-        connection_(new PacketSavingConnection(1, addr_, true)),
-        session_(new TestSession(connection_, DefaultQuicConfig(), true)),
+      : connection_(new PacketSavingConnection(false)),
+        session_(new TestSession(connection_, DefaultQuicConfig())),
         stream_(new QuicCryptoClientStream(kServerHostname, session_.get(),
                                            &crypto_config_)) {
     session_->SetCryptoStream(stream_.get());
@@ -43,7 +43,6 @@ class QuicCryptoClientStreamTest : public ::testing::Test {
     message_data_.reset(framer.ConstructHandshakeMessage(message_));
   }
 
-  IPEndPoint addr_;
   PacketSavingConnection* connection_;
   scoped_ptr<TestSession> session_;
   scoped_ptr<QuicCryptoClientStream> stream_;
@@ -70,7 +69,7 @@ TEST_F(QuicCryptoClientStreamTest, MessageAfterHandshake) {
       QUIC_CRYPTO_MESSAGE_AFTER_HANDSHAKE_COMPLETE));
   message_.set_tag(kCHLO);
   ConstructHandshakeMessage();
-  stream_->ProcessData(message_data_->data(), message_data_->length());
+  stream_->ProcessRawData(message_data_->data(), message_data_->length());
 }
 
 TEST_F(QuicCryptoClientStreamTest, BadMessageType) {
@@ -81,14 +80,15 @@ TEST_F(QuicCryptoClientStreamTest, BadMessageType) {
 
   EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
         QUIC_INVALID_CRYPTO_MESSAGE_TYPE, "Expected REJ"));
-  stream_->ProcessData(message_data_->data(), message_data_->length());
+  stream_->ProcessRawData(message_data_->data(), message_data_->length());
 }
 
 TEST_F(QuicCryptoClientStreamTest, NegotiatedParameters) {
   CompleteCryptoHandshake();
 
   const QuicConfig* config = session_->config();
-  EXPECT_EQ(kQBIC, config->congestion_control());
+  EXPECT_EQ(FLAGS_enable_quic_pacing ? kPACE : kQBIC,
+            config->congestion_control());
   EXPECT_EQ(kDefaultTimeoutSecs,
             config->idle_connection_state_lifetime().ToSeconds());
   EXPECT_EQ(kDefaultMaxStreamsPerConnection,
@@ -99,6 +99,9 @@ TEST_F(QuicCryptoClientStreamTest, NegotiatedParameters) {
       stream_->crypto_negotiated_params());
   EXPECT_EQ(kAESG, crypto_params.aead);
   EXPECT_EQ(kC255, crypto_params.key_exchange);
+  QuicSocketAddressCoder address_coder(IPEndPoint(TestPeerIPAddress(),
+                                                  kTestPort));
+  EXPECT_EQ(address_coder.Encode(), crypto_params.client_address);
 }
 
 TEST_F(QuicCryptoClientStreamTest, InvalidHostname) {
@@ -115,8 +118,8 @@ TEST_F(QuicCryptoClientStreamTest, ExpiredServerConfig) {
   // Seed the config with a cached server config.
   CompleteCryptoHandshake();
 
-  connection_ = new PacketSavingConnection(1, addr_, true);
-  session_.reset(new TestSession(connection_, DefaultQuicConfig(), true));
+  connection_ = new PacketSavingConnection(true);
+  session_.reset(new TestSession(connection_, DefaultQuicConfig()));
   stream_.reset(new QuicCryptoClientStream(kServerHostname, session_.get(),
                                            &crypto_config_));
 

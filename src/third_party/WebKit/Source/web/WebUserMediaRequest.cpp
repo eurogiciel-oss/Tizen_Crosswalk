@@ -32,24 +32,23 @@
 
 #include "WebUserMediaRequest.h"
 
+#include "WebDocument.h"
+#include "WebSecurityOrigin.h"
+#include "core/dom/Document.h"
+#include "modules/mediastream/UserMediaRequest.h"
+#include "platform/mediastream/MediaStreamDescriptor.h"
+#include "platform/mediastream/MediaStreamSource.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #include "public/platform/WebMediaConstraints.h"
 #include "public/platform/WebMediaStream.h"
 #include "public/platform/WebMediaStreamSource.h"
 #include "public/platform/WebString.h"
 #include "public/platform/WebVector.h"
 #include "wtf/Vector.h"
-#include "WebDocument.h"
-#include "WebSecurityOrigin.h"
-#include "core/dom/Document.h"
-#include "core/platform/mediastream/MediaConstraints.h"
-#include "core/platform/mediastream/MediaStreamDescriptor.h"
-#include "core/platform/mediastream/MediaStreamSource.h"
-#include "modules/mediastream/UserMediaRequest.h"
-#include "weborigin/SecurityOrigin.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 WebUserMediaRequest::WebUserMediaRequest(const PassRefPtr<UserMediaRequest>& request)
     : m_private(request)
@@ -137,4 +136,4 @@ WebUserMediaRequest::operator UserMediaRequest*() const
     return m_private.get();
 }
 
-} // namespace WebKit
+} // namespace blink

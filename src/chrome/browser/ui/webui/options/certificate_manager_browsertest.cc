@@ -5,14 +5,14 @@
 #include "base/callback.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/policy/browser_policy_connector.h"
-#include "chrome/browser/policy/external_data_fetcher.h"
-#include "chrome/browser/policy/mock_configuration_policy_provider.h"
-#include "chrome/browser/policy/policy_map.h"
-#include "chrome/browser/policy/policy_types.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/webui/options/options_ui_browsertest.h"
+#include "components/policy/core/browser/browser_policy_connector.h"
+#include "components/policy/core/common/external_data_fetcher.h"
+#include "components/policy/core/common/mock_configuration_policy_provider.h"
+#include "components/policy/core/common/policy_map.h"
+#include "components/policy/core/common/policy_types.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/test_utils.h"
@@ -27,7 +27,6 @@
 #include "crypto/nss_util.h"
 #endif
 
-using testing::AnyNumber;
 using testing::Return;
 using testing::_;
 
@@ -44,12 +43,37 @@ class CertificateManagerBrowserTest : public options::OptionsUIBrowserTest {
     // Setup the policy provider for injecting certs through ONC policy.
     EXPECT_CALL(provider_, IsInitializationComplete(_))
         .WillRepeatedly(Return(true));
-    EXPECT_CALL(provider_, RegisterPolicyDomain(_)).Times(AnyNumber());
     policy::BrowserPolicyConnector::SetPolicyProviderForTesting(&provider_);
   }
 
+  void SetUpOnIOThread() {
+#if defined(OS_CHROMEOS)
+    test_nssdb_.reset(new crypto::ScopedTestNSSDB());
+#endif
+  }
+
+  void TearDownOnIOThread() {
+#if defined(OS_CHROMEOS)
+    test_nssdb_.reset();
+#endif
+  }
+
   virtual void SetUpOnMainThread() OVERRIDE {
+    content::BrowserThread::PostTask(
+        content::BrowserThread::IO,
+        FROM_HERE,
+        base::Bind(&CertificateManagerBrowserTest::SetUpOnIOThread, this));
+    content::RunAllPendingInMessageLoop(content::BrowserThread::IO);
+
     content::RunAllPendingInMessageLoop();
+  }
+
+  virtual void CleanUpOnMainThread() OVERRIDE {
+    content::BrowserThread::PostTask(
+        content::BrowserThread::IO,
+        FROM_HERE,
+        base::Bind(&CertificateManagerBrowserTest::TearDownOnIOThread, this));
+    content::RunAllPendingInMessageLoop(content::BrowserThread::IO);
   }
 
 #if defined(OS_CHROMEOS)
@@ -60,7 +84,7 @@ class CertificateManagerBrowserTest : public options::OptionsUIBrowserTest {
     policy.Set(policy::key::kOpenNetworkConfiguration,
                policy::POLICY_LEVEL_MANDATORY,
                policy::POLICY_SCOPE_USER,
-               Value::CreateStringValue(user_policy_blob),
+               base::Value::CreateStringValue(user_policy_blob),
                NULL);
     provider_.UpdateChromePolicy(policy);
     content::RunAllPendingInMessageLoop();
@@ -88,15 +112,24 @@ class CertificateManagerBrowserTest : public options::OptionsUIBrowserTest {
   policy::MockConfigurationPolicyProvider provider_;
 #if defined(OS_CHROMEOS)
   policy::DevicePolicyCrosTestHelper device_policy_test_helper_;
-  crypto::ScopedTestNSSDB test_nssdb_;
+  scoped_ptr<crypto::ScopedTestNSSDB> test_nssdb_;
 #endif
 };
 
 #if defined(OS_CHROMEOS)
 // Ensure policy-installed certificates without web trust do not display
 // the managed setting indicator (only on Chrome OS).
+
+// Triggers a Blink ASSERT in Debug configurations: http://crbug.com/337102
+#if !defined(NDEBUG)
+#define MAYBE_PolicyCertificateWithoutWebTrustHasNoIndicator \
+    DISABLED_PolicyCertificateWithoutWebTrustHasNoIndicator
+#else
+#define MAYBE_PolicyCertificateWithoutWebTrustHasNoIndicator \
+    PolicyCertificateWithoutWebTrustHasNoIndicator
+#endif
 IN_PROC_BROWSER_TEST_F(CertificateManagerBrowserTest,
-                       PolicyCertificateWithoutWebTrustHasNoIndicator) {
+                       MAYBE_PolicyCertificateWithoutWebTrustHasNoIndicator) {
   LoadONCPolicy("certificate-authority.onc");
   NavigateToSettings();
   ClickElement("#certificatesManageButton");
@@ -105,11 +138,21 @@ IN_PROC_BROWSER_TEST_F(CertificateManagerBrowserTest,
 }
 #endif
 
+// Triggers a Blink ASSERT in Debug configurations: http://crbug.com/337102
 #if defined(OS_CHROMEOS)
 // Ensure policy-installed certificates with web trust display the
 // managed setting indicator (only on Chrome OS).
+
+// Triggers a Blink ASSERT in Debug configurations: http://crbug.com/337102
+#if !defined(NDEBUG)
+#define MAYBE_PolicyCertificateWithWebTrustHasIndicator \
+    DISABLED_PolicyCertificateWithWebTrustHasIndicator
+#else
+#define MAYBE_PolicyCertificateWithWebTrustHasIndicator \
+    PolicyCertificateWithWebTrustHasIndicator
+#endif
 IN_PROC_BROWSER_TEST_F(CertificateManagerBrowserTest,
-                       PolicyCertificateWithWebTrustHasIndicator) {
+                       MAYBE_PolicyCertificateWithWebTrustHasIndicator) {
   LoadONCPolicy("certificate-web-authority.onc");
   NavigateToSettings();
   ClickElement("#certificatesManageButton");

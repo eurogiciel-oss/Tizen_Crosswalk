@@ -13,11 +13,12 @@
 #undef RootWindow
 
 #include "base/memory/scoped_ptr.h"
-#include "base/message_loop/message_loop.h"
+#include "base/message_loop/message_pump_dispatcher.h"
 #include "ui/aura/aura_export.h"
 #include "ui/aura/env_observer.h"
-#include "ui/aura/root_window_host.h"
+#include "ui/aura/window_tree_host.h"
 #include "ui/base/x/x11_util.h"
+#include "ui/events/event_source.h"
 #include "ui/gfx/insets.h"
 #include "ui/gfx/rect.h"
 #include "ui/gfx/x/x11_atom_cache.h"
@@ -32,18 +33,18 @@ namespace internal {
 class TouchEventCalibrate;
 }
 
-class RootWindowHostX11 : public RootWindowHost,
-                          public base::MessageLoop::Dispatcher,
-                          public EnvObserver {
+class AURA_EXPORT WindowTreeHostX11 : public WindowTreeHost,
+                                      public base::MessagePumpDispatcher,
+                                      public ui::EventSource,
+                                      public EnvObserver {
  public:
-  explicit RootWindowHostX11(const gfx::Rect& bounds);
-  virtual ~RootWindowHostX11();
+  explicit WindowTreeHostX11(const gfx::Rect& bounds);
+  virtual ~WindowTreeHostX11();
 
   // Overridden from Dispatcher overrides:
   virtual bool Dispatch(const base::NativeEvent& event) OVERRIDE;
 
-  // RootWindowHost Overrides.
-  virtual void SetDelegate(RootWindowHostDelegate* delegate) OVERRIDE;
+  // WindowTreeHost Overrides.
   virtual RootWindow* GetRootWindow() OVERRIDE;
   virtual gfx::AcceleratedWidget GetAcceleratedWidget() OVERRIDE;
   virtual void Show() OVERRIDE;
@@ -62,7 +63,6 @@ class RootWindowHostX11 : public RootWindowHost,
   virtual void UnConfineCursor() OVERRIDE;
   virtual void OnCursorVisibilityChanged(bool show) OVERRIDE;
   virtual void MoveCursorTo(const gfx::Point& location) OVERRIDE;
-  virtual void SetFocusWhenShown(bool focus_when_shown) OVERRIDE;
   virtual void PostNativeEvent(const base::NativeEvent& event) OVERRIDE;
   virtual void OnDeviceScaleFactorChanged(float device_scale_factor) OVERRIDE;
   virtual void PrepareForShutdown() OVERRIDE;
@@ -70,6 +70,10 @@ class RootWindowHostX11 : public RootWindowHost,
   // EnvObserver overrides.
   virtual void OnWindowInitialized(Window* window) OVERRIDE;
   virtual void OnRootWindowInitialized(RootWindow* root_window) OVERRIDE;
+
+  // ui::EventSource overrides.
+  virtual ui::EventProcessor* GetEventProcessor() OVERRIDE;
+
  private:
   class MouseMoveFilter;
 
@@ -90,7 +94,7 @@ class RootWindowHostX11 : public RootWindowHost,
   void SetCursorInternal(gfx::NativeCursor cursor);
 
   // Translates the native mouse location into screen coordinates and and
-  // dispatches the event to RootWindowHostDelegate.
+  // dispatches the event to WindowTreeHostDelegate.
   void TranslateAndDispatchMouseEvent(ui::MouseEvent* event);
 
   // Update is_internal_display_ based on delegate_ state
@@ -99,8 +103,6 @@ class RootWindowHostX11 : public RootWindowHost,
   // Set the CrOS touchpad "tap paused" property. It is used to temporarily
   // turn off the Tap-to-click feature when the mouse pointer is invisible.
   void SetCrOSTapPaused(bool state);
-
-  RootWindowHostDelegate* delegate_;
 
   // The display and the native X window hosting the root window.
   XDisplay* xdisplay_;
@@ -121,14 +123,8 @@ class RootWindowHostX11 : public RootWindowHost,
   // The insets that specifies the effective area within the |window_|.
   gfx::Insets insets_;
 
-  // The bounds of |x_root_window_|.
-  gfx::Rect x_root_bounds_;
-
   // True if the root host resides on the internal display
   bool is_internal_display_;
-
-  // True if the window should be focused when the window is shown.
-  bool focus_when_shown_;
 
   scoped_ptr<XID[]> pointer_barriers_;
 
@@ -141,13 +137,13 @@ class RootWindowHostX11 : public RootWindowHost,
   // Touch ids of which the touch press happens at side bezel region.
   uint32 bezel_tracking_ids_;
 
-  DISALLOW_COPY_AND_ASSIGN(RootWindowHostX11);
+  DISALLOW_COPY_AND_ASSIGN(WindowTreeHostX11);
 };
 
 namespace test {
 
 // Set the default value of the override redirect flag used to
-// create a X window for RootWindowHostX11.
+// create a X window for WindowTreeHostX11.
 AURA_EXPORT void SetUseOverrideRedirectWindowByDefault(bool override_redirect);
 
 }  // namespace test

@@ -34,14 +34,14 @@ import known_issues
 
 def GetIncompatibleDirectories():
   """Gets a list of third-party directories which use licenses incompatible
-  with Android. This is used by the snapshot tool.
+  with Android. This is used by the snapshot tool and the AOSP bot.
   Returns:
     A list of directories.
   """
 
   whitelist = [
     'Apache( Version)? 2(\.0)?',
-    '(New )?BSD( [23]-Clause)?( with advertising clause)?',
+    '(New )?([23]-Clause )?BSD( [23]-Clause)?( with advertising clause)?',
     'L?GPL ?v?2(\.[01])?( or later)?',
     'MIT(/X11)?(-like)?',
     'MPL 1\.1 ?/ ?GPL 2(\.0)? ?/ ?LGPL 2\.1',
@@ -49,7 +49,9 @@ def GetIncompatibleDirectories():
     'Microsoft Limited Public License',
     'Microsoft Permissive License',
     'Public Domain',
+    'Python',
     'SGI Free Software License B',
+    'University of Illinois\/NCSA Open Source',
     'X11',
   ]
   regex = '^(%s)$' % '|'.join(whitelist)
@@ -91,7 +93,7 @@ def _CheckLicenseHeaders(excluded_dirs_list, whitelisted_files):
   """
 
   excluded_dirs_list = [d for d in excluded_dirs_list if not 'third_party' in d]
-  # Using a commond pattern for third-partyies makes the ignore regexp shorter
+  # Using a common pattern for third-partyies makes the ignore regexp shorter
   excluded_dirs_list.append('third_party')
   # VCS dirs
   excluded_dirs_list.append('.git')
@@ -103,16 +105,29 @@ def _CheckLicenseHeaders(excluded_dirs_list, whitelisted_files):
   excluded_dirs_list.append('chrome/app/resources')
   # This is a test output directory
   excluded_dirs_list.append('chrome/tools/test/reference_build')
+  # blink style copy right headers.
+  excluded_dirs_list.append('content/shell/renderer/test_runner')
+  # blink style copy right headers.
+  excluded_dirs_list.append('content/shell/tools/plugin')
   # This is tests directory, doesn't exist in the snapshot
   excluded_dirs_list.append('content/test/data')
+  # This is a tests directory that doesn't exist in the shipped product.
+  excluded_dirs_list.append('gin/test')
   # This is a test output directory
   excluded_dirs_list.append('data/dom_perf')
+  # This is a tests directory that doesn't exist in the shipped product.
+  excluded_dirs_list.append('tools/perf/page_sets')
+  excluded_dirs_list.append('tools/perf/page_sets/tough_animation_cases')
   # Histogram tools, doesn't exist in the snapshot
   excluded_dirs_list.append('tools/histograms')
+  # Swarming tools, doesn't exist in the snapshot
+  excluded_dirs_list.append('tools/swarming_client')
   # Arm sysroot tools, doesn't exist in the snapshot
   excluded_dirs_list.append('arm-sysroot')
   # Data is not part of open source chromium, but are included on some bots.
   excluded_dirs_list.append('data')
+  # This is not part of open source chromium, but are included on some bots.
+  excluded_dirs_list.append('skia/tools/clusterfuzz-data')
 
   args = ['android_webview/tools/find_copyrights.pl',
           '.'
@@ -269,8 +284,10 @@ def main():
   parser.description = (__doc__ +
                        '\nCommands:\n' \
                        '  scan  Check licenses.\n' \
-                       '  notice Generate Android NOTICE file on stdout')
-  (options, args) = parser.parse_args()
+                       '  notice Generate Android NOTICE file on stdout. \n' \
+                       '  incompatible_directories Scan for incompatibly'
+                       ' licensed directories.')
+  (_, args) = parser.parse_args()
   if len(args) != 1:
     parser.print_help()
     return ScanResult.Errors
@@ -282,6 +299,13 @@ def main():
     return scan_result
   elif args[0] == 'notice':
     print GenerateNoticeFile()
+    return ScanResult.Ok
+  elif args[0] == 'incompatible_directories':
+    incompatible_directories = GetIncompatibleDirectories()
+    if incompatible_directories:
+      print ("Incompatibly licensed directories found:" +
+             "\n".join(incompatible_directories))
+      return ScanResult.Errors
     return ScanResult.Ok
 
   parser.print_help()

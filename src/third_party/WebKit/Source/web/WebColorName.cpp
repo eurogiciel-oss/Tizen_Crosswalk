@@ -35,11 +35,10 @@
 #include "core/rendering/RenderTheme.h"
 #include "platform/graphics/Color.h"
 #include "public/platform/WebColor.h"
-#include "wtf/UnusedParam.h"
 
 using namespace::WebCore;
 
-namespace WebKit {
+namespace blink {
 
 static int toCSSValueKeyword(WebColorName name)
 {
@@ -118,7 +117,7 @@ void setNamedColors(const WebColorName* colorNames, const WebColor* colors, size
         // Convert color to internal value identifier.
         int internalColorName = toCSSValueKeyword(colorName);
         if (internalColorName == CSSValueWebkitFocusRingColor) {
-            RenderTheme::setCustomFocusRingColor(color);
+            RenderTheme::theme().setCustomFocusRingColor(color);
             continue;
         }
     }

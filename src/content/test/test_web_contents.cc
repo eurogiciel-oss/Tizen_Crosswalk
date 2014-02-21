@@ -7,9 +7,9 @@
 #include <utility>
 
 #include "content/browser/browser_url_handler_impl.h"
+#include "content/browser/frame_host/cross_process_frame_connector.h"
 #include "content/browser/frame_host/navigation_entry_impl.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
-#include "content/browser/renderer_host/test_render_view_host.h"
 #include "content/browser/site_instance_impl.h"
 #include "content/common/view_messages.h"
 #include "content/public/browser/notification_registrar.h"
@@ -18,6 +18,7 @@
 #include "content/public/common/page_state.h"
 #include "content/public/common/page_transition_types.h"
 #include "content/public/test/mock_render_process_host.h"
+#include "content/test/test_render_view_host.h"
 
 namespace content {
 
@@ -43,7 +44,7 @@ TestWebContents::~TestWebContents() {
 }
 
 RenderViewHost* TestWebContents::GetPendingRenderViewHost() const {
-  return render_manager_.pending_render_view_host_;
+  return GetRenderManager()->pending_render_view_host();
 }
 
 TestRenderViewHost* TestWebContents::pending_test_rvh() const {
@@ -91,10 +92,12 @@ WebPreferences TestWebContents::TestGetWebkitPrefs() {
 }
 
 bool TestWebContents::CreateRenderViewForRenderManager(
-    RenderViewHost* render_view_host, int opener_route_id) {
+    RenderViewHost* render_view_host,
+    int opener_route_id,
+    CrossProcessFrameConnector* frame_connector) {
   // This will go to a TestRenderViewHost.
   static_cast<RenderViewHostImpl*>(
-      render_view_host)->CreateRenderView(string16(),
+      render_view_host)->CreateRenderView(base::string16(),
                                           opener_route_id,
                                           -1);
   return true;
@@ -212,24 +215,27 @@ void TestWebContents::TestDidFailLoadWithError(
     const GURL& url,
     bool is_main_frame,
     int error_code,
-    const string16& error_description) {
+    const base::string16& error_description) {
   ViewHostMsg_DidFailLoadWithError msg(
       0, frame_id, url, is_main_frame, error_code, error_description);
   OnMessageReceived(GetRenderViewHost(), msg);
 }
 
 void TestWebContents::CreateNewWindow(
+    int render_process_id,
     int route_id,
     int main_frame_route_id,
     const ViewHostMsg_CreateWindow_Params& params,
     SessionStorageNamespace* session_storage_namespace) {
 }
 
-void TestWebContents::CreateNewWidget(int route_id,
-                                      WebKit::WebPopupType popup_type) {
+void TestWebContents::CreateNewWidget(int render_process_id,
+                                      int route_id,
+                                      blink::WebPopupType popup_type) {
 }
 
-void TestWebContents::CreateNewFullscreenWidget(int route_id) {
+void TestWebContents::CreateNewFullscreenWidget(int render_process_id,
+                                                int route_id) {
 }
 
 void TestWebContents::ShowCreatedWindow(int route_id,

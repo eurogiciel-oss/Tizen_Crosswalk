@@ -49,7 +49,6 @@ class HTMLAreaElement;
 class IntPoint;
 class IntSize;
 class Node;
-class Page;
 class RenderObject;
 class RenderListItem;
 class ScrollableArea;
@@ -323,6 +322,7 @@ public:
     virtual bool isImage() const { return false; }
     virtual bool isImageMapLink() const { return false; }
     virtual bool isInputImage() const { return false; }
+    bool isLandmarkRelated() const;
     virtual bool isLink() const { return false; }
     virtual bool isList() const { return false; }
     bool isListItem() const { return roleValue() == ListItemRole; }
@@ -341,7 +341,6 @@ public:
     virtual bool isProgressIndicator() const { return false; }
     bool isRadioButton() const { return roleValue() == RadioButtonRole; }
     bool isScrollbar() const { return roleValue() == ScrollBarRole; }
-    bool isSeamlessWebArea() const { return roleValue() == SeamlessWebAreaRole; }
     virtual bool isSlider() const { return false; }
     virtual bool isSpinButton() const { return roleValue() == SpinButtonRole; }
     virtual bool isSpinButtonPart() const { return false; }
@@ -508,14 +507,12 @@ public:
     virtual Element* anchorElement() const { return 0; }
     virtual Element* actionElement() const { return 0; }
     virtual Widget* widgetForAttachmentView() const { return 0; }
-    Page* page() const;
     String language() const;
     bool hasAttribute(const QualifiedName&) const;
     const AtomicString& getAttribute(const QualifiedName&) const;
 
     // Selected text.
     virtual PlainTextRange selectedTextRange() const { return PlainTextRange(); }
-    virtual String selectedText() const { return String(); }
 
     // Modify or take an action on an object.
     virtual void increment() { }

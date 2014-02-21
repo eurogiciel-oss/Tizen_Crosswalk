@@ -41,12 +41,12 @@ public:
 
     void setCellIndex(int);
 
-    String abbr() const;
-    String axis() const;
+    const AtomicString& abbr() const;
+    const AtomicString& axis() const;
     void setColSpan(int);
-    String headers() const;
+    const AtomicString& headers() const;
     void setRowSpan(int);
-    String scope() const;
+    const AtomicString& scope() const;
 
     HTMLTableCellElement* cellAbove() const;
 
@@ -59,8 +59,6 @@ private:
     virtual const StylePropertySet* additionalPresentationAttributeStyle() OVERRIDE;
 
     virtual bool isURLAttribute(const Attribute&) const OVERRIDE;
-
-    virtual void addSubresourceAttributeURLs(ListHashSet<KURL>&) const;
 };
 
 inline bool isHTMLTableCellElement(const Node& node)

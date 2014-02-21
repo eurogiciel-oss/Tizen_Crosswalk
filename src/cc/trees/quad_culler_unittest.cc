@@ -30,7 +30,7 @@ namespace {
 class TestOcclusionTrackerImpl
     : public TestOcclusionTrackerBase<LayerImpl, RenderSurfaceImpl> {
  public:
-  TestOcclusionTrackerImpl(gfx::Rect scissor_rect_in_screen,
+  TestOcclusionTrackerImpl(const gfx::Rect& scissor_rect_in_screen,
                            bool record_metrics_for_frame = true)
       : TestOcclusionTrackerBase(scissor_rect_in_screen,
                                  record_metrics_for_frame) {}
@@ -52,10 +52,10 @@ class QuadCullerTest : public testing::Test {
 
   scoped_ptr<TiledLayerImpl> MakeLayer(TiledLayerImpl* parent,
                                        const gfx::Transform& draw_transform,
-                                       gfx::Rect layer_rect,
+                                       const gfx::Rect& layer_rect,
                                        float opacity,
                                        bool opaque,
-                                       gfx::Rect layer_opaque_rect,
+                                       const gfx::Rect& layer_opaque_rect,
                                        LayerImplList& surface_layer_list) {
     scoped_ptr<TiledLayerImpl> layer =
         TiledLayerImpl::Create(host_impl_.active_tree(), layer_id_++);
@@ -108,7 +108,7 @@ class QuadCullerTest : public testing::Test {
                    TiledLayerImpl* layer,
                    LayerIteratorType* it,
                    OcclusionTrackerImpl* occlusion_tracker) {
-    occlusion_tracker->EnterLayer(*it, false);
+    occlusion_tracker->EnterLayer(*it);
     QuadCuller quad_culler(
         quad_list, shared_state_list, layer, *occlusion_tracker, false, false);
     AppendQuadsData data;
@@ -819,7 +819,7 @@ TEST_F(QuadCullerTest, PartialCullingNotDestroyed) {
   replica_quad->visible_rect = gfx::Rect(30, 40, 15, 16);
 
   // Nothing is occluding.
-  occlusion_tracker.EnterLayer(it, false);
+  occlusion_tracker.EnterLayer(it);
 
   EXPECT_EQ(0u, quad_list.size());
 
@@ -893,7 +893,7 @@ TEST_F(QuadCullerTest, PartialCullingWithOcclusionNotDestroyed) {
   replica_quad->visible_rect = gfx::Rect(10, 30, 15, 16);
 
   // Occlude the left part of the visible rects.
-  occlusion_tracker.EnterLayer(it, false);
+  occlusion_tracker.EnterLayer(it);
   occlusion_tracker.set_occlusion_from_outside_target(gfx::Rect(0, 0, 15, 100));
 
   EXPECT_EQ(0u, quad_list.size());

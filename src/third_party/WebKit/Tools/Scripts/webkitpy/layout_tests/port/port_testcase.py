@@ -104,6 +104,8 @@ class PortTestCase(unittest.TestCase):
     def test_check_build(self):
         port = self.make_port()
         port._check_file_exists = lambda path, desc: True
+        if port._dump_reader:
+            port._dump_reader.check_is_functional = lambda: True
         port._options.build = True
         port._check_driver_build_up_to_date = lambda config: True
         oc = OutputCapture()
@@ -272,6 +274,8 @@ class PortTestCase(unittest.TestCase):
             TestConfiguration('retina', 'x86', 'release'),
             TestConfiguration('mountainlion', 'x86', 'debug'),
             TestConfiguration('mountainlion', 'x86', 'release'),
+            TestConfiguration('mavericks', 'x86', 'debug'),
+            TestConfiguration('mavericks', 'x86', 'release'),
             TestConfiguration('xp', 'x86', 'debug'),
             TestConfiguration('xp', 'x86', 'release'),
             TestConfiguration('win7', 'x86', 'debug'),
@@ -329,18 +333,30 @@ class PortTestCase(unittest.TestCase):
         skia_overrides_path = port.path_from_chromium_base(
             'skia', 'skia_test_expectations.txt')
 
-        port._filesystem.write_text_file(skia_overrides_path, 'dummay text')
+        port._filesystem.write_text_file(skia_overrides_path, 'dummy text')
+
+        w3c_overrides_path = port.path_from_chromium_base(
+            'webkit', 'tools', 'layout_tests', 'test_expectations_w3c.txt')
+        port._filesystem.write_text_file(w3c_overrides_path, 'dummy text')
 
         port._options.builder_name = 'DUMMY_BUILDER_NAME'
-        self.assertEqual(port.expectations_files(), [generic_path, skia_overrides_path, never_fix_tests_path, stale_tests_path, slow_tests_path, chromium_overrides_path])
+        self.assertEqual(port.expectations_files(),
+                         [generic_path, skia_overrides_path, w3c_overrides_path,
+                          never_fix_tests_path, stale_tests_path, slow_tests_path,
+                          chromium_overrides_path])
 
         port._options.builder_name = 'builder (deps)'
-        self.assertEqual(port.expectations_files(), [generic_path, skia_overrides_path, never_fix_tests_path, stale_tests_path, slow_tests_path, chromium_overrides_path])
+        self.assertEqual(port.expectations_files(),
+                         [generic_path, skia_overrides_path, w3c_overrides_path,
+                          never_fix_tests_path, stale_tests_path, slow_tests_path,
+                          chromium_overrides_path])
 
         # A builder which does NOT observe the Chromium test_expectations,
         # but still observes the Skia test_expectations...
         port._options.builder_name = 'builder'
-        self.assertEqual(port.expectations_files(), [generic_path, skia_overrides_path, never_fix_tests_path, stale_tests_path, slow_tests_path])
+        self.assertEqual(port.expectations_files(),
+                         [generic_path, skia_overrides_path, w3c_overrides_path,
+                          never_fix_tests_path, stale_tests_path, slow_tests_path])
 
     def test_check_sys_deps(self):
         port = self.make_port()

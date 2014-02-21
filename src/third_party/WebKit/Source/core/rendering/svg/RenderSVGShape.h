@@ -37,6 +37,7 @@ namespace WebCore {
 
 class FloatPoint;
 class GraphicsContextStateSaver;
+class PointerEventsHitRules;
 class RenderSVGContainer;
 class RenderSVGPath;
 class RenderSVGResource;
@@ -50,10 +51,11 @@ public:
 
     void setNeedsShapeUpdate() { m_needsShapeUpdate = true; }
     virtual void setNeedsBoundariesUpdate() OVERRIDE FINAL { m_needsBoundariesUpdate = true; }
-    virtual bool needsBoundariesUpdate() OVERRIDE FINAL { return m_needsBoundariesUpdate; }
     virtual void setNeedsTransformUpdate() OVERRIDE FINAL { m_needsTransformUpdate = true; }
     virtual void fillShape(GraphicsContext*) const;
     virtual void strokeShape(GraphicsContext*) const;
+
+    bool nodeAtFloatPointInternal(const HitTestRequest&, const FloatPoint&, PointerEventsHitRules);
 
     Path& path() const
     {
@@ -63,7 +65,7 @@ public:
 
 protected:
     virtual void updateShapeFromElement();
-    virtual bool isEmpty() const;
+    virtual bool isEmpty() const OVERRIDE;
     virtual bool shapeDependentStrokeContains(const FloatPoint&);
     virtual bool shapeDependentFillContains(const FloatPoint&, const WindRule) const;
     float strokeWidth() const;
@@ -87,7 +89,7 @@ private:
     virtual AffineTransform localTransform() const OVERRIDE FINAL { return m_localTransform; }
 
     virtual bool isSVGShape() const OVERRIDE FINAL { return true; }
-    virtual const char* renderName() const { return "RenderSVGShape"; }
+    virtual const char* renderName() const OVERRIDE { return "RenderSVGShape"; }
 
     virtual void layout() OVERRIDE FINAL;
     virtual void paint(PaintInfo&, const LayoutPoint&) OVERRIDE FINAL;
@@ -113,7 +115,6 @@ private:
 
 private:
     FloatRect m_repaintBoundingBox;
-    FloatRect m_repaintBoundingBoxExcludingShadow;
     AffineTransform m_localTransform;
     OwnPtr<Path> m_path;
     Vector<MarkerPosition> m_markerPositions;

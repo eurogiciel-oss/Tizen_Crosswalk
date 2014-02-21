@@ -27,21 +27,21 @@ typedef struct _GtkToolItem GtkToolItem;
 #include "base/android/scoped_java_ref.h"
 #elif defined(USE_AURA)
 #if defined(OS_CHROMEOS)
-namespace shell {
-class MinimalShell;
-}  // namespace shell
+namespace wm {
+class WMTestHelper;
+}
 #endif  // defined(OS_CHROMEOS)
 namespace views {
 class Widget;
 class ViewsDelegate;
-}  // namespace views
+}
 #endif  // defined(USE_AURA)
 
 class GURL;
 namespace content {
 
 #if defined(USE_AURA)
-class ShellAuraPlatformData;
+class ShellPlatformDataAura;
 #endif
 
 class BrowserContext;
@@ -69,10 +69,9 @@ class Shell : public WebContentsDelegate,
   void Close();
   void ShowDevTools();
   void CloseDevTools();
-#if (defined(OS_WIN) && !defined(USE_AURA)) || \
-    defined(TOOLKIT_GTK) || defined(OS_MACOSX)
+#if defined(TOOLKIT_GTK) || defined(OS_MACOSX)
   // Resizes the main window to the given dimensions.
-  void SizeTo(int width, int height);
+  void SizeTo(const gfx::Size& content_size);
 #endif
 
   // Do one time initialization at application startup.
@@ -92,9 +91,6 @@ class Shell : public WebContentsDelegate,
 
   // Closes all windows and returns. This runs a message loop.
   static void CloseAllWindows();
-
-  // Closes all windows and exits.
-  static void PlatformExit();
 
   // Used for content_browsertests. Called once.
   static void SetShellCreatedCallback(
@@ -145,9 +141,9 @@ class Shell : public WebContentsDelegate,
 #endif
   virtual bool AddMessageToConsole(WebContents* source,
                                    int32 level,
-                                   const string16& message,
+                                   const base::string16& message,
                                    int32 line_no,
-                                   const string16& source_id) OVERRIDE;
+                                   const base::string16& source_id) OVERRIDE;
   virtual void RendererUnresponsive(WebContents* source) OVERRIDE;
   virtual void ActivateContents(WebContents* contents) OVERRIDE;
   virtual void DeactivateContents(WebContents* contents) OVERRIDE;
@@ -170,6 +166,8 @@ class Shell : public WebContentsDelegate,
 
   // Helper for one time initialization of application
   static void PlatformInitialize(const gfx::Size& default_window_size);
+  // Helper for one time deinitialization of platform specific state.
+  static void PlatformExit();
 
   // Adjust the size when Blink sends 0 for width and/or height.
   // This happens when Blink requests a default-sized window.
@@ -192,7 +190,7 @@ class Shell : public WebContentsDelegate,
   // Sets whether the spinner is spinning.
   void PlatformSetIsLoading(bool loading);
   // Set the title of shell window
-  void PlatformSetTitle(const string16& title);
+  void PlatformSetTitle(const base::string16& title);
 #if defined(OS_ANDROID)
   void PlatformToggleFullscreenModeForTab(WebContents* web_contents,
                                           bool enter_fullscreen);
@@ -207,11 +205,7 @@ class Shell : public WebContentsDelegate,
 
   void OnDevToolsWebContentsDestroyed();
 
-#if defined(OS_WIN) && !defined(USE_AURA)
-  static ATOM RegisterWindowClass();
-  static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-  static LRESULT CALLBACK EditWndProc(HWND, UINT, WPARAM, LPARAM);
-#elif defined(TOOLKIT_GTK)
+#if defined(TOOLKIT_GTK)
   CHROMEGTK_CALLBACK_0(Shell, void, OnBackButtonClicked);
   CHROMEGTK_CALLBACK_0(Shell, void, OnForwardButtonClicked);
   CHROMEGTK_CALLBACK_0(Shell, void, OnReloadButtonClicked);
@@ -241,10 +235,9 @@ class Shell : public WebContentsDelegate,
   gfx::NativeWindow window_;
   gfx::NativeEditView url_edit_view_;
 
-#if defined(OS_WIN) && !defined(USE_AURA)
-  WNDPROC default_edit_wnd_proc_;
-  static HINSTANCE instance_handle_;
-#elif defined(TOOLKIT_GTK)
+  gfx::Size content_size_;
+
+#if defined(TOOLKIT_GTK)
   GtkWidget* vbox_;
 
   GtkToolItem* back_button_;
@@ -255,26 +248,20 @@ class Shell : public WebContentsDelegate,
   GtkWidget* spinner_;
   GtkToolItem* spinner_item_;
 
-  int content_width_;
-  int content_height_;
   int ui_elements_height_; // height of menubar, toolbar, etc.
 #elif defined(OS_ANDROID)
   base::android::ScopedJavaGlobalRef<jobject> java_object_;
 #elif defined(USE_AURA)
 #if defined(OS_CHROMEOS)
-  static shell::MinimalShell* minimal_shell_;
+  static wm::WMTestHelper* wm_test_helper_;
 #endif
 #if defined(TOOLKIT_VIEWS)
   static views::ViewsDelegate* views_delegate_;
 
   views::Widget* window_widget_;
-#else // defined(TOOLKIT_VIEWS)
-  static ShellAuraPlatformData* platform_;
 #endif // defined(TOOLKIT_VIEWS)
-#elif defined(OS_MACOSX)
-  int content_width_;
-  int content_height_;
-#endif
+  static ShellPlatformDataAura* platform_;
+#endif  // defined(USE_AURA)
 
   bool headless_;
 

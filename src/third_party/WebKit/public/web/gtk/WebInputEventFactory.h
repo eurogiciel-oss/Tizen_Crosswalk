@@ -39,7 +39,7 @@ typedef struct _GdkEventCrossing GdkEventCrossing;
 typedef struct _GdkEventScroll GdkEventScroll;
 typedef struct _GdkEventKey GdkEventKey;
 
-namespace WebKit {
+namespace blink {
 
 class WebKeyboardEvent;
 class WebMouseEvent;
@@ -53,8 +53,9 @@ public:
     BLINK_EXPORT static WebMouseEvent mouseEvent(const GdkEventMotion*);
     BLINK_EXPORT static WebMouseEvent mouseEvent(const GdkEventCrossing*);
     BLINK_EXPORT static WebMouseWheelEvent mouseWheelEvent(const GdkEventScroll*);
+    BLINK_EXPORT static bool isSystemKeyEvent(const WebKeyboardEvent&);
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

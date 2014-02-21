@@ -31,7 +31,7 @@ namespace content {
 // tree. This HWND is hooked up as the parent of the root object in the
 // BrowserAccessibilityManager tree, so when any accessibility client
 // calls ::WindowFromAccessibleObject, they get this HWND instead of the
-// DesktopRootWindowHostWin.
+// DesktopWindowTreeHostWin.
 class AccessibleHWND
     : public ATL::CWindowImpl<AccessibleHWND,
                               ATL::CWindow,
@@ -97,7 +97,7 @@ class AccessibleHWND
 
 // static
 BrowserAccessibilityManager* BrowserAccessibilityManager::Create(
-    const AccessibilityNodeData& src,
+    const ui::AXNodeData& src,
     BrowserAccessibilityDelegate* delegate,
     BrowserAccessibilityFactory* factory) {
   return new BrowserAccessibilityManagerWin(
@@ -112,15 +112,13 @@ BrowserAccessibilityManager::ToBrowserAccessibilityManagerWin() {
 BrowserAccessibilityManagerWin::BrowserAccessibilityManagerWin(
     HWND parent_hwnd,
     IAccessible* parent_iaccessible,
-    const AccessibilityNodeData& src,
+    const ui::AXNodeData& src,
     BrowserAccessibilityDelegate* delegate,
     BrowserAccessibilityFactory* factory)
     : BrowserAccessibilityManager(src, delegate, factory),
       parent_hwnd_(parent_hwnd),
       parent_iaccessible_(parent_iaccessible),
       tracked_scroll_object_(NULL),
-      is_chrome_frame_(
-          CommandLine::ForCurrentProcess()->HasSwitch("chrome-frame")),
       accessible_hwnd_(NULL) {
 }
 
@@ -134,14 +132,14 @@ BrowserAccessibilityManagerWin::~BrowserAccessibilityManagerWin() {
 }
 
 // static
-AccessibilityNodeData BrowserAccessibilityManagerWin::GetEmptyDocument() {
-  AccessibilityNodeData empty_document;
+ui::AXNodeData BrowserAccessibilityManagerWin::GetEmptyDocument() {
+  ui::AXNodeData empty_document;
   empty_document.id = 0;
-  empty_document.role = WebKit::WebAXRoleRootWebArea;
+  empty_document.role = ui::AX_ROLE_ROOT_WEB_AREA;
   empty_document.state =
-      (1 << WebKit::WebAXStateEnabled) |
-      (1 << WebKit::WebAXStateReadonly) |
-      (1 << WebKit::WebAXStateBusy);
+      (1 << blink::WebAXStateEnabled) |
+      (1 << ui::AX_STATE_READONLY) |
+      (1 << ui::AX_STATE_BUSY);
   return empty_document;
 }
 
@@ -151,18 +149,15 @@ void BrowserAccessibilityManagerWin::MaybeCallNotifyWinEvent(DWORD event,
   if (!parent_iaccessible())
     return;
 
-#if defined(USE_AURA)
-  // If this is an Aura build on Win 7 and complete accessibility is
-  // enabled, create a fake child HWND to use as the root of the
-  // accessibility tree. See comments above AccessibleHWND for details.
+  // If on Win 7 and complete accessibility is enabled, create a fake child HWND
+  // to use as the root of the accessibility tree. See comments above
+  // AccessibleHWND for details.
   if (BrowserAccessibilityStateImpl::GetInstance()->IsAccessibleBrowser() &&
-      !is_chrome_frame_ &&
       !accessible_hwnd_) {
     accessible_hwnd_ = new AccessibleHWND(parent_hwnd_, this);
     parent_hwnd_ = accessible_hwnd_->hwnd();
     parent_iaccessible_ = accessible_hwnd_->window_accessible();
   }
-#endif
 
   ::NotifyWinEvent(event, parent_hwnd(), OBJID_CLIENT, child_id);
 }
@@ -184,79 +179,82 @@ void BrowserAccessibilityManagerWin::RemoveNode(BrowserAccessibility* node) {
 }
 
 void BrowserAccessibilityManagerWin::NotifyAccessibilityEvent(
-    WebKit::WebAXEvent event_type,
+    ui::AXEvent event_type,
     BrowserAccessibility* node) {
+  if (node->role() == ui::AX_ROLE_INLINE_TEXT_BOX)
+    return;
+
   LONG event_id = EVENT_MIN;
   switch (event_type) {
-    case WebKit::WebAXEventActiveDescendantChanged:
+    case ui::AX_EVENT_ACTIVEDESCENDANTCHANGED:
       event_id = IA2_EVENT_ACTIVE_DESCENDANT_CHANGED;
       break;
-    case WebKit::WebAXEventAlert:
+    case ui::AX_EVENT_ALERT:
       event_id = EVENT_SYSTEM_ALERT;
       break;
-    case WebKit::WebAXEventAriaAttributeChanged:
+    case ui::AX_EVENT_ARIA_ATTRIBUTE_CHANGED:
       event_id = IA2_EVENT_OBJECT_ATTRIBUTE_CHANGED;
       break;
-    case WebKit::WebAXEventAutocorrectionOccured:
+    case ui::AX_EVENT_AUTOCORRECTION_OCCURED:
       event_id = IA2_EVENT_OBJECT_ATTRIBUTE_CHANGED;
       break;
-    case WebKit::WebAXEventBlur:
+    case ui::AX_EVENT_BLUR:
       // Equivalent to focus on the root.
       event_id = EVENT_OBJECT_FOCUS;
       node = GetRoot();
       break;
-    case WebKit::WebAXEventCheckedStateChanged:
+    case ui::AX_EVENT_CHECKED_STATE_CHANGED:
       event_id = EVENT_OBJECT_STATECHANGE;
       break;
-    case WebKit::WebAXEventChildrenChanged:
+    case ui::AX_EVENT_CHILDREN_CHANGED:
       event_id = EVENT_OBJECT_REORDER;
       break;
-    case WebKit::WebAXEventFocus:
+    case ui::AX_EVENT_FOCUS:
       event_id = EVENT_OBJECT_FOCUS;
       break;
-    case WebKit::WebAXEventInvalidStatusChanged:
+    case ui::AX_EVENT_INVALID_STATUS_CHANGED:
       event_id = EVENT_OBJECT_STATECHANGE;
       break;
-    case WebKit::WebAXEventLiveRegionChanged:
+    case ui::AX_EVENT_LIVE_REGION_CHANGED:
       // TODO: try not firing a native notification at all, since
       // on Windows, each individual item in a live region that changes
       // already gets its own notification.
       event_id = EVENT_OBJECT_REORDER;
       break;
-    case WebKit::WebAXEventLoadComplete:
+    case ui::AX_EVENT_LOAD_COMPLETE:
       event_id = IA2_EVENT_DOCUMENT_LOAD_COMPLETE;
       break;
-    case WebKit::WebAXEventMenuListItemSelected:
+    case ui::AX_EVENT_MENU_LIST_ITEM_SELECTED:
       event_id = EVENT_OBJECT_FOCUS;
       break;
-    case WebKit::WebAXEventMenuListValueChanged:
+    case ui::AX_EVENT_MENU_LIST_VALUE_CHANGED:
       event_id = EVENT_OBJECT_VALUECHANGE;
       break;
-    case WebKit::WebAXEventHide:
+    case ui::AX_EVENT_HIDE:
       event_id = EVENT_OBJECT_HIDE;
       break;
-    case WebKit::WebAXEventShow:
+    case ui::AX_EVENT_SHOW:
       event_id = EVENT_OBJECT_SHOW;
       break;
-    case WebKit::WebAXEventScrolledToAnchor:
+    case ui::AX_EVENT_SCROLLED_TO_ANCHOR:
       event_id = EVENT_SYSTEM_SCROLLINGSTART;
       break;
-    case WebKit::WebAXEventSelectedChildrenChanged:
+    case ui::AX_EVENT_SELECTED_CHILDREN_CHANGED:
       event_id = EVENT_OBJECT_SELECTIONWITHIN;
       break;
-    case WebKit::WebAXEventSelectedTextChanged:
+    case ui::AX_EVENT_SELECTED_TEXT_CHANGED:
       event_id = IA2_EVENT_TEXT_CARET_MOVED;
       break;
-    case WebKit::WebAXEventTextChanged:
+    case ui::AX_EVENT_TEXT_CHANGED:
       event_id = EVENT_OBJECT_NAMECHANGE;
       break;
-    case WebKit::WebAXEventTextInserted:
+    case ui::AX_EVENT_TEXT_INSERTED:
       event_id = IA2_EVENT_TEXT_INSERTED;
       break;
-    case WebKit::WebAXEventTextRemoved:
+    case ui::AX_EVENT_TEXT_REMOVED:
       event_id = IA2_EVENT_TEXT_REMOVED;
       break;
-    case WebKit::WebAXEventValueChanged:
+    case ui::AX_EVENT_VALUE_CHANGED:
       event_id = EVENT_OBJECT_VALUECHANGE;
       break;
     default:
@@ -277,7 +275,7 @@ void BrowserAccessibilityManagerWin::NotifyAccessibilityEvent(
   // If this is a layout complete notification (sent when a container scrolls)
   // and there is a descendant tracked object, send a notification on it.
   // TODO(dmazzoni): remove once http://crbug.com/113483 is fixed.
-  if (event_type == WebKit::WebAXEventLayoutComplete &&
+  if (event_type == ui::AX_EVENT_LAYOUT_COMPLETE &&
       tracked_scroll_object_ &&
       tracked_scroll_object_->IsDescendantOf(node)) {
     MaybeCallNotifyWinEvent(

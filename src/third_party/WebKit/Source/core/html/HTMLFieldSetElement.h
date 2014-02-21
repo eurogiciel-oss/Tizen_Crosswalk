@@ -33,29 +33,28 @@ class HTMLCollection;
 
 class HTMLFieldSetElement FINAL : public HTMLFormControlElement {
 public:
-    static PassRefPtr<HTMLFieldSetElement> create(const QualifiedName&, Document&, HTMLFormElement*);
+    static PassRefPtr<HTMLFieldSetElement> create(Document&, HTMLFormElement*);
     HTMLLegendElement* legend() const;
 
     PassRefPtr<HTMLCollection> elements();
 
     const Vector<FormAssociatedElement*>& associatedElements() const;
-    unsigned length() const;
 
 protected:
     virtual void disabledAttributeChanged() OVERRIDE;
 
 private:
-    HTMLFieldSetElement(const QualifiedName&, Document&, HTMLFormElement*);
+    HTMLFieldSetElement(Document&, HTMLFormElement*);
 
-    virtual bool isEnumeratable() const { return true; }
-    virtual bool supportsFocus() const;
-    virtual RenderObject* createRenderer(RenderStyle*);
-    virtual const AtomicString& formControlType() const;
-    virtual bool recalcWillValidate() const { return false; }
+    virtual bool isEnumeratable() const OVERRIDE { return true; }
+    virtual bool supportsFocus() const OVERRIDE;
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
+    virtual const AtomicString& formControlType() const OVERRIDE;
+    virtual bool recalcWillValidate() const OVERRIDE { return false; }
     virtual void childrenChanged(bool changedByParser, Node* beforeChange, Node* afterChange, int childCountDelta) OVERRIDE;
     virtual bool areAuthorShadowsAllowed() const OVERRIDE { return false; }
 
-    static void invalidateDisabledStateUnder(Element*);
+    static void invalidateDisabledStateUnder(Element&);
     void refreshElementsIfNeeded() const;
 
     mutable Vector<FormAssociatedElement*> m_associatedElements;

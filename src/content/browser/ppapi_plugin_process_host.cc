@@ -117,6 +117,7 @@ PpapiPluginProcessHost* PpapiPluginProcessHost::CreatePluginHost(
     const base::FilePath& profile_data_directory) {
   PpapiPluginProcessHost* plugin_host = new PpapiPluginProcessHost(
       info, profile_data_directory);
+  DCHECK(plugin_host);
   if (plugin_host->Init(info))
     return plugin_host;
 
@@ -178,7 +179,7 @@ void PpapiPluginProcessHost::DidDeleteOutOfProcessInstance(
 
 // static
 void PpapiPluginProcessHost::FindByName(
-    const string16& name,
+    const base::string16& name,
     std::vector<PpapiPluginProcessHost*>* hosts) {
   for (PpapiPluginProcessHostIterator iter; !iter.Done(); ++iter) {
     if (iter->process_.get() && iter->process_->GetData().name == name)
@@ -206,10 +207,13 @@ void PpapiPluginProcessHost::OpenChannelToPlugin(Client* client) {
 PpapiPluginProcessHost::PpapiPluginProcessHost(
     const PepperPluginInfo& info,
     const base::FilePath& profile_data_directory)
-    : permissions_(
-          ppapi::PpapiPermissions::GetForCommandLine(info.permissions)),
-      profile_data_directory_(profile_data_directory),
+    : profile_data_directory_(profile_data_directory),
       is_broker_(false) {
+  uint32 base_permissions = info.permissions;
+  if (GetContentClient()->browser()->IsPluginAllowedToUseDevChannelAPIs())
+    base_permissions |= ppapi::PERMISSION_DEV_CHANNEL;
+  permissions_ = ppapi::PpapiPermissions::GetForCommandLine(base_permissions);
+
   process_.reset(new BrowserChildProcessHostImpl(
       PROCESS_TYPE_PPAPI_PLUGIN, this));
 
@@ -249,12 +253,14 @@ bool PpapiPluginProcessHost::Init(const PepperPluginInfo& info) {
   if (info.name.empty()) {
     process_->SetName(plugin_path_.BaseName().LossyDisplayName());
   } else {
-    process_->SetName(UTF8ToUTF16(info.name));
+    process_->SetName(base::UTF8ToUTF16(info.name));
   }
 
   std::string channel_id = process_->GetHost()->CreateChannel();
-  if (channel_id.empty())
+  if (channel_id.empty()) {
+    VLOG(1) << "Could not create pepper host channel.";
     return false;
+  }
 
   const CommandLine& browser_command_line = *CommandLine::ForCurrentProcess();
   CommandLine::StringType plugin_launcher =
@@ -267,8 +273,10 @@ bool PpapiPluginProcessHost::Init(const PepperPluginInfo& info) {
   int flags = ChildProcessHost::CHILD_NORMAL;
 #endif
   base::FilePath exe_path = ChildProcessHost::GetChildPath(flags);
-  if (exe_path.empty())
+  if (exe_path.empty()) {
+    VLOG(1) << "Pepper plugin exe path is empty.";
     return false;
+  }
 
   CommandLine* cmd_line = new CommandLine(exe_path);
   cmd_line->AppendSwitchASCII(switches::kProcessType,
@@ -299,11 +307,15 @@ bool PpapiPluginProcessHost::Init(const PepperPluginInfo& info) {
     // TODO(vtl): Stop passing flash args in the command line, or windows is
     // going to explode.
     std::string field_trial =
-        base::FieldTrialList::FindFullName(kLowLatencyFlashAudioFieldTrialName);
+        base::FieldTrialList::FindFullName(kFlashHwVideoDecodeFieldTrialName);
     std::string existing_args =
         browser_command_line.GetSwitchValueASCII(switches::kPpapiFlashArgs);
-    if (field_trial == kLowLatencyFlashAudioFieldTrialEnabledName)
-      existing_args.append(" enable_low_latency_audio=1");
+    if (field_trial == kFlashHwVideoDecodeFieldTrialEnabledName) {
+      // Arguments passed to Flash are comma delimited.
+      if (!existing_args.empty())
+        existing_args.append(",");
+      existing_args.append("enable_hw_video_decode=1");
+    }
     cmd_line->AppendSwitchASCII(switches::kPpapiFlashArgs, existing_args);
   }
 
@@ -357,10 +369,12 @@ void PpapiPluginProcessHost::RequestPluginChannel(Client* client) {
 }
 
 void PpapiPluginProcessHost::OnProcessLaunched() {
+  VLOG(2) << "ppapi plugin process launched.";
   host_impl_->set_plugin_process_handle(process_->GetHandle());
 }
 
 void PpapiPluginProcessHost::OnProcessCrashed(int exit_code) {
+  VLOG(1) << "ppapi plugin process crashed.";
   PluginServiceImpl::GetInstance()->RegisterPluginCrash(plugin_path_);
 }
 
@@ -391,8 +405,8 @@ void PpapiPluginProcessHost::OnChannelConnected(int32 peer_pid) {
 // Called when the browser <--> plugin channel has an error. This normally
 // means the plugin has crashed.
 void PpapiPluginProcessHost::OnChannelError() {
-  DVLOG(1) << "PpapiPluginProcessHost" << (is_broker_ ? "[broker]" : "")
-           << "::OnChannelError()";
+  VLOG(1) << "PpapiPluginProcessHost" << (is_broker_ ? "[broker]" : "")
+          << "::OnChannelError()";
   // We don't need to notify the renderers that were communicating with the
   // plugin since they have their own channels which will go into the error
   // state at the same time. Instead, we just need to notify any renderers

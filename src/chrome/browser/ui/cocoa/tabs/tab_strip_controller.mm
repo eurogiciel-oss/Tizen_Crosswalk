@@ -62,7 +62,7 @@
 #include "grit/theme_resources.h"
 #include "grit/ui_resources.h"
 #include "skia/ext/skia_utils_mac.h"
-#import "third_party/GTM/AppKit/GTMNSAnimation+Duration.h"
+#import "third_party/google_toolbox_for_mac/src/AppKit/GTMNSAnimation+Duration.h"
 #include "ui/base/cocoa/animation_utils.h"
 #import "ui/base/cocoa/tracking_area.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -71,9 +71,9 @@
 #include "ui/base/theme_provider.h"
 #include "ui/gfx/image/image.h"
 
+using base::UserMetricsAction;
 using content::OpenURLParams;
 using content::Referrer;
-using content::UserMetricsAction;
 using content::WebContents;
 
 namespace {
@@ -675,7 +675,7 @@ NSImage* Overlay(NSImage* ground, NSImage* overlay, CGFloat alpha) {
   content::RecordAction(UserMetricsAction("NewTab_Button"));
   UMA_HISTOGRAM_ENUMERATION("Tab.NewTab", TabStripModel::NEW_TAB_BUTTON,
                             TabStripModel::NEW_TAB_ENUM_COUNT);
-  tabStripModel_->delegate()->AddBlankTabAt(-1, true);
+  tabStripModel_->delegate()->AddTabAt(GURL(), -1, true);
 }
 
 // (Private) Returns the number of open tabs in the tab strip. This is the
@@ -1223,8 +1223,6 @@ NSImage* Overlay(NSImage* ground, NSImage* overlay, CGFloat alpha) {
 // Handles setting the title of the tab based on the given |contents|. Uses
 // a canned string if |contents| is NULL.
 - (void)setTabTitle:(TabController*)tab withContents:(WebContents*)contents {
-  // TODO(miu): Rectify inconsistent tooltip behavior.  http://crbug.com/310947
-
   base::string16 title;
   if (contents)
     title = contents->GetTitle();

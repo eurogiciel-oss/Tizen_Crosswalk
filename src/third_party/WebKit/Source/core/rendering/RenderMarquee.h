@@ -44,6 +44,7 @@
 #ifndef RenderMarquee_h
 #define RenderMarquee_h
 
+#include "core/html/HTMLMarqueeElement.h"
 #include "core/rendering/RenderBlockFlow.h"
 #include "core/rendering/style/RenderStyleConstants.h"
 #include "platform/Length.h"
@@ -56,7 +57,7 @@ class RenderLayer;
 // This class handles the auto-scrolling for <marquee>
 class RenderMarquee FINAL : public RenderBlockFlow {
 public:
-    explicit RenderMarquee(Element*);
+    explicit RenderMarquee(HTMLMarqueeElement*);
     virtual ~RenderMarquee();
 
     int speed() const { return m_speed; }
@@ -79,22 +80,22 @@ public:
     // However <marquee> tests are very timing dependent so we need to keep the existing timing.
     void updateMarqueePosition();
 
+    void timerFired();
+
 private:
-    virtual const char* renderName() const OVERRIDE FINAL;
+    virtual const char* renderName() const OVERRIDE;
 
-    virtual bool isMarquee() const OVERRIDE FINAL { return true; }
+    virtual bool isMarquee() const OVERRIDE { return true; }
 
-    virtual void styleDidChange(StyleDifference, const RenderStyle* oldStyle) OVERRIDE FINAL;
+    virtual void styleDidChange(StyleDifference, const RenderStyle* oldStyle) OVERRIDE;
 
-    virtual void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0) OVERRIDE FINAL;
+    virtual void layoutBlock(bool relayoutChildren) OVERRIDE;
 
     virtual bool supportsPartialLayout() const OVERRIDE { return false; }
 
-    void timerFired(Timer<RenderMarquee>*);
-
     int m_currentLoop;
     int m_totalLoops;
-    Timer<RenderMarquee> m_timer;
+    Timer<HTMLMarqueeElement> m_timer;
     int m_start;
     int m_end;
     int m_speed;

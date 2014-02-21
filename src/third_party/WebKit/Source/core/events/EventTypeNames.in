@@ -11,6 +11,7 @@ DOMNodeRemoved
 DOMNodeRemovedFromDocument
 DOMSubtreeModified
 abort
+activate
 addsourcebuffer
 addstream
 addtrack
@@ -27,6 +28,7 @@ beforecut
 beforeload
 beforepaste
 beforeunload
+beginEvent
 blocked
 blur
 boundary
@@ -72,9 +74,11 @@ durationchange
 emptied
 end
 ended
+endEvent
 enter
 error
 exit
+fetch
 focus
 focusin
 focusout
@@ -89,6 +93,7 @@ hashchange
 icecandidate
 iceconnectionstatechange
 input
+install
 invalid
 keydown
 keypress
@@ -114,6 +119,7 @@ mouseover
 mouseup
 mousewheel
 mute
+needkey
 negotiationneeded
 nomatch
 noupdate
@@ -132,10 +138,12 @@ playing
 popstate
 progress
 ratechange
+ready
 readystatechange
 removesourcebuffer
 removestream
 removetrack
+repeatEvent
 reset
 resize
 result
@@ -180,6 +188,7 @@ updateready
 updatestart
 upgradeneeded
 versionchange
+visibilitychange
 voiceschanged
 volumechange
 waiting

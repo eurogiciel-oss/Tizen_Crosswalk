@@ -5,6 +5,9 @@
 #include "webkit/child/webkitplatformsupport_child_impl.h"
 
 #include "base/memory/discardable_memory.h"
+#include "base/memory/scoped_ptr.h"
+#include "base/synchronization/waitable_event.h"
+#include "third_party/WebKit/public/platform/WebWaitableEvent.h"
 #include "third_party/WebKit/public/web/WebInputEvent.h"
 #include "webkit/child/fling_curve_configuration.h"
 #include "webkit/child/web_discardable_memory_impl.h"
@@ -15,10 +18,31 @@
 #include "webkit/child/fling_animator_impl_android.h"
 #endif
 
-using WebKit::WebFallbackThemeEngine;
-using WebKit::WebThemeEngine;
+using blink::WebFallbackThemeEngine;
+using blink::WebThemeEngine;
 
 namespace webkit_glue {
+
+namespace {
+
+class WebWaitableEventImpl : public blink::WebWaitableEvent {
+ public:
+  WebWaitableEventImpl() : impl_(new base::WaitableEvent(false, false)) {}
+  virtual ~WebWaitableEventImpl() {}
+
+  virtual void wait() { impl_->Wait(); }
+  virtual void signal() { impl_->Signal(); }
+
+  base::WaitableEvent* impl() {
+    return impl_.get();
+  }
+
+ private:
+  scoped_ptr<base::WaitableEvent> impl_;
+  DISALLOW_COPY_AND_ASSIGN(WebWaitableEventImpl);
+};
+
+}  // namespace
 
 WebKitPlatformSupportChildImpl::WebKitPlatformSupportChildImpl()
     : current_thread_slot_(&DestroyCurrentThread),
@@ -40,17 +64,17 @@ void WebKitPlatformSupportChildImpl::SetFlingCurveParameters(
   fling_curve_configuration_->SetCurveParameters(new_touchpad, new_touchscreen);
 }
 
-WebKit::WebGestureCurve*
+blink::WebGestureCurve*
 WebKitPlatformSupportChildImpl::createFlingAnimationCurve(
     int device_source,
-    const WebKit::WebFloatPoint& velocity,
-    const WebKit::WebSize& cumulative_scroll) {
+    const blink::WebFloatPoint& velocity,
+    const blink::WebSize& cumulative_scroll) {
 #if defined(OS_ANDROID)
   return FlingAnimatorImpl::CreateAndroidGestureCurve(velocity,
                                                       cumulative_scroll);
 #endif
 
-  if (device_source == WebKit::WebGestureEvent::Touchscreen)
+  if (device_source == blink::WebGestureEvent::Touchscreen)
     return fling_curve_configuration_->CreateForTouchScreen(velocity,
                                                             cumulative_scroll);
 
@@ -58,12 +82,12 @@ WebKitPlatformSupportChildImpl::createFlingAnimationCurve(
                                                        cumulative_scroll);
 }
 
-WebKit::WebThread* WebKitPlatformSupportChildImpl::createThread(
+blink::WebThread* WebKitPlatformSupportChildImpl::createThread(
     const char* name) {
   return new WebThreadImpl(name);
 }
 
-WebKit::WebThread* WebKitPlatformSupportChildImpl::currentThread() {
+blink::WebThread* WebKitPlatformSupportChildImpl::currentThread() {
   WebThreadImplForMessageLoop* thread =
       static_cast<WebThreadImplForMessageLoop*>(current_thread_slot_.Get());
   if (thread)
@@ -79,20 +103,38 @@ WebKit::WebThread* WebKitPlatformSupportChildImpl::currentThread() {
   return thread;
 }
 
+blink::WebWaitableEvent* WebKitPlatformSupportChildImpl::createWaitableEvent() {
+  return new WebWaitableEventImpl();
+}
+
+blink::WebWaitableEvent* WebKitPlatformSupportChildImpl::waitMultipleEvents(
+    const blink::WebVector<blink::WebWaitableEvent*>& web_events) {
+  base::WaitableEvent** events = new base::WaitableEvent*[web_events.size()];
+  for (size_t i = 0; i < web_events.size(); ++i)
+    events[i] = static_cast<WebWaitableEventImpl*>(web_events[i])->impl();
+  size_t idx = base::WaitableEvent::WaitMany(events, web_events.size());
+  DCHECK_LT(idx, web_events.size());
+  return web_events[idx];
+}
+
 void WebKitPlatformSupportChildImpl::didStartWorkerRunLoop(
-    const WebKit::WebWorkerRunLoop& runLoop) {
+    const blink::WebWorkerRunLoop& runLoop) {
   WorkerTaskRunner* worker_task_runner = WorkerTaskRunner::Instance();
   worker_task_runner->OnWorkerRunLoopStarted(runLoop);
 }
 
 void WebKitPlatformSupportChildImpl::didStopWorkerRunLoop(
-    const WebKit::WebWorkerRunLoop& runLoop) {
+    const blink::WebWorkerRunLoop& runLoop) {
   WorkerTaskRunner* worker_task_runner = WorkerTaskRunner::Instance();
   worker_task_runner->OnWorkerRunLoopStopped(runLoop);
 }
 
-WebKit::WebDiscardableMemory*
+blink::WebDiscardableMemory*
 WebKitPlatformSupportChildImpl::allocateAndLockDiscardableMemory(size_t bytes) {
+  base::DiscardableMemoryType type =
+      base::DiscardableMemory::GetPreferredType();
+  if (type == base::DISCARDABLE_MEMORY_TYPE_EMULATED)
+    return NULL;
   return WebDiscardableMemoryImpl::CreateLockedMemory(bytes).release();
 }
 

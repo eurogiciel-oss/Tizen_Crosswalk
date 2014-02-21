@@ -43,7 +43,7 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
   void UpdateHudTexture(DrawMode draw_mode,
                         ResourceProvider* resource_provider);
 
-  virtual void DidLoseOutputSurface() OVERRIDE;
+  virtual void ReleaseResources() OVERRIDE;
 
   virtual bool LayerIsAlwaysDamaged() const OVERRIDE;
 
@@ -69,6 +69,8 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
   HeadsUpDisplayLayerImpl(LayerTreeImpl* tree_impl, int id);
 
   virtual const char* LayerTypeAsString() const OVERRIDE;
+
+  virtual void AsValueInto(base::DictionaryValue* dict) const OVERRIDE;
 
   void UpdateHudContents();
   void DrawHudContents(SkCanvas* canvas) const;

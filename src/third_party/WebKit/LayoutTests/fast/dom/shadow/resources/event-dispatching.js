@@ -1,5 +1,3 @@
-description("Tests to ensure that event dispatching behaves as the Shadow DOM spec describes.");
-
 var defaultPaddingSize = 40;
 
 function moveMouseOver(element)
@@ -169,6 +167,16 @@ function moveMouse(oldElementId, newElementId)
 
     debugDispatchedEvent('mouseout');
     debugDispatchedEvent('mouseover');
+}
+
+function clickElement(elementId)
+{
+    clearEventRecords();
+    debug('\n' + 'Click ' + elementId);
+    var clickEvent = document.createEvent("MouseEvents");
+    clickEvent.initMouseEvent('click', true, false, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+    getNodeInTreeOfTrees(elementId).dispatchEvent(clickEvent);
+    debugDispatchedEvent('click');
 }
 
 function showSandboxTree()

@@ -19,12 +19,12 @@ namespace {
 
 scoped_refptr<Layer> ParseTreeFromValue(base::Value* val,
                                         ContentLayerClient* content_client) {
-  DictionaryValue* dict;
+  base::DictionaryValue* dict;
   bool success = true;
   success &= val->GetAsDictionary(&dict);
   std::string layer_type;
   success &= dict->GetString("LayerType", &layer_type);
-  ListValue* list;
+  base::ListValue* list;
   success &= dict->GetList("Bounds", &list);
   int width, height;
   success &= list->GetInteger(0, &width);
@@ -50,7 +50,7 @@ scoped_refptr<Layer> ParseTreeFromValue(base::Value* val,
     success &= list->GetInteger(2, &aperture_width);
     success &= list->GetInteger(3, &aperture_height);
 
-    ListValue* bounds;
+    base::ListValue* bounds;
     success &= dict->GetList("ImageBounds", &bounds);
     double image_width, image_height;
     success &= bounds->GetDouble(0, &image_width);
@@ -110,7 +110,7 @@ scoped_refptr<Layer> ParseTreeFromValue(base::Value* val,
 
   if (dict->HasKey("TouchRegion")) {
     success &= dict->GetList("TouchRegion", &list);
-    cc::Region touch_region;
+    Region touch_region;
     for (size_t i = 0; i < list->GetSize(); ) {
       int rect_x, rect_y, rect_width, rect_height;
       success &= list->GetInteger(i++, &rect_x);
@@ -132,7 +132,7 @@ scoped_refptr<Layer> ParseTreeFromValue(base::Value* val,
   new_layer->SetTransform(layer_transform);
 
   success &= dict->GetList("Children", &list);
-  for (ListValue::const_iterator it = list->begin();
+  for (base::ListValue::const_iterator it = list->begin();
        it != list->end(); ++it) {
     new_layer->AddChild(ParseTreeFromValue(*it, content_client));
   }

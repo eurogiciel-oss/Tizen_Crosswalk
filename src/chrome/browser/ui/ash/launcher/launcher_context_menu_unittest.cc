@@ -4,9 +4,9 @@
 
 #include "chrome/browser/ui/ash/launcher/launcher_context_menu.h"
 
-#include "ash/launcher/launcher.h"
-#include "ash/launcher/launcher_model.h"
 #include "ash/launcher/launcher_types.h"
+#include "ash/shelf/shelf.h"
+#include "ash/shelf/shelf_model.h"
 #include "ash/test/ash_test_base.h"
 #include "base/prefs/pref_service.h"
 #include "chrome/app/chrome_command_ids.h"
@@ -18,7 +18,7 @@
 
 class TestChromeLauncherController : public ChromeLauncherController {
  public:
-  TestChromeLauncherController(Profile* profile, ash::LauncherModel* model)
+  TestChromeLauncherController(Profile* profile, ash::ShelfModel* model)
       : ChromeLauncherController(profile, model) {}
   virtual bool IsLoggedInAsGuest() OVERRIDE {
     return false;
@@ -40,7 +40,7 @@ class LauncherContextMenuTest : public ash::test::AshTestBase {
   virtual void SetUp() OVERRIDE {
     ash::test::AshTestBase::SetUp();
     controller_.reset(
-        new TestChromeLauncherController(profile(), &launcher_model_));
+        new TestChromeLauncherController(profile(), &shelf_model_));
   }
 
   virtual void TearDown() OVERRIDE {
@@ -49,10 +49,10 @@ class LauncherContextMenuTest : public ash::test::AshTestBase {
   }
 
   LauncherContextMenu* CreateLauncherContextMenu(
-      ash::LauncherItemType launcher_item_type) {
+      ash::ShelfItemType shelf_item_type) {
     ash::LauncherItem item;
     item.id = 1;  // dummy id
-    item.type = launcher_item_type;
+    item.type = shelf_item_type;
     return new LauncherContextMenu(controller_.get(), &item, CurrentContext());
   }
 
@@ -60,7 +60,7 @@ class LauncherContextMenuTest : public ash::test::AshTestBase {
 
  private:
   scoped_ptr<TestingProfile> profile_;
-  ash::LauncherModel launcher_model_;
+  ash::ShelfModel shelf_model_;
   scoped_ptr<ChromeLauncherController> controller_;
 
   DISALLOW_COPY_AND_ASSIGN(LauncherContextMenuTest);

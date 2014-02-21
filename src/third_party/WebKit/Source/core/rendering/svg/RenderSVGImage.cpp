@@ -27,9 +27,9 @@
 
 #include "core/rendering/svg/RenderSVGImage.h"
 
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
 #include "core/rendering/GraphicsContextAnnotator.h"
 #include "core/rendering/ImageQualityController.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/LayoutRepainter.h"
 #include "core/rendering/PointerEventsHitRules.h"
 #include "core/rendering/RenderImageResource.h"
@@ -38,6 +38,7 @@
 #include "core/rendering/svg/SVGResources.h"
 #include "core/rendering/svg/SVGResourcesCache.h"
 #include "core/svg/SVGImageElement.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 
 namespace WebCore {
 
@@ -63,12 +64,12 @@ bool RenderSVGImage::updateImageViewport()
     bool updatedViewport = false;
 
     SVGLengthContext lengthContext(image);
-    m_objectBoundingBox = FloatRect(image->xCurrentValue().value(lengthContext), image->yCurrentValue().value(lengthContext), image->widthCurrentValue().value(lengthContext), image->heightCurrentValue().value(lengthContext));
+    m_objectBoundingBox = FloatRect(image->x()->currentValue()->value(lengthContext), image->y()->currentValue()->value(lengthContext), image->width()->currentValue()->value(lengthContext), image->height()->currentValue()->value(lengthContext));
 
     // Images with preserveAspectRatio=none should force non-uniform scaling. This can be achieved
     // by setting the image's container size to its intrinsic size.
     // See: http://www.w3.org/TR/SVG/single-page.html, 7.8 The ‘preserveAspectRatio’ attribute.
-    if (image->preserveAspectRatioCurrentValue().align() == SVGPreserveAspectRatio::SVG_PRESERVEASPECTRATIO_NONE) {
+    if (image->preserveAspectRatio()->currentValue()->align() == SVGPreserveAspectRatio::SVG_PRESERVEASPECTRATIO_NONE) {
         if (ImageResource* cachedImage = m_imageResource->cachedImage()) {
             LayoutSize intrinsicSize = cachedImage->imageSizeForRenderer(0, style()->effectiveZoom());
             if (intrinsicSize != m_imageResource->imageSize(style()->effectiveZoom())) {
@@ -92,6 +93,7 @@ void RenderSVGImage::layout()
 {
     ASSERT(needsLayout());
 
+    LayoutRectRecorder recorder(*this);
     LayoutRepainter repainter(*this, SVGRenderSupport::checkForSVGRepaintDuringLayout(this) && selfNeedsLayout());
     updateImageViewport();
 
@@ -160,7 +162,7 @@ void RenderSVGImage::paintForeground(PaintInfo& paintInfo)
     FloatRect srcRect(0, 0, image->width(), image->height());
 
     SVGImageElement* imageElement = toSVGImageElement(element());
-    imageElement->preserveAspectRatioCurrentValue().transformRect(destRect, srcRect);
+    imageElement->preserveAspectRatio()->currentValue()->transformRect(destRect, srcRect);
 
     bool useLowQualityScaling = false;
     if (style()->svgStyle()->bufferedRendering() != BR_STATIC)
@@ -188,7 +190,7 @@ bool RenderSVGImage::nodeAtFloatPoint(const HitTestRequest& request, HitTestResu
         if (!SVGRenderSupport::pointInClippingArea(this, localPoint))
             return false;
 
-        if (hitRules.canHitFill) {
+        if (hitRules.canHitFill || hitRules.canHitBoundingBox) {
             if (m_objectBoundingBox.contains(localPoint)) {
                 updateHitTestResult(result, roundedLayoutPoint(localPoint));
                 return true;

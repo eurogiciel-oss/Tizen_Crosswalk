@@ -38,9 +38,7 @@
 
 
 using base::TimeTicks;
-using file_util::CloseFile;
 using base::DirectoryExists;
-using file_util::OpenFile;
 using base::PathExists;
 using std::queue;
 using std::string;
@@ -188,8 +186,8 @@ class Simulator {
 
   // Initialize the OpenGL context.
   bool InitGLContext() {
-    if (!InitializeGLBindings(gfx::kGLImplementationDesktopGL)) {
-      LOG(FATAL) << "InitializeGLBindings failed";
+    if (!InitializeStaticGLBindings(gfx::kGLImplementationDesktopGL)) {
+      LOG(FATAL) << "InitializeStaticGLBindings failed";
       return false;
     }
 
@@ -275,7 +273,7 @@ class Simulator {
   void DumpOutput() {
     LOG(INFO) << "Successfully ran " << sims_completed_.size() << " tests";
 
-    FILE* f = OpenFile(output_path_, "w");
+    FILE* f = base::OpenFile(output_path_, "w");
 
     if (!f) {
       LOG(ERROR) << "Failed to open output file " <<
@@ -301,7 +299,7 @@ class Simulator {
     }
 
     fputs("\t]\n}", f);
-    CloseFile(f);
+    base::CloseFile(f);
   }
 
   bool UpdateTestStatus() {

@@ -24,12 +24,14 @@
 class CommandUpdater;
 class ContentSettingDecoration;
 class EVBubbleDecoration;
+class GeneratedCreditCardDecoration;
 class KeywordHintDecoration;
 class LocationBarDecoration;
 class LocationIconDecoration;
 class MicSearchDecoration;
 class PageActionDecoration;
 class Profile;
+class SearchButtonDecoration;
 class SelectedKeywordDecoration;
 class StarDecoration;
 class ZoomDecoration;
@@ -60,14 +62,15 @@ class LocationBarViewMac : public LocationBar,
   virtual void FocusLocation(bool select_all) OVERRIDE;
   virtual void FocusSearch() OVERRIDE;
   virtual void UpdateContentSettingsIcons() OVERRIDE;
+  virtual void UpdateManagePasswordsIconAndBubble() OVERRIDE {};
   virtual void UpdatePageActions() OVERRIDE;
   virtual void InvalidatePageActions() OVERRIDE;
   virtual void UpdateOpenPDFInReaderPrompt() OVERRIDE;
   virtual void UpdateGeneratedCreditCardView() OVERRIDE;
   virtual void SaveStateToContents(content::WebContents* contents) OVERRIDE;
   virtual void Revert() OVERRIDE;
-  virtual const OmniboxView* GetLocationEntry() const OVERRIDE;
-  virtual OmniboxView* GetLocationEntry() OVERRIDE;
+  virtual const OmniboxView* GetOmniboxView() const OVERRIDE;
+  virtual OmniboxView* GetOmniboxView() OVERRIDE;
   virtual LocationBarTesting* GetLocationBarForTesting() OVERRIDE;
 
   // Overridden from LocationBarTesting:
@@ -92,17 +95,20 @@ class LocationBarViewMac : public LocationBar,
   // be obscured by other UI (wrench menu) or redundant (+/- from wrench).
   void ZoomChangedForActiveTab(bool can_show_bubble);
 
-  // Pops up a bubble for a content setting. This depends on the image having
-  // already been laid out, therefore it must be called after Layout().
-  void PopUpContentSettingIfNeeded();
+  // Checks if the bookmark star should be enabled or not.
+  bool IsStarEnabled() const;
 
   // Get the point in window coordinates on the star for the bookmark bubble to
-  // aim at.
+  // aim at. Only works if IsStarEnabled returns YES.
   NSPoint GetBookmarkBubblePoint() const;
 
   // Get the point in window coordinates in the security icon at which the page
   // info bubble aims.
   NSPoint GetPageInfoBubblePoint() const;
+
+  // Get the point in window coordinates in the "generated cc" icon at which the
+  // corresponding info bubble aims.
+  NSPoint GetGeneratedCreditCardBubblePoint() const;
 
   // When any image decorations change, call this to ensure everything is
   // redrawn and laid out if necessary.
@@ -140,7 +146,7 @@ class LocationBarViewMac : public LocationBar,
   virtual ToolbarModel* GetToolbarModel() OVERRIDE;
   virtual const ToolbarModel* GetToolbarModel() const OVERRIDE;
 
-  NSImage* GetKeywordImage(const string16& keyword);
+  NSImage* GetKeywordImage(const base::string16& keyword);
 
   AutocompleteTextField* GetAutocompleteTextField() { return field_; }
 
@@ -179,9 +185,6 @@ class LocationBarViewMac : public LocationBar,
   bool RefreshContentSettingsDecorations();
 
   void ShowFirstRunBubbleInternal();
-
-  // Checks if the bookmark star should be enabled or not.
-  bool IsStarEnabled();
 
   // Updates the zoom decoration in the omnibox with the current zoom level.
   void UpdateZoomDecoration();
@@ -229,7 +232,11 @@ class LocationBarViewMac : public LocationBar,
   // The voice search icon.
   scoped_ptr<MicSearchDecoration> mic_search_decoration_;
 
-  Profile* profile_;
+  // Generated CC hint decoration.
+  scoped_ptr<GeneratedCreditCardDecoration> generated_credit_card_decoration_;
+
+  // The right-hand-side search button that is shown on search result pages.
+  scoped_ptr<SearchButtonDecoration> search_button_decoration_;
 
   Browser* browser_;
 

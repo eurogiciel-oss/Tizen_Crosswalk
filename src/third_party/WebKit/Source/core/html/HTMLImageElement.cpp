@@ -42,38 +42,41 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-HTMLImageElement::HTMLImageElement(const QualifiedName& tagName, Document& document, HTMLFormElement* form)
-    : HTMLElement(tagName, document)
+HTMLImageElement::HTMLImageElement(Document& document, HTMLFormElement* form)
+    : HTMLElement(imgTag, document)
     , m_imageLoader(this)
-    , m_form(form)
     , m_compositeOperator(CompositeSourceOver)
     , m_imageDevicePixelRatio(1.0f)
+    , m_formWasSetByParser(false)
 {
-    ASSERT(hasTagName(imgTag));
     ScriptWrappable::init(this);
-    if (form)
-        form->registerImgElement(this);
+    if (form && form->inDocument()) {
+        m_form = form->createWeakPtr();
+        m_formWasSetByParser = true;
+        m_form->associate(*this);
+        m_form->didAssociateByParser();
+    }
 }
 
 PassRefPtr<HTMLImageElement> HTMLImageElement::create(Document& document)
 {
-    return adoptRef(new HTMLImageElement(imgTag, document));
+    return adoptRef(new HTMLImageElement(document));
 }
 
-PassRefPtr<HTMLImageElement> HTMLImageElement::create(const QualifiedName& tagName, Document& document, HTMLFormElement* form)
+PassRefPtr<HTMLImageElement> HTMLImageElement::create(Document& document, HTMLFormElement* form)
 {
-    return adoptRef(new HTMLImageElement(tagName, document, form));
+    return adoptRef(new HTMLImageElement(document, form));
 }
 
 HTMLImageElement::~HTMLImageElement()
 {
     if (m_form)
-        m_form->removeImgElement(this);
+        m_form->disassociate(*this);
 }
 
 PassRefPtr<HTMLImageElement> HTMLImageElement::createForJSConstructor(Document& document, int width, int height)
 {
-    RefPtr<HTMLImageElement> image = adoptRef(new HTMLImageElement(imgTag, document));
+    RefPtr<HTMLImageElement> image = adoptRef(new HTMLImageElement(document));
     if (width)
         image->setWidth(width);
     if (height)
@@ -115,6 +118,35 @@ const AtomicString HTMLImageElement::imageSourceURL() const
     return m_bestFitImageURL.isNull() ? fastGetAttribute(srcAttr) : m_bestFitImageURL;
 }
 
+HTMLFormElement* HTMLImageElement::formOwner() const
+{
+    return m_form.get();
+}
+
+void HTMLImageElement::formRemovedFromTree(const Node* formRoot)
+{
+    ASSERT(m_form);
+    if (highestAncestor() != formRoot)
+        resetFormOwner();
+}
+
+void HTMLImageElement::resetFormOwner()
+{
+    m_formWasSetByParser = false;
+    HTMLFormElement* nearestForm = findFormAncestor();
+    if (m_form) {
+        if (nearestForm == m_form.get())
+            return;
+        m_form->disassociate(*this);
+    }
+    if (nearestForm) {
+        m_form = nearestForm->createWeakPtr();
+        m_form->associate(*this);
+    } else {
+        m_form = WeakPtr<HTMLFormElement>();
+    }
+}
+
 void HTMLImageElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
 {
     if (name == altAttr) {
@@ -123,7 +155,7 @@ void HTMLImageElement::parseAttribute(const QualifiedName& name, const AtomicStr
     } else if (name == srcAttr || name == srcsetAttr) {
         if (RuntimeEnabledFeatures::srcsetEnabled()) {
             ImageCandidate candidate = bestFitSourceForImageAttributes(document().devicePixelRatio(), fastGetAttribute(srcAttr), fastGetAttribute(srcsetAttr));
-            m_bestFitImageURL = candidate.toString();
+            m_bestFitImageURL = candidate.toAtomicString();
             float candidateScaleFactor = candidate.scaleFactor();
             if (candidateScaleFactor > 0)
                 m_imageDevicePixelRatio = 1 / candidateScaleFactor;
@@ -138,23 +170,22 @@ void HTMLImageElement::parseAttribute(const QualifiedName& name, const AtomicStr
         setAttributeEventListener(EventTypeNames::beforeload, createAttributeEventListener(this, name, value));
     else if (name == compositeAttr) {
         // FIXME: images don't support blend modes in their compositing attribute.
-        BlendMode blendOp = BlendModeNormal;
+        blink::WebBlendMode blendOp = blink::WebBlendModeNormal;
         if (!parseCompositeAndBlendOperator(value, m_compositeOperator, blendOp))
             m_compositeOperator = CompositeSourceOver;
     } else
         HTMLElement::parseAttribute(name, value);
 }
 
-String HTMLImageElement::altText() const
+const AtomicString& HTMLImageElement::altText() const
 {
     // lets figure out the alt text.. magic stuff
     // http://www.w3.org/TR/1998/REC-html40-19980424/appendix/notes.html#altgen
     // also heavily discussed by Hixie on bugzilla
-    String alt = getAttribute(altAttr);
+    if (!getAttribute(altAttr).isNull())
+        return getAttribute(altAttr);
     // fall back to title attribute
-    if (alt.isNull())
-        alt = getAttribute(titleAttr);
-    return alt;
+    return getAttribute(titleAttr);
 }
 
 RenderObject* HTMLImageElement::createRenderer(RenderStyle* style)
@@ -198,17 +229,8 @@ void HTMLImageElement::attach(const AttachContext& context)
 
 Node::InsertionNotificationRequest HTMLImageElement::insertedInto(ContainerNode* insertionPoint)
 {
-    // m_form can be non-null if it was set in constructor.
-    if (m_form && insertionPoint->highestAncestor() != m_form->highestAncestor()) {
-        m_form->removeImgElement(this);
-        m_form = 0;
-    }
-
-    if (!m_form) {
-        m_form = findFormAncestor();
-        if (m_form)
-            m_form->registerImgElement(this);
-    }
+    if (!m_formWasSetByParser || insertionPoint->highestAncestor() != m_form->highestAncestor())
+        resetFormOwner();
 
     // If we have been inserted from a renderer-less document,
     // our loader may have not fetched the image, so do it now.
@@ -220,9 +242,8 @@ Node::InsertionNotificationRequest HTMLImageElement::insertedInto(ContainerNode*
 
 void HTMLImageElement::removedFrom(ContainerNode* insertionPoint)
 {
-    if (m_form)
-        m_form->removeImgElement(this);
-    m_form = 0;
+    if (!m_form || m_form->highestAncestor() != highestAncestor())
+        resetFormOwner();
     HTMLElement::removedFrom(insertionPoint);
 }
 
@@ -310,7 +331,7 @@ bool HTMLImageElement::draggable() const
 
 void HTMLImageElement::setHeight(int value)
 {
-    setAttribute(heightAttr, String::number(value));
+    setIntegralAttribute(heightAttr, value);
 }
 
 KURL HTMLImageElement::src() const
@@ -320,12 +341,12 @@ KURL HTMLImageElement::src() const
 
 void HTMLImageElement::setSrc(const String& value)
 {
-    setAttribute(srcAttr, value);
+    setAttribute(srcAttr, AtomicString(value));
 }
 
 void HTMLImageElement::setWidth(int value)
 {
-    setAttribute(widthAttr, String::number(value));
+    setIntegralAttribute(widthAttr, value);
 }
 
 int HTMLImageElement::x() const
@@ -353,15 +374,6 @@ int HTMLImageElement::y() const
 bool HTMLImageElement::complete() const
 {
     return m_imageLoader.imageComplete();
-}
-
-void HTMLImageElement::addSubresourceAttributeURLs(ListHashSet<KURL>& urls) const
-{
-    HTMLElement::addSubresourceAttributeURLs(urls);
-
-    addSubresourceURL(urls, src());
-    // FIXME: What about when the usemap attribute begins with "#"?
-    addSubresourceURL(urls, document().completeURL(getAttribute(usemapAttr)));
 }
 
 void HTMLImageElement::didMoveToNewDocument(Document& oldDocument)

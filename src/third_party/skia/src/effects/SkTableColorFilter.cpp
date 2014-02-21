@@ -189,6 +189,7 @@ SkTable_ColorFilter::SkTable_ColorFilter(SkFlattenableReadBuffer& buffer) : INHE
 
     size_t size = buffer.getArrayCount();
     SkASSERT(size <= sizeof(storage));
+    buffer.validate(size <= sizeof(storage));
     buffer.readByteArray(storage, size);
 
     SkDEBUGCODE(size_t raw = ) SkPackBits::Unpack8(storage, size, fStorage);
@@ -202,8 +203,7 @@ bool SkTable_ColorFilter::asComponentTable(SkBitmap* table) const {
     if (table) {
         if (NULL == fBitmap) {
             SkBitmap* bmp = SkNEW(SkBitmap);
-            bmp->setConfig(SkBitmap::kA8_Config, 256, 4, 256);
-            bmp->allocPixels();
+            bmp->allocPixels(SkImageInfo::MakeA8(256, 4));
             uint8_t* bitmapPixels = bmp->getAddr8(0, 0);
             int offset = 0;
             static const unsigned kFlags[] = { kA_Flag, kR_Flag, kG_Flag, kB_Flag };

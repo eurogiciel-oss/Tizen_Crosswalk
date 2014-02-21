@@ -15,8 +15,6 @@
 #include "chrome/browser/extensions/api/media_galleries_private/gallery_watch_manager.h"
 #include "chrome/browser/extensions/api/media_galleries_private/media_galleries_private_event_router.h"
 #include "chrome/browser/extensions/event_names.h"
-#include "chrome/browser/extensions/event_router.h"
-#include "chrome/browser/extensions/extension_function.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/extension_util.h"
@@ -27,6 +25,8 @@
 #include "chrome/common/extensions/api/media_galleries_private/media_galleries_handler.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_view_host.h"
+#include "extensions/browser/event_router.h"
+#include "extensions/browser/extension_function.h"
 
 using base::DictionaryValue;
 using base::ListValue;
@@ -111,7 +111,7 @@ g_factory = LAZY_INSTANCE_INITIALIZER;
 // static
 ProfileKeyedAPIFactory<MediaGalleriesPrivateAPI>*
     MediaGalleriesPrivateAPI::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 // static
@@ -388,14 +388,14 @@ bool MediaGalleriesPrivateGetHandlersFunction::RunImpl() {
       extensions::ExtensionSystem::Get(GetProfile())->extension_service();
   DCHECK(service);
 
-  ListValue* result_list = new ListValue;
+  base::ListValue* result_list = new base::ListValue;
 
   for (ExtensionSet::const_iterator iter = service->extensions()->begin();
        iter != service->extensions()->end();
        ++iter) {
     const Extension* extension = iter->get();
     if (GetProfile()->IsOffTheRecord() &&
-        !extension_util::IsIncognitoEnabled(extension->id(), service))
+        !util::IsIncognitoEnabled(extension->id(), GetProfile()))
       continue;
 
     MediaGalleriesHandler::List* handler_list =
@@ -408,7 +408,7 @@ bool MediaGalleriesPrivateGetHandlersFunction::RunImpl() {
          action_iter != handler_list->end();
          ++action_iter) {
       const MediaGalleriesHandler* action = action_iter->get();
-      DictionaryValue* handler = new DictionaryValue;
+      base::DictionaryValue* handler = new base::DictionaryValue;
       handler->SetString("extensionId", action->extension_id());
       handler->SetString("id", action->id());
       handler->SetString("title", action->title());

@@ -18,6 +18,7 @@
 #include "chrome/browser/search_engines/template_url_service.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/browser_instant_controller.h"
+#include "chrome/browser/ui/search/instant_search_prerenderer.h"
 #include "chrome/browser/ui/search/instant_tab.h"
 #include "chrome/browser/ui/search/search_tab_helper.h"
 #include "chrome/common/chrome_switches.h"
@@ -52,7 +53,7 @@ bool IsContentsFrom(const InstantPage* page,
 // supplied |search_terms|. Sets the |search_terms| on the transient entry for
 // search terms extraction to work correctly.
 void EnsureSearchTermsAreSet(content::WebContents* contents,
-                             const string16& search_terms) {
+                             const base::string16& search_terms) {
   content::NavigationController* controller = &contents->GetController();
 
   // If search terms are already correct or there is already a transient entry
@@ -61,11 +62,11 @@ void EnsureSearchTermsAreSet(content::WebContents* contents,
       controller->GetTransientEntry())
     return;
 
-  const content::NavigationEntry* active_entry = controller->GetActiveEntry();
+  const content::NavigationEntry* entry = controller->GetLastCommittedEntry();
   content::NavigationEntry* transient = controller->CreateNavigationEntry(
-      active_entry->GetURL(),
-      active_entry->GetReferrer(),
-      active_entry->GetTransitionType(),
+      entry->GetURL(),
+      entry->GetReferrer(),
+      entry->GetTransitionType(),
       false,
       std::string(),
       contents->GetBrowserContext());
@@ -98,49 +99,25 @@ void InstantController::SetOmniboxBounds(const gfx::Rect& bounds) {
 
 void InstantController::SetSuggestionToPrefetch(
     const InstantSuggestion& suggestion) {
-  if (instant_tab_ && search_mode_.is_search()) {
-    SearchTabHelper::FromWebContents(instant_tab_->contents())->
-        SetSuggestionToPrefetch(suggestion);
+  if (instant_tab_ &&
+      SearchTabHelper::FromWebContents(instant_tab_->contents())->
+          IsSearchResultsPage()) {
+    if (chrome::ShouldPrefetchSearchResultsOnSRP() ||
+        chrome::ShouldPrefetchSearchResults()) {
+      SearchTabHelper::FromWebContents(instant_tab_->contents())->
+          SetSuggestionToPrefetch(suggestion);
+    }
+  } else {
+    if (chrome::ShouldPrefetchSearchResults()) {
+      InstantSearchPrerenderer* prerenderer =
+          InstantSearchPrerenderer::GetForProfile(profile());
+      if (prerenderer)
+        prerenderer->Prerender(suggestion);
+    }
   }
 }
 
-void InstantController::ToggleVoiceSearch() {
-  if (instant_tab_)
-    instant_tab_->sender()->ToggleVoiceSearch();
-}
-
-void InstantController::InstantPageLoadFailed(content::WebContents* contents) {
-  if (!chrome::ShouldPreferRemoteNTPOnStartup()) {
-    // We only need to fall back on errors if we're showing the online page
-    // at startup, as otherwise we fall back correctly when trying to show
-    // a page that hasn't yet indicated that it supports the InstantExtended
-    // API.
-    return;
-  }
-
-  DCHECK(IsContentsFrom(instant_tab(), contents));
-
-  // Verify we're not already on a local page and that the URL precisely
-  // equals the instant_url (minus the query params, as those will be filled
-  // in by template values).  This check is necessary to make sure we don't
-  // inadvertently redirect to the local NTP if someone, say, reloads a SRP
-  // while offline, as a committed results page still counts as an instant
-  // url.  We also check to make sure there's no forward history, as if
-  // someone hits the back button a lot when offline and returns to a NTP
-  // we don't want to redirect and nuke their forward history stack.
-  const GURL& current_url = contents->GetURL();
-  GURL instant_url = chrome::GetInstantURL(profile(),
-                                           chrome::kDisableStartMargin, false);
-  if (instant_tab_->IsLocal() ||
-      !search::MatchesOriginAndPath(instant_url, current_url) ||
-      !current_url.ref().empty() ||
-      contents->GetController().CanGoForward())
-    return;
-  LOG_INSTANT_DEBUG_EVENT(this, "InstantPageLoadFailed: instant_tab");
-  RedirectToLocalNTP(contents);
-}
-
-bool InstantController::SubmitQuery(const string16& search_terms) {
+bool InstantController::SubmitQuery(const base::string16& search_terms) {
   if (instant_tab_ && instant_tab_->supports_instant() &&
       search_mode_.is_origin_search()) {
     // Use |instant_tab_| to run the query if we're already on a search results
@@ -201,7 +178,7 @@ void InstantController::TabDeactivated(content::WebContents* contents) {
   // If user is deactivating an NTP tab, log the number of mouseovers for this
   // NTP session.
   if (chrome::IsInstantNTP(contents))
-    InstantTab::EmitMouseoverCount(contents);
+    InstantTab::EmitNtpStatistics(contents);
 }
 
 void InstantController::LogDebugEvent(const std::string& info) const {
@@ -294,17 +271,6 @@ void InstantController::UpdateInfoForInstantTab() {
 bool InstantController::IsInputInProgress() const {
   return !search_mode_.is_ntp() &&
       omnibox_focus_state_ == OMNIBOX_FOCUS_VISIBLE;
-}
-
-void InstantController::RedirectToLocalNTP(content::WebContents* contents) {
-  contents->GetController().LoadURL(
-      GURL(chrome::kChromeSearchLocalNtpUrl),
-      content::Referrer(),
-      content::PAGE_TRANSITION_SERVER_REDIRECT,
-      std::string());  // No extra headers.
-  // TODO(dcblack): Remove extraneous history entry caused by 404s.
-  // Note that the base case of a 204 being returned doesn't push a history
-  // entry.
 }
 
 InstantService* InstantController::GetInstantService() const {

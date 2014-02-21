@@ -8,6 +8,7 @@
 import build_server
 build_server.main()
 
+import json
 import optparse
 import os
 import posixpath
@@ -16,16 +17,21 @@ import time
 import unittest
 
 from branch_utility import BranchUtility
+from chroot_file_system import ChrootFileSystem
+from extensions_paths import EXTENSIONS, PUBLIC_TEMPLATES
+from fake_fetchers import ConfigureFakeFetchers
+from handler import Handler
 from link_error_detector import LinkErrorDetector, StringifyBrokenLinks
 from local_file_system import LocalFileSystem
 from local_renderer import LocalRenderer
-from fake_fetchers import ConfigureFakeFetchers
-from handler import Handler
 from servlet import Request
-from test_util import EnableLogging, DisableLogging
+from test_util import EnableLogging, DisableLogging, ChromiumPath
 
 # Arguments set up if __main__ specifies them.
 _EXPLICIT_TEST_FILES = None
+_REBASE = False
+_VERBOSE = False
+
 
 def _ToPosixPath(os_path):
   return os_path.replace(os.sep, '/')
@@ -33,7 +39,7 @@ def _ToPosixPath(os_path):
 def _GetPublicFiles():
   '''Gets all public files mapped to their contents.
   '''
-  public_path = os.path.join(sys.path[0], os.pardir, 'templates', 'public')
+  public_path = ChromiumPath(PUBLIC_TEMPLATES)
   public_files = {}
   for path, dirs, files in os.walk(public_path, topdown=True):
     dirs[:] = [d for d in dirs if d != '.svn']
@@ -58,38 +64,58 @@ class IntegrationTest(unittest.TestCase):
     print('Running cron...')
     start_time = time.time()
     try:
-      response = Handler(Request.ForTest('/_cron/stable')).Get()
+      response = Handler(Request.ForTest('/_cron')).Get()
       self.assertEqual(200, response.status)
       self.assertEqual('Success', response.content.ToString())
     finally:
       print('Took %s seconds' % (time.time() - start_time))
 
-    print("Checking for broken links...")
-    start_time = time.time()
-    link_error_detector = LinkErrorDetector(
-        LocalFileSystem(os.path.join(sys.path[0], os.pardir, os.pardir)),
-        lambda path: Handler(Request.ForTest(path)).Get(),
-        'templates/public',
-        ('extensions/index.html', 'apps/about_apps.html'))
+    # TODO(kalman): Re-enable this, but it takes about an hour at the moment,
+    # presumably because every page now has a lot of links on it from the
+    # topnav.
 
-    broken_links = link_error_detector.GetBrokenLinks()
-    if broken_links:
-      # TODO(jshumway): Test should fail when broken links are detected.
-      print('Warning: Found %d broken links:' % (
-        len(broken_links)))
-      print(StringifyBrokenLinks(broken_links))
+    #print("Checking for broken links...")
+    #start_time = time.time()
+    #link_error_detector = LinkErrorDetector(
+    #    # TODO(kalman): Use of ChrootFileSystem here indicates a hack. Fix.
+    #    ChrootFileSystem(LocalFileSystem.Create(), EXTENSIONS),
+    #    lambda path: Handler(Request.ForTest(path)).Get(),
+    #    'templates/public',
+    #    ('extensions/index.html', 'apps/about_apps.html'))
 
-    print('Took %s seconds.' % (time.time() - start_time))
+    #broken_links = link_error_detector.GetBrokenLinks()
+    #if broken_links:
+    #  print('Found %d broken links.' % (
+    #    len(broken_links)))
+    #  if _VERBOSE:
+    #    print(StringifyBrokenLinks(broken_links))
 
-    print('Searching for orphaned pages...')
-    start_time = time.time()
-    orphaned_pages = link_error_detector.GetOrphanedPages()
-    if orphaned_pages:
-      # TODO(jshumway): Test should fail when orphaned pages are detected.
-      print('Warning: Found %d orphaned pages:' % len(orphaned_pages))
-      for page in orphaned_pages:
-        print(page)
-    print('Took %s seconds.' % (time.time() - start_time))
+    #broken_links_set = set(broken_links)
+
+    #known_broken_links_path = os.path.join(
+    #    sys.path[0], 'known_broken_links.json')
+    #try:
+    #  with open(known_broken_links_path, 'r') as f:
+    #    # The JSON file converts tuples and sets into lists, and for this
+    #    # set union/difference logic they need to be converted back.
+    #    known_broken_links = set(tuple(item) for item in json.load(f))
+    #except IOError:
+    #  known_broken_links = set()
+
+    #newly_broken_links = broken_links_set - known_broken_links
+    #fixed_links = known_broken_links - broken_links_set
+
+    #print('Took %s seconds.' % (time.time() - start_time))
+
+    #print('Searching for orphaned pages...')
+    #start_time = time.time()
+    #orphaned_pages = link_error_detector.GetOrphanedPages()
+    #if orphaned_pages:
+    #  # TODO(jshumway): Test should fail when orphaned pages are detected.
+    #  print('Found %d orphaned pages:' % len(orphaned_pages))
+    #  for page in orphaned_pages:
+    #    print(page)
+    #print('Took %s seconds.' % (time.time() - start_time))
 
     public_files = _GetPublicFiles()
 
@@ -97,8 +123,10 @@ class IntegrationTest(unittest.TestCase):
     start_time = time.time()
     try:
       for path, content in public_files.iteritems():
+        assert path.startswith('/')
         if path.endswith('redirects.json'):
           continue
+
         def check_result(response):
           self.assertEqual(200, response.status,
               'Got %s when rendering %s' % (response.status, path))
@@ -111,7 +139,7 @@ class IntegrationTest(unittest.TestCase):
 
         # Make sure that leaving out the .html will temporarily redirect to the
         # path with the .html.
-        if path.startswith(('apps/', 'extensions/')):
+        if path.startswith(('/apps/', '/extensions/')):
           redirect_result = Handler(
               Request.ForTest(posixpath.splitext(path)[0])).Get()
           self.assertEqual((path, False), redirect_result.GetRedirect())
@@ -120,7 +148,7 @@ class IntegrationTest(unittest.TestCase):
         # path without a channel.
         for channel in BranchUtility.GetAllChannelNames():
           redirect_result = Handler(
-              Request.ForTest('%s/%s' % (channel, path))).Get()
+              Request.ForTest('%s%s' % (channel, path))).Get()
           self.assertEqual((path, True), redirect_result.GetRedirect())
 
         # Samples are internationalized, test some locales.
@@ -131,6 +159,30 @@ class IntegrationTest(unittest.TestCase):
                 headers={'Accept-Language': '%s;q=0.8' % lang})).Get())
     finally:
       print('Took %s seconds' % (time.time() - start_time))
+
+    #if _REBASE:
+    #  print('Rebasing broken links with %s newly broken and %s fixed links.' %
+    #        (len(newly_broken_links), len(fixed_links)))
+    #  with open(known_broken_links_path, 'w') as f:
+    #    json.dump(broken_links, f,
+    #              indent=2, separators=(',', ': '), sort_keys=True)
+    #else:
+    #  if fixed_links or newly_broken_links:
+    #    print('**********************************************\n'
+    #          'CHANGE DETECTED IN BROKEN LINKS WITHOUT REBASE\n'
+    #          '**********************************************')
+    #    print('Found %s broken links, and some have changed. '
+    #          'If this is acceptable or expected then run %s with the --rebase '
+    #          'option.' % (len(broken_links), os.path.split(__file__)[-1]))
+    #  elif broken_links:
+    #    print('%s existing broken links' % len(broken_links))
+    #  if fixed_links:
+    #    print('%s broken links have been fixed:' % len(fixed_links))
+    #    print(StringifyBrokenLinks(fixed_links))
+    #  if newly_broken_links:
+    #    print('There are %s new broken links:' % len(newly_broken_links))
+    #    print(StringifyBrokenLinks(newly_broken_links))
+    #    self.fail('See logging for details.')
 
   # TODO(kalman): Move this test elsewhere, it's not an integration test.
   # Perhaps like "presubmit_tests" or something.
@@ -159,10 +211,18 @@ class IntegrationTest(unittest.TestCase):
 
 if __name__ == '__main__':
   parser = optparse.OptionParser()
-  parser.add_option('-a', '--all', action='store_true', default=False)
+  parser.add_option('-a', '--all', action='store_true', default=False,
+                    help='Render all pages, not just the one specified')
+  parser.add_option('-r', '--rebase', action='store_true', default=False,
+                    help='Rewrites the known_broken_links.json file with '
+                         'the current set of broken links')
+  parser.add_option('-v', '--verbose', action='store_true', default=False,
+                    help='Show verbose output like currently broken links')
   (opts, args) = parser.parse_args()
   if not opts.all:
     _EXPLICIT_TEST_FILES = args
+  _REBASE = opts.rebase
+  _VERBOSE = opts.verbose
   # Kill sys.argv because we have our own flags.
   sys.argv = [sys.argv[0]]
   unittest.main()

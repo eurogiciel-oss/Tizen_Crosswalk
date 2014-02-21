@@ -8,9 +8,15 @@
 #include "base/test/test_timeouts.h"
 #include "base/time/time.h"
 #include "media/audio/cras/audio_manager_cras.h"
-#include "media/audio/cras/cras_unified.h"
+#include "media/audio/fake_audio_log_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+// cras_util.h defines custom min/max macros which break compilation, so ensure
+// it's not included until last.  #if avoids presubmit errors.
+#if defined(USE_CRAS)
+#include "media/audio/cras/cras_unified.h"
+#endif
 
 using testing::_;
 using testing::DoAll;
@@ -33,13 +39,17 @@ class MockAudioSourceCallback : public AudioOutputStream::AudioSourceCallback {
 
 class MockAudioManagerCras : public AudioManagerCras {
  public:
+  MockAudioManagerCras() : AudioManagerCras(&fake_audio_log_factory_) {}
+
   MOCK_METHOD0(Init, void());
   MOCK_METHOD0(HasAudioOutputDevices, bool());
   MOCK_METHOD0(HasAudioInputDevices, bool());
   MOCK_METHOD1(MakeLinearOutputStream, AudioOutputStream*(
       const AudioParameters& params));
-  MOCK_METHOD1(MakeLowLatencyOutputStream, AudioOutputStream*(
-      const AudioParameters& params));
+  MOCK_METHOD3(MakeLowLatencyOutputStream,
+               AudioOutputStream*(const AudioParameters& params,
+                                  const std::string& device_id,
+                                  const std::string& input_device_id));
   MOCK_METHOD2(MakeLinearOutputStream, AudioInputStream*(
       const AudioParameters& params, const std::string& device_id));
   MOCK_METHOD2(MakeLowLatencyInputStream, AudioInputStream*(
@@ -53,6 +63,9 @@ class MockAudioManagerCras : public AudioManagerCras {
     DCHECK(stream);
     delete stream;
   }
+
+ private:
+  FakeAudioLogFactory fake_audio_log_factory_;
 };
 
 class CrasUnifiedStreamTest : public testing::Test {

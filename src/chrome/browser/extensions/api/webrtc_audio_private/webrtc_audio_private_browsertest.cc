@@ -3,23 +3,29 @@
 // found in the LICENSE file.
 
 #include "base/json/json_writer.h"
-#include "base/message_loop/message_loop.h"
+#include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/api/webrtc_audio_private/webrtc_audio_private_api.h"
+#include "chrome/browser/extensions/component_loader.h"
 #include "chrome/browser/extensions/extension_apitest.h"
 #include "chrome/browser/extensions/extension_function_test_utils.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/media/webrtc_log_uploader.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/common/extensions/permissions/permissions_data.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/media_device_id.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test_utils.h"
 #include "extensions/common/permissions/permission_set.h"
+#include "extensions/common/permissions/permissions_data.h"
 #include "media/audio/audio_manager.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -35,14 +41,43 @@ namespace extensions {
 using extension_function_test_utils::RunFunctionAndReturnError;
 using extension_function_test_utils::RunFunctionAndReturnSingleResult;
 
-class WebrtcAudioPrivateTest : public ExtensionApiTest {
+class AudioWaitingExtensionTest : public ExtensionApiTest {
+ protected:
+  void WaitUntilAudioIsPlaying(WebContents* tab) {
+    // Wait for audio to start playing. We gate this on there being one
+    // or more AudioOutputController objects for our tab.
+    bool audio_playing = false;
+    for (size_t remaining_tries = 50; remaining_tries > 0; --remaining_tries) {
+      tab->GetRenderViewHost()->GetAudioOutputControllers(
+          base::Bind(OnAudioControllers, &audio_playing));
+      base::MessageLoop::current()->RunUntilIdle();
+      if (audio_playing)
+        break;
+
+      base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(100));
+    }
+
+    if (!audio_playing)
+      FAIL() << "Audio did not start playing within ~5 seconds.";
+  }
+
+  // Used by the test above to wait until audio is playing.
+  static void OnAudioControllers(
+      bool* audio_playing,
+      const RenderViewHost::AudioOutputControllerList& list) {
+    if (!list.empty())
+      *audio_playing = true;
+  }
+};
+
+class WebrtcAudioPrivateTest : public AudioWaitingExtensionTest {
  public:
   WebrtcAudioPrivateTest() : enumeration_event_(false, false) {
   }
 
  protected:
   std::string InvokeGetActiveSink(int tab_id) {
-    ListValue parameters;
+    base::ListValue parameters;
     parameters.AppendInteger(tab_id);
     std::string parameter_string;
     JSONWriter::Write(&parameters, &parameter_string);
@@ -67,14 +102,38 @@ class WebrtcAudioPrivateTest : public ExtensionApiTest {
       AudioDeviceNames* device_names) {
     AudioManager* audio_manager = AudioManager::Get();
 
-    if (!audio_manager->GetMessageLoop()->BelongsToCurrentThread()) {
-      audio_manager->GetMessageLoop()->PostTask(
+    if (!audio_manager->GetTaskRunner()->BelongsToCurrentThread()) {
+      audio_manager->GetTaskRunner()->PostTask(
           FROM_HERE,
           base::Bind(&WebrtcAudioPrivateTest::GetAudioDeviceNames, this,
                      EnumerationFunc, device_names));
       enumeration_event_.Wait();
     } else {
       (audio_manager->*EnumerationFunc)(device_names);
+      enumeration_event_.Signal();
+    }
+  }
+
+  // Synchronously (from the calling thread's point of view) retrieve the
+  // source id in the |origin| on the IO thread. On return,
+  // |source_id_in_origin| contains the id |raw_device_id| is known by in
+  // the origin.
+  void GetSourceIDInOrigin(content::ResourceContext* resource_context,
+                           GURL origin,
+                           const std::string& raw_device_id,
+                           std::string* source_id_in_origin) {
+    if (!content::BrowserThread::CurrentlyOn(content::BrowserThread::IO)) {
+      content::BrowserThread::PostTask(
+          content::BrowserThread::IO, FROM_HERE,
+          base::Bind(&WebrtcAudioPrivateTest::GetSourceIDInOrigin,
+                     this, resource_context, origin, raw_device_id,
+                     source_id_in_origin));
+     enumeration_event_.Wait();
+    } else {
+      *source_id_in_origin = content::GetHMACForMediaDeviceID(
+          resource_context,
+          origin,
+          raw_device_id);
       enumeration_event_.Signal();
     }
   }
@@ -150,7 +209,7 @@ IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, GetActiveSinkNoMediaStream) {
 IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, SetActiveSinkNoMediaStream) {
   WebContents* tab = browser()->tab_strip_model()->GetActiveWebContents();
   int tab_id = ExtensionTabUtil::GetTabId(tab);
-  ListValue parameters;
+  base::ListValue parameters;
   parameters.AppendInteger(tab_id);
   parameters.AppendString("no such id");
   std::string parameter_string;
@@ -163,14 +222,6 @@ IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, SetActiveSinkNoMediaStream) {
                                               browser()));
   EXPECT_EQ(base::StringPrintf("No active stream for tab with id: %d.", tab_id),
             error);
-}
-
-// Used by the test below to wait until audio is playing.
-static void OnAudioControllers(
-    bool* audio_playing,
-    const RenderViewHost::AudioOutputControllerList& list) {
-  if (!list.empty())
-    *audio_playing = true;
 }
 
 IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, GetAndSetWithMediaStream) {
@@ -192,21 +243,7 @@ IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, GetAndSetWithMediaStream) {
   WebContents* tab = browser()->tab_strip_model()->GetActiveWebContents();
   int tab_id = ExtensionTabUtil::GetTabId(tab);
 
-  // Wait for audio to start playing. We gate this on there being one
-  // or more AudioOutputController objects for our tab.
-  bool audio_playing = false;
-  for (size_t remaining_tries = 50; remaining_tries > 0; --remaining_tries) {
-    tab->GetRenderViewHost()->GetAudioOutputControllers(
-        base::Bind(OnAudioControllers, &audio_playing));
-    base::MessageLoop::current()->RunUntilIdle();
-    if (audio_playing)
-      break;
-
-    base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(100));
-  }
-
-  if (!audio_playing)
-    FAIL() << "Audio did not start playing within ~5 seconds.";
+  WaitUntilAudioIsPlaying(tab);
 
   std::string current_device = InvokeGetActiveSink(tab_id);
   VLOG(2) << "Before setting, current device: " << current_device;
@@ -218,7 +255,7 @@ IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, GetAndSetWithMediaStream) {
        ++it) {
     std::string target_device(it->unique_id);
 
-    ListValue parameters;
+    base::ListValue parameters;
     parameters.AppendInteger(tab_id);
     parameters.AppendString(target_device);
     std::string parameter_string;
@@ -250,20 +287,24 @@ IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, GetAssociatedSink) {
   for (AudioDeviceNames::const_iterator device = devices.begin();
        device != devices.end();
        ++device) {
-    std::string raw_source_id = device->unique_id;
-    VLOG(2) << "Trying to find associated sink for device " << raw_source_id;
-    GURL origin(GURL("http://www.google.com/").GetOrigin());
-    std::string source_id_in_origin =
-        content::GetHMACForMediaDeviceID(origin, raw_source_id);
+    scoped_refptr<WebrtcAudioPrivateGetAssociatedSinkFunction> function =
+        new WebrtcAudioPrivateGetAssociatedSinkFunction();
 
-    ListValue parameters;
+    std::string raw_device_id = device->unique_id;
+    VLOG(2) << "Trying to find associated sink for device " << raw_device_id;
+    std::string source_id_in_origin;
+    GURL origin(GURL("http://www.google.com/").GetOrigin());
+    GetSourceIDInOrigin(profile()->GetResourceContext(),
+                        origin,
+                        raw_device_id,
+                        &source_id_in_origin);
+
+    base::ListValue parameters;
     parameters.AppendString(origin.spec());
     parameters.AppendString(source_id_in_origin);
     std::string parameter_string;
     JSONWriter::Write(&parameters, &parameter_string);
 
-    scoped_refptr<WebrtcAudioPrivateGetAssociatedSinkFunction> function =
-        new WebrtcAudioPrivateGetAssociatedSinkFunction();
     scoped_ptr<base::Value> result(
         RunFunctionAndReturnSingleResult(function.get(),
                                          parameter_string,
@@ -292,5 +333,49 @@ IN_PROC_BROWSER_TEST_F(WebrtcAudioPrivateTest, TriggerEvent) {
                                                      "reportIfGot()");
   EXPECT_EQ("true", result);
 }
+
+class HangoutServicesBrowserTest : public AudioWaitingExtensionTest {
+ public:
+  virtual void SetUp() OVERRIDE {
+    // Make sure the Hangout Services component extension gets loaded.
+    ComponentLoader::EnableBackgroundExtensionsForTesting();
+    AudioWaitingExtensionTest::SetUp();
+  }
+};
+
+#if defined(GOOGLE_CHROME_BUILD)
+IN_PROC_BROWSER_TEST_F(HangoutServicesBrowserTest,
+                       RunComponentExtensionTest) {
+  // This runs the end-to-end JavaScript test for the Hangout Services
+  // component extension, which uses the webrtcAudioPrivate API among
+  // others.
+  ASSERT_TRUE(StartEmbeddedTestServer());
+  GURL url(embedded_test_server()->GetURL(
+               "/extensions/hangout_services_test.html"));
+  // The "externally connectable" extension permission doesn't seem to
+  // like when we use 127.0.0.1 as the host, but using localhost works.
+  std::string url_spec = url.spec();
+  ReplaceFirstSubstringAfterOffset(&url_spec, 0, "127.0.0.1", "localhost");
+  GURL localhost_url(url_spec);
+  ui_test_utils::NavigateToURL(browser(), localhost_url);
+
+  WebContents* tab = browser()->tab_strip_model()->GetActiveWebContents();
+  WaitUntilAudioIsPlaying(tab);
+
+  // Override, i.e. disable, uploading. We don't want to try sending data to
+  // servers when running the test. We don't bother about the contents of the
+  // buffer |dummy|, that's tested in other tests.
+  std::string dummy;
+  g_browser_process->webrtc_log_uploader()->
+      OverrideUploadWithBufferForTesting(&dummy);
+
+  ASSERT_TRUE(content::ExecuteScript(tab, "browsertestRunAllTests();"));
+
+  content::TitleWatcher title_watcher(tab, base::ASCIIToUTF16("success"));
+  title_watcher.AlsoWaitForTitle(base::ASCIIToUTF16("failure"));
+  base::string16 result = title_watcher.WaitAndGetTitle();
+  EXPECT_EQ(base::ASCIIToUTF16("success"), result);
+}
+#endif  // defined(GOOGLE_CHROME_BUILD)
 
 }  // namespace extensions

@@ -20,8 +20,8 @@ static GLXContext InitGLContext(Display* display, Window window) {
   // dlopen/dlsym, and so linking it into chrome breaks it. So we dynamically
   // load it, and use glew to dynamically resolve symbols.
   // See http://code.google.com/p/chromium/issues/detail?id=16800
-  if (!InitializeGLBindings(gfx::kGLImplementationDesktopGL)) {
-    LOG(ERROR) << "InitializeGLBindings failed";
+  if (!InitializeStaticGLBindings(gfx::kGLImplementationDesktopGL)) {
+    LOG(ERROR) << "InitializeStaticGLBindings failed";
     return NULL;
   }
 
@@ -140,7 +140,7 @@ void GlVideoRenderer::Paint(media::VideoFrame* video_frame) {
 
 void GlVideoRenderer::Initialize(gfx::Size coded_size, gfx::Rect visible_rect) {
   CHECK(!gl_context_);
-  LOG(INFO) << "Initializing GL Renderer...";
+  VLOG(0) << "Initializing GL Renderer...";
 
   // Resize the window to fit that of the video.
   XResizeWindow(display_, window_, visible_rect.width(), visible_rect.height());

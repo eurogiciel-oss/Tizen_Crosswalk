@@ -25,7 +25,8 @@
 
 #include "core/rendering/InlineBox.h"
 #include "core/rendering/RenderText.h" // so textRenderer() can be inline
-#include "platform/graphics/TextRun.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/text/TextRun.h"
 #include "wtf/Forward.h"
 
 namespace WebCore {
@@ -93,10 +94,12 @@ public:
     LayoutUnit logicalRightVisualOverflow() const { return logicalOverflowRect().maxX(); }
 
 #ifndef NDEBUG
-    virtual void showBox(int = 0) const;
-    virtual const char* boxName() const;
+    virtual void showBox(int = 0) const OVERRIDE;
+    virtual const char* boxName() const OVERRIDE;
 #endif
 
+    enum RotationDirection { Counterclockwise, Clockwise };
+    static AffineTransform rotation(const FloatRect& boxRect, RotationDirection);
 private:
     LayoutUnit selectionTop();
     LayoutUnit selectionBottom();
@@ -108,14 +111,14 @@ private:
 
 public:
     TextRun constructTextRunForInspector(RenderStyle*, const Font&) const;
-    virtual FloatRect calculateBoundaries() const { return FloatRect(x(), y(), width(), height()); }
+    virtual FloatRect calculateBoundaries() const OVERRIDE { return FloatRect(x(), y(), width(), height()); }
 
     virtual LayoutRect localSelectionRect(int startPos, int endPos);
     bool isSelected(int startPos, int endPos) const;
     void selectionStartEnd(int& sPos, int& ePos);
 
 protected:
-    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom);
+    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom) OVERRIDE;
     virtual bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, LayoutUnit lineTop, LayoutUnit lineBottom) OVERRIDE;
 
 public:
@@ -190,20 +193,7 @@ private:
     }
 };
 
-inline InlineTextBox* toInlineTextBox(InlineBox* inlineBox)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!inlineBox || inlineBox->isInlineTextBox());
-    return static_cast<InlineTextBox*>(inlineBox);
-}
-
-inline const InlineTextBox* toInlineTextBox(const InlineBox* inlineBox)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!inlineBox || inlineBox->isInlineTextBox());
-    return static_cast<const InlineTextBox*>(inlineBox);
-}
-
-// This will catch anyone doing an unnecessary cast.
-void toInlineTextBox(const InlineTextBox*);
+DEFINE_INLINE_BOX_TYPE_CASTS(InlineTextBox);
 
 inline RenderText* InlineTextBox::textRenderer() const
 {
@@ -211,6 +201,12 @@ inline RenderText* InlineTextBox::textRenderer() const
 }
 
 void alignSelectionRectToDevicePixels(FloatRect&);
+
+inline AffineTransform InlineTextBox::rotation(const FloatRect& boxRect, RotationDirection rotationDirection)
+{
+    return rotationDirection == Clockwise ? AffineTransform(0, 1, -1, 0, boxRect.x() + boxRect.maxY(), boxRect.maxY() - boxRect.x())
+        : AffineTransform(0, -1, 1, 0, boxRect.x() - boxRect.maxY(), boxRect.x() + boxRect.maxY());
+}
 
 } // namespace WebCore
 

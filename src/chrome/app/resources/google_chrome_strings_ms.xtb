@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="ms">
+<translation id="3234920859344197194">Tapak ini menggunakan pemalam Kerangka Chrome yang akan berhenti menerima kemas kini keselamatan dan kestabilan tidak lama lagi. Sila nyahpasangnya dan tingkatkan kepada penyemak imbas moden.</translation>
 <translation id="8914504000324227558">Lancarkan semula Chrome</translation>
 <translation id="8000275528373650868">Google Chrome memerlukan Windows Vista atau Windows XP dengan SP2 atau lebih tinggi.</translation>
 <translation id="8485767968786176057">Dalam kes ini, alamat yang disenaraikan dalam sijil tidak sepadan dengan alamat tapak web yang penyemak imbas anda cuba lawati. Satu kemungkinan sebabnya ialah komunikasi anda dipintas oleh penyerang yang memberikan sijil untuk tapak web yang berbeza, yang akan menyebabkan ketakserasian. Sebab lain yang mungkin ialah pelayan disediakan untuk mengembalikan sijil yang sama untuk berbilang tapak web, termasuk yang anda cuba lawati, walaupun sijil tersebut tidak sah untuk semua tapak web tersebut. Google Chrome boleh menjamin bahawa anda mencapai &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, tetapi tidak dapat mengesahkan bahawa ia tapak yang sama seperti &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; yang anda ingin capai. Jika anda teruskan, Chrome tidak akan menyemak lebih lanjut untuk nama yang tidak sepadan.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">Biarkan Google Chrome dijalankan di latar belakang</translation>
 <translation id="2896252579017640304">Lancarkan apl Chrome</translation>
 <translation id="2370289711218562573">Google Chrome kini mengimport Kegemaran/Penanda Halaman.</translation>
-<translation id="8762286861469007470">Pengesan Portal Tawanan Chrome</translation>
 <translation id="2721687379934343312">Pada Mac, kata laluan disimpan pada Keychain anda dan boleh diakses atau disegerakkan oleh pengguna Chrome lain yang berkongsi akaun OS X ini.</translation>
 <translation id="1761870329818521071">Tidak dapat memasang versi Google Chrome Frame sama yang sedang dijalankan. Sila tutup Google Chrome Frame dan cuba semula.</translation>
 <translation id="6014844626092547096">Anda sedang dilog masuk ke Chrome! Penyegerakan dilumpuhkan oleh pentadbir anda.</translation>
@@ -57,10 +57,10 @@
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Butiran pengebilan anda telah disimpan dalam Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome menggunakan mikrofon anda.</translation>
-<translation id="3590194807845837023">Buka Profil dan Lancarkan Semula</translation>
 <translation id="4053720452172726777">Sesuaikan dan kawal Google Chrome</translation>
 <translation id="6423071462708908582">Anda cuba mencapai &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, tetapi pelayan menyampaikan sijil yang telah tamat tempoh. Tiada maklumat tersedia yang menunjukkan sama ada sijil tersebut telah terjejas sejak tamat tempoh tersebut. Ini bermakna Google Chrome tidak dapat menjamin bahawa anda berkomunikasi dengan &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; dan bukan penyerang. Jam komputer anda pada masa ini ditetapkan pada <ph name="CURRENT_TIME"/>. Adakah itu betul? Jika tidak, anda harus membetulkan kesilapan tersebut dan memuatkan semula halaman ini.</translation>
 <translation id="3197823471738295152">Peranti anda telah dikemas kini.</translation>
+<translation id="8286862437124483331">Google Chrome cuba menunjukkan kata laluan. Taip kata laluan Windows anda untuk membenarkannya.</translation>
 <translation id="3889417619312448367">Nyahpasang Google Chrome</translation>
 <translation id="1434626383986940139">Apl Chrome Canary</translation>
 <translation id="8551886023433311834">Hampir terkini! Mulakan semula peranti anda untuk melengkapkan pengemaskinian.</translation>
@@ -179,7 +179,6 @@ Teruskan juga log masuk akan menggabungkan maklumat Chrome seperti penanda halam
 <translation id="7396375882099008034">Benarkan Chrome mengakses rangkaian dalam tetapan firewall atau antivirus
         anda.</translation>
 <translation id="9102715433345326100">Fail ini bersifat hasad dan Chrome telah menyekatnya.</translation>
-<translation id="3170677364322086041">Tapak ini menggunakan pemalam Kerangka Chrome lama yang tidak lagi menerima kemas kini keselamatan dan kestabilan. Sila nyahpasang dan tingkatkan kepada penyemak imbas moden.</translation>
 <translation id="8205111949707227942">Pilihan: Bantu jadikan OS Chrome lebih baik dengan menghantar laporan statistik penggunaan dan nahas secara automatik ke Google.</translation>
 <translation id="7253415505590551024">Muat turun sedang dijalankan. Adakah anda ingin keluar dari Google Chrome dan membatalkan muat turun?</translation>
 <translation id="7196020411877309443">Mengapakah halaman ini yang saya lihat?</translation>
@@ -196,6 +195,7 @@ Teruskan juga log masuk akan menggabungkan maklumat Chrome seperti penanda halam
           Tetapan LAN
           dan nyahpilih &quot;Gunakan pelayan proksi untuk LAN anda&quot;.</translation>
 <translation id="7825851276765848807">Gagal pemasangan disebabkan ralat yang tidak dinyatakan. Sila muat turun semula Google Chrome.</translation>
+<translation id="4919523385405675060">Tapak ini menggunakan pemalam Kerangka Chrome yang akan berhenti menerima kemas kini keselamatan dan kestabilan tidak lama lagi. Sila nyahpasangnya dan muat turun penyemak imbas yang serasi.</translation>
 <translation id="1061257178446858647">Anda kini telah log masuk ke Chrome! Penanda halaman, sejarah dan tetapan anda yang lain akan disegerakkan ke Akaun Google anda.</translation>
 <translation id="3335672657969596251">Google Chrome tidak menyokong <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Sila log keluar dan log masuk semula supaya perubahan ini boleh dilaksanakan.</translation>

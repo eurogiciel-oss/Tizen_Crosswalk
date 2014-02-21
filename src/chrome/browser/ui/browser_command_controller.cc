@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/browser_command_controller.h"
 
+#include "base/command_line.h"
 #include "base/prefs/pref_service.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/browser_process.h"
@@ -29,6 +30,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_utils.h"
 #include "chrome/browser/ui/webui/inspect_ui.h"
+#include "chrome/common/chrome_switches.h"
 #include "chrome/common/content_restriction.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/profiling.h"
@@ -61,7 +63,8 @@
 #include "ash/multi_profile_uma.h"
 #include "ash/session_state_delegate.h"
 #include "ash/shell.h"
-#include "chrome/browser/ui/ash/multi_user_window_manager.h"
+#include "chrome/browser/ui/ash/multi_user/multi_user_window_manager.h"
+#include "chrome/browser/ui/browser_commands_chromeos.h"
 #endif
 
 using content::NavigationEntry;
@@ -392,23 +395,23 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
       NewIncognitoWindow(browser_);
       break;
     case IDC_CLOSE_WINDOW:
-      content::RecordAction(content::UserMetricsAction("CloseWindowByKey"));
+      content::RecordAction(base::UserMetricsAction("CloseWindowByKey"));
       CloseWindow(browser_);
       break;
     case IDC_NEW_TAB:
       NewTab(browser_);
       break;
     case IDC_CLOSE_TAB:
-      content::RecordAction(content::UserMetricsAction("CloseTabByKey"));
+      content::RecordAction(base::UserMetricsAction("CloseTabByKey"));
       CloseTab(browser_);
       break;
     case IDC_SELECT_NEXT_TAB:
-      content::RecordAction(content::UserMetricsAction("Accel_SelectNextTab"));
+      content::RecordAction(base::UserMetricsAction("Accel_SelectNextTab"));
       SelectNextTab(browser_);
       break;
     case IDC_SELECT_PREVIOUS_TAB:
       content::RecordAction(
-          content::UserMetricsAction("Accel_SelectPreviousTab"));
+          base::UserMetricsAction("Accel_SelectPreviousTab"));
       SelectPreviousTab(browser_);
       break;
     case IDC_TABPOSE:
@@ -455,6 +458,8 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
       chrome::ToggleAshDesktop();
       break;
     case IDC_MINIMIZE_WINDOW:
+      content::RecordAction(
+          base::UserMetricsAction("Accel_Toggle_Minimized_M"));
       ash::accelerators::ToggleMinimized();
       break;
     // If Ash needs many more commands here we should implement a general
@@ -491,7 +496,7 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
         break;
 
       chrome::AttemptRestartToDesktopMode();
-      content::RecordAction(content::UserMetricsAction("Win8DesktopRestart"));
+      content::RecordAction(base::UserMetricsAction("Win8DesktopRestart"));
       break;
     case IDC_WIN8_METRO_RESTART:
       if (!VerifyMetroSwitchForApps(window()->GetNativeWindow(), id))
@@ -499,7 +504,7 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
 
       // SwitchToMetroUIHandler deletes itself.
       new SwitchToMetroUIHandler;
-      content::RecordAction(content::UserMetricsAction("Win8MetroRestart"));
+      content::RecordAction(base::UserMetricsAction("Win8MetroRestart"));
       break;
 #endif
 
@@ -538,6 +543,7 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
       Print(browser_);
       break;
     case IDC_ADVANCED_PRINT:
+      content::RecordAction(base::UserMetricsAction("Accel_Advanced_Print"));
       AdvancedPrint(browser_);
       break;
     case IDC_PRINT_TO_DESTINATION:
@@ -624,18 +630,23 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
 
     // Focus various bits of UI
     case IDC_FOCUS_TOOLBAR:
+      content::RecordAction(base::UserMetricsAction("Accel_Focus_Toolbar"));
       FocusToolbar(browser_);
       break;
     case IDC_FOCUS_LOCATION:
+      content::RecordAction(base::UserMetricsAction("Accel_Focus_Location"));
       FocusLocationBar(browser_);
       break;
     case IDC_FOCUS_SEARCH:
+      content::RecordAction(base::UserMetricsAction("Accel_Focus_Search"));
       FocusSearch(browser_);
       break;
     case IDC_FOCUS_MENU_BAR:
       FocusAppMenu(browser_);
       break;
     case IDC_FOCUS_BOOKMARKS:
+      content::RecordAction(
+          base::UserMetricsAction("Accel_Focus_Bookmarks"));
       FocusBookmarksToolbar(browser_);
       break;
     case IDC_FOCUS_INFOBARS:
@@ -655,6 +666,9 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
     case IDC_CREATE_SHORTCUTS:
       CreateApplicationShortcuts(browser_);
       break;
+    case IDC_CREATE_HOSTED_APP:
+      CreateHostedAppFromCurrentWebContents(browser_);
+      break;
     case IDC_DEV_TOOLS:
       ToggleDevToolsWindow(browser_, DevToolsToggleAction::Show());
       break;
@@ -673,6 +687,11 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
     case IDC_TASK_MANAGER:
       OpenTaskManager(browser_);
       break;
+#if defined(OS_CHROMEOS)
+    case IDC_TAKE_SCREENSHOT:
+      TakeScreenshot();
+      break;
+#endif
 #if defined(GOOGLE_CHROME_BUILD)
     case IDC_FEEDBACK:
       OpenFeedbackDialog(browser_);
@@ -689,6 +708,7 @@ void BrowserCommandController::ExecuteCommandWithDisposition(
       ShowBookmarkManager(browser_);
       break;
     case IDC_SHOW_APP_MENU:
+      content::RecordAction(base::UserMetricsAction("Accel_Show_App_Menu"));
       ShowAppMenu(browser_);
       break;
     case IDC_SHOW_AVATAR_MENU:
@@ -759,7 +779,7 @@ void BrowserCommandController::OnProfileAdded(
 
 void BrowserCommandController::OnProfileWasRemoved(
     const base::FilePath& profile_path,
-    const string16& profile_name) {
+    const base::string16& profile_name) {
   UpdateCommandsForMultipleProfiles();
 }
 
@@ -887,6 +907,7 @@ void BrowserCommandController::InitCommandState() {
 
   // Page-related commands
   command_updater_.UpdateCommandEnabled(IDC_EMAIL_PAGE_LOCATION, true);
+  command_updater_.UpdateCommandEnabled(IDC_BOOKMARK_PAGE_FROM_STAR, true);
   command_updater_.UpdateCommandEnabled(IDC_ENCODING_AUTO_DETECT, true);
   command_updater_.UpdateCommandEnabled(IDC_ENCODING_UTF8, true);
   command_updater_.UpdateCommandEnabled(IDC_ENCODING_UTF16LE, true);
@@ -947,6 +968,9 @@ void BrowserCommandController::InitCommandState() {
   command_updater_.UpdateCommandEnabled(IDC_RECENT_TABS_MENU,
                                         !profile()->IsGuestSession() &&
                                         !profile()->IsOffTheRecord());
+#if defined(OS_CHROMEOS)
+  command_updater_.UpdateCommandEnabled(IDC_TAKE_SCREENSHOT, true);
+#endif
 
   UpdateShowSyncState(true);
 
@@ -1093,6 +1117,9 @@ void BrowserCommandController::UpdateCommandsForTabState() {
   command_updater_.UpdateCommandEnabled(
       IDC_CREATE_SHORTCUTS,
       CanCreateApplicationShortcuts(browser_));
+  command_updater_.UpdateCommandEnabled(
+      IDC_CREATE_HOSTED_APP,
+      CanCreateApplicationShortcuts(browser_));
 #endif
 
   command_updater_.UpdateCommandEnabled(
@@ -1238,8 +1265,10 @@ void BrowserCommandController::UpdateCommandsForFullscreenMode() {
 }
 
 void BrowserCommandController::UpdateCommandsForMultipleProfiles() {
+  bool is_regular_or_guest_session =
+      profile()->IsGuestSession() || !profile()->IsOffTheRecord();
   bool enable = IsShowingMainUI() &&
-      !profile()->IsOffTheRecord() &&
+      is_regular_or_guest_session &&
       profile_manager_ &&
       AvatarMenu::ShouldShowAvatarMenu();
   command_updater_.UpdateCommandEnabled(IDC_SHOW_AVATAR_MENU,

@@ -14,8 +14,8 @@
 #include "chrome/browser/ui/gtk/gtk_theme_service.h"
 #include "chrome/browser/ui/gtk/gtk_util.h"
 #include "chrome/common/url_constants.h"
+#include "components/autofill/content/common/autofill_messages.h"
 #include "components/autofill/core/browser/password_generator.h"
-#include "components/autofill/core/common/autofill_messages.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_view.h"
@@ -129,7 +129,7 @@ void PasswordGenerationBubbleGtk::OnAcceptClicked(GtkWidget* widget) {
   RenderViewHost* render_view_host = web_contents_->GetRenderViewHost();
   render_view_host->Send(new AutofillMsg_GeneratedPasswordAccepted(
       render_view_host->GetRoutingID(),
-      UTF8ToUTF16(gtk_entry_get_text(GTK_ENTRY(text_field_)))));
+      base::UTF8ToUTF16(gtk_entry_get_text(GTK_ENTRY(text_field_)))));
   PasswordManager::FromWebContents(web_contents_)->
       SetFormHasGeneratedPassword(form_);
   bubble_->Close();

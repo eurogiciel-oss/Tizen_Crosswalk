@@ -21,13 +21,14 @@ FakeSigninManagerBase::FakeSigninManagerBase() {
 FakeSigninManagerBase::~FakeSigninManagerBase() {
 }
 
-void FakeSigninManagerBase::InitTokenService() {
-}
-
 // static
 BrowserContextKeyedService* FakeSigninManagerBase::Build(
     content::BrowserContext* profile) {
+#if defined(OS_CHROMEOS)
   return new FakeSigninManagerBase();
+#else
+  return new FakeSigninManager(static_cast<Profile*>(profile));
+#endif
 }
 
 #if !defined (OS_CHROMEOS)
@@ -38,9 +39,6 @@ FakeSigninManager::FakeSigninManager(Profile* profile)
 }
 
 FakeSigninManager::~FakeSigninManager() {
-}
-
-void FakeSigninManager::InitTokenService() {
 }
 
 void FakeSigninManager::StartSignInWithCredentials(
@@ -62,17 +60,19 @@ void FakeSigninManager::SignOut() {
   if (IsSignoutProhibited())
     return;
   set_auth_in_progress(std::string());
+  const std::string& username = authenticated_username_;
   authenticated_username_.clear();
+
+  // TODO(blundell): Eliminate this notification send once crbug.com/333997 is
+  // fixed.
+  GoogleServiceSignoutDetails details(username);
   content::NotificationService::current()->Notify(
       chrome::NOTIFICATION_GOOGLE_SIGNED_OUT,
       content::Source<Profile>(profile_),
-      content::NotificationService::NoDetails());
-}
+      content::Details<const GoogleServiceSignoutDetails>(&details));
 
-// static
-BrowserContextKeyedService* FakeSigninManager::Build(
-    content::BrowserContext* profile) {
-  return new FakeSigninManager(static_cast<Profile*>(profile));
+  FOR_EACH_OBSERVER(SigninManagerBase::Observer, observer_list_,
+                    GoogleSignedOut(username));
 }
 
 #endif  // !defined (OS_CHROMEOS)

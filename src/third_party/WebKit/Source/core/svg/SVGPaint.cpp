@@ -22,8 +22,8 @@
 #include "config.h"
 #include "core/svg/SVGPaint.h"
 
+#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
-#include "wtf/text/WTFString.h"
 
 namespace WebCore {
 
@@ -63,15 +63,16 @@ void SVGPaint::setUri(const String&)
     // The setters are the most problematic part so we remove the support for those first.
 }
 
-void SVGPaint::setPaint(unsigned short, const String&, const String&, const String&, ExceptionState& es)
+void SVGPaint::setPaint(unsigned short, const String&, const String&, const String&, ExceptionState& exceptionState)
 {
-    es.throwUninformativeAndGenericDOMException(NoModificationAllowedError);
+    exceptionState.throwDOMException(NoModificationAllowedError, ExceptionMessages::readOnly());
 }
 
 String SVGPaint::customCSSText() const
 {
     switch (m_paintType) {
     case SVG_PAINTTYPE_UNKNOWN:
+        return String();
     case SVG_PAINTTYPE_RGBCOLOR:
     case SVG_PAINTTYPE_RGBCOLOR_ICCCOLOR:
     case SVG_PAINTTYPE_CURRENTCOLOR:

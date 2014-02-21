@@ -12,7 +12,6 @@
 
 namespace ozonewayland {
 class WaylandSurface;
-class WaylandDisplay;
 
 class WaylandCursor {
  public:
@@ -33,23 +32,20 @@ class WaylandCursor {
   };
 
   explicit WaylandCursor(wl_shm* shm);
-  virtual ~WaylandCursor();
+  ~WaylandCursor();
+
+  // Destroys CursorData. WaylandDisplay is responsible for calling this as
+  // needed. No other class should call this.
+  static void Clear();
 
   void Update(CursorType type, uint32_t serial);
 
-  wl_pointer* GetInputPointer() { return input_pointer_; }
+  wl_pointer* GetInputPointer() const { return input_pointer_; }
   void SetInputPointer(wl_pointer* pointer);
 
  private:
-  void ValidateBuffer(CursorType type, uint32_t serial);
-  static void Clear();
   wl_pointer* input_pointer_;
   WaylandSurface* pointer_surface_;
-  struct wl_buffer* buffer_;
-  int width_;
-  int height_;
-  CursorType type_;
-  friend class WaylandDisplay;
   DISALLOW_COPY_AND_ASSIGN(WaylandCursor);
 };
 

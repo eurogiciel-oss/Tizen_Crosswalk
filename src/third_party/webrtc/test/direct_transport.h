@@ -18,10 +18,12 @@
 #include "webrtc/system_wrappers/interface/event_wrapper.h"
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/test/fake_network_pipe.h"
 #include "webrtc/transport.h"
 
 namespace webrtc {
 
+class Clock;
 class PacketReceiver;
 
 namespace test {
@@ -29,36 +31,27 @@ namespace test {
 class DirectTransport : public newapi::Transport {
  public:
   DirectTransport();
+  explicit DirectTransport(const FakeNetworkPipe::Config& config);
   ~DirectTransport();
 
   virtual void StopSending();
   virtual void SetReceiver(PacketReceiver* receiver);
 
-  virtual bool SendRTP(const uint8_t* data, size_t length) OVERRIDE;
-  virtual bool SendRTCP(const uint8_t* data, size_t length) OVERRIDE;
+  virtual bool SendRtp(const uint8_t* data, size_t length) OVERRIDE;
+  virtual bool SendRtcp(const uint8_t* data, size_t length) OVERRIDE;
 
  private:
-  struct Packet {
-    Packet();
-    Packet(const uint8_t* data, size_t length);
-
-    uint8_t data[1500];
-    size_t length;
-  };
-
-  void QueuePacket(const uint8_t* data, size_t length);
-
   static bool NetworkProcess(void* transport);
   bool SendPackets();
 
   scoped_ptr<CriticalSectionWrapper> lock_;
   scoped_ptr<EventWrapper> packet_event_;
   scoped_ptr<ThreadWrapper> thread_;
+  Clock* clock_;
 
   bool shutting_down_;
 
-  std::deque<Packet> packet_queue_;
-  PacketReceiver* receiver_;
+  FakeNetworkPipe fake_network_;
 };
 }  // namespace test
 }  // namespace webrtc

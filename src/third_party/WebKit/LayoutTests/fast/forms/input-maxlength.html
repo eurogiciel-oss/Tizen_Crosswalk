@@ -1,7 +1,7 @@
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <html>
 <head>
-<script src="../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../resources/js-test.js"></script>
 </head>
 <body>
 <p>This page tests that the <tt>maxlength</tt> attribute of the <tt>&lt;input&gt;</tt> element works correctly. <a href="http://bugs.webkit.org/show_bug.cgi?id=14388">http://bugs.webkit.org/show_bug.cgi?id=14388</a></p>
@@ -47,7 +47,7 @@
     debug('Some tests for .maxLength property.');
     input = document.createElement("input");
     shouldBe("input.maxLength", "implicitMaxLength");
-    shouldThrow("input.maxLength = -1", "'IndexSizeError: Index or size was negative, or greater than the allowed value.'");
+    shouldThrow("input.maxLength = -1", '"IndexSizeError: Failed to set the \'maxLength\' property on \'HTMLInputElement\': The value provided (-1) is negative."');
     input.maxLength = 100;
     shouldBe("input.getAttribute('maxlength')", "'100'");
 </script>

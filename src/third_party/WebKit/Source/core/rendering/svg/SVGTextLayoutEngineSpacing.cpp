@@ -21,16 +21,14 @@
 
 #include "core/rendering/svg/SVGTextLayoutEngineSpacing.h"
 
-#include "core/platform/graphics/Font.h"
 #include "core/rendering/style/SVGRenderStyle.h"
 #include "core/svg/SVGLengthContext.h"
+#include "platform/fonts/Font.h"
 
 #if ENABLE(SVG_FONTS)
 #include "core/svg/SVGFontData.h"
 #include "core/svg/SVGFontElement.h"
 #include "core/svg/SVGFontFaceElement.h"
-#else
-#include "wtf/UnusedParam.h"
 #endif
 
 namespace WebCore {
@@ -53,7 +51,8 @@ float SVGTextLayoutEngineSpacing::calculateSVGKerning(bool isVerticalText, const
     ASSERT(fontData->isCustomFont());
     ASSERT(fontData->isSVGFont());
 
-    const SVGFontData* svgFontData = static_cast<const SVGFontData*>(fontData->fontData());
+    RefPtr<CustomFontData> customFontData = fontData->customFontData();
+    const SVGFontData* svgFontData = static_cast<const SVGFontData*>(customFontData.get());
     SVGFontFaceElement* svgFontFace = svgFontData->svgFontFaceElement();
     ASSERT(svgFontFace);
 
@@ -76,8 +75,6 @@ float SVGTextLayoutEngineSpacing::calculateSVGKerning(bool isVerticalText, const
     kerning *= m_font.size() / m_font.fontMetrics().unitsPerEm();
     return kerning;
 #else
-    UNUSED_PARAM(isVerticalText);
-    UNUSED_PARAM(currentGlyph);
     return false;
 #endif
 }
@@ -85,12 +82,12 @@ float SVGTextLayoutEngineSpacing::calculateSVGKerning(bool isVerticalText, const
 float SVGTextLayoutEngineSpacing::calculateCSSKerningAndSpacing(const SVGRenderStyle* style, SVGElement* contextElement, UChar currentCharacter)
 {
     float kerning = 0;
-    SVGLength kerningLength = style->kerning();
-    if (kerningLength.unitType() == LengthTypePercentage)
-        kerning = kerningLength.valueAsPercentage() * m_font.pixelSize();
+    RefPtr<SVGLength> kerningLength = style->kerning();
+    if (kerningLength->unitType() == LengthTypePercentage)
+        kerning = kerningLength->valueAsPercentage() * m_font.pixelSize();
     else {
         SVGLengthContext lengthContext(contextElement);
-        kerning = kerningLength.value(lengthContext);
+        kerning = kerningLength->value(lengthContext);
     }
 
     UChar lastCharacter = m_lastCharacter;

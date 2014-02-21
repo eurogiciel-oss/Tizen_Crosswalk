@@ -63,14 +63,17 @@ void FileSystemBackend::AddSystemMountPoints() {
   system_mount_points_->RegisterFileSystem(
       "archive",
       fileapi::kFileSystemTypeNativeLocal,
+      fileapi::FileSystemMountOption(),
       chromeos::CrosDisksClient::GetArchiveMountPoint());
   system_mount_points_->RegisterFileSystem(
       "removable",
       fileapi::kFileSystemTypeNativeLocal,
+      fileapi::FileSystemMountOption(fileapi::COPY_SYNC_OPTION_SYNC),
       chromeos::CrosDisksClient::GetRemovableDiskMountPoint());
   system_mount_points_->RegisterFileSystem(
       "oem",
       fileapi::kFileSystemTypeRestrictedNativeLocal,
+      fileapi::FileSystemMountOption(),
       base::FilePath(FILE_PATH_LITERAL("/usr/share/oem")));
 }
 
@@ -98,7 +101,7 @@ void FileSystemBackend::OpenFileSystem(
   // TODO(nhiroki): Deprecate OpenFileSystem for non-sandboxed filesystem.
   // (http://crbug.com/297412)
   NOTREACHED();
-  callback.Run(GURL(), std::string(), base::PLATFORM_FILE_ERROR_SECURITY);
+  callback.Run(GURL(), std::string(), base::File::FILE_ERROR_SECURITY);
 }
 
 fileapi::FileSystemQuotaUtil* FileSystemBackend::GetQuotaUtil() {
@@ -166,9 +169,11 @@ void FileSystemBackend::GrantFileAccessToExtension(
   std::string id;
   fileapi::FileSystemType type;
   base::FilePath path;
-  if (!mount_points_->CrackVirtualPath(virtual_path, &id, &type, &path) &&
+  fileapi::FileSystemMountOption option;
+  if (!mount_points_->CrackVirtualPath(virtual_path,
+                                       &id, &type, &path, &option) &&
       !system_mount_points_->CrackVirtualPath(virtual_path,
-                                              &id, &type, &path)) {
+                                              &id, &type, &path, &option)) {
     return;
   }
 
@@ -208,20 +213,20 @@ fileapi::AsyncFileUtil* FileSystemBackend::GetAsyncFileUtil(
 
 fileapi::CopyOrMoveFileValidatorFactory*
 FileSystemBackend::GetCopyOrMoveFileValidatorFactory(
-    fileapi::FileSystemType type, base::PlatformFileError* error_code) {
+    fileapi::FileSystemType type, base::File::Error* error_code) {
   DCHECK(error_code);
-  *error_code = base::PLATFORM_FILE_OK;
+  *error_code = base::File::FILE_OK;
   return NULL;
 }
 
 fileapi::FileSystemOperation* FileSystemBackend::CreateFileSystemOperation(
     const fileapi::FileSystemURL& url,
     fileapi::FileSystemContext* context,
-    base::PlatformFileError* error_code) const {
+    base::File::Error* error_code) const {
   DCHECK(url.is_valid());
 
   if (!IsAccessAllowed(url)) {
-    *error_code = base::PLATFORM_FILE_ERROR_SECURITY;
+    *error_code = base::File::FILE_ERROR_SECURITY;
     return NULL;
   }
 

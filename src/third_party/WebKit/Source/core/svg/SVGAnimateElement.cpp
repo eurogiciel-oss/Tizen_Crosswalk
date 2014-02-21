@@ -25,8 +25,7 @@
 #include "core/svg/SVGAnimateElement.h"
 
 #include "CSSPropertyNames.h"
-#include "SVGNames.h"
-#include "core/css/CSSParser.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/StylePropertySet.h"
 #include "core/dom/QualifiedName.h"
 #include "core/svg/SVGAnimatedType.h"
@@ -40,13 +39,13 @@ SVGAnimateElement::SVGAnimateElement(const QualifiedName& tagName, Document& doc
     : SVGAnimationElement(tagName, document)
     , m_animatedPropertyType(AnimatedString)
 {
-    ASSERT(hasTagName(SVGNames::animateTag) || hasTagName(SVGNames::setTag) || hasTagName(SVGNames::animateColorTag) || hasTagName(SVGNames::animateTransformTag));
+    ASSERT(hasTagName(SVGNames::animateTag) || hasTagName(SVGNames::setTag) || hasTagName(SVGNames::animateTransformTag));
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<SVGAnimateElement> SVGAnimateElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGAnimateElement> SVGAnimateElement::create(Document& document)
 {
-    return adoptRef(new SVGAnimateElement(tagName, document));
+    return adoptRef(new SVGAnimateElement(SVGNames::animateTag, document));
 }
 
 SVGAnimateElement::~SVGAnimateElement()
@@ -75,8 +74,6 @@ AnimatedPropertyType SVGAnimateElement::determineAnimatedPropertyType(SVGElement
 
     ASSERT(propertyTypes.size() <= 2);
     AnimatedPropertyType type = propertyTypes[0];
-    if (hasTagName(SVGNames::animateColorTag) && type != AnimatedColor)
-        return AnimatedUnknown;
 
     // Animations of transform lists are not allowed for <animate> or <set>
     // http://www.w3.org/TR/SVG/animate.html#AnimationAttributesAndProperties
@@ -100,7 +97,7 @@ void SVGAnimateElement::calculateAnimatedValue(float percentage, unsigned repeat
 {
     ASSERT(resultElement);
     SVGElement* targetElement = this->targetElement();
-    if (!targetElement)
+    if (!targetElement || !isSVGAnimateElement(*resultElement))
         return;
 
     ASSERT(m_animatedPropertyType == determineAnimatedPropertyType(targetElement));
@@ -239,10 +236,8 @@ void SVGAnimateElement::resetAnimatedType()
         computeCSSPropertyValue(targetElement, cssPropertyID(attributeName.localName()), baseValue);
     }
 
-    if (!m_animatedType)
+    if (!m_animatedType || !m_animatedType->setValueAsString(attributeName, baseValue))
         m_animatedType = animator->constructFromString(baseValue);
-    else
-        m_animatedType->setValueAsString(attributeName, baseValue);
 }
 
 static inline void applyCSSPropertyToTarget(SVGElement* targetElement, CSSPropertyID id, const String& value)

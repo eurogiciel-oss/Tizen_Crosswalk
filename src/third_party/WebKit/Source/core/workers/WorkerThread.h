@@ -29,11 +29,15 @@
 
 #include "core/frame/ContentSecurityPolicy.h"
 #include "core/workers/WorkerRunLoop.h"
-#include "weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #include "wtf/Forward.h"
 #include "wtf/OwnPtr.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/RefCounted.h"
+
+namespace blink {
+class WebWaitableEvent;
+}
 
 namespace WebCore {
 
@@ -52,6 +56,10 @@ namespace WebCore {
 
         bool start();
         void stop();
+
+        // Can be used to wait for this worker thread to shut down.
+        // (This is signalled on the main thread, so it's assumed to be waited on the worker context thread)
+        blink::WebWaitableEvent* shutdownEvent() { return m_shutdownEvent.get(); }
 
         bool isCurrentThread() const;
         WorkerRunLoop& runLoop() { return m_runLoop; }
@@ -93,6 +101,9 @@ namespace WebCore {
         OwnPtr<WorkerThreadStartupData> m_startupData;
 
         NotificationClient* m_notificationClient;
+
+        // Used to signal thread shutdown.
+        OwnPtr<blink::WebWaitableEvent> m_shutdownEvent;
     };
 
 } // namespace WebCore

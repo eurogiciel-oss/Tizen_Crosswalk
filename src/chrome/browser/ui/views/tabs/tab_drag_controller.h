@@ -49,7 +49,7 @@ class TabStripModel;
 // can happen (this state is referred to as detached):
 // . If |detach_into_browser_| is true then a new Browser is created and
 //   RunMoveLoop() is invoked on the Widget to drag the browser around. This is
-//   the default on aura.
+//   the default on aura except in Metro mode on Win 8.
 // . If |detach_into_browser_| is false a small representation of the active tab
 //   is created and that is dragged around. This mode does not run a nested
 //   message loop.
@@ -113,10 +113,6 @@ class TabDragController : public content::WebContentsDelegate,
 
   // Returns true if there is a drag underway.
   static bool IsActive();
-
-  // Used to determine whether the tab drag controller detaches dragged tabs
-  // into new browser windows while the drag is in process.
-  static bool ShouldDetachIntoNewBrowser();
 
   // Sets the move behavior. Has no effect if started_drag() is true.
   void SetMoveBehavior(MoveBehavior behavior);
@@ -418,6 +414,9 @@ class TabDragController : public content::WebContentsDelegate,
   // Finishes a succesful drag operation.
   void CompleteDrag();
 
+  // Maximizes the attached window.
+  void MaximizeAttachedWindow();
+
   // Resets the delegates of the WebContents.
   void ResetDelegates();
 
@@ -456,6 +455,25 @@ class TabDragController : public content::WebContentsDelegate,
   // Returns true if the tabs were originality one after the other in
   // |source_tabstrip_|.
   bool AreTabsConsecutive();
+
+  // Calculates and returns new bounds for the dragged browser window.
+  // Takes into consideration current and restore bounds of |source| tab strip
+  // preventing the dragged size from being too small. Positions the new bounds
+  // such that the tab that was dragged remains under the |point_in_screen|.
+  // Offsets |drag_bounds| if necessary when dragging to the right from the
+  // source browser.
+  gfx::Rect CalculateDraggedBrowserBounds(TabStrip* source,
+                                          const gfx::Point& point_in_screen,
+                                          std::vector<gfx::Rect>* drag_bounds);
+
+  // Calculates scaled |drag_bounds| for dragged tabs and sets the tabs bounds.
+  // Layout of the tabstrip is performed and a new tabstrip width calculated.
+  // When |last_tabstrip_width| is larger than the new tabstrip width the tabs
+  // in attached tabstrip are scaled and the attached browser is positioned such
+  // that the tab that was dragged remains under the |point_in_screen|.
+  void AdjustBrowserAndTabBoundsForDrag(int last_tabstrip_width,
+                                        const gfx::Point& point_in_screen,
+                                        std::vector<gfx::Rect>* drag_bounds);
 
   // Creates and returns a new Browser to handle the drag.
   Browser* CreateBrowserForDrag(TabStrip* source,
@@ -538,9 +556,9 @@ class TabDragController : public content::WebContentsDelegate,
   // attached to the hidden frame and the frame moved back to these bounds.
   gfx::Rect restore_bounds_;
 
-  // ID of the last view that had focus in the window containing
-  // |source_tab_|. This is saved so that focus can be restored properly when a
-  // drag begins and ends within this same window.
+  // Storage ID in ViewStorage where the last view that had focus in the window
+  // containing |source_tab_| is saved. This is saved so that focus can be
+  // restored properly when a drag begins and ends within this same window.
   const int old_focused_view_id_;
 
   // The horizontal position of the mouse cursor in screen coordinates at the
@@ -613,6 +631,10 @@ class TabDragController : public content::WebContentsDelegate,
 
   // True if |source_tabstrip_| was in immersive fullscreen before the drag.
   bool was_source_fullscreen_;
+
+  // True if the initial drag resulted in restoring the window (because it was
+  // maximized).
+  bool did_restore_window_;
 
   EndRunLoopBehavior end_run_loop_behavior_;
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -450,10 +450,14 @@ void GLES2InterfaceStub::VertexAttribPointer(
 void GLES2InterfaceStub::Viewport(
     GLint /* x */, GLint /* y */, GLsizei /* width */, GLsizei /* height */) {
 }
-void GLES2InterfaceStub::BlitFramebufferEXT(
+void GLES2InterfaceStub::BlitFramebufferCHROMIUM(
     GLint /* srcX0 */, GLint /* srcY0 */, GLint /* srcX1 */, GLint /* srcY1 */,
     GLint /* dstX0 */, GLint /* dstY0 */, GLint /* dstX1 */, GLint /* dstY1 */,
     GLbitfield /* mask */, GLenum /* filter */) {
+}
+void GLES2InterfaceStub::RenderbufferStorageMultisampleCHROMIUM(
+    GLenum /* target */, GLsizei /* samples */, GLenum /* internalformat */,
+    GLsizei /* width */, GLsizei /* height */) {
 }
 void GLES2InterfaceStub::RenderbufferStorageMultisampleEXT(
     GLenum /* target */, GLsizei /* samples */, GLenum /* internalformat */,
@@ -576,8 +580,6 @@ void GLES2InterfaceStub::GetProgramInfoCHROMIUM(
 GLuint GLES2InterfaceStub::CreateStreamTextureCHROMIUM(GLuint /* texture */) {
   return 0;
 }
-void GLES2InterfaceStub::DestroyStreamTextureCHROMIUM(GLuint /* texture */) {
-}
 GLuint GLES2InterfaceStub::CreateImageCHROMIUM(
     GLsizei /* width */, GLsizei /* height */, GLenum /* internalformat */) {
   return 0;
@@ -660,6 +662,8 @@ void GLES2InterfaceStub::WaitSyncPointCHROMIUM(GLuint /* sync_point */) {
 }
 void GLES2InterfaceStub::DrawBuffersEXT(
     GLsizei /* count */, const GLenum* /* bufs */) {
+}
+void GLES2InterfaceStub::DiscardBackbufferCHROMIUM() {
 }
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_INTERFACE_STUB_IMPL_AUTOGEN_H_
 

@@ -41,7 +41,7 @@ namespace extensions {
 namespace {
 
 // Error messages.
-const char kFileError[] = "File error %d.";
+const char kErrorMessage[] = "%s (error code: %d).";
 const char kUnsupportedConflictResolutionPolicy[] =
     "Policy %s is not supported.";
 
@@ -55,6 +55,13 @@ sync_file_system::SyncFileSystemService* GetSyncFileSystemService(
   DCHECK(observer);
   observer->InitializeForService(service);
   return service;
+}
+
+std::string ErrorToString(SyncStatusCode code) {
+  return base::StringPrintf(
+      kErrorMessage,
+      sync_file_system::SyncStatusCodeToString(code),
+      static_cast<int>(code));
 }
 
 }  // namespace
@@ -83,7 +90,7 @@ bool SyncFileSystemDeleteFileSystemFunction::RunImpl() {
 }
 
 void SyncFileSystemDeleteFileSystemFunction::DidDeleteFileSystem(
-    base::PlatformFileError error) {
+    base::File::Error error) {
   // Repost to switch from IO thread to UI thread for SendResponse().
   if (!BrowserThread::CurrentlyOn(BrowserThread::UI)) {
     DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
@@ -96,8 +103,8 @@ void SyncFileSystemDeleteFileSystemFunction::DidDeleteFileSystem(
   }
 
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  if (error != base::PLATFORM_FILE_OK) {
-    error_ = base::StringPrintf(kFileError, static_cast<int>(error));
+  if (error != base::File::FILE_OK) {
+    error_ = ErrorToString(sync_file_system::FileErrorToSyncStatusCode(error));
     SetResult(new base::FundamentalValue(false));
     SendResponse(false);
     return;
@@ -137,7 +144,7 @@ SyncFileSystemRequestFileSystemFunction::GetFileSystemContext() {
 void SyncFileSystemRequestFileSystemFunction::DidOpenFileSystem(
     const GURL& root_url,
     const std::string& file_system_name,
-    base::PlatformFileError error) {
+    base::File::Error error) {
   // Repost to switch from IO thread to UI thread for SendResponse().
   if (!BrowserThread::CurrentlyOn(BrowserThread::UI)) {
     DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
@@ -149,8 +156,8 @@ void SyncFileSystemRequestFileSystemFunction::DidOpenFileSystem(
   }
 
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  if (error != base::PLATFORM_FILE_OK) {
-    error_ = base::StringPrintf(kFileError, static_cast<int>(error));
+  if (error != base::File::FILE_OK) {
+    error_ = ErrorToString(sync_file_system::FileErrorToSyncStatusCode(error));
     SendResponse(false);
     return;
   }
@@ -184,7 +191,7 @@ void SyncFileSystemGetFileStatusFunction::DidGetFileStatus(
     const SyncFileStatus sync_file_status) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   if (sync_status_code != sync_file_system::SYNC_STATUS_OK) {
-    error_ = sync_file_system::SyncStatusCodeToString(sync_status_code);
+    error_ = ErrorToString(sync_status_code);
     SendResponse(false);
     return;
   }
@@ -271,8 +278,7 @@ void SyncFileSystemGetFileStatusesFunction::DidGetFileStatus(
 
     if (file_error == sync_file_system::SYNC_STATUS_OK)
       continue;
-    dict->SetString("error",
-                    sync_file_system::SyncStatusCodeToString(file_error));
+    dict->SetString("error", ErrorToString(file_error));
   }
   SetResult(status_array);
 
@@ -350,7 +356,7 @@ bool SyncFileSystemSetConflictResolutionPolicyFunction::RunImpl() {
   DCHECK(service);
   SyncStatusCode status = service->SetConflictResolutionPolicy(policy);
   if (status != sync_file_system::SYNC_STATUS_OK) {
-    SetError(sync_file_system::SyncStatusCodeToString(status));
+    SetError(ErrorToString(status));
     return false;
   }
   return true;

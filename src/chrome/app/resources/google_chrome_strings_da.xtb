@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="da">
+<translation id="3234920859344197194">Dette website anvender Chrome Frame-pluginnet, som snart stopper med at modtage sikkerheds- og stabilitetsopdateringer.</translation>
 <translation id="8914504000324227558">Genstart Chrome</translation>
 <translation id="8000275528373650868">Google Chrome kræver Windows Vista eller Windows XP med SP2 eller nyere.</translation>
 <translation id="8485767968786176057">I dette tilfælde stemmer adressen i certifikatet ikke overens med adressen på det website, som din browser forsøger at gå til. Årsagen kan være, at din kommunikation bliver opsnappet af en hacker, som viser et certifikat for et andet website, hvilket medfører en uoverensstemmelse. Det kan også skyldes, at serveren er konfigureret til at returnere det samme certifikat for flere websites, heriblandt et, som du forsøger at besøge, selvom certifikatet ikke er gyldigt for alle disse websites. Google Chrome kan sige med sikkerhed, at du er kommet til &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, men kan ikke bekræfte, at det er det samme website som &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, som du forsøgte at åbne. Hvis du fortsætter, kontrollerer Chrome ikke yderligere uoverensstemmelser mellem navne.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">Lad Google Chrome køre i baggrunden</translation>
 <translation id="2896252579017640304">Åbn Chrome-apps</translation>
 <translation id="2370289711218562573">Google Chrome importerer nu Foretrukne/Bogmærker.</translation>
-<translation id="8762286861469007470">Registrering af Chrome-gæsteportaler</translation>
 <translation id="2721687379934343312">På Mac gemmes adgangskoder i din Keychain, og andre Chrome-brugere, der deler denne OS X-konto, kan få adgang til eller synkronisere adgangskoderne.</translation>
 <translation id="1761870329818521071">Det er ikke muligt at installere samme version af Google Chrome Frame som den, der allerede kører. Luk Google Chrome Frame, og prøv igen.</translation>
 <translation id="6014844626092547096">Du er nu logget ind på Chrome. Synkronisering er deaktiveret af din administrator.</translation>
@@ -57,10 +57,10 @@
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Dine faktureringsoplysninger er nu gemt i Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome bruger din mikrofon.</translation>
-<translation id="3590194807845837023">Lås profilen op, og genstart</translation>
 <translation id="4053720452172726777">Tilpas og kontrollér Google Chrome</translation>
 <translation id="6423071462708908582">Du forsøgte at gå til &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, men serveren viste et udløbet certifikat. Der er ingen tilgængelige oplysninger til at indikere, om certifikatet er kompromitteret, efter at det er udløbet. Dette betyder, at Google Chrome ikke kan garantere, at du kommunikerer med &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; og ikke en ondsindet person. Computerens ur er i øjeblikket angivet til <ph name="CURRENT_TIME"/>. Ser det rigtigt ud? Hvis ikke, skal du korrigere fejlen og opdatere siden.</translation>
 <translation id="3197823471738295152">Din enhed er opdateret.</translation>
+<translation id="8286862437124483331">Google Chrome forsøger at vise adgangskoder. Indtast din Windows-adgangskode for at tillade dette.</translation>
 <translation id="3889417619312448367">Afinstaller Google Chrome</translation>
 <translation id="1434626383986940139">Chrome Canary-apps</translation>
 <translation id="8551886023433311834">Den er næsten opdateret. Genstart din enhed for at fuldføre opdateringen.</translation>
@@ -180,7 +180,6 @@ Hvis du logger ind alligevel, flettes Chrome-oplysninger, som f.eks. bogmærker,
 <translation id="7396375882099008034">Tillad, at Chrome får adgang til netværket i dine indstillinger for firewall eller
        antivirus.</translation>
 <translation id="9102715433345326100">Denne fil er skadelig, og Chrome har blokeret den.</translation>
-<translation id="3170677364322086041">Dette website anvender Chrome Frame-pluginnet, som ikke længere modtager sikkerheds- og stabilitetsopdateringer. Afinstaller pluginnet, og opgrader til en moderne browser.</translation>
 <translation id="8205111949707227942">Valgfrit: Vær med til at gøre Chrome OS bedre ved automatisk at sende brugsstatistikker og rapporter om nedbrud til Google.</translation>
 <translation id="7253415505590551024">Downloads er i øjeblikket i gang. Vil du afslutte Google Chrome og annullere disse downloads?</translation>
 <translation id="7196020411877309443">Hvorfor får jeg vist dette?</translation>
@@ -197,6 +196,7 @@ Hvis du logger ind alligevel, flettes Chrome-oplysninger, som f.eks. bogmærker,
           LAN-indstillinger,
           og fjern markeringen af &quot;Brug en proxyserver til LAN&quot;.</translation>
 <translation id="7825851276765848807">Installationen mislykkedes på grund af en uspecificeret fejl. Download Google Chrome igen.</translation>
+<translation id="4919523385405675060">Dette website anvender Chrome Frame-pluginnet, som snart stopper med at modtage sikkerheds- og stabilitetsopdateringer. Afinstaller pluginnet, og download en kompatibel browser.</translation>
 <translation id="1061257178446858647">Du er nu logget ind på Chrome. Dine bogmærker, din historik og dine andre indstillinger bliver synkroniseret med din Google-konto.</translation>
 <translation id="3335672657969596251">Google Chrome understøtter ikke <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Du skal logge ud og logge ind igen, for at denne ændring kan træde i kraft.</translation>

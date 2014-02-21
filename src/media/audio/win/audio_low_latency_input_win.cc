@@ -123,6 +123,7 @@ void WASAPIAudioInputStream::Start(AudioInputCallback* callback) {
   if (started_)
     return;
 
+  DCHECK(!sink_);
   sink_ = callback;
 
   // Starts periodic AGC microphone measurements if the AGC has been enabled
@@ -173,6 +174,7 @@ void WASAPIAudioInputStream::Stop() {
   }
 
   started_ = false;
+  sink_ = NULL;
 }
 
 void WASAPIAudioInputStream::Close() {
@@ -180,10 +182,6 @@ void WASAPIAudioInputStream::Close() {
   // It is valid to call Close() before calling open or Start().
   // It is also valid to call Close() after Start() has been called.
   Stop();
-  if (sink_) {
-    sink_->OnClose(this);
-    sink_ = NULL;
-  }
 
   // Inform the audio manager that we have been closed. This will cause our
   // destruction.
@@ -284,7 +282,7 @@ HRESULT WASAPIAudioInputStream::GetMixFormat(const std::string& device_id,
   } else {
     // Retrieve a capture endpoint device that is specified by an endpoint
     // device-identification string.
-    hr = enumerator->GetDevice(UTF8ToUTF16(device_id).c_str(),
+    hr = enumerator->GetDevice(base::UTF8ToUTF16(device_id).c_str(),
                                endpoint_device.Receive());
   }
   if (FAILED(hr))
@@ -480,7 +478,7 @@ HRESULT WASAPIAudioInputStream::SetCaptureDevice() {
   } else {
     // Retrieve a capture endpoint device that is specified by an endpoint
     // device-identification string.
-    hr = enumerator->GetDevice(UTF8ToUTF16(device_id_).c_str(),
+    hr = enumerator->GetDevice(base::UTF8ToUTF16(device_id_).c_str(),
                                endpoint_device_.Receive());
   }
 

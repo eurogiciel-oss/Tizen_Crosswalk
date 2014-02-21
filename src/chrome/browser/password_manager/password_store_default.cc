@@ -96,6 +96,7 @@ void PasswordStoreDefault::RemoveLoginsCreatedBetweenImpl(
 
 void PasswordStoreDefault::GetLoginsImpl(
     const autofill::PasswordForm& form,
+    AuthorizationPromptPolicy prompt_policy,
     const ConsumerCallbackRunner& callback_runner) {
   std::vector<PasswordForm*> matched_forms;
   login_db_->GetLogins(form, &matched_forms);
@@ -104,13 +105,13 @@ void PasswordStoreDefault::GetLoginsImpl(
 
 void PasswordStoreDefault::GetAutofillableLoginsImpl(
     GetLoginsRequest* request) {
-  FillAutofillableLogins(&request->value);
+  FillAutofillableLogins(request->result());
   ForwardLoginsResult(request);
 }
 
 void PasswordStoreDefault::GetBlacklistLoginsImpl(
     GetLoginsRequest* request) {
-  FillBlacklistLogins(&request->value);
+  FillBlacklistLogins(request->result());
   ForwardLoginsResult(request);
 }
 

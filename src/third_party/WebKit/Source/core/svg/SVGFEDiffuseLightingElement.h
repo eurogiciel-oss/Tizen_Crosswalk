@@ -23,6 +23,7 @@
 #define SVGFEDiffuseLightingElement_h
 
 #include "SVGNames.h"
+#include "core/svg/SVGAnimatedNumberOptionalNumber.h"
 #include "core/svg/SVGFELightElement.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
 
@@ -33,27 +34,28 @@ class SVGColor;
 
 class SVGFEDiffuseLightingElement FINAL : public SVGFilterPrimitiveStandardAttributes {
 public:
-    static PassRefPtr<SVGFEDiffuseLightingElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFEDiffuseLightingElement> create(Document&);
     void lightElementAttributeChanged(const SVGFELightElement*, const QualifiedName&);
 
+    SVGAnimatedNumber* diffuseConstant() { return m_diffuseConstant.get(); }
+    SVGAnimatedNumber* surfaceScale() { return m_surfaceScale.get(); }
+    SVGAnimatedNumber* kernelUnitLengthX() { return m_kernelUnitLength->firstNumber(); }
+    SVGAnimatedNumber* kernelUnitLengthY() { return m_kernelUnitLength->secondNumber(); }
+
 private:
-    SVGFEDiffuseLightingElement(const QualifiedName&, Document&);
+    explicit SVGFEDiffuseLightingElement(Document&);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&);
-    virtual void svgAttributeChanged(const QualifiedName&);
-    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*);
+    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&) OVERRIDE;
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
+    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*) OVERRIDE;
 
-    static const AtomicString& kernelUnitLengthXIdentifier();
-    static const AtomicString& kernelUnitLengthYIdentifier();
-
+    RefPtr<SVGAnimatedNumber> m_diffuseConstant;
+    RefPtr<SVGAnimatedNumber> m_surfaceScale;
+    RefPtr<SVGAnimatedNumberOptionalNumber> m_kernelUnitLength;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEDiffuseLightingElement)
         DECLARE_ANIMATED_STRING(In1, in1)
-        DECLARE_ANIMATED_NUMBER(DiffuseConstant, diffuseConstant)
-        DECLARE_ANIMATED_NUMBER(SurfaceScale, surfaceScale)
-        DECLARE_ANIMATED_NUMBER(KernelUnitLengthX, kernelUnitLengthX)
-        DECLARE_ANIMATED_NUMBER(KernelUnitLengthY, kernelUnitLengthY)
     END_DECLARE_ANIMATED_PROPERTIES
 };
 

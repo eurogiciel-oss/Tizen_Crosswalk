@@ -39,9 +39,11 @@
       'conditions': [
         ['include_tests==1', {
           'dependencies': [
+            'common_video/common_video_unittests.gyp:*',
             'system_wrappers/source/system_wrappers_tests.gyp:*',
             'test/metrics.gyp:*',
             'test/test.gyp:*',
+            'test/webrtc_test_common.gyp:webrtc_test_common_unittests',
             'tools/tools.gyp:*',
             'webrtc_tests',
           ],
@@ -59,9 +61,9 @@
       'target_name': 'webrtc',
       'type': 'static_library',
       'sources': [
-        'call.cc',
         'call.h',
         'config.h',
+        'experiments.h',
         'frame_callback.h',
         'transport.h',
         'video_receive_stream.h',

@@ -23,7 +23,6 @@
 #ifndef Resource_h
 #define Resource_h
 
-#include "core/fetch/CachePolicy.h"
 #include "core/fetch/ResourceLoaderOptions.h"
 #include "platform/Timer.h"
 #include "platform/network/ResourceError.h"
@@ -37,6 +36,7 @@
 
 namespace WebCore {
 
+struct FetchInitiatorInfo;
 class MemoryCache;
 class CachedMetadata;
 class ResourceClient;
@@ -98,6 +98,8 @@ public:
     virtual void appendData(const char*, int);
     virtual void error(Resource::Status);
 
+    void setNeedsSynchronousCacheHit(bool needsSynchronousCacheHit) { m_needsSynchronousCacheHit = needsSynchronousCacheHit; }
+
     void setResourceError(const ResourceError& error) { m_error = error; }
     const ResourceError& resourceError() const { return m_error; }
 
@@ -136,10 +138,10 @@ public:
     Status status() const { return static_cast<Status>(m_status); }
     void setStatus(Status status) { m_status = status; }
 
-    unsigned size() const { return encodedSize() + decodedSize() + overheadSize(); }
-    unsigned encodedSize() const { return m_encodedSize; }
-    unsigned decodedSize() const { return m_decodedSize; }
-    unsigned overheadSize() const;
+    size_t size() const { return encodedSize() + decodedSize() + overheadSize(); }
+    size_t encodedSize() const { return m_encodedSize; }
+    size_t decodedSize() const { return m_decodedSize; }
+    size_t overheadSize() const;
 
     bool isLoaded() const { return !m_loading; } // FIXME. Method name is inaccurate. Loading might not have started yet.
 
@@ -186,6 +188,7 @@ public:
     void setResourceBuffer(PassRefPtr<SharedBuffer>);
 
     virtual void willSendRequest(ResourceRequest&, const ResourceResponse&) { m_requestedFromNetworkingLayer = true; }
+    virtual void updateRequest(const ResourceRequest&) { }
     virtual void responseReceived(const ResourceResponse&);
     void setResponse(const ResourceResponse& response) { m_response = response; }
     const ResourceResponse& response() const { return m_response; }
@@ -201,7 +204,7 @@ public:
     // Returns cached metadata of the given type associated with this resource.
     CachedMetadata* cachedMetadata(unsigned dataTypeID) const;
 
-    bool canDelete() const { return !hasClients() && !m_loader && !m_preloadCount && !m_handleCount && !m_resourceToRevalidate && !m_proxyResource; }
+    bool canDelete() const { return !hasClients() && !m_loader && !m_preloadCount && !m_handleCount && !m_protectorCount && !m_resourceToRevalidate && !m_proxyResource; }
     bool hasOneHandle() const { return m_handleCount == 1; }
 
     bool isExpired() const;
@@ -215,8 +218,8 @@ public:
     bool errorOccurred() const { return m_status == LoadError || m_status == DecodeError; }
     bool loadFailedOrCanceled() { return !m_error.isNull(); }
 
-    bool shouldSendResourceLoadCallbacks() const { return m_options.sendLoadCallbacks == SendCallbacks; }
     DataBufferingPolicy dataBufferingPolicy() const { return m_options.dataBufferingPolicy; }
+    void setDataBufferingPolicy(DataBufferingPolicy);
 
     virtual void destroyDecodedData() { }
 
@@ -228,7 +231,7 @@ public:
     void unregisterHandle(ResourcePtrBase* h);
 
     bool canUseCacheValidator() const;
-    bool mustRevalidateDueToCacheHeaders(CachePolicy) const;
+    bool mustRevalidateDueToCacheHeaders() const;
     bool isCacheValidator() const { return m_resourceToRevalidate; }
     Resource* resourceToRevalidate() const { return m_resourceToRevalidate; }
     void setResourceToRevalidate(Resource*);
@@ -248,12 +251,40 @@ public:
 
     virtual bool canReuse(const ResourceRequest&) const { return true; }
 
+    static const char* resourceTypeToString(Type, const FetchInitiatorInfo&);
+
 protected:
     virtual void checkNotify();
     virtual void finishOnePart();
 
-    void setEncodedSize(unsigned);
-    void setDecodedSize(unsigned);
+    // Normal resource pointers will silently switch what Resource* they reference when we
+    // successfully revalidated the resource. We need a way to guarantee that the Resource
+    // that received the 304 response survives long enough to switch everything over to the
+    // revalidatedresource. The normal mechanisms for keeping a Resource alive externally
+    // (ResourcePtrs and ResourceClients registering themselves) don't work in this case, so
+    // have a separate internal protector).
+    class InternalResourcePtr {
+    public:
+        explicit InternalResourcePtr(Resource* resource)
+            : m_resource(resource)
+        {
+            m_resource->incrementProtectorCount();
+        }
+
+        ~InternalResourcePtr()
+        {
+            m_resource->decrementProtectorCount();
+            m_resource->deleteIfPossible();
+        }
+    private:
+        Resource* m_resource;
+    };
+
+    void incrementProtectorCount() { m_protectorCount++; }
+    void decrementProtectorCount() { m_protectorCount--; }
+
+    void setEncodedSize(size_t);
+    void setDecodedSize(size_t);
     void didAccessDecodedData(double timeStamp);
 
     bool isSafeToMakePurgeable() const;
@@ -316,11 +347,12 @@ private:
 
     unsigned long m_identifier;
 
-    unsigned m_encodedSize;
-    unsigned m_decodedSize;
+    size_t m_encodedSize;
+    size_t m_decodedSize;
     unsigned m_accessCount;
     unsigned m_handleCount;
     unsigned m_preloadCount;
+    unsigned m_protectorCount;
 
     unsigned m_preloadResult : 2; // PreloadResult
     unsigned m_cacheLiveResourcePriority : 2; // CacheLiveResourcePriority
@@ -334,6 +366,10 @@ private:
 
     unsigned m_type : 4; // Type
     unsigned m_status : 3; // Status
+
+    unsigned m_wasPurged : 1;
+
+    unsigned m_needsSynchronousCacheHit : 1;
 
 #ifndef NDEBUG
     bool m_deleted;
@@ -363,6 +399,10 @@ private:
 // Intended to be used in LOG statements.
 const char* ResourceTypeName(Resource::Type);
 #endif
+
+#define DEFINE_RESOURCE_TYPE_CASTS(typeName) \
+    DEFINE_TYPE_CASTS(typeName##Resource, Resource, resource, resource->type() == Resource::typeName, resource.type() == Resource::typeName); \
+    inline typeName##Resource* to##typeName##Resource(const ResourcePtr<Resource>& ptr) { return to##typeName##Resource(ptr.get()); }
 
 }
 

@@ -44,8 +44,8 @@ FullWallet::~FullWallet() {}
 
 // static
 scoped_ptr<FullWallet>
-    FullWallet::CreateFullWallet(const DictionaryValue& dictionary) {
-  const ListValue* required_actions_list;
+    FullWallet::CreateFullWallet(const base::DictionaryValue& dictionary) {
+  const base::ListValue* required_actions_list;
   std::vector<RequiredAction> required_actions;
   if (dictionary.GetList("required_action", &required_actions_list)) {
     for (size_t i = 0; i < required_actions_list->GetSize(); ++i) {
@@ -97,7 +97,7 @@ scoped_ptr<FullWallet>
     return scoped_ptr<FullWallet>();
   }
 
-  const DictionaryValue* billing_address_dict;
+  const base::DictionaryValue* billing_address_dict;
   if (!dictionary.GetDictionary("billing_address", &billing_address_dict)) {
     DLOG(ERROR) << "Response from Google wallet missing billing address";
     return scoped_ptr<FullWallet>();
@@ -110,7 +110,7 @@ scoped_ptr<FullWallet>
     return scoped_ptr<FullWallet>();
   }
 
-  const DictionaryValue* shipping_address_dict;
+  const base::DictionaryValue* shipping_address_dict;
   scoped_ptr<Address> shipping_address;
   if (dictionary.GetDictionary("shipping_address", &shipping_address_dict)) {
     shipping_address =
@@ -157,13 +157,13 @@ scoped_ptr<FullWallet>
 base::string16 FullWallet::GetInfo(const AutofillType& type) {
   switch (type.GetStorableType()) {
     case CREDIT_CARD_NUMBER:
-      return UTF8ToUTF16(GetPan());
+      return base::UTF8ToUTF16(GetPan());
 
     case CREDIT_CARD_NAME:
       return billing_address()->recipient_name();
 
     case CREDIT_CARD_VERIFICATION_CODE:
-      return UTF8ToUTF16(GetCvn());
+      return base::UTF8ToUTF16(GetCvn());
 
     case CREDIT_CARD_EXP_MONTH:
       if (expiration_month() == 0)
@@ -183,18 +183,18 @@ base::string16 FullWallet::GetInfo(const AutofillType& type) {
     case CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR:
       if (expiration_month() == 0 || expiration_year() == 0)
             return base::string16();
-      return base::IntToString16(expiration_month()) + ASCIIToUTF16("/") +
+      return base::IntToString16(expiration_month()) + base::ASCIIToUTF16("/") +
              base::IntToString16(expiration_year() % 100);
 
     case CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR:
       if (expiration_month() == 0 || expiration_year() == 0)
             return base::string16();
-      return base::IntToString16(expiration_month()) + ASCIIToUTF16("/") +
+      return base::IntToString16(expiration_month()) + base::ASCIIToUTF16("/") +
              base::IntToString16(expiration_year());
 
     case CREDIT_CARD_TYPE: {
       std::string internal_type =
-          CreditCard::GetCreditCardType(UTF8ToUTF16(GetPan()));
+          CreditCard::GetCreditCardType(base::UTF8ToUTF16(GetPan()));
       if (internal_type == kGenericCard)
         return base::string16();
       return CreditCard::TypeForDisplay(internal_type);

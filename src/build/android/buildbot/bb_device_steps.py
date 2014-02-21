@@ -141,6 +141,8 @@ def RunTestSuites(options, suites):
     args.append('--release')
   if options.asan:
     args.append('--tool=asan')
+  if options.gtest_filter:
+    args.append('--gtest-filter=%s' % options.gtest_filter)
   for suite in suites:
     bb_annotations.PrintNamedStep(suite)
     cmd = ['build/android/test_runner.py', 'gtest', '-s', suite] + args
@@ -153,10 +155,11 @@ def RunChromeDriverTests(options):
   """Run all the steps for running chromedriver tests."""
   bb_annotations.PrintNamedStep('chromedriver_annotation')
   RunCmd(['chrome/test/chromedriver/run_buildbot_steps.py',
-          '--android-packages=%s,%s,%s' %
-          (constants.PACKAGE_INFO['chromium_test_shell'].package,
-           constants.PACKAGE_INFO['chrome_stable'].package,
-           constants.PACKAGE_INFO['chrome_beta'].package),
+          '--android-packages=%s,%s,%s,%s' %
+          ('chromium_test_shell',
+           'chrome_stable',
+           'chrome_beta',
+           'chromedriver_webview_shell'),
           '--revision=%s' % _GetRevision(options),
           '--update-log'])
 
@@ -312,7 +315,6 @@ def RunWebkitLayoutTests(options):
     RunCmd([os.path.join(SLAVE_SCRIPTS_DIR, 'chromium',
                          'archive_layout_test_results.py'),
             '--results-dir', '../../layout-test-results',
-            '--build-dir', CHROME_OUT_DIR,
             '--build-number', build_number,
             '--builder-name', builder_name,
             '--gs-bucket', gs_bucket],
@@ -400,7 +402,7 @@ def ProvisionDevices(options):
     adb.RestartAdbServer()
     RunCmd(['sleep', '1'])
 
-  if options.reboot:
+  if not options.no_reboot:
     RebootDevices()
   provision_cmd = ['build/android/provision_devices.py', '-t', options.target]
   if options.auto_reconnect:
@@ -418,8 +420,8 @@ def DeviceStatusCheck(options):
 
 def GetDeviceSetupStepCmds():
   return [
-      ('provision_devices', ProvisionDevices),
       ('device_status_check', DeviceStatusCheck),
+      ('provision_devices', ProvisionDevices),
   ]
 
 
@@ -449,8 +451,21 @@ def RunGPUTests(options):
   InstallApk(options, INSTRUMENTATION_TESTS['ContentShell'], False)
 
   bb_annotations.PrintNamedStep('gpu_tests')
+  revision = _GetRevision(options)
   RunCmd(['content/test/gpu/run_gpu_test',
-          '--browser=android-content-shell', 'pixel'])
+          'pixel',
+          '--browser',
+          'android-content-shell',
+          '--build-revision',
+          str(revision),
+          '--upload-refimg-to-cloud-storage',
+          '--refimg-cloud-storage-bucket',
+          'chromium-gpu-archive/reference-images',
+          '--os-type',
+          'android',
+          '--test-machine-name',
+          EscapeBuilderName(
+              options.build_properties.get('buildername', 'noname'))])
 
   bb_annotations.PrintNamedStep('webgl_conformance_tests')
   RunCmd(['content/test/gpu/run_gpu_test',
@@ -510,11 +525,8 @@ def LogcatDump(options):
   # Print logcat, kill logcat monitor
   bb_annotations.PrintNamedStep('logcat_dump')
   logcat_file = os.path.join(CHROME_OUT_DIR, options.target, 'full_log')
-  with open(logcat_file, 'w') as f:
-    RunCmd([
-        os.path.join(CHROME_SRC_DIR, 'build', 'android',
-                     'adb_logcat_printer.py'),
-        LOGCAT_DIR], stdout=f)
+  RunCmd([SrcPath('build' , 'android', 'adb_logcat_printer.py'),
+          '--output-path', logcat_file, LOGCAT_DIR])
   RunCmd(['cat', logcat_file])
 
 
@@ -546,6 +558,7 @@ def MainTestWrapper(options):
       coverage_html = GenerateJavaCoverageReport(options)
       UploadHTML(options, '%s/java' % options.coverage_bucket, coverage_html,
                  'Coverage Report')
+      shutil.rmtree(coverage_html, ignore_errors=True)
 
     if options.experimental:
       RunTestSuites(options, gtest_config.EXPERIMENTAL_TEST_SUITES)
@@ -567,11 +580,13 @@ def GetDeviceStepsOptParser():
                     action='append',
                     help=('Run a test suite. Test suites: "%s"' %
                           '", "'.join(VALID_TESTS)))
+  parser.add_option('--gtest-filter',
+                    help='Filter for running a subset of tests of a gtest test')
   parser.add_option('--asan', action='store_true', help='Run tests with asan.')
   parser.add_option('--install', metavar='<apk name>',
                     help='Install an apk by name')
-  parser.add_option('--reboot', action='store_true',
-                    help='Reboot devices before running tests')
+  parser.add_option('--no-reboot', action='store_true',
+                    help='Do not reboot devices during provisioning.')
   parser.add_option('--coverage-bucket',
                     help=('Bucket name to store coverage results. Coverage is '
                           'only run if this is set.'))

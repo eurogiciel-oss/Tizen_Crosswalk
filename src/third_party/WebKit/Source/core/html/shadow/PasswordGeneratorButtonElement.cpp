@@ -31,23 +31,23 @@
 #include "config.h"
 #include "core/html/shadow/PasswordGeneratorButtonElement.h"
 
-#include "core/events/Event.h"
 #include "core/dom/NodeRenderStyle.h"
+#include "core/events/Event.h"
 #include "core/fetch/ImageResource.h"
+#include "core/frame/FrameHost.h"
 #include "core/html/HTMLInputElement.h"
 #include "core/html/shadow/ShadowElementNames.h"
 #include "core/page/Chrome.h"
 #include "core/page/ChromeClient.h"
-#include "core/page/Page.h"
-#include "core/platform/graphics/Image.h"
 #include "core/rendering/RenderImage.h"
+#include "platform/graphics/Image.h"
 
 namespace WebCore {
 
 using namespace HTMLNames;
 
 PasswordGeneratorButtonElement::PasswordGeneratorButtonElement(Document& document)
-    : HTMLDivElement(HTMLNames::divTag, document)
+    : HTMLDivElement(document)
     , m_isInHoverState(false)
 {
     setHasCustomStyleCallbacks();
@@ -123,6 +123,7 @@ ImageResource* PasswordGeneratorButtonElement::imageForHoverState()
 
 void PasswordGeneratorButtonElement::defaultEventHandler(Event* event)
 {
+    ASSERT(document().isActive());
     RefPtr<HTMLInputElement> input = hostInput();
     if (!input || input->isDisabledOrReadOnly() || !event->isMouseEvent()) {
         if (!event->defaultHandled())
@@ -132,8 +133,7 @@ void PasswordGeneratorButtonElement::defaultEventHandler(Event* event)
 
     RefPtr<PasswordGeneratorButtonElement> protector(this);
     if (event->type() == EventTypeNames::click) {
-        if (Page* page = document().page())
-            page->chrome().client().openPasswordGenerator(input.get());
+        document().frameHost()->chrome().client().openPasswordGenerator(input.get());
         event->setDefaultHandled();
     }
 

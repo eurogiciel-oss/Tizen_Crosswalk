@@ -15,7 +15,7 @@ base::DictionaryValue* CreateCommandValue(
   result->SetString("description", command.description());
   result->SetString("shortcut",
                     active ? command.accelerator().GetShortcutText() :
-                             string16());
+                             base::string16());
   return result;
 }
 
@@ -42,14 +42,6 @@ bool GetAllCommandsFunction::RunImpl() {
           &page_action,
           &active)) {
     command_list->Append(CreateCommandValue(page_action, active));
-  }
-
-  extensions::Command script_badge;
-  if (command_service->GetScriptBadgeCommand(extension_->id(),
-          extensions::CommandService::ALL,
-          &script_badge,
-          &active)) {
-    command_list->Append(CreateCommandValue(script_badge, active));
   }
 
   extensions::CommandMap named_commands;

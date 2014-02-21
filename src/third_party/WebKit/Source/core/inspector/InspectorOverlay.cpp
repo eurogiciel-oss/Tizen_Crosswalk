@@ -38,55 +38,50 @@
 #include "core/dom/PseudoElement.h"
 #include "core/inspector/InspectorClient.h"
 #include "core/inspector/InspectorOverlayHost.h"
-#include "core/loader/DocumentLoader.h"
 #include "core/loader/EmptyClients.h"
+#include "core/loader/FrameLoadRequest.h"
 #include "core/page/Chrome.h"
 #include "core/page/EventHandler.h"
 #include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
 #include "core/page/Page.h"
-#include "core/page/Settings.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
+#include "core/frame/Settings.h"
 #include "core/rendering/RenderBoxModelObject.h"
 #include "core/rendering/RenderInline.h"
 #include "core/rendering/RenderObject.h"
 #include "core/rendering/style/RenderStyleConstants.h"
 #include "platform/JSONValues.h"
 #include "platform/PlatformMouseEvent.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 #include "wtf/text/StringBuilder.h"
 
 namespace WebCore {
 
 namespace {
 
-class InspectorOverlayChromeClient: public EmptyChromeClient {
+class InspectorOverlayChromeClient FINAL: public EmptyChromeClient {
 public:
     InspectorOverlayChromeClient(ChromeClient& client, InspectorOverlay* overlay)
         : m_client(client)
         , m_overlay(overlay)
     { }
 
-    virtual void setCursor(const Cursor& cursor)
+    virtual void setCursor(const Cursor& cursor) OVERRIDE
     {
         m_client.setCursor(cursor);
     }
 
-    virtual void setToolTip(const String& tooltip, TextDirection direction)
+    virtual void setToolTip(const String& tooltip, TextDirection direction) OVERRIDE
     {
         m_client.setToolTip(tooltip, direction);
     }
 
-    virtual void invalidateRootView(const IntRect& rect)
+    virtual void invalidateContentsAndRootView(const IntRect&) OVERRIDE
     {
         m_overlay->invalidate();
     }
 
-    virtual void invalidateContentsAndRootView(const IntRect& rect)
-    {
-        m_overlay->invalidate();
-    }
-
-    virtual void invalidateContentsForSlowScroll(const IntRect& rect)
+    virtual void invalidateContentsForSlowScroll(const IntRect&) OVERRIDE
     {
         m_overlay->invalidate();
     }
@@ -252,6 +247,7 @@ InspectorOverlay::InspectorOverlay(Page* page, InspectorClient* client)
     , m_drawViewSize(false)
     , m_drawViewSizeWithGrid(false)
     , m_timer(this, &InspectorOverlay::onTimer)
+    , m_activeProfilerCount(0)
 {
 }
 
@@ -313,6 +309,14 @@ bool InspectorOverlay::handleTouchEvent(const PlatformTouchEvent& event)
         return false;
 
     return overlayPage()->mainFrame()->eventHandler().handleTouchEvent(event);
+}
+
+bool InspectorOverlay::handleKeyboardEvent(const PlatformKeyboardEvent& event)
+{
+    if (isEmpty())
+        return false;
+
+    return overlayPage()->mainFrame()->eventHandler().keyEvent(event);
 }
 
 void InspectorOverlay::drawOutline(GraphicsContext* context, const LayoutRect& rect, const Color& color)
@@ -389,6 +393,8 @@ Node* InspectorOverlay::highlightedNode() const
 
 bool InspectorOverlay::isEmpty()
 {
+    if (m_activeProfilerCount)
+        return true;
     bool hasAlwaysVisibleElements = m_highlightNode || m_eventTargetNode || m_highlightQuad || !m_size.isEmpty() || m_drawViewSize;
     bool hasInvisibleInInspectModeElements = !m_pausedInDebuggerMessage.isNull();
     return !(hasAlwaysVisibleElements || (hasInvisibleInInspectModeElements && !m_inspectModeEnabled));
@@ -582,17 +588,16 @@ Page* InspectorOverlay::overlayPage()
     m_overlayChromeClient = adoptPtr(new InspectorOverlayChromeClient(m_page->chrome().client(), this));
     pageClients.chromeClient = m_overlayChromeClient.get();
     m_overlayPage = adoptPtr(new Page(pageClients));
-    m_overlayPage->setGroupType(Page::InspectorPageGroup);
 
     Settings& settings = m_page->settings();
     Settings& overlaySettings = m_overlayPage->settings();
 
-    overlaySettings.setStandardFontFamily(settings.standardFontFamily());
-    overlaySettings.setSerifFontFamily(settings.serifFontFamily());
-    overlaySettings.setSansSerifFontFamily(settings.sansSerifFontFamily());
-    overlaySettings.setCursiveFontFamily(settings.cursiveFontFamily());
-    overlaySettings.setFantasyFontFamily(settings.fantasyFontFamily());
-    overlaySettings.setPictographFontFamily(settings.pictographFontFamily());
+    overlaySettings.genericFontFamilySettings().setStandard(settings.genericFontFamilySettings().standard());
+    overlaySettings.genericFontFamilySettings().setSerif(settings.genericFontFamilySettings().serif());
+    overlaySettings.genericFontFamilySettings().setSansSerif(settings.genericFontFamilySettings().sansSerif());
+    overlaySettings.genericFontFamilySettings().setCursive(settings.genericFontFamilySettings().cursive());
+    overlaySettings.genericFontFamilySettings().setFantasy(settings.genericFontFamilySettings().fantasy());
+    overlaySettings.genericFontFamilySettings().setPictograph(settings.genericFontFamilySettings().pictograph());
     overlaySettings.setMinimumFontSize(settings.minimumFontSize());
     overlaySettings.setMinimumLogicalFontSize(settings.minimumLogicalFontSize());
     overlaySettings.setMediaEnabled(false);
@@ -600,23 +605,22 @@ Page* InspectorOverlay::overlayPage()
     overlaySettings.setPluginsEnabled(false);
     overlaySettings.setLoadsImagesAutomatically(true);
 
-    RefPtr<Frame> frame = Frame::create(FrameInit::create(0, m_overlayPage.get(), dummyFrameLoaderClient));
+    RefPtr<Frame> frame = Frame::create(FrameInit::create(0, &m_overlayPage->frameHost(), dummyFrameLoaderClient));
     frame->setView(FrameView::create(frame.get()));
     frame->init();
     FrameLoader& loader = frame->loader();
     frame->view()->setCanHaveScrollbars(false);
     frame->view()->setTransparent(true);
-    ASSERT(loader.activeDocumentLoader());
-    DocumentWriter* writer = loader.activeDocumentLoader()->beginWriting("text/html", "UTF-8");
-    writer->addData(reinterpret_cast<const char*>(InspectorOverlayPage_html), sizeof(InspectorOverlayPage_html));
-    loader.activeDocumentLoader()->endWriting(writer);
+
+    RefPtr<SharedBuffer> data = SharedBuffer::create(reinterpret_cast<const char*>(InspectorOverlayPage_html), sizeof(InspectorOverlayPage_html));
+    loader.load(FrameLoadRequest(0, blankURL(), SubstituteData(data, "text/html", "UTF-8", KURL(), ForceSynchronousLoad)));
     v8::Isolate* isolate = toIsolate(frame.get());
     v8::HandleScope handleScope(isolate);
-    v8::Handle<v8::Context> frameContext = frame->script().currentWorldContext();
+    v8::Handle<v8::Context> frameContext = frame->script().currentWorldContextOrMainWorldContext();
     v8::Context::Scope contextScope(frameContext);
     v8::Handle<v8::Value> overlayHostObj = toV8(m_overlayHost.get(), v8::Handle<v8::Object>(), isolate);
     v8::Handle<v8::Object> global = frameContext->Global();
-    global->Set(v8::String::New("InspectorOverlayHost"), overlayHostObj);
+    global->Set(v8::String::NewFromUtf8(isolate, "InspectorOverlayHost"), overlayHostObj);
 
 #if OS(WIN)
     evaluateInOverlay("setPlatform", "windows");
@@ -671,9 +675,20 @@ bool InspectorOverlay::getBoxModel(Node* node, Vector<FloatQuad>* quads)
 
 void InspectorOverlay::freePage()
 {
-    m_overlayPage.clear();
+    if (m_overlayPage) {
+        // FIXME: This logic is duplicated in SVGImage and WebViewImpl. Perhaps it can be combined
+        // into Page's destructor.
+        m_overlayPage->mainFrame()->loader().frameDetached();
+        m_overlayPage.clear();
+    }
     m_overlayChromeClient.clear();
     m_timer.stop();
+}
+
+void InspectorOverlay::startedRecordingProfile()
+{
+    if (!m_activeProfilerCount++)
+        freePage();
 }
 
 } // namespace WebCore

@@ -22,7 +22,7 @@ class AwSettings : public content::WebContentsObserver {
  public:
   static AwSettings* FromWebContents(content::WebContents* web_contents);
 
-  AwSettings(JNIEnv* env, jobject obj, jint web_contents);
+  AwSettings(JNIEnv* env, jobject obj, jlong web_contents);
   virtual ~AwSettings();
 
   // Called from Java. Methods with "Locked" suffix require that the settings
@@ -49,6 +49,8 @@ class AwSettings : public content::WebContentsObserver {
       content::RenderViewHost* render_view_host) OVERRIDE;
   virtual void WebContentsDestroyed(
       content::WebContents* web_contents) OVERRIDE;
+
+  bool accelerated_2d_canvas_disabled_by_switch_;
 
   JavaObjectWeakGlobalRef aw_settings_;
 };

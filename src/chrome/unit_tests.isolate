@@ -43,6 +43,7 @@
           '<(PRODUCT_DIR)',
           '<(PRODUCT_DIR)/unit_tests<(EXECUTABLE_SUFFIX)',
           '--brave-new-test-launcher',
+          '--test-launcher-bot-mode',
         ],
         'isolate_dependency_tracked': [
           '../testing/xvfb.py',
@@ -78,7 +79,7 @@
           '<(PRODUCT_DIR)/ffmpegsumo.so',
         ],
         'isolate_dependency_untracked': [
-          '<(PRODUCT_DIR)/Chromium Framework.framework/',
+          '<(PRODUCT_DIR)/<(mac_product_name) Framework.framework/',
         ],
       },
     }],
@@ -88,6 +89,7 @@
           '../testing/test_env.py',
           '<(PRODUCT_DIR)/unit_tests<(EXECUTABLE_SUFFIX)',
           '--brave-new-test-launcher',
+          '--test-launcher-bot-mode',
         ],
         'isolate_dependency_untracked': [
           '<(PRODUCT_DIR)/test_data/chrome/browser/resources/google_now/',
@@ -101,15 +103,16 @@
       'variables': {
         'isolate_dependency_tracked': [
           '<(PRODUCT_DIR)/ffmpegsumo.dll',
-          '<(PRODUCT_DIR)/icudt.dll',
         ],
         'isolate_dependency_untracked': [
           '../ppapi/lib/gl/include/KHR/',
           '../skia/ext/data/',
-          '../third_party/python_26/',
           '../ui/base/glib/',
         ],
       },
     }],
+  ],
+  'includes': [
+    '../third_party/icu/icu.isolate',
   ],
 }

@@ -13,6 +13,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "gpu/command_buffer/common/capabilities.h"
 #include "gpu/command_buffer/service/common_decoder.h"
 #include "gpu/command_buffer/service/logger.h"
 #include "ui/gfx/size.h"
@@ -27,7 +28,6 @@ namespace gpu {
 
 class AsyncPixelTransferDelegate;
 class AsyncPixelTransferManager;
-class StreamTextureManager;
 struct Mailbox;
 
 namespace gles2 {
@@ -38,16 +38,15 @@ class GLES2Util;
 class Logger;
 class QueryManager;
 class VertexArrayManager;
+struct ContextState;
 
 struct DisallowedFeatures {
   DisallowedFeatures()
       : multisampling(false),
-        swap_buffer_complete_callback(false),
         gpu_memory_manager(false) {
   }
 
   bool multisampling;
-  bool swap_buffer_complete_callback;
   bool gpu_memory_manager;
 };
 
@@ -126,9 +125,6 @@ class GPU_EXPORT GLES2Decoder : public base::SupportsWeakPtr<GLES2Decoder>,
   // Make this decoder's GL context current.
   virtual bool MakeCurrent() = 0;
 
-  // Have the decoder release the context.
-  virtual void ReleaseCurrent() = 0;
-
   // Gets the GLES2 Util which holds info.
   virtual GLES2Util* GetGLES2Util() = 0;
 
@@ -138,18 +134,20 @@ class GPU_EXPORT GLES2Decoder : public base::SupportsWeakPtr<GLES2Decoder>,
   // Gets the associated ContextGroup
   virtual ContextGroup* GetContextGroup() = 0;
 
+  virtual Capabilities GetCapabilities() = 0;
+
   // Restores all of the decoder GL state.
-  virtual void RestoreState() const = 0;
+  virtual void RestoreState(const ContextState* prev_state) const = 0;
 
   // Restore States.
   virtual void RestoreActiveTexture() const = 0;
-  virtual void RestoreAllTextureUnitBindings() const = 0;
+  virtual void RestoreAllTextureUnitBindings(
+      const ContextState* prev_state) const = 0;
   virtual void RestoreAttribute(unsigned index) const = 0;
   virtual void RestoreBufferBindings() const = 0;
   virtual void RestoreFramebufferBindings() const = 0;
   virtual void RestoreGlobalState() const = 0;
   virtual void RestoreProgramBindings() const = 0;
-  virtual void RestoreRenderbufferBindings() const = 0;
   virtual void RestoreTextureState(unsigned service_id) const = 0;
   virtual void RestoreTextureUnitBindings(unsigned unit) const = 0;
 
@@ -225,12 +223,12 @@ class GPU_EXPORT GLES2Decoder : public base::SupportsWeakPtr<GLES2Decoder>,
   // Lose this context.
   virtual void LoseContext(uint32 reset_status) = 0;
 
-  static bool IsAngle();
-
-  // Used for testing only
-  static void set_testing_force_is_angle(bool force);
-
   virtual Logger* GetLogger() = 0;
+
+  virtual void BeginDecoding();
+  virtual void EndDecoding();
+
+  virtual const ContextState* GetContextState() = 0;
 
  protected:
   GLES2Decoder();
@@ -239,11 +237,11 @@ class GPU_EXPORT GLES2Decoder : public base::SupportsWeakPtr<GLES2Decoder>,
   bool initialized_;
   bool debug_;
   bool log_commands_;
-  static bool testing_force_is_angle_;
 
   DISALLOW_COPY_AND_ASSIGN(GLES2Decoder);
 };
 
 }  // namespace gles2
 }  // namespace gpu
+
 #endif  // GPU_COMMAND_BUFFER_SERVICE_GLES2_CMD_DECODER_H_

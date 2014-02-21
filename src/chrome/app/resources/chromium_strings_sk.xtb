@@ -29,7 +29,6 @@ Niektoré funkcie nemusia byť k dispozícii a zmeny vykonané v predvoľbách s
 <translation id="3549345495227188780">Začíname so systémom OS Chromium</translation>
 <translation id="4330297532943865716">V systéme sa našla kolidujúca inštalácia prehliadača Chromium alebo aplikácie Chromium Frame. Odinštalujte ju a skúste to znova.</translation>
 <translation id="6953661834318318668">Panel s nástrojmi Chromium</translation>
-<translation id="2245147136185581459">Detektor Chromium Captive Portal</translation>
 <translation id="4285930937574705105">Inštalácia zlyhala kvôli neurčenej chybe. Ak je prehliadač Chromium momentálne spustený, zatvorte ho a skúste znova.</translation>
 <translation id="1396446129537741364">Prehliadač Chromium sa snaží zobraziť heslá.</translation>
 <translation id="3555616473548901994">Odinštalovanie dokončené.</translation>
@@ -63,7 +62,6 @@ Niektoré funkcie nemusia byť k dispozícii a zmeny vykonané v predvoľbách s
 <translation id="7771626876550251690">V tomto prípade adresa uvedená v certifikáte nezodpovedá adrese webových stránok, na ktoré sa prehliadač pokúšal prejsť. Jedným z možných dôvodov je, že vašu komunikáciu zachytáva útočník, ktorý používa certifikát pre iné webové stránky, a spôsobuje tak chybu. Ďalším možným dôvodom je, že server je nastavený tak, aby vrátil rovnaký certifikát pre viacero rôznych webových stránok vrátane tých, ktoré sa pokúšate navštíviť, a to aj napriek tomu, že tento certifikát nie je platný pre všetky webové stránky. Prehliadač Chromium môže s istotou potvrdiť, že ste sa dostali na doménu &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, no nemôže overiť, že sa jedná o rovnaké stránky ako &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, na ktoré ste sa chceli dostať. Ak budete pokračovať, nebude prehliadač Chromium v budúcnosti kontrolovať žiadne nezhody v názvoch.</translation>
 <translation id="4330585738697551178">Tento modul zvykne spôsobovať konflikt s prehliadačom Chromium.</translation>
 <translation id="3190315855212034486">Prehliadač Chromium zlyhal. Chcete ho spustiť znova?</translation>
-<translation id="3590194807845837023">Odomknúť profil a spustiť znova</translation>
 <translation id="6714487516757221107">Nenašla sa žiadna inštalácia prehliadača Chromium ani aplikácie Chromium Frame, ktorú by bolo možné aktualizovať.</translation>
 <translation id="3197823471738295152">Zariadenie bolo aktualizované.</translation>
 <translation id="8551886023433311834">Aktualizácia je takmer hotová! Dokončíte ju reštartovaním zariadenia.</translation>
@@ -156,6 +154,7 @@ Niektoré funkcie nemusia byť k dispozícii a zmeny vykonané v predvoľbách s
 <translation id="6717134281241384636">Váš profil sa nedá použiť, pretože pochádza z novšej verzie prehliadača Chromium.
 
 Niektoré funkcie nemusia byť k dispozícii. Zadajte iný adresár profilu alebo použite novšiu verziu prehliadača Chromium.</translation>
+<translation id="8907580949721785412">Prehliadač Chromium sa pokúša zobraziť heslá. Ak to chcete povoliť, zadajte svoje heslo systému Windows.</translation>
 <translation id="9013087743919948559">Pridať do prehliadača Chromium</translation>
 <translation id="6212496753309875659">Tento počítač už obsahuje novšiu verziu prehliadača Chromium. Ak softvér nefunguje, odinštalujte prehliadač Chromium a skúste to znova.</translation>
 <translation id="1298199220304005244">Získajte pomoc pri používaní systému Chromium OS</translation>

@@ -52,6 +52,7 @@ enum ContentChangeType {
 };
 
 class KeyframeList;
+class RenderTextFragment;
 class StickyPositionViewportConstraints;
 
 // This class is the base for all objects that adhere to the CSS box model as described
@@ -65,7 +66,7 @@ public:
     LayoutSize relativePositionOffset() const;
     LayoutSize relativePositionLogicalOffset() const { return style()->isHorizontalWritingMode() ? relativePositionOffset() : relativePositionOffset().transposedSize(); }
 
-    void computeStickyPositionConstraints(StickyPositionViewportConstraints&, const FloatRect& viewportRect) const;
+    void computeStickyPositionConstraints(StickyPositionViewportConstraints&, const FloatRect& constrainingRect) const;
     LayoutSize stickyPositionOffset() const;
     LayoutSize stickyPositionLogicalOffset() const { return style()->isHorizontalWritingMode() ? stickyPositionOffset() : stickyPositionOffset().transposedSize(); }
 
@@ -85,7 +86,13 @@ public:
 
     virtual void updateFromStyle() OVERRIDE;
 
-    virtual bool requiresLayer() const OVERRIDE { return isRoot() || isPositioned() || createsGroup() || hasClipPath() || hasTransform() || hasHiddenBackface() || hasReflection() || style()->specifiesColumns(); }
+    virtual LayerType layerTypeRequired() const OVERRIDE
+    {
+        if (isRoot() || isPositioned() || createsGroup() || hasClipPath() || hasTransform() || hasHiddenBackface() || hasReflection() || style()->specifiesColumns())
+            return NormalLayer;
+
+        return NoLayer;
+    }
 
     // This will work on inlines to return the bounding box of all of the lines' border boxes.
     virtual IntRect borderBoundingBox() const = 0;
@@ -133,9 +140,13 @@ public:
 
     LayoutUnit borderLogicalLeft() const { return style()->isHorizontalWritingMode() ? borderLeft() : borderTop(); }
     LayoutUnit borderLogicalRight() const { return style()->isHorizontalWritingMode() ? borderRight() : borderBottom(); }
+    LayoutUnit borderLogicalWidth() const { return borderStart() + borderEnd(); }
+    LayoutUnit borderLogicalHeight() const { return borderBefore() + borderAfter(); }
 
     LayoutUnit paddingLogicalLeft() const { return style()->isHorizontalWritingMode() ? paddingLeft() : paddingTop(); }
     LayoutUnit paddingLogicalRight() const { return style()->isHorizontalWritingMode() ? paddingRight() : paddingBottom(); }
+    LayoutUnit paddingLogicalWidth() const { return paddingStart() + paddingEnd(); }
+    LayoutUnit paddingLogicalHeight() const { return paddingBefore() + paddingAfter(); }
 
     virtual LayoutUnit marginTop() const = 0;
     virtual LayoutUnit marginBottom() const = 0;
@@ -173,9 +184,9 @@ public:
 
     void highQualityRepaintTimerFired(Timer<RenderBoxModelObject>*);
 
-    virtual void setSelectionState(SelectionState s);
+    virtual void setSelectionState(SelectionState) OVERRIDE;
 
-    bool canHaveBoxInfoInRegion() const { return !isFloating() && !isReplaced() && !isInline() && !hasColumns() && !isTableCell() && isRenderBlock() && !isRenderSVGBlock(); }
+    bool canHaveBoxInfoInRegion() const { return !isFloating() && !isReplaced() && !isInline() && !hasColumns() && !isTableCell() && isRenderBlock() && !isSVG(); }
 
     void contentChanged(ContentChangeType);
     bool hasAcceleratedCompositing() const;
@@ -191,7 +202,7 @@ public:
     virtual void computeLayerHitTestRects(LayerHitTestRects&) const OVERRIDE;
 
 protected:
-    virtual void willBeDestroyed();
+    virtual void willBeDestroyed() OVERRIDE;
 
     class BackgroundImageGeometry {
     public:
@@ -271,8 +282,8 @@ protected:
 
 public:
     // For RenderBlocks and RenderInlines with m_style->styleType() == FIRST_LETTER, this tracks their remaining text fragments
-    RenderObject* firstLetterRemainingText() const;
-    void setFirstLetterRemainingText(RenderObject*);
+    RenderTextFragment* firstLetterRemainingText() const;
+    void setFirstLetterRemainingText(RenderTextFragment*);
 
     // These functions are only used internally to manipulate the render tree structure via remove/insert/appendChildNode.
     // Since they are typically called only to move objects around within anonymous blocks (which only have layers in

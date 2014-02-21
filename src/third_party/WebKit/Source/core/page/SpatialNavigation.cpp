@@ -30,18 +30,19 @@
 #include "core/page/SpatialNavigation.h"
 
 #include "HTMLNames.h"
-#include "core/dom/Node.h"
 #include "core/html/HTMLAreaElement.h"
 #include "core/html/HTMLImageElement.h"
 #include "core/frame/Frame.h"
 #include "core/page/FrameTree.h"
 #include "core/frame/FrameView.h"
 #include "core/page/Page.h"
-#include "core/page/Settings.h"
+#include "core/frame/Settings.h"
 #include "core/rendering/RenderLayer.h"
 #include "platform/geometry/IntRect.h"
 
 namespace WebCore {
+
+using namespace HTMLNames;
 
 static RectsAlignment alignmentForRects(FocusDirection, const LayoutRect&, const LayoutRect&, const LayoutSize& viewSize);
 static bool areRectsFullyAligned(FocusDirection, const LayoutRect&, const LayoutRect&);
@@ -67,7 +68,7 @@ FocusCandidate::FocusCandidate(Node* node, FocusDirection direction)
     ASSERT(node);
     ASSERT(node->isElementNode());
 
-    if (isHTMLAreaElement(node)) {
+    if (node->hasTagName(areaTag)) {
         HTMLAreaElement* area = toHTMLAreaElement(node);
         HTMLImageElement* image = area->imageElement();
         if (!image || !image->renderer())
@@ -437,7 +438,7 @@ Node* scrollableEnclosingBoxOrParentFrameForNodeInDirection(FocusDirection direc
     Node* parent = node;
     do {
         if (parent->isDocumentNode())
-            parent = toDocument(parent)->document().frame()->ownerElement();
+            parent = toDocument(parent)->frame()->ownerElement();
         else
             parent = parent->parentOrShadowHostNode();
     } while (parent && !canScrollInDirection(parent, direction) && !parent->isDocumentNode());
@@ -604,7 +605,7 @@ bool areElementsOnSameLine(const FocusCandidate& firstCandidate, const FocusCand
     if (!firstCandidate.rect.intersects(secondCandidate.rect))
         return false;
 
-    if (isHTMLAreaElement(firstCandidate.focusableNode) || isHTMLAreaElement(secondCandidate.focusableNode))
+    if (firstCandidate.focusableNode->hasTagName(areaTag) || secondCandidate.focusableNode->hasTagName(areaTag))
         return false;
 
     if (!firstCandidate.visibleNode->renderer()->isRenderInline() || !secondCandidate.visibleNode->renderer()->isRenderInline())

@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="resources/shadow-dom.js"></script>
 </head>
 <body>
@@ -105,7 +105,7 @@ sandbox.appendChild(
         createDOM('div', {'id': 'host-child'},
             document.createTextNode('Hello, Host!'))));
 
-shouldHaveBorderColor('host', 'rgb(0, 128, 0)');
+shouldHaveBorderColor('host', 'rgb(255, 0, 0)');
 
 cleanUp();
 

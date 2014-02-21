@@ -16,7 +16,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/extensions/extension_process_manager.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/task_manager/background_resource_provider.h"
@@ -24,7 +23,6 @@
 #include "chrome/browser/task_manager/child_process_resource_provider.h"
 #include "chrome/browser/task_manager/extension_process_resource_provider.h"
 #include "chrome/browser/task_manager/guest_resource_provider.h"
-#include "chrome/browser/task_manager/notification_resource_provider.h"
 #include "chrome/browser/task_manager/panel_resource_provider.h"
 #include "chrome/browser/task_manager/resource_provider.h"
 #include "chrome/browser/task_manager/tab_contents_resource_provider.h"
@@ -46,6 +44,10 @@
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/text/bytes_formatting.h"
 #include "ui/gfx/image/image_skia.h"
+
+#if !defined(OS_CHROMEOS)
+#include "chrome/browser/task_manager/notification_resource_provider.h"
+#endif
 
 #if defined(OS_MACOSX)
 #include "content/public/browser/browser_child_process_host.h"
@@ -92,7 +94,7 @@ int ValueCompareMember(const TaskManagerModel* model,
       OrderUnavailableValue(value1_valid, value2_valid);
 }
 
-string16 FormatStatsSize(const WebKit::WebCache::ResourceTypeStat& stat) {
+base::string16 FormatStatsSize(const blink::WebCache::ResourceTypeStat& stat) {
   return l10n_util::GetStringFUTF16(IDS_TASK_MANAGER_CACHE_SIZE_CELL_TEXT,
       ui::FormatBytesWithUnits(stat.size, ui::DATA_UNITS_KIBIBYTE, false),
       ui::FormatBytesWithUnits(stat.liveSize, ui::DATA_UNITS_KIBIBYTE, false));
@@ -112,6 +114,7 @@ bool IsSharedByGroup(int col_id) {
     case IDS_TASK_MANAGER_WEBCORE_IMAGE_CACHE_COLUMN:
     case IDS_TASK_MANAGER_WEBCORE_SCRIPTS_CACHE_COLUMN:
     case IDS_TASK_MANAGER_WEBCORE_CSS_CACHE_COLUMN:
+    case IDS_TASK_MANAGER_NACL_DEBUG_STUB_PORT_COLUMN:
       return true;
     default:
       return false;
@@ -154,23 +157,6 @@ void GetWinUSERHandles(base::ProcessHandle process,
 }
 #endif
 
-// Counts the number of extension background pages associated with this profile.
-int CountExtensionBackgroundPagesForProfile(Profile* profile) {
-  int count = 0;
-  ExtensionProcessManager* manager =
-      extensions::ExtensionSystem::Get(profile)->process_manager();
-  if (!manager)
-    return count;
-
-  const ExtensionProcessManager::ExtensionHostSet& background_hosts =
-      manager->background_hosts();
-  for (ExtensionProcessManager::const_iterator iter = background_hosts.begin();
-       iter != background_hosts.end(); ++iter) {
-    ++count;
-  }
-  return count;
-}
-
 }  // namespace
 
 class TaskManagerModelGpuDataManagerObserver
@@ -206,7 +192,9 @@ class TaskManagerModelGpuDataManagerObserver
 };
 
 TaskManagerModel::PerResourceValues::PerResourceValues()
-    : is_title_valid(false),
+    : is_nacl_debug_stub_port_valid(false),
+      nacl_debug_stub_port(0),
+      is_title_valid(false),
       is_profile_name_valid(false),
       network_usage(0),
       is_process_id_valid(false),
@@ -220,15 +208,15 @@ TaskManagerModel::PerResourceValues::PerResourceValues()
       sqlite_memory_bytes(0),
       is_v8_memory_valid(false),
       v8_memory_allocated(0),
-      v8_memory_used(0) {
-}
+      v8_memory_used(0) {}
 
-TaskManagerModel::PerResourceValues::~PerResourceValues() {
-}
+TaskManagerModel::PerResourceValues::~PerResourceValues() {}
 
 TaskManagerModel::PerProcessValues::PerProcessValues()
     : is_cpu_usage_valid(false),
       cpu_usage(0),
+      is_idle_wakeups_valid(false),
+      idle_wakeups(0),
       is_private_and_shared_valid(false),
       private_bytes(0),
       shared_bytes(0),
@@ -242,11 +230,9 @@ TaskManagerModel::PerProcessValues::PerProcessValues()
       gdi_handles_peak(0),
       is_user_handles_valid(0),
       user_handles(0),
-      user_handles_peak(0) {
-}
+      user_handles_peak(0) {}
 
-TaskManagerModel::PerProcessValues::~PerProcessValues() {
-}
+TaskManagerModel::PerProcessValues::~PerProcessValues() {}
 
 ////////////////////////////////////////////////////////////////////////////////
 // TaskManagerModel class
@@ -272,7 +258,7 @@ TaskManagerModel::TaskManagerModel(TaskManager* task_manager)
       new task_manager::ExtensionProcessResourceProvider(task_manager));
   AddResourceProvider(new task_manager::GuestResourceProvider(task_manager));
 
-#if defined(ENABLE_NOTIFICATIONS)
+#if !defined(OS_CHROMEOS) && defined(ENABLE_NOTIFICATIONS)
   ResourceProvider* provider =
       task_manager::NotificationResourceProvider::Create(task_manager);
   if (provider)
@@ -298,12 +284,25 @@ int TaskManagerModel::GroupCount() const {
   return group_map_.size();
 }
 
+int TaskManagerModel::GetNaClDebugStubPort(int index) const {
+  PerResourceValues& values(GetPerResourceValues(index));
+  if (!values.is_nacl_debug_stub_port_valid) {
+    values.is_nacl_debug_stub_port_valid = true;
+    values.nacl_debug_stub_port = GetResource(index)->GetNaClDebugStubPort();
+  }
+  return values.nacl_debug_stub_port;
+}
+
 int64 TaskManagerModel::GetNetworkUsage(int index) const {
   return GetNetworkUsage(GetResource(index));
 }
 
 double TaskManagerModel::GetCPUUsage(int index) const {
   return GetCPUUsage(GetResource(index));
+}
+
+int TaskManagerModel::GetIdleWakeupsPerSecond(int index) const {
+  return GetIdleWakeupsPerSecond(GetResource(index));
 }
 
 base::ProcessId TaskManagerModel::GetProcessId(int index) const {
@@ -332,9 +331,9 @@ int TaskManagerModel::GetResourceIndexByUniqueId(const int unique_id) const {
   return -1;
 }
 
-string16 TaskManagerModel::GetResourceById(int index, int col_id) const {
+base::string16 TaskManagerModel::GetResourceById(int index, int col_id) const {
   if (IsSharedByGroup(col_id) && !IsResourceFirstInGroup(index))
-    return string16();
+    return base::string16();
 
   switch (col_id) {
     case IDS_TASK_MANAGER_TASK_COLUMN:
@@ -367,6 +366,9 @@ string16 TaskManagerModel::GetResourceById(int index, int col_id) const {
     case IDS_TASK_MANAGER_USER_HANDLES_COLUMN:
       return GetResourceUSERHandles(index);
 
+    case IDS_TASK_MANAGER_IDLE_WAKEUPS_COLUMN:
+      return GetResourceIdleWakeupsPerSecond(index);
+
     case IDS_TASK_MANAGER_GOATS_TELEPORTED_COLUMN:
       return GetResourceGoatsTeleported(index);
 
@@ -391,13 +393,16 @@ string16 TaskManagerModel::GetResourceById(int index, int col_id) const {
     case IDS_TASK_MANAGER_JAVASCRIPT_MEMORY_ALLOCATED_COLUMN:
       return GetResourceV8MemoryAllocatedSize(index);
 
+    case IDS_TASK_MANAGER_NACL_DEBUG_STUB_PORT_COLUMN:
+      return GetResourceNaClDebugStubPort(index);
+
     default:
       NOTREACHED();
-      return string16();
+      return base::string16();
   }
 }
 
-const string16& TaskManagerModel::GetResourceTitle(int index) const {
+const base::string16& TaskManagerModel::GetResourceTitle(int index) const {
   PerResourceValues& values = GetPerResourceValues(index);
   if (!values.is_title_valid) {
     values.is_title_valid = true;
@@ -406,7 +411,8 @@ const string16& TaskManagerModel::GetResourceTitle(int index) const {
   return values.title;
 }
 
-const string16& TaskManagerModel::GetResourceProfileName(int index) const {
+const base::string16& TaskManagerModel::GetResourceProfileName(
+    int index) const {
   PerResourceValues& values(GetPerResourceValues(index));
   if (!values.is_profile_name_valid) {
     values.is_profile_name_valid = true;
@@ -415,19 +421,28 @@ const string16& TaskManagerModel::GetResourceProfileName(int index) const {
   return values.profile_name;
 }
 
-string16 TaskManagerModel::GetResourceNetworkUsage(int index) const {
+base::string16 TaskManagerModel::GetResourceNaClDebugStubPort(int index) const {
+  int port = GetNaClDebugStubPort(index);
+  if (port == 0) {
+    return base::ASCIIToUTF16("N/A");
+  } else {
+    return base::IntToString16(port);
+  }
+}
+
+base::string16 TaskManagerModel::GetResourceNetworkUsage(int index) const {
   int64 net_usage = GetNetworkUsage(index);
   if (net_usage == -1)
     return l10n_util::GetStringUTF16(IDS_TASK_MANAGER_NA_CELL_TEXT);
   if (net_usage == 0)
-    return ASCIIToUTF16("0");
-  string16 net_byte = ui::FormatSpeed(net_usage);
+    return base::ASCIIToUTF16("0");
+  base::string16 net_byte = ui::FormatSpeed(net_usage);
   // Force number string to have LTR directionality.
   return base::i18n::GetDisplayStringInLTRDirectionality(net_byte);
 }
 
-string16 TaskManagerModel::GetResourceCPUUsage(int index) const {
-  return UTF8ToUTF16(base::StringPrintf(
+base::string16 TaskManagerModel::GetResourceCPUUsage(int index) const {
+  return base::UTF8ToUTF16(base::StringPrintf(
 #if defined(OS_MACOSX)
       // Activity Monitor shows %cpu with one decimal digit -- be
       // consistent with that.
@@ -438,59 +453,59 @@ string16 TaskManagerModel::GetResourceCPUUsage(int index) const {
       GetCPUUsage(GetResource(index))));
 }
 
-string16 TaskManagerModel::GetResourcePrivateMemory(int index) const {
+base::string16 TaskManagerModel::GetResourcePrivateMemory(int index) const {
   size_t private_mem;
   if (!GetPrivateMemory(index, &private_mem))
-    return ASCIIToUTF16("N/A");
+    return base::ASCIIToUTF16("N/A");
   return GetMemCellText(private_mem);
 }
 
-string16 TaskManagerModel::GetResourceSharedMemory(int index) const {
+base::string16 TaskManagerModel::GetResourceSharedMemory(int index) const {
   size_t shared_mem;
   if (!GetSharedMemory(index, &shared_mem))
-    return ASCIIToUTF16("N/A");
+    return base::ASCIIToUTF16("N/A");
   return GetMemCellText(shared_mem);
 }
 
-string16 TaskManagerModel::GetResourcePhysicalMemory(int index) const {
+base::string16 TaskManagerModel::GetResourcePhysicalMemory(int index) const {
   size_t phys_mem;
   GetPhysicalMemory(index, &phys_mem);
   return GetMemCellText(phys_mem);
 }
 
-string16 TaskManagerModel::GetResourceProcessId(int index) const {
+base::string16 TaskManagerModel::GetResourceProcessId(int index) const {
   return base::IntToString16(GetProcessId(index));
 }
 
-string16 TaskManagerModel::GetResourceGDIHandles(int index) const {
+base::string16 TaskManagerModel::GetResourceGDIHandles(int index) const {
   size_t current, peak;
   GetGDIHandles(index, &current, &peak);
   return l10n_util::GetStringFUTF16(IDS_TASK_MANAGER_HANDLES_CELL_TEXT,
       base::IntToString16(current), base::IntToString16(peak));
 }
 
-string16 TaskManagerModel::GetResourceUSERHandles(int index) const {
+base::string16 TaskManagerModel::GetResourceUSERHandles(int index) const {
   size_t current, peak;
   GetUSERHandles(index, &current, &peak);
   return l10n_util::GetStringFUTF16(IDS_TASK_MANAGER_HANDLES_CELL_TEXT,
       base::IntToString16(current), base::IntToString16(peak));
 }
 
-string16 TaskManagerModel::GetResourceWebCoreImageCacheSize(
+base::string16 TaskManagerModel::GetResourceWebCoreImageCacheSize(
     int index) const {
   if (!CacheWebCoreStats(index))
     return l10n_util::GetStringUTF16(IDS_TASK_MANAGER_NA_CELL_TEXT);
   return FormatStatsSize(GetPerResourceValues(index).webcore_stats.images);
 }
 
-string16 TaskManagerModel::GetResourceWebCoreScriptsCacheSize(
+base::string16 TaskManagerModel::GetResourceWebCoreScriptsCacheSize(
     int index) const {
   if (!CacheWebCoreStats(index))
     return l10n_util::GetStringUTF16(IDS_TASK_MANAGER_NA_CELL_TEXT);
   return FormatStatsSize(GetPerResourceValues(index).webcore_stats.scripts);
 }
 
-string16 TaskManagerModel::GetResourceWebCoreCSSCacheSize(
+base::string16 TaskManagerModel::GetResourceWebCoreCSSCacheSize(
     int index) const {
   if (!CacheWebCoreStats(index))
     return l10n_util::GetStringUTF16(IDS_TASK_MANAGER_NA_CELL_TEXT);
@@ -498,38 +513,43 @@ string16 TaskManagerModel::GetResourceWebCoreCSSCacheSize(
       GetPerResourceValues(index).webcore_stats.cssStyleSheets);
 }
 
-string16 TaskManagerModel::GetResourceVideoMemory(int index) const {
+base::string16 TaskManagerModel::GetResourceVideoMemory(int index) const {
   size_t video_memory;
   bool has_duplicates;
   if (!GetVideoMemory(index, &video_memory, &has_duplicates) || !video_memory)
-    return ASCIIToUTF16("N/A");
+    return base::ASCIIToUTF16("N/A");
   if (has_duplicates) {
-    return GetMemCellText(video_memory) + ASCIIToUTF16("*");
+    return GetMemCellText(video_memory) + base::ASCIIToUTF16("*");
   }
   return GetMemCellText(video_memory);
 }
 
-string16 TaskManagerModel::GetResourceFPS(
+base::string16 TaskManagerModel::GetResourceFPS(
     int index) const {
   float fps = 0;
   if (!GetFPS(index, &fps))
     return l10n_util::GetStringUTF16(IDS_TASK_MANAGER_NA_CELL_TEXT);
-  return UTF8ToUTF16(base::StringPrintf("%.0f", fps));
+  return base::UTF8ToUTF16(base::StringPrintf("%.0f", fps));
 }
 
-string16 TaskManagerModel::GetResourceSqliteMemoryUsed(int index) const {
+base::string16 TaskManagerModel::GetResourceSqliteMemoryUsed(int index) const {
   size_t bytes = 0;
   if (!GetSqliteMemoryUsedBytes(index, &bytes))
     return l10n_util::GetStringUTF16(IDS_TASK_MANAGER_NA_CELL_TEXT);
   return GetMemCellText(bytes);
 }
 
-string16 TaskManagerModel::GetResourceGoatsTeleported(int index) const {
+base::string16 TaskManagerModel::GetResourceIdleWakeupsPerSecond(int index)
+    const {
+  return base::FormatNumber(GetIdleWakeupsPerSecond(GetResource(index)));
+}
+
+base::string16 TaskManagerModel::GetResourceGoatsTeleported(int index) const {
   CHECK_LT(index, ResourceCount());
   return base::FormatNumber(GetGoatsTeleported(index));
 }
 
-string16 TaskManagerModel::GetResourceV8MemoryAllocatedSize(
+base::string16 TaskManagerModel::GetResourceV8MemoryAllocatedSize(
     int index) const {
   size_t memory_allocated = 0, memory_used = 0;
   if (!GetV8MemoryUsed(index, &memory_used) ||
@@ -632,7 +652,7 @@ void TaskManagerModel::GetUSERHandles(int index,
 
 bool TaskManagerModel::GetWebCoreCacheStats(
     int index,
-    WebKit::WebCache::ResourceTypeStats* result) const {
+    blink::WebCache::ResourceTypeStats* result) const {
   if (!CacheWebCoreStats(index))
     return false;
   *result = GetPerResourceValues(index).webcore_stats;
@@ -825,8 +845,8 @@ int TaskManagerModel::CompareValues(int row1, int row2, int col_id) const {
           NOTREACHED();
         }
       }
-      const string16& title1 = GetResourceTitle(row1);
-      const string16& title2 = GetResourceTitle(row2);
+      const base::string16& title1 = GetResourceTitle(row1);
+      const base::string16& title2 = GetResourceTitle(row2);
       UErrorCode compare_status = U_ZERO_ERROR;
       UCollationResult compare_result = collator->compare(
           static_cast<const UChar*>(title1.c_str()),
@@ -839,8 +859,8 @@ int TaskManagerModel::CompareValues(int row1, int row2, int col_id) const {
     }
 
     case IDS_TASK_MANAGER_PROFILE_NAME_COLUMN: {
-      const string16& profile1 = GetResourceProfileName(row1);
-      const string16& profile2 = GetResourceProfileName(row2);
+      const base::string16& profile1 = GetResourceProfileName(row1);
+      const base::string16& profile2 = GetResourceProfileName(row2);
       return profile1.compare(0, profile1.length(), profile2, 0,
                               profile2.length());
     }
@@ -864,6 +884,10 @@ int TaskManagerModel::CompareValues(int row1, int row2, int col_id) const {
     case IDS_TASK_MANAGER_PHYSICAL_MEM_COLUMN:
       return ValueCompareMember(
           this, &TaskManagerModel::GetPhysicalMemory, row1, row2);
+
+    case IDS_TASK_MANAGER_NACL_DEBUG_STUB_PORT_COLUMN:
+      return ValueCompare(GetNaClDebugStubPort(row1),
+                          GetNaClDebugStubPort(row2));
 
     case IDS_TASK_MANAGER_PROCESS_ID_COLUMN:
       return ValueCompare(GetProcessId(row1), GetProcessId(row2));
@@ -890,9 +914,9 @@ int TaskManagerModel::CompareValues(int row1, int row2, int col_id) const {
       bool row1_stats_valid = CacheWebCoreStats(row1);
       bool row2_stats_valid = CacheWebCoreStats(row2);
       if (row1_stats_valid && row2_stats_valid) {
-        const WebKit::WebCache::ResourceTypeStats& stats1(
+        const blink::WebCache::ResourceTypeStats& stats1(
             GetPerResourceValues(row1).webcore_stats);
-        const WebKit::WebCache::ResourceTypeStats& stats2(
+        const blink::WebCache::ResourceTypeStats& stats2(
             GetPerResourceValues(row2).webcore_stats);
         switch (col_id) {
           case IDS_TASK_MANAGER_WEBCORE_IMAGE_CACHE_COLUMN:
@@ -1174,17 +1198,27 @@ void TaskManagerModel::Refresh() {
   // lazily) as process_util::GetCPUUsage() returns the CPU usage since the last
   // time it was called, and not calling it everytime would skew the value the
   // next time it is retrieved (as it would be for more than 1 cycle).
+  // The same is true for idle wakeups.
   for (ResourceList::iterator iter = resources_.begin();
        iter != resources_.end(); ++iter) {
     base::ProcessHandle process = (*iter)->GetProcess();
     PerProcessValues& values(per_process_cache_[process]);
-    if (values.is_cpu_usage_valid)
+    if (values.is_cpu_usage_valid && values.is_idle_wakeups_valid)
       continue;
-
-    values.is_cpu_usage_valid = true;
     MetricsMap::iterator metrics_iter = metrics_map_.find(process);
     DCHECK(metrics_iter != metrics_map_.end());
-    values.cpu_usage = metrics_iter->second->GetCPUUsage();
+    if (!values.is_cpu_usage_valid) {
+      values.is_cpu_usage_valid = true;
+      values.cpu_usage = metrics_iter->second->GetCPUUsage();
+    }
+#if defined(OS_MACOSX)
+    // TODO: Implement GetIdleWakeupsPerSecond() on other platforms,
+    // crbug.com/120488
+    if (!values.is_idle_wakeups_valid) {
+      values.is_idle_wakeups_valid = true;
+      values.idle_wakeups = metrics_iter->second->GetIdleWakeupsPerSecond();
+    }
+#endif  // defined(OS_MACOSX)
   }
 
   // Send a request to refresh GPU memory consumption values
@@ -1219,7 +1253,7 @@ void TaskManagerModel::Refresh() {
 
 void TaskManagerModel::NotifyResourceTypeStats(
     base::ProcessId renderer_id,
-    const WebKit::WebCache::ResourceTypeStats& stats) {
+    const blink::WebCache::ResourceTypeStats& stats) {
   for (ResourceList::iterator it = resources_.begin();
        it != resources_.end(); ++it) {
     if (base::GetProcId((*it)->GetProcess()) == renderer_id) {
@@ -1263,16 +1297,14 @@ void TaskManagerModel::NotifyBytesRead(const net::URLRequest& request,
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
 
   // Only net::URLRequestJob instances created by the ResourceDispatcherHost
-  // have an associated ResourceRequestInfo.
+  // have an associated ResourceRequestInfo and a render frame associated.
+  // All other jobs will have -1 returned for the render process child and
+  // routing ids - the jobs may still match a resource based on their origin id,
+  // otherwise BytesRead() will attribute the activity to the Browser resource.
   const ResourceRequestInfo* info = ResourceRequestInfo::ForRequest(&request);
-
-  // have a render view associated.  All other jobs will have -1 returned for
-  // the render process child and routing ids - the jobs may still match a
-  // resource based on their origin id, otherwise BytesRead() will attribute
-  // the activity to the Browser resource.
-  int render_process_host_child_id = -1, routing_id = -1;
+  int child_id = -1, route_id = -1;
   if (info)
-    info->GetAssociatedRenderView(&render_process_host_child_id, &routing_id);
+    info->GetAssociatedRenderFrame(&child_id, &route_id);
 
   // Get the origin PID of the request's originator.  This will only be set for
   // plugins - for renderer or browser initiated requests it will be zero.
@@ -1288,8 +1320,7 @@ void TaskManagerModel::NotifyBytesRead(const net::URLRequest& request,
   }
 
   bytes_read_buffer_.push_back(
-      BytesReadParam(origin_pid, render_process_host_child_id,
-                     routing_id, byte_count));
+      BytesReadParam(origin_pid, child_id, route_id, byte_count));
 }
 
 // This is called on the UI thread.
@@ -1360,8 +1391,8 @@ void TaskManagerModel::BytesRead(BytesReadParam param) {
   for (ResourceProviderList::iterator iter = providers_.begin();
        iter != providers_.end(); ++iter) {
     resource = (*iter)->GetResource(param.origin_pid,
-                                    param.render_process_host_child_id,
-                                    param.routing_id);
+                                    param.child_id,
+                                    param.route_id);
     if (resource)
       break;
   }
@@ -1371,9 +1402,9 @@ void TaskManagerModel::BytesRead(BytesReadParam param) {
     // tab that started a download was closed, or the request may have had
     // no originating resource associated with it in the first place.
     // We attribute orphaned/unaccounted activity to the Browser process.
-    CHECK(param.origin_pid || (param.render_process_host_child_id != -1));
+    CHECK(param.origin_pid || (param.child_id != -1));
     param.origin_pid = 0;
-    param.render_process_host_child_id = param.routing_id = -1;
+    param.child_id = param.route_id = -1;
     BytesRead(param);
     return;
   }
@@ -1426,9 +1457,15 @@ double TaskManagerModel::GetCPUUsage(Resource* resource) const {
   return values.cpu_usage;
 }
 
-string16 TaskManagerModel::GetMemCellText(int64 number) const {
+int TaskManagerModel::GetIdleWakeupsPerSecond(Resource* resource) const {
+  const PerProcessValues& values(per_process_cache_[resource->GetProcess()]);
+  // Returns 0 if not valid, which is fine.
+  return values.idle_wakeups;
+}
+
+base::string16 TaskManagerModel::GetMemCellText(int64 number) const {
 #if !defined(OS_MACOSX)
-  string16 str = base::FormatNumber(number / 1024);
+  base::string16 str = base::FormatNumber(number / 1024);
 
   // Adjust number string if necessary.
   base::i18n::AdjustStringForLocaleDirection(&str);

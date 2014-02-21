@@ -33,18 +33,19 @@
     },
   },
   'variables': {
+    # Make sure asm_sources is always defined even if an arch doesn't have any
+    # asm sources (e.g. mips or x86 with forcefully disabled asm).
+    'asm_sources': [
+    ],
+
     # Allow overriding the selection of which FFmpeg binaries to copy via an
     # environment variable.  Affects the ffmpeg_binaries target.
     'conditions': [
-      ['target_arch == "arm" and armv7 == 1 and arm_neon == 1', {
+      ['target_arch == "arm" and arm_version == 7 and arm_neon == 1', {
         # Need a separate config for arm+neon vs arm
         'ffmpeg_config%': 'arm-neon',
       }, {
         'ffmpeg_config%': '<(target_arch)',
-      }],
-      ['target_arch == "mipsel"', {
-        'asm_sources': [
-        ],
       }],
       ['OS == "win" and (MSVS_VERSION == "2013" or MSVS_VERSION == "2013e")', {
         'os_config%': 'win-vs2013',
@@ -182,7 +183,7 @@
               '<(shared_generated_dir)/<(RULE_INPUT_DIRNAME)/<(RULE_INPUT_ROOT).c',
               '-I', '<(platform_config_root)',
             ],
-            'message': 'Converting <(RULE_INPUT_PATH) from C99 to C89.',
+            'message': 'Converting <(RULE_INPUT_PATH) from C99 to C89',
             'process_outputs_as_sources': 1,
           },
         ],
@@ -488,8 +489,7 @@
                              '-m', 'ffmpegsumo.dll',
                              '<@(_inputs)',
                   ],
-                  'message': 'Generating FFmpeg export definitions.',
-                  'msvs_cygwin_shell': 1,
+                  'message': 'Generating FFmpeg export definitions',
                 },
               ],
             }],
@@ -571,7 +571,7 @@
                          '-t', '<(outfile_type)',
                          '<@(RULE_INPUT_PATH)',
               ],
-              'message': 'Generating FFmpeg import libraries.',
+              'message': 'Generating FFmpeg import libraries',
             },
           ],
         }, {  # else OS != "win", use POSIX stub generator
@@ -631,7 +631,7 @@
                          '<@(_inputs)',
               ],
               'process_outputs_as_sources': 1,
-              'message': 'Generating FFmpeg stubs for dynamic loading.',
+              'message': 'Generating FFmpeg stubs for dynamic loading',
             },
           ],
           'conditions': [

@@ -29,9 +29,9 @@
 #include "bindings/v8/ScriptWrappable.h"
 #include "core/dom/ActiveDOMObject.h"
 #include "core/events/EventTarget.h"
-#include "core/platform/mediastream/MediaStreamDescriptor.h"
-#include "core/platform/mediastream/MediaStreamSource.h"
 #include "modules/mediastream/SourceInfo.h"
+#include "platform/mediastream/MediaStreamDescriptor.h"
+#include "platform/mediastream/MediaStreamSource.h"
 #include "wtf/RefCounted.h"
 #include "wtf/RefPtr.h"
 #include "wtf/Vector.h"
@@ -43,7 +43,7 @@ class ExceptionState;
 class MediaStreamComponent;
 class MediaStreamTrackSourcesCallback;
 
-class MediaStreamTrack : public RefCounted<MediaStreamTrack>, public ScriptWrappable, public ActiveDOMObject, public EventTargetWithInlineData, public MediaStreamSource::Observer {
+class MediaStreamTrack FINAL : public RefCounted<MediaStreamTrack>, public ScriptWrappable, public ActiveDOMObject, public EventTargetWithInlineData, public MediaStreamSource::Observer {
     REFCOUNTED_EVENT_TARGET(MediaStreamTrack);
 public:
     static PassRefPtr<MediaStreamTrack> create(ExecutionContext*, MediaStreamComponent*);
@@ -60,7 +60,7 @@ public:
 
     String readyState() const;
 
-    static void getSources(ExecutionContext*, PassRefPtr<MediaStreamTrackSourcesCallback>, ExceptionState&);
+    static void getSources(ExecutionContext*, PassOwnPtr<MediaStreamTrackSourcesCallback>, ExceptionState&);
     void stopTrack(ExceptionState&);
 
     DEFINE_ATTRIBUTE_EVENT_LISTENER(mute);

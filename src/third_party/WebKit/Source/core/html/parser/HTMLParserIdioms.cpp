@@ -25,15 +25,17 @@
 #include "config.h"
 #include "core/html/parser/HTMLParserIdioms.h"
 
+#include "HTMLNames.h"
 #include <limits>
-#include "core/dom/QualifiedName.h"
-#include "core/html/parser/HTMLIdentifier.h"
-#include "platform/Decimal.h"
 #include "wtf/MathExtras.h"
 #include "wtf/text/AtomicString.h"
 #include "wtf/text/StringBuilder.h"
+#include "wtf/text/StringHash.h"
+#include "wtf/text/TextEncoding.h"
 
 namespace WebCore {
+
+using namespace HTMLNames;
 
 template <typename CharType>
 static String stripLeadingAndTrailingHTMLSpaces(String string, const CharType* characters, unsigned length)
@@ -115,11 +117,6 @@ Decimal parseToDecimalForNumberType(const String& string, const Decimal& fallbac
     return value.isZero() ? Decimal(0) : value;
 }
 
-Decimal parseToDecimalForNumberType(const String& string)
-{
-    return parseToDecimalForNumberType(string, Decimal::nan());
-}
-
 double parseToDoubleForNumberType(const String& string, double fallbackValue)
 {
     // See HTML5 2.5.4.3 `Real numbers.'
@@ -145,11 +142,6 @@ double parseToDoubleForNumberType(const String& string, double fallbackValue)
 
     // The following expression converts -0 to +0.
     return value ? value : 0;
-}
-
-double parseToDoubleForNumberType(const String& string)
-{
-    return parseToDoubleForNumberType(string, std::numeric_limits<double>::quiet_NaN());
 }
 
 template <typename CharacterType>
@@ -277,6 +269,92 @@ bool parseHTMLNonNegativeInteger(const String& input, unsigned& value)
     return parseHTMLNonNegativeIntegerInternal(start, start + length, value);
 }
 
+static const char charsetString[] = "charset";
+static const size_t charsetLength = sizeof("charset") - 1;
+
+String extractCharset(const String& value)
+{
+    size_t pos = 0;
+    unsigned length = value.length();
+
+    while (pos < length) {
+        pos = value.find(charsetString, pos, false);
+        if (pos == kNotFound)
+            break;
+
+        pos += charsetLength;
+
+        // Skip whitespace.
+        while (pos < length && value[pos] <= ' ')
+            ++pos;
+
+        if (value[pos] != '=')
+            continue;
+
+        ++pos;
+
+        while (pos < length && value[pos] <= ' ')
+            ++pos;
+
+        char quoteMark = 0;
+        if (pos < length && (value[pos] == '"' || value[pos] == '\'')) {
+            quoteMark = static_cast<char>(value[pos++]);
+            ASSERT(!(quoteMark & 0x80));
+        }
+
+        if (pos == length)
+            break;
+
+        unsigned end = pos;
+        while (end < length && ((quoteMark && value[end] != quoteMark) || (!quoteMark && value[end] > ' ' && value[end] != '"' && value[end] != '\'' && value[end] != ';')))
+            ++end;
+
+        if (quoteMark && (end == length))
+            break; // Close quote not found.
+
+        return value.substring(pos, end - pos);
+    }
+
+    return "";
+}
+
+enum Mode {
+    None,
+    Charset,
+    Pragma,
+};
+
+WTF::TextEncoding encodingFromMetaAttributes(const HTMLAttributeList& attributes)
+{
+    bool gotPragma = false;
+    Mode mode = None;
+    String charset;
+
+    for (HTMLAttributeList::const_iterator iter = attributes.begin(); iter != attributes.end(); ++iter) {
+        const String& attributeName = iter->first;
+        const String& attributeValue = AtomicString(iter->second);
+
+        if (threadSafeMatch(attributeName, http_equivAttr)) {
+            if (equalIgnoringCase(attributeValue, "content-type"))
+                gotPragma = true;
+        } else if (charset.isEmpty()) {
+            if (threadSafeMatch(attributeName, charsetAttr)) {
+                charset = attributeValue;
+                mode = Charset;
+            } else if (threadSafeMatch(attributeName, contentAttr)) {
+                charset = extractCharset(attributeValue);
+                if (charset.length())
+                    mode = Pragma;
+            }
+        }
+    }
+
+    if (mode == Charset || (mode == Pragma && gotPragma))
+        return WTF::TextEncoding(stripLeadingAndTrailingHTMLSpaces(charset));
+
+    return WTF::TextEncoding();
+}
+
 static bool threadSafeEqual(const StringImpl* a, const StringImpl* b)
 {
     if (a == b)
@@ -291,9 +369,31 @@ bool threadSafeMatch(const QualifiedName& a, const QualifiedName& b)
     return threadSafeEqual(a.localName().impl(), b.localName().impl());
 }
 
-bool threadSafeMatch(const HTMLIdentifier& localName, const QualifiedName& qName)
+bool threadSafeMatch(const String& localName, const QualifiedName& qName)
 {
-    return threadSafeEqual(localName.asStringImpl(), qName.localName().impl());
+    return threadSafeEqual(localName.impl(), qName.localName().impl());
+}
+
+StringImpl* findStringIfStatic(const UChar* characters, unsigned length)
+{
+    // We don't need to try hashing if we know the string is too long.
+    if (length > StringImpl::highestStaticStringLength())
+        return 0;
+    // computeHashAndMaskTop8Bits is the function StringImpl::hash() uses.
+    unsigned hash = StringHasher::computeHashAndMaskTop8Bits(characters, length);
+    const WTF::StaticStringsTable& table = StringImpl::allStaticStrings();
+    ASSERT(!table.isEmpty());
+
+    WTF::StaticStringsTable::const_iterator it = table.find(hash);
+    if (it == table.end())
+        return 0;
+    // It's possible to have hash collisions between arbitrary strings and
+    // known identifiers (e.g. "bvvfg" collides with "script").
+    // However ASSERTs in StringImpl::createStatic guard against there ever being collisions
+    // between static strings.
+    if (!equal(it->value, characters, length))
+        return 0;
+    return it->value;
 }
 
 }

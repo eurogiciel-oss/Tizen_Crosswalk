@@ -26,6 +26,7 @@
 #include "net/base/net_errors.h"
 #include "net/base/net_util.h"
 #include "net/base/request_priority.h"
+#include "net/http/http_byte_range.h"
 #include "net/http/http_request_headers.h"
 #include "net/url_request/url_request.h"
 #include "net/url_request/url_request_context.h"
@@ -36,7 +37,12 @@
 #include "webkit/browser/fileapi/file_system_context.h"
 #include "webkit/browser/fileapi/file_system_file_util.h"
 
-namespace fileapi {
+using fileapi::AsyncFileTestHelper;
+using fileapi::FileSystemContext;
+using fileapi::FileSystemURL;
+using fileapi::FileSystemURLRequestJob;
+
+namespace content {
 namespace {
 
 // We always use the TEMPORARY FileSystem in this test.
@@ -63,8 +69,8 @@ class FileSystemURLRequestJobTest : public testing::Test {
         CreateFileSystemContextForTesting(NULL, temp_dir_.path());
 
     file_system_context_->OpenFileSystem(
-        GURL("http://remote/"), kFileSystemTypeTemporary,
-        OPEN_FILE_SYSTEM_CREATE_IF_NONEXISTENT,
+        GURL("http://remote/"), fileapi::kFileSystemTypeTemporary,
+        fileapi::OPEN_FILE_SYSTEM_CREATE_IF_NONEXISTENT,
         base::Bind(&FileSystemURLRequestJobTest::OnOpenFileSystem,
                    weak_factory_.GetWeakPtr()));
     base::RunLoop().RunUntilIdle();
@@ -86,8 +92,8 @@ class FileSystemURLRequestJobTest : public testing::Test {
 
   void OnOpenFileSystem(const GURL& root_url,
                         const std::string& name,
-                        base::PlatformFileError result) {
-    ASSERT_EQ(base::PLATFORM_FILE_OK, result);
+                        base::File::Error result) {
+    ASSERT_EQ(base::File::FILE_OK, result);
   }
 
   void TestRequestHelper(const GURL& url,
@@ -134,9 +140,9 @@ class FileSystemURLRequestJobTest : public testing::Test {
   void CreateDirectory(const base::StringPiece& dir_name) {
     FileSystemURL url = file_system_context_->CreateCrackedFileSystemURL(
         GURL("http://remote"),
-        kFileSystemTypeTemporary,
+        fileapi::kFileSystemTypeTemporary,
         base::FilePath().AppendASCII(dir_name));
-    ASSERT_EQ(base::PLATFORM_FILE_OK, AsyncFileTestHelper::CreateDirectory(
+    ASSERT_EQ(base::File::FILE_OK, AsyncFileTestHelper::CreateDirectory(
         file_system_context_, url));
   }
 
@@ -144,9 +150,9 @@ class FileSystemURLRequestJobTest : public testing::Test {
                  const char* buf, int buf_size) {
     FileSystemURL url = file_system_context_->CreateCrackedFileSystemURL(
         GURL("http://remote"),
-        kFileSystemTypeTemporary,
+        fileapi::kFileSystemTypeTemporary,
         base::FilePath().AppendASCII(file_name));
-    ASSERT_EQ(base::PLATFORM_FILE_OK,
+    ASSERT_EQ(base::File::FILE_OK,
               AsyncFileTestHelper::CreateFileWithData(
                   file_system_context_, url, buf, buf_size));
   }
@@ -176,7 +182,7 @@ class FileSystemURLRequestJobTest : public testing::Test {
   base::MessageLoopForIO message_loop_;
 
   base::ScopedTempDir temp_dir_;
-  scoped_refptr<FileSystemContext> file_system_context_;
+  scoped_refptr<fileapi::FileSystemContext> file_system_context_;
   base::WeakPtrFactory<FileSystemURLRequestJobTest> weak_factory_;
 
   net::URLRequestContext empty_context_;
@@ -220,10 +226,10 @@ TEST_F(FileSystemURLRequestJobTest, FileTestFullSpecifiedRange) {
                                     buffer.get() + last_byte_position + 1);
 
   net::HttpRequestHeaders headers;
-  headers.SetHeader(net::HttpRequestHeaders::kRange,
-                    base::StringPrintf(
-                         "bytes=%" PRIuS "-%" PRIuS,
-                         first_byte_position, last_byte_position));
+  headers.SetHeader(
+      net::HttpRequestHeaders::kRange,
+      net::HttpByteRange::Bounded(
+          first_byte_position, last_byte_position).GetHeaderValue());
   TestRequestWithHeaders(CreateFileSystemURL("bigfile"), &headers);
 
   ASSERT_FALSE(request_->is_pending());
@@ -243,9 +249,9 @@ TEST_F(FileSystemURLRequestJobTest, FileTestHalfSpecifiedRange) {
                                     buffer.get() + buffer_size);
 
   net::HttpRequestHeaders headers;
-  headers.SetHeader(net::HttpRequestHeaders::kRange,
-                    base::StringPrintf("bytes=%" PRIuS "-",
-                                       first_byte_position));
+  headers.SetHeader(
+      net::HttpRequestHeaders::kRange,
+      net::HttpByteRange::RightUnbounded(first_byte_position).GetHeaderValue());
   TestRequestWithHeaders(CreateFileSystemURL("bigfile"), &headers);
   ASSERT_FALSE(request_->is_pending());
   EXPECT_EQ(1, delegate_->response_started_count());
@@ -269,7 +275,9 @@ TEST_F(FileSystemURLRequestJobTest, FileTestMultipleRangesNotSupported) {
 TEST_F(FileSystemURLRequestJobTest, RangeOutOfBounds) {
   WriteFile("file1.dat", kTestFileData, arraysize(kTestFileData) - 1);
   net::HttpRequestHeaders headers;
-  headers.SetHeader(net::HttpRequestHeaders::kRange, "bytes=500-1000");
+  headers.SetHeader(
+      net::HttpRequestHeaders::kRange,
+      net::HttpByteRange::Bounded(500, 1000).GetHeaderValue());
   TestRequestWithHeaders(CreateFileSystemURL("file1.dat"), &headers);
 
   ASSERT_FALSE(request_->is_pending());
@@ -362,4 +370,4 @@ TEST_F(FileSystemURLRequestJobTest, Incognito) {
 }
 
 }  // namespace
-}  // namespace fileapi
+}  // namespace content

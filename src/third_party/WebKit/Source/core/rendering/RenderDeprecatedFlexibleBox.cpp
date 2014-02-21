@@ -25,11 +25,11 @@
 #include "config.h"
 #include "core/rendering/RenderDeprecatedFlexibleBox.h"
 
-#include "core/page/UseCounter.h"
-#include "core/platform/graphics/Font.h"
+#include "core/frame/UseCounter.h"
 #include "core/rendering/LayoutRepainter.h"
 #include "core/rendering/RenderLayer.h"
 #include "core/rendering/RenderView.h"
+#include "platform/fonts/Font.h"
 #include "wtf/StdLibExtras.h"
 #include "wtf/unicode/CharacterNames.h"
 
@@ -81,11 +81,11 @@ public:
                 if (!m_ordinalIteration)
                     m_currentOrdinal = m_forward ? 1 : m_largestOrdinal;
                 else {
-                    if (m_ordinalIteration >= m_ordinalValues.size() + 1)
+                    if (static_cast<size_t>(m_ordinalIteration) >= m_ordinalValues.size() + 1)
                         return 0;
 
                     // Only copy+sort the values once per layout even if the iterator is reset.
-                    if (static_cast<size_t>(m_ordinalValues.size()) != m_sortedOrdinalValues.size()) {
+                    if (m_ordinalValues.size() != m_sortedOrdinalValues.size()) {
                         copyToVector(m_ordinalValues, m_sortedOrdinalValues);
                         sort(m_sortedOrdinalValues.begin(), m_sortedOrdinalValues.end());
                     }
@@ -250,7 +250,7 @@ void RenderDeprecatedFlexibleBox::computePreferredLogicalWidths()
     clearPreferredLogicalWidthsDirty();
 }
 
-void RenderDeprecatedFlexibleBox::layoutBlock(bool relayoutChildren, LayoutUnit)
+void RenderDeprecatedFlexibleBox::layoutBlock(bool relayoutChildren)
 {
     ASSERT(needsLayout());
 
@@ -948,15 +948,15 @@ void RenderDeprecatedFlexibleBox::applyLineClamp(FlexBoxIterator& iterator, bool
         LayoutUnit totalWidth;
         InlineBox* anchorBox = lastLine->lastChild();
         if (anchorBox && anchorBox->renderer()->style()->isLink())
-            totalWidth = anchorBox->logicalWidth() + font.width(RenderBlockFlow::constructTextRun(this, font, ellipsisAndSpace, 2, style()));
+            totalWidth = anchorBox->logicalWidth() + font.width(RenderBlockFlow::constructTextRun(this, font, ellipsisAndSpace, 2, style(), style()->direction()));
         else {
             anchorBox = 0;
-            totalWidth = font.width(RenderBlockFlow::constructTextRun(this, font, &horizontalEllipsis, 1, style()));
+            totalWidth = font.width(RenderBlockFlow::constructTextRun(this, font, &horizontalEllipsis, 1, style(), style()->direction()));
         }
 
         // See if this width can be accommodated on the last visible line
-        RenderBlock* destBlock = toRenderBlock(lastVisibleLine->renderer());
-        RenderBlock* srcBlock = toRenderBlock(lastLine->renderer());
+        RenderBlockFlow* destBlock = lastVisibleLine->block();
+        RenderBlockFlow* srcBlock = lastLine->block();
 
         // FIXME: Directions of src/destBlock could be different from our direction and from one another.
         if (!srcBlock->style()->isLeftToRightDirection())

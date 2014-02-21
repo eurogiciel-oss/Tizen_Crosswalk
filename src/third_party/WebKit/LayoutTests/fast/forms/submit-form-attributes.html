@@ -1,7 +1,7 @@
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <html>
 <head>
-<script src="../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../resources/js-test.js"></script>
 </head>
 <body>
 <p id="description"></p>
@@ -55,18 +55,18 @@ shouldBeEqualToString('input.formTarget', 'nta');
 debug('');
 debug('Setting null for input:');
 input.formEnctype = null;
-shouldBeEqualToString('input.formEnctype', '');
-shouldBe('input.getAttribute("formEnctype")', 'null');
+shouldBeEqualToString('input.formEnctype', 'application/x-www-form-urlencoded');
+shouldBeEqualToString('input.getAttribute("formEnctype")', 'null');
 input.setAttribute('formEnctype', null);
 shouldBeEqualToString('input.formEnctype', 'application/x-www-form-urlencoded');
 input.formMethod = null;
-shouldBeEqualToString('input.formMethod', '');
-shouldBe('input.getAttribute("formMethod")', 'null');
+shouldBeEqualToString('input.formMethod', 'get');
+shouldBeEqualToString('input.getAttribute("formMethod")', 'null');
 input.setAttribute('formMethod', null);
 shouldBeEqualToString('input.formMethod', 'get');
 input.formTarget = null;
-shouldBeEqualToString('input.formTarget', '');
-shouldBe('input.getAttribute("formTarget")', 'null');
+shouldBeEqualToString('input.formTarget', 'null');
+shouldBeEqualToString('input.getAttribute("formTarget")', 'null');
 input.setAttribute('formTarget', null);
 shouldBeEqualToString('input.formTarget', 'null');
 
@@ -152,18 +152,18 @@ shouldBeEqualToString('button.formTarget', 'nota');
 debug('');
 debug('Setting null for button:');
 button.formEnctype = null;
-shouldBeEqualToString('button.formEnctype', '');
-shouldBe('button.getAttribute("formEnctype")', 'null');
+shouldBeEqualToString('button.formEnctype', 'application/x-www-form-urlencoded');
+shouldBeEqualToString('button.getAttribute("formEnctype")', 'null');
 button.setAttribute('formEnctype', null);
 shouldBeEqualToString('button.formEnctype', 'application/x-www-form-urlencoded');
 button.formMethod = null;
-shouldBeEqualToString('button.formMethod', '');
-shouldBe('button.getAttribute("formMethod")', 'null');
+shouldBeEqualToString('button.formMethod', 'get');
+shouldBeEqualToString('button.getAttribute("formMethod")', 'null');
 button.setAttribute('formMethod', null);
 shouldBeEqualToString('button.formMethod', 'get');
 button.formTarget = null;
-shouldBeEqualToString('button.formTarget', '');
-shouldBe('button.getAttribute("formTarget")', 'null');
+shouldBeEqualToString('button.formTarget', 'null');
+shouldBeEqualToString('button.getAttribute("formTarget")', 'null');
 button.setAttribute('formTarget', null);
 shouldBeEqualToString('button.formTarget', 'null');
 

@@ -20,6 +20,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/chrome_notification_types.h"
+#include "chrome/browser/mac/security_wrappers.h"
 #include "chrome/browser/password_manager/login_database.h"
 #include "chrome/browser/password_manager/password_store_change.h"
 #include "content/public/browser/notification_service.h"
@@ -277,8 +278,8 @@ bool FillPasswordFormFromKeychainItem(const AppleKeychain& keychain,
   }
 
   if (extract_password_data) {
-    UTF8ToUTF16(static_cast<const char *>(password_data), password_length,
-                &(form->password_value));
+    base::UTF8ToUTF16(static_cast<const char *>(password_data), password_length,
+                      &(form->password_value));
   }
 
   int port = kAnyPort;
@@ -292,8 +293,8 @@ bool FillPasswordFormFromKeychainItem(const AppleKeychain& keychain,
     }
     switch (attr.tag) {
       case kSecAccountItemAttr:
-        UTF8ToUTF16(static_cast<const char *>(attr.data), attr.length,
-                    &(form->username_value));
+        base::UTF8ToUTF16(static_cast<const char *>(attr.data), attr.length,
+                          &(form->username_value));
         break;
       case kSecServerItemAttr:
         server.assign(static_cast<const char *>(attr.data), attr.length);
@@ -618,7 +619,7 @@ PasswordForm* MacKeychainPasswordFormAdapter::PasswordExactlyMatchingForm(
 
 bool MacKeychainPasswordFormAdapter::HasPasswordsMergeableWithForm(
     const PasswordForm& query_form) {
-  std::string username = UTF16ToUTF8(query_form.username_value);
+  std::string username = base::UTF16ToUTF8(query_form.username_value);
   std::vector<SecKeychainItemRef> matches =
       MatchingKeychainItems(query_form.signon_realm, query_form.scheme,
                             NULL, username.c_str());
@@ -666,8 +667,8 @@ bool MacKeychainPasswordFormAdapter::AddPassword(const PasswordForm& form) {
            form.signon_realm, &server, &port, &is_secure, &security_domain)) {
     return false;
   }
-  std::string username = UTF16ToUTF8(form.username_value);
-  std::string password = UTF16ToUTF8(form.password_value);
+  std::string username = base::UTF16ToUTF8(form.username_value);
+  std::string password = base::UTF16ToUTF8(form.password_value);
   std::string path = form.origin.path();
   SecProtocolType protocol = is_secure ? kSecProtocolTypeHTTPS
                                        : kSecProtocolTypeHTTP;
@@ -738,7 +739,7 @@ SecKeychainItemRef MacKeychainPasswordFormAdapter::KeychainItemForForm(
   }
 
   std::string path = form.origin.path();
-  std::string username = UTF16ToUTF8(form.username_value);
+  std::string username = base::UTF16ToUTF8(form.username_value);
   std::vector<SecKeychainItemRef> matches = MatchingKeychainItems(
       form.signon_realm, form.scheme, path.c_str(), username.c_str());
 
@@ -850,13 +851,10 @@ void PasswordStoreMac::ShutdownOnUIThread() {
 
 // Mac stores passwords in the system keychain, which can block for an
 // arbitrarily long time (most notably, it can block on user confirmation
-// from a dialog). Use a dedicated thread to avoid blocking DB thread.
-bool PasswordStoreMac::ScheduleTask(const base::Closure& task) {
-  if (thread_.get()) {
-    thread_->message_loop()->PostTask(FROM_HERE, task);
-    return true;
-  }
-  return false;
+// from a dialog). Run tasks on a dedicated thread to avoid blocking the DB
+// thread.
+scoped_refptr<base::SequencedTaskRunner> PasswordStoreMac::GetTaskRunner() {
+  return (thread_.get()) ? thread_->message_loop_proxy() : NULL;
 }
 
 void PasswordStoreMac::ReportMetricsImpl() {
@@ -979,7 +977,11 @@ void PasswordStoreMac::RemoveLoginsCreatedBetweenImpl(
 
 void PasswordStoreMac::GetLoginsImpl(
     const autofill::PasswordForm& form,
+    AuthorizationPromptPolicy prompt_policy,
     const ConsumerCallbackRunner& callback_runner) {
+  chrome::ScopedSecKeychainSetUserInteractionAllowed user_interaction_allowed(
+      prompt_policy == ALLOW_PROMPT);
+
   MacKeychainPasswordFormAdapter keychain_adapter(keychain_.get());
   std::vector<PasswordForm*> keychain_forms =
       keychain_adapter.PasswordsFillingForm(form);
@@ -1010,12 +1012,12 @@ void PasswordStoreMac::GetLoginsImpl(
 }
 
 void PasswordStoreMac::GetBlacklistLoginsImpl(GetLoginsRequest* request) {
-  FillBlacklistLogins(&request->value);
+  FillBlacklistLogins(request->result());
   ForwardLoginsResult(request);
 }
 
 void PasswordStoreMac::GetAutofillableLoginsImpl(GetLoginsRequest* request) {
-  FillAutofillableLogins(&request->value);
+  FillAutofillableLogins(request->result());
   ForwardLoginsResult(request);
 }
 

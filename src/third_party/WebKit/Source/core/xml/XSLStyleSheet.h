@@ -36,7 +36,7 @@ namespace WebCore {
 class ResourceFetcher;
 class XSLImportRule;
 
-class XSLStyleSheet : public StyleSheet {
+class XSLStyleSheet FINAL : public StyleSheet {
 public:
     static PassRefPtr<XSLStyleSheet> create(XSLImportRule* parentImport, const String& originalURL, const KURL& finalURL)
     {
@@ -119,6 +119,8 @@ private:
 
     XSLStyleSheet* m_parentStyleSheet;
 };
+
+DEFINE_TYPE_CASTS(XSLStyleSheet, StyleSheet, sheet, !sheet->isCSSStyleSheet(), !sheet.isCSSStyleSheet());
 
 } // namespace WebCore
 

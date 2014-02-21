@@ -34,8 +34,8 @@
 #include "core/fetch/Resource.h"
 #include "core/fetch/ResourceFetcher.h"
 #include "core/frame/Frame.h"
-#include "core/page/Page.h"
-#include "core/page/PageConsole.h"
+#include "core/frame/FrameHost.h"
+#include "core/frame/PageConsole.h"
 #include "core/xml/XSLStyleSheet.h"
 #include "core/xml/XSLTExtensions.h"
 #include "core/xml/XSLTUnicodeSort.h"
@@ -44,7 +44,7 @@
 #include "platform/network/ResourceError.h"
 #include "platform/network/ResourceRequest.h"
 #include "platform/network/ResourceResponse.h"
-#include "weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #include "wtf/Assertions.h"
 #include "wtf/Vector.h"
 #include "wtf/text/CString.h"
@@ -102,16 +102,16 @@ static xmlDocPtr docLoaderFunc(const xmlChar* uri,
         xmlFree(base);
 
         ResourceLoaderOptions fetchOptions(ResourceFetcher::defaultResourceOptions());
-        fetchOptions.requestOriginPolicy = RestrictToSameOrigin;
         FetchRequest request(ResourceRequest(url), FetchInitiatorTypeNames::xml, fetchOptions);
+        request.setOriginRestriction(FetchRequest::RestrictToSameOrigin);
         ResourcePtr<Resource> resource = globalResourceFetcher->fetchSynchronously(request);
         if (!resource || !globalProcessor)
             return 0;
 
         PageConsole* console = 0;
         Frame* frame = globalProcessor->xslStylesheet()->ownerDocument()->frame();
-        if (frame && frame->page())
-            console = &frame->page()->console();
+        if (frame && frame->host())
+            console = &frame->host()->console();
         xmlSetStructuredErrorFunc(console, XSLTProcessor::parseErrorFunc);
         xmlSetGenericErrorFunc(console, XSLTProcessor::genericErrorFunc);
 

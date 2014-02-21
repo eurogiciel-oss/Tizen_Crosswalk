@@ -24,7 +24,8 @@ static const int kMenuCornerRadiusForAura = 0;
 
 #if !defined(OS_WIN)
 void MenuConfig::Init(const ui::NativeTheme* theme) {
-  InitAura(theme);
+  if (theme == ui::NativeThemeAura::instance())
+    InitAura(theme);
 }
 #endif
 
@@ -42,7 +43,6 @@ void MenuConfig::InitAura(const ui::NativeTheme* theme) {
   separator_spacing_height = 7;
   separator_lower_height = 8;
   separator_upper_height = 8;
-  font = rb.GetFont(ResourceBundle::BaseFont);
   label_to_arrow_padding = 20;
   label_to_minor_text_padding = 20;
   always_use_icon_to_label_padding = true;

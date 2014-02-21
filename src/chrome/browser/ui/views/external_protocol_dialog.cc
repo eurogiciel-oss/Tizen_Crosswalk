@@ -42,11 +42,8 @@ void ExternalProtocolHandler::RunExternalProtocolDialog(
     // ShellExecute won't do anything. Don't bother warning the user.
     return;
   }
-  WebContents* web_contents = tab_util::GetWebContentsByID(
-      render_process_host_id, routing_id);
-  DCHECK(web_contents);
   // Windowing system takes ownership.
-  new ExternalProtocolDialog(web_contents, url, command);
+  new ExternalProtocolDialog(url, render_process_host_id, routing_id, command);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,7 +59,7 @@ int ExternalProtocolDialog::GetDefaultDialogButton() const {
   return ui::DIALOG_BUTTON_CANCEL;
 }
 
-string16 ExternalProtocolDialog::GetDialogButtonLabel(
+base::string16 ExternalProtocolDialog::GetDialogButtonLabel(
     ui::DialogButton button) const {
   if (button == ui::DIALOG_BUTTON_OK)
     return l10n_util::GetStringUTF16(IDS_EXTERNAL_PROTOCOL_OK_BUTTON_TEXT);
@@ -70,7 +67,7 @@ string16 ExternalProtocolDialog::GetDialogButtonLabel(
     return l10n_util::GetStringUTF16(IDS_EXTERNAL_PROTOCOL_CANCEL_BUTTON_TEXT);
 }
 
-string16 ExternalProtocolDialog::GetWindowTitle() const {
+base::string16 ExternalProtocolDialog::GetWindowTitle() const {
   return l10n_util::GetStringUTF16(IDS_EXTERNAL_PROTOCOL_TITLE);
 }
 
@@ -104,7 +101,8 @@ bool ExternalProtocolDialog::Accept() {
         url_.scheme(), ExternalProtocolHandler::DONT_BLOCK);
   }
 
-  ExternalProtocolHandler::LaunchUrlWithoutSecurityCheck(url_);
+  ExternalProtocolHandler::LaunchUrlWithoutSecurityCheck(
+      url_, render_process_host_id_, routing_id_);
   // Returning true closes the dialog.
   return true;
 }
@@ -124,28 +122,31 @@ const views::Widget* ExternalProtocolDialog::GetWidget() const {
 ///////////////////////////////////////////////////////////////////////////////
 // ExternalProtocolDialog, private:
 
-ExternalProtocolDialog::ExternalProtocolDialog(WebContents* web_contents,
-                                               const GURL& url,
+ExternalProtocolDialog::ExternalProtocolDialog(const GURL& url,
+                                               int render_process_host_id,
+                                               int routing_id,
                                                const std::wstring& command)
-    : web_contents_(web_contents),
-      url_(url),
+    : url_(url),
+      render_process_host_id_(render_process_host_id),
+      routing_id_(routing_id),
       creation_time_(base::TimeTicks::Now()) {
   const int kMaxUrlWithoutSchemeSize = 256;
   const int kMaxCommandSize = 256;
-  string16 elided_url_without_scheme;
-  string16 elided_command;
-  gfx::ElideString(ASCIIToUTF16(url.possibly_invalid_spec()),
-                  kMaxUrlWithoutSchemeSize, &elided_url_without_scheme);
-  gfx::ElideString(WideToUTF16Hack(command), kMaxCommandSize, &elided_command);
+  base::string16 elided_url_without_scheme;
+  base::string16 elided_command;
+  gfx::ElideString(base::ASCIIToUTF16(url.possibly_invalid_spec()),
+                   kMaxUrlWithoutSchemeSize, &elided_url_without_scheme);
+  gfx::ElideString(base::WideToUTF16Hack(command),
+                   kMaxCommandSize, &elided_command);
 
-  string16 message_text = l10n_util::GetStringFUTF16(
+  base::string16 message_text = l10n_util::GetStringFUTF16(
       IDS_EXTERNAL_PROTOCOL_INFORMATION,
-      ASCIIToUTF16(url.scheme() + ":"),
-      elided_url_without_scheme) + ASCIIToUTF16("\n\n");
+      base::ASCIIToUTF16(url.scheme() + ":"),
+      elided_url_without_scheme) + base::ASCIIToUTF16("\n\n");
 
   message_text += l10n_util::GetStringFUTF16(
       IDS_EXTERNAL_PROTOCOL_APPLICATION_TO_LAUNCH,
-      elided_command) + ASCIIToUTF16("\n\n");
+      elided_command) + base::ASCIIToUTF16("\n\n");
 
   message_text += l10n_util::GetStringUTF16(IDS_EXTERNAL_PROTOCOL_WARNING);
 
@@ -156,9 +157,11 @@ ExternalProtocolDialog::ExternalProtocolDialog(WebContents* web_contents,
       l10n_util::GetStringUTF16(IDS_EXTERNAL_PROTOCOL_CHECKBOX_TEXT));
 
   // Dialog is top level if we don't have a web_contents associated with us.
+  WebContents* web_contents = tab_util::GetWebContentsByID(
+      render_process_host_id_, routing_id_);
   gfx::NativeWindow parent_window = NULL;
-  if (web_contents_)
-    parent_window = web_contents_->GetView()->GetTopLevelNativeWindow();
+  if (web_contents)
+    parent_window = web_contents->GetView()->GetTopLevelNativeWindow();
   CreateBrowserModalDialogViews(this, parent_window)->Show();
 }
 
@@ -169,9 +172,9 @@ std::wstring ExternalProtocolDialog::GetApplicationForProtocol(
   // to disk.  http://crbug.com/61996
   base::ThreadRestrictions::ScopedAllowIO allow_io;
 
-  std::wstring url_spec = ASCIIToWide(url.possibly_invalid_spec());
+  std::wstring url_spec = base::ASCIIToWide(url.possibly_invalid_spec());
   std::wstring cmd_key_path =
-      ASCIIToWide(url.scheme() + "\\shell\\open\\command");
+      base::ASCIIToWide(url.scheme() + "\\shell\\open\\command");
   base::win::RegKey cmd_key(HKEY_CLASSES_ROOT, cmd_key_path.c_str(), KEY_READ);
   size_t split_offset = url_spec.find(L':');
   if (split_offset == std::wstring::npos)

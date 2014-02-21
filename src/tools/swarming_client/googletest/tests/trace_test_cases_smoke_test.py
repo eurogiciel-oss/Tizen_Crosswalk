@@ -1,12 +1,13 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,9 +18,11 @@ GOOGLETEST_DIR = os.path.dirname(BASE_DIR)
 ROOT_DIR = os.path.dirname(GOOGLETEST_DIR)
 sys.path.insert(0, ROOT_DIR)
 sys.path.insert(0, os.path.join(BASE_DIR, 'gtest_fake'))
+sys.path.insert(0, os.path.join(ROOT_DIR, 'tests'))
 
 import gtest_fake_base
 from utils import file_path
+import trace_test_util
 
 FILE_PATH = os.path.realpath(unicode(os.path.abspath(__file__)))
 TARGET_UTIL_PATH = os.path.join(BASE_DIR, 'gtest_fake', 'gtest_fake_base.py')
@@ -28,7 +31,8 @@ TARGET_PATH = os.path.join(BASE_DIR, 'gtest_fake', 'gtest_fake_fail.py')
 
 class TraceTestCases(unittest.TestCase):
   def setUp(self):
-    self.temp_file = None
+    super(TraceTestCases, self).setUp()
+    self.temp_dir = tempfile.mkdtemp(prefix='trace_test_cases_test')
 
     self.initial_cwd = GOOGLETEST_DIR
     if sys.platform == 'win32':
@@ -52,8 +56,8 @@ class TraceTestCases(unittest.TestCase):
     os.environ.pop('GTEST_TOTAL_SHARDS', '')
 
   def tearDown(self):
-    if self.temp_file:
-      os.remove(self.temp_file)
+    shutil.rmtree(self.temp_dir)
+    super(TraceTestCases, self).tearDown()
 
   def assertGreater(self, a, b, msg=None):
     """Just like self.assertTrue(a > b), but with a nicer default message.
@@ -64,17 +68,15 @@ class TraceTestCases(unittest.TestCase):
       standardMsg = '%r not greater than %r' % (a, b)
       self.fail(msg or standardMsg)
 
+  @trace_test_util.check_can_trace
   def test_simple(self):
-    file_handle, self.temp_file = tempfile.mkstemp(
-        prefix='trace_test_cases_test')
-    os.close(file_handle)
-
+    temp_file = os.path.join(self.temp_dir, 'foo_bar')
     cmd = [
         sys.executable,
         os.path.join(GOOGLETEST_DIR, 'trace_test_cases.py'),
         # Forces 4 parallel jobs.
         '--jobs', '4',
-        '--out', self.temp_file,
+        '--out', temp_file,
     ]
     if VERBOSE:
       cmd.extend(['-v'] * 3)
@@ -107,7 +109,7 @@ class TraceTestCases(unittest.TestCase):
     if sys.platform != 'win32' and not VERBOSE:
       self.assertEqual('', err)
 
-    with open(self.temp_file, 'r') as f:
+    with open(temp_file, 'r') as f:
       content = f.read()
       try:
         result = json.loads(content)

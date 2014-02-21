@@ -26,12 +26,12 @@
     "management",
     "webview",
     "unlimitedStorage",
+    "https://*.ytimg.com/*",
     "https://www.google.com/*",
     "https://commondatastorage.googleapis.com/*",
     "https://storage.googleapis.com/*",
     "https://www-googleapis-test.sandbox.google.com/*",
     "https://www.googleapis.com/*"
   ],
-  "display_in_launcher": false,
   "display_in_new_tab_page": false
 }

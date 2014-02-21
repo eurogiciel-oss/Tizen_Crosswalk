@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <body>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script>
 function createInput(min, max, step, value) {
     var input = document.createElement('input');
@@ -17,8 +17,8 @@ function createInput(min, max, step, value) {
 }
 
 // FIXME: Rename this function and the test file.
-function isReadOnlyField(input, part) {
-    var node = internals.youngestShadowRoot(input).querySelector('*[part="' + part + '"]');
+function isReadOnlyField(input, pseudo) {
+    var node = internals.youngestShadowRoot(input).querySelector('*[pseudo="' + pseudo + '"]');
     if (!node)
         testFailed('Requested node is missing.');
     return node && node.hasAttribute('disabled');

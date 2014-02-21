@@ -6,7 +6,7 @@
 #include "base/bind.h"
 #include "base/command_line.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/time/time.h"
+#include "base/timer/elapsed_timer.h"
 #include "tools/gn/build_settings.h"
 #include "tools/gn/commands.h"
 #include "tools/gn/ninja_target_writer.h"
@@ -22,10 +22,26 @@ namespace {
 // Suppress output on success.
 const char kSwitchQuiet[] = "q";
 
-void TargetResolvedCallback(base::subtle::Atomic32* write_counter,
-                            const Target* target) {
+void BackgroundDoWrite(const Target* target, const Toolchain* toolchain) {
+  NinjaTargetWriter::RunAndWriteFile(target, toolchain);
+  g_scheduler->DecrementWorkCount();
+}
+
+// Called on the main thread.
+void ItemResolvedCallback(base::subtle::Atomic32* write_counter,
+                          scoped_refptr<Builder> builder,
+                          const Item* item) {
   base::subtle::NoBarrier_AtomicIncrement(write_counter, 1);
-  NinjaTargetWriter::RunAndWriteFile(target);
+
+  const Target* target = item->AsTarget();
+  if (target) {
+    const Toolchain* toolchain =
+        builder->GetToolchain(target->settings()->toolchain_label());
+    DCHECK(toolchain);
+    g_scheduler->IncrementWorkCount();
+    g_scheduler->ScheduleWork(
+        base::Bind(&BackgroundDoWrite, target, toolchain));
+  }
 }
 
 }  // namespace
@@ -41,7 +57,7 @@ const char kGen_Help[] =
 
 // Note: partially duplicated in command_gyp.cc.
 int RunGen(const std::vector<std::string>& args) {
-  base::TimeTicks begin_time = base::TimeTicks::Now();
+  base::ElapsedTimer timer;
 
   // Deliberately leaked to avoid expensive process teardown.
   Setup* setup = new Setup;
@@ -51,18 +67,20 @@ int RunGen(const std::vector<std::string>& args) {
   // Cause the load to also generate the ninja files for each target. We wrap
   // the writing to maintain a counter.
   base::subtle::Atomic32 write_counter = 0;
-  setup->build_settings().set_target_resolved_callback(
-      base::Bind(&TargetResolvedCallback, &write_counter));
+  setup->builder()->set_resolved_callback(
+      base::Bind(&ItemResolvedCallback, &write_counter,
+                 scoped_refptr<Builder>(setup->builder())));
 
   // Do the actual load. This will also write out the target ninja files.
   if (!setup->Run())
     return 1;
 
   // Write the root ninja files.
-  if (!NinjaWriter::RunAndWriteFiles(&setup->build_settings()))
+  if (!NinjaWriter::RunAndWriteFiles(&setup->build_settings(),
+                                     setup->builder()))
     return 1;
 
-  base::TimeTicks end_time = base::TimeTicks::Now();
+  base::TimeDelta elapsed_time = timer.Elapsed();
 
   if (!CommandLine::ForCurrentProcess()->HasSwitch(kSwitchQuiet)) {
     OutputString("Done. ", DECORATION_GREEN);
@@ -73,7 +91,7 @@ int RunGen(const std::vector<std::string>& args) {
         base::IntToString(
             setup->scheduler().input_file_manager()->GetInputFileCount()) +
         " files in " +
-        base::IntToString((end_time - begin_time).InMilliseconds()) + "ms\n";
+        base::IntToString(elapsed_time.InMilliseconds()) + "ms\n";
     OutputString(stats);
   }
 

@@ -30,10 +30,6 @@
 #include "ui/base/x/x11_util.h"
 #endif
 
-#if defined(USE_OZONE)
-#include "ui/gfx/ozone/surface_factory_ozone.h"
-#endif
-
 namespace aura {
 namespace test {
 
@@ -49,10 +45,6 @@ AuraTestHelper::AuraTestHelper(base::MessageLoopForUI* message_loop)
 #if defined(USE_X11)
   test::SetUseOverrideRedirectWindowByDefault(true);
 #endif
-#if defined(USE_OZONE)
-  surface_factory_.reset(gfx::SurfaceFactoryOzone::CreateTestHelper());
-  gfx::SurfaceFactoryOzone::SetInstance(surface_factory_.get());
-#endif
 }
 
 AuraTestHelper::~AuraTestHelper() {
@@ -62,11 +54,10 @@ AuraTestHelper::~AuraTestHelper() {
       << "AuraTestHelper::TearDown() never called.";
 }
 
-void AuraTestHelper::SetUp() {
+void AuraTestHelper::SetUp(bool allow_test_contexts) {
   setup_called_ = true;
 
   // The ContextFactory must exist before any Compositors are created.
-  bool allow_test_contexts = true;
   ui::InitializeContextFactoryForTests(allow_test_contexts);
 
   Env::CreateInstance();
@@ -82,19 +73,19 @@ void AuraTestHelper::SetUp() {
   root_window_.reset(test_screen_->CreateRootWindowForPrimaryDisplay());
 
   focus_client_.reset(new TestFocusClient);
-  client::SetFocusClient(root_window_.get(), focus_client_.get());
-  stacking_client_.reset(new TestWindowTreeClient(root_window_.get()));
+  client::SetFocusClient(root_window(), focus_client_.get());
+  stacking_client_.reset(new TestWindowTreeClient(root_window()));
   activation_client_.reset(
-      new client::DefaultActivationClient(root_window_.get()));
-  capture_client_.reset(new client::DefaultCaptureClient(root_window_.get()));
+      new client::DefaultActivationClient(root_window()));
+  capture_client_.reset(new client::DefaultCaptureClient(root_window()));
   test_input_method_.reset(new ui::DummyInputMethod);
-  root_window_->SetProperty(
+  root_window()->SetProperty(
       client::kRootWindowInputMethodKey,
       test_input_method_.get());
 
-  root_window_->Show();
+  root_window()->Show();
   // Ensure width != height so tests won't confuse them.
-  root_window_->SetHostSize(gfx::Size(800, 600));
+  dispatcher()->host()->SetBounds(gfx::Rect(800, 600));
 }
 
 void AuraTestHelper::TearDown() {
@@ -104,8 +95,9 @@ void AuraTestHelper::TearDown() {
   activation_client_.reset();
   capture_client_.reset();
   focus_client_.reset();
-  client::SetFocusClient(root_window_.get(), NULL);
+  client::SetFocusClient(root_window(), NULL);
   root_window_.reset();
+  ui::GestureRecognizer::Reset();
   test_screen_.reset();
   gfx::Screen::SetScreenInstance(gfx::SCREEN_TYPE_NATIVE, NULL);
 

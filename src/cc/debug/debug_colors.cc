@@ -54,6 +54,14 @@ int DebugColors::ContainerLayerBorderWidth(const LayerTreeImpl* tree_impl) {
   return Scale(2, tree_impl);
 }
 
+// Surface layers are a blue-ish green.
+SkColor DebugColors::SurfaceLayerBorderColor() {
+  return SkColorSetARGB(128, 0, 255, 136);
+}
+int DebugColors::SurfaceLayerBorderWidth(const LayerTreeImpl* tree_impl) {
+  return Scale(2, tree_impl);
+}
+
 // Render surfaces are blue.
 SkColor DebugColors::SurfaceBorderColor() {
   return SkColorSetARGB(100, 0, 0, 255);
@@ -251,6 +259,15 @@ SkColor DebugColors::NonFastScrollableRectBorderColor() {
 int DebugColors::NonFastScrollableRectBorderWidth() { return 2; }
 SkColor DebugColors::NonFastScrollableRectFillColor() {
   return SkColorSetARGB(30, 238, 163, 59);
+}
+
+// Animation bounds are lime-green.
+SkColor DebugColors::LayerAnimationBoundsBorderColor() {
+  return SkColorSetARGB(255, 112, 229, 0);
+}
+int DebugColors::LayerAnimationBoundsBorderWidth() { return 2; }
+SkColor DebugColors::LayerAnimationBoundsFillColor() {
+  return SkColorSetARGB(30, 112, 229, 0);
 }
 
 // Non-Painted rects in cyan.

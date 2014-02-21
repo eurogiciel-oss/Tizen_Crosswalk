@@ -88,7 +88,6 @@ public class TiclService extends IntentService {
     // before we have finished handling the Intent.
 
     if (intent == null) {
-      resources.getLogger().fine("Ignoring null intent");
       return;
     }
 

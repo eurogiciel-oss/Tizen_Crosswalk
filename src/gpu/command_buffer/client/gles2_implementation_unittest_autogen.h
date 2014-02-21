@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -1524,14 +1524,26 @@ TEST_F(GLES2ImplementationTest, Viewport) {
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
 
-TEST_F(GLES2ImplementationTest, BlitFramebufferEXT) {
+TEST_F(GLES2ImplementationTest, BlitFramebufferCHROMIUM) {
   struct Cmds {
-    cmds::BlitFramebufferEXT cmd;
+    cmds::BlitFramebufferCHROMIUM cmd;
   };
   Cmds expected;
   expected.cmd.Init(1, 2, 3, 4, 5, 6, 7, 8, 9, GL_NEAREST);
 
-  gl_->BlitFramebufferEXT(1, 2, 3, 4, 5, 6, 7, 8, 9, GL_NEAREST);
+  gl_->BlitFramebufferCHROMIUM(1, 2, 3, 4, 5, 6, 7, 8, 9, GL_NEAREST);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+}
+
+TEST_F(GLES2ImplementationTest, RenderbufferStorageMultisampleCHROMIUM) {
+  struct Cmds {
+    cmds::RenderbufferStorageMultisampleCHROMIUM cmd;
+  };
+  Cmds expected;
+  expected.cmd.Init(GL_RENDERBUFFER, 2, GL_RGBA4, 4, 5);
+
+  gl_->RenderbufferStorageMultisampleCHROMIUM(
+      GL_RENDERBUFFER, 2, GL_RGBA4, 4, 5);
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
 
@@ -1679,17 +1691,7 @@ TEST_F(GLES2ImplementationTest, ResizeCHROMIUM) {
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
 // TODO: Implement unit test for GetRequestableExtensionsCHROMIUM
-
-TEST_F(GLES2ImplementationTest, DestroyStreamTextureCHROMIUM) {
-  struct Cmds {
-    cmds::DestroyStreamTextureCHROMIUM cmd;
-  };
-  Cmds expected;
-  expected.cmd.Init(1);
-
-  gl_->DestroyStreamTextureCHROMIUM(1);
-  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
-}
+// TODO: Implement unit test for CreateStreamTextureCHROMIUM
 // TODO: Implement unit test for GetTranslatedShaderSourceANGLE
 
 TEST_F(GLES2ImplementationTest, TexImageIOSurface2DCHROMIUM) {
@@ -1848,6 +1850,17 @@ TEST_F(GLES2ImplementationTest, DrawBuffersEXT) {
   }
   expected.cmd.Init(1, &data[0][0]);
   gl_->DrawBuffersEXT(1, &data[0][0]);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+}
+
+TEST_F(GLES2ImplementationTest, DiscardBackbufferCHROMIUM) {
+  struct Cmds {
+    cmds::DiscardBackbufferCHROMIUM cmd;
+  };
+  Cmds expected;
+  expected.cmd.Init();
+
+  gl_->DiscardBackbufferCHROMIUM();
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_IMPLEMENTATION_UNITTEST_AUTOGEN_H_

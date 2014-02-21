@@ -26,16 +26,16 @@
 #ifndef FilterEffectRenderer_h
 #define FilterEffectRenderer_h
 
-#include "core/platform/graphics/GraphicsContext.h"
-#include "core/platform/graphics/ImageBuffer.h"
-#include "core/platform/graphics/filters/Filter.h"
-#include "core/platform/graphics/filters/FilterEffect.h"
-#include "core/platform/graphics/filters/FilterOperations.h"
-#include "core/platform/graphics/filters/SourceGraphic.h"
 #include "core/svg/graphics/filters/SVGFilterBuilder.h"
 #include "platform/geometry/FloatRect.h"
 #include "platform/geometry/IntRectExtent.h"
 #include "platform/geometry/LayoutRect.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/graphics/ImageBuffer.h"
+#include "platform/graphics/filters/Filter.h"
+#include "platform/graphics/filters/FilterEffect.h"
+#include "platform/graphics/filters/FilterOperations.h"
+#include "platform/graphics/filters/SourceGraphic.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/RefCounted.h"
 #include "wtf/RefPtr.h"
@@ -43,7 +43,6 @@
 namespace WebCore {
 
 class ShaderResource;
-class CustomFilterProgram;
 class Document;
 class GraphicsContext;
 class RenderLayer;
@@ -74,7 +73,7 @@ private:
     bool m_haveFilterEffect;
 };
 
-class FilterEffectRenderer : public Filter
+class FilterEffectRenderer FINAL : public Filter
 {
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -83,12 +82,12 @@ public:
         return adoptRef(new FilterEffectRenderer());
     }
 
-    void setSourceImageRect(const FloatRect& sourceImageRect)
+    void setSourceImageRect(const IntRect& sourceImageRect)
     {
         m_sourceDrawingRegion = sourceImageRect;
         m_graphicsBufferAttached = false;
     }
-    virtual FloatRect sourceImageRect() const { return m_sourceDrawingRegion; }
+    virtual IntRect sourceImageRect() const OVERRIDE { return m_sourceDrawingRegion; }
 
     GraphicsContext* inputContext();
     ImageBuffer* output() const { return lastEffect()->asImageBuffer(); }
@@ -114,7 +113,7 @@ private:
     FilterEffectRenderer();
     virtual ~FilterEffectRenderer();
 
-    FloatRect m_sourceDrawingRegion;
+    IntRect m_sourceDrawingRegion;
 
     RefPtr<SourceGraphic> m_sourceGraphic;
     RefPtr<FilterEffect> m_lastEffect;

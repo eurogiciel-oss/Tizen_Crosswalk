@@ -31,7 +31,6 @@
 #include "config.h"
 #include "platform/Decimal.h"
 
-#include "wtf/Assertions.h"
 #include "wtf/MathExtras.h"
 #include "wtf/Noncopyable.h"
 #include "wtf/text/StringBuilder.h"
@@ -141,7 +140,6 @@ public:
 private:
     static uint32_t highUInt32(uint64_t x) { return static_cast<uint32_t>(x >> 32); }
     static uint32_t lowUInt32(uint64_t x) { return static_cast<uint32_t>(x & ((static_cast<uint64_t>(1) << 32) - 1)); }
-    bool isZero() const { return !m_low && !m_high; }
     static uint64_t makeUInt64(uint32_t low, uint32_t high) { return low | (static_cast<uint64_t>(high) << 32); }
 
     static uint64_t multiplyHigh(uint64_t, uint64_t);
@@ -613,6 +611,11 @@ Decimal::AlignedOperands Decimal::alignOperands(const Decimal& lhs, const Decima
     return alignedOperands;
 }
 
+static bool isMultiplePowersOfTen(uint64_t coefficient, int n)
+{
+    return !coefficient || !(coefficient % scaleUp(1, n));
+}
+
 // Round toward positive infinity.
 // Note: Mac ports defines ceil(x) as wtf_ceil(x), so we can't use name "ceil" here.
 Decimal Decimal::ceiling() const
@@ -629,10 +632,9 @@ Decimal Decimal::ceiling() const
     if (numberOfDigits < numberOfDropDigits)
         return isPositive() ? Decimal(1) : zero(Positive);
 
-    result = scaleDown(result, numberOfDropDigits - 1);
-    if (sign() == Positive && result % 10 > 0)
-        result += 10;
-    result /= 10;
+    result = scaleDown(result, numberOfDropDigits);
+    if (isPositive() && !isMultiplePowersOfTen(m_data.coefficient(), numberOfDropDigits))
+        ++result;
     return Decimal(sign(), 0, result);
 }
 
@@ -671,10 +673,9 @@ Decimal Decimal::floor() const
     if (numberOfDigits < numberOfDropDigits)
         return isPositive() ? zero(Positive) : Decimal(-1);
 
-    result = scaleDown(result, numberOfDropDigits - 1);
-    if (isNegative() && result % 10 > 0)
-        result += 10;
-    result /= 10;
+    result = scaleDown(result, numberOfDropDigits);
+    if (isNegative() && !isMultiplePowersOfTen(m_data.coefficient(), numberOfDropDigits))
+        ++result;
     return Decimal(sign(), 0, result);
 }
 
@@ -743,17 +744,6 @@ Decimal Decimal::fromString(const String& str)
             return nan();
 
         case StateDot:
-            if (ch >= '0' && ch <= '9') {
-                if (numberOfDigits < Precision) {
-                    ++numberOfDigits;
-                    ++numberOfDigitsAfterDot;
-                    accumulator *= 10;
-                    accumulator += ch - '0';
-                }
-                state = StateDotDigit;
-                break;
-            }
-
         case StateDotDigit:
             if (ch >= '0' && ch <= '9') {
                 if (numberOfDigits < Precision) {
@@ -762,6 +752,7 @@ Decimal Decimal::fromString(const String& str)
                     accumulator *= 10;
                     accumulator += ch - '0';
                 }
+                state = StateDotDigit;
                 break;
             }
 

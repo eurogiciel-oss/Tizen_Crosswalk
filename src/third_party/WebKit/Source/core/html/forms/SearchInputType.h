@@ -39,7 +39,7 @@ namespace WebCore {
 class SearchFieldCancelButtonElement;
 class SearchFieldDecorationElement;
 
-class SearchInputType : public BaseTextInputType {
+class SearchInputType FINAL : public BaseTextInputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -57,7 +57,7 @@ private:
     virtual void handleKeydownEvent(KeyboardEvent*) OVERRIDE;
     virtual void didSetValueByUserEdit(ValueChangeState) OVERRIDE;
     virtual bool supportsInputModeAttribute() const OVERRIDE;
-    virtual void updateInnerTextValue() OVERRIDE;
+    virtual void updateView() OVERRIDE;
 
     void searchEventTimerFired(Timer<SearchInputType>*);
     bool searchEventsShouldBeDispatched() const;

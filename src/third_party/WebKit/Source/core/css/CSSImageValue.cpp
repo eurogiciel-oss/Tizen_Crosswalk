@@ -22,27 +22,27 @@
 #include "core/css/CSSImageValue.h"
 
 #include "FetchInitiatorTypeNames.h"
-#include "core/css/CSSParser.h"
+#include "core/css/CSSMarkup.h"
 #include "core/dom/Document.h"
 #include "core/fetch/CrossOriginAccessControl.h"
 #include "core/fetch/FetchRequest.h"
 #include "core/fetch/ImageResource.h"
-#include "core/fetch/ResourceFetcher.h"
 #include "core/rendering/style/StyleFetchedImage.h"
 #include "core/rendering/style/StylePendingImage.h"
+#include "platform/weborigin/KURL.h"
 
 namespace WebCore {
 
-CSSImageValue::CSSImageValue(const String& url)
+CSSImageValue::CSSImageValue(const KURL& url)
     : CSSValue(ImageClass)
-    , m_url(url)
+    , m_url(url.string())
     , m_accessedImage(false)
 {
 }
 
-CSSImageValue::CSSImageValue(const String& url, StyleImage* image)
+CSSImageValue::CSSImageValue(const KURL& url, StyleImage* image)
     : CSSValue(ImageClass)
-    , m_url(url)
+    , m_url(url.string())
     , m_image(image)
     , m_accessedImage(true)
 {
@@ -60,33 +60,32 @@ StyleImage* CSSImageValue::cachedOrPendingImage()
     return m_image.get();
 }
 
-StyleFetchedImage* CSSImageValue::cachedImage(ResourceFetcher* loader, const ResourceLoaderOptions& options)
+StyleFetchedImage* CSSImageValue::cachedImage(ResourceFetcher* fetcher, const ResourceLoaderOptions& options)
 {
-    ASSERT(loader);
+    ASSERT(fetcher);
 
     if (!m_accessedImage) {
         m_accessedImage = true;
 
-        FetchRequest request(ResourceRequest(loader->document()->completeURL(m_url)), m_initiatorName.isEmpty() ? FetchInitiatorTypeNames::css : m_initiatorName, options);
+        FetchRequest request(ResourceRequest(m_url), m_initiatorName.isEmpty() ? FetchInitiatorTypeNames::css : m_initiatorName, options);
 
-        if (options.requestOriginPolicy == PotentiallyCrossOriginEnabled)
-            updateRequestForAccessControl(request.mutableResourceRequest(), loader->document()->securityOrigin(), options.allowCredentials);
+        if (options.corsEnabled == IsCORSEnabled)
+            request.setCrossOriginAccessControl(fetcher->document()->securityOrigin(), options.allowCredentials);
 
-        if (ResourcePtr<ImageResource> cachedImage = loader->fetchImage(request))
+        if (ResourcePtr<ImageResource> cachedImage = fetcher->fetchImage(request))
             m_image = StyleFetchedImage::create(cachedImage.get());
     }
 
-    return (m_image && m_image->isImageResource()) ? static_cast<StyleFetchedImage*>(m_image.get()) : 0;
+    return (m_image && m_image->isImageResource()) ? toStyleFetchedImage(m_image) : 0;
 }
 
 bool CSSImageValue::hasFailedOrCanceledSubresources() const
 {
     if (!m_image || !m_image->isImageResource())
         return false;
-    Resource* cachedResource = static_cast<StyleFetchedImage*>(m_image.get())->cachedImage();
-    if (!cachedResource)
-        return true;
-    return cachedResource->loadFailedOrCanceled();
+    if (Resource* cachedResource = toStyleFetchedImage(m_image)->cachedImage())
+        return cachedResource->loadFailedOrCanceled();
+    return true;
 }
 
 bool CSSImageValue::equals(const CSSImageValue& other) const

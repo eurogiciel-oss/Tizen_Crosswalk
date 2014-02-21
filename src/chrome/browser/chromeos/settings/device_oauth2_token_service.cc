@@ -11,14 +11,14 @@
 #include "base/prefs/pref_service.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/chromeos/policy/browser_policy_connector_chromeos.h"
 #include "chrome/browser/chromeos/policy/device_cloud_policy_manager_chromeos.h"
 #include "chrome/browser/chromeos/settings/token_encryptor.h"
-#include "chrome/browser/policy/browser_policy_connector.h"
-#include "chrome/browser/policy/proto/cloud/device_management_backend.pb.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/browser_thread.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "google_apis/gaia/google_service_auth_error.h"
+#include "policy/proto/device_management_backend.pb.h"
 
 namespace {
 const char kServiceScopeGetUserInfo[] =
@@ -38,6 +38,7 @@ class DeviceOAuth2TokenService::ValidatingConsumer
       public gaia::GaiaOAuthClient::Delegate {
  public:
   explicit ValidatingConsumer(DeviceOAuth2TokenService* token_service,
+                              const std::string& account_id,
                               Consumer* consumer);
   virtual ~ValidatingConsumer();
 
@@ -55,8 +56,8 @@ class DeviceOAuth2TokenService::ValidatingConsumer
   // gaia::GaiaOAuthClient::Delegate implementation.
   virtual void OnRefreshTokenResponse(const std::string& access_token,
                                       int expires_in_seconds) OVERRIDE;
-  virtual void OnGetTokenInfoResponse(scoped_ptr<DictionaryValue> token_info)
-      OVERRIDE;
+  virtual void OnGetTokenInfoResponse(
+      scoped_ptr<base::DictionaryValue> token_info) OVERRIDE;
   virtual void OnOAuthError() OVERRIDE;
   virtual void OnNetworkError(int response_code) OVERRIDE;
 
@@ -85,8 +86,10 @@ class DeviceOAuth2TokenService::ValidatingConsumer
 
 DeviceOAuth2TokenService::ValidatingConsumer::ValidatingConsumer(
     DeviceOAuth2TokenService* token_service,
+    const std::string& account_id,
     Consumer* consumer)
-        : OAuth2TokenService::RequestImpl(this),
+        : OAuth2TokenService::Consumer("device_token_service"),
+          OAuth2TokenService::RequestImpl(account_id, this),
           token_service_(token_service),
           consumer_(consumer),
           token_validation_done_(false),
@@ -125,7 +128,7 @@ void DeviceOAuth2TokenService::ValidatingConsumer::OnRefreshTokenResponse(
 }
 
 void DeviceOAuth2TokenService::ValidatingConsumer::OnGetTokenInfoResponse(
-    scoped_ptr<DictionaryValue> token_info) {
+    scoped_ptr<base::DictionaryValue> token_info) {
   std::string gaia_robot_id;
   token_info->GetString("email", &gaia_robot_id);
 
@@ -137,8 +140,8 @@ void DeviceOAuth2TokenService::ValidatingConsumer::OnGetTokenInfoResponse(
     if (gaia_robot_id.empty()) {
       LOG(WARNING) << "Device service account owner in policy is empty.";
     } else {
-      LOG(INFO) << "Device service account owner in policy does not match "
-                << "refresh token owner \"" << gaia_robot_id << "\".";
+      LOG(WARNING) << "Device service account owner in policy does not match "
+                   << "refresh token owner \"" << gaia_robot_id << "\".";
     }
     RefreshTokenIsValid(false);
   }
@@ -263,8 +266,8 @@ std::string DeviceOAuth2TokenService::GetRefreshToken(
 }
 
 std::string DeviceOAuth2TokenService::GetRobotAccountId() {
-  policy::BrowserPolicyConnector* connector =
-      g_browser_process->browser_policy_connector();
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
   if (connector)
     return connector->GetDeviceCloudPolicyManager()->GetRobotAccountId();
   return std::string();
@@ -276,13 +279,14 @@ net::URLRequestContextGetter* DeviceOAuth2TokenService::GetRequestContext() {
 
 scoped_ptr<OAuth2TokenService::RequestImpl>
 DeviceOAuth2TokenService::CreateRequest(
+    const std::string& account_id,
     OAuth2TokenService::Consumer* consumer) {
   if (refresh_token_is_valid_)
-    return OAuth2TokenService::CreateRequest(consumer);
+    return OAuth2TokenService::CreateRequest(account_id, consumer);
 
   // Substitute our own consumer to wait for refresh token validation.
   scoped_ptr<ValidatingConsumer> validating_consumer(
-      new ValidatingConsumer(this, consumer));
+      new ValidatingConsumer(this, account_id, consumer));
   validating_consumer->StartValidation();
   return validating_consumer.PassAs<RequestImpl>();
 }

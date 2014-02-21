@@ -215,7 +215,7 @@ class Manager(object):
             self._start_servers(tests_to_run)
 
             initial_results = self._run_tests(tests_to_run, tests_to_skip, self._options.repeat_each, self._options.iterations,
-                int(self._options.child_processes), retrying=False)
+                self._port.num_workers(int(self._options.child_processes)), retrying=False)
 
             # Don't retry failures when interrupted by user or failures limit exception.
             should_retry_failures = should_retry_failures and not (initial_results.interrupted or initial_results.keyboard_interrupted)
@@ -240,7 +240,7 @@ class Manager(object):
 
         # Some crash logs can take a long time to be written out so look
         # for new logs after the test run finishes.
-        _log.debug("looking for new crash logs")
+        self._printer.write_update("looking for new crash logs")
         self._look_for_new_crash_logs(initial_results, start_time)
         if retry_results:
             self._look_for_new_crash_logs(retry_results, start_time)
@@ -355,6 +355,9 @@ class Manager(object):
         for dirname in possible_dirs:
             if self._filesystem.isdir(self._filesystem.join(layout_tests_dir, dirname)):
                 self._filesystem.rmtree(self._filesystem.join(self._results_directory, dirname))
+
+        # Port specific clean-up.
+        self._port.clobber_old_port_specific_results()
 
     def _tests_to_retry(self, run_results):
         return [result.test_name for result in run_results.unexpected_results_by_name.values() if result.type != test_expectations.PASS]

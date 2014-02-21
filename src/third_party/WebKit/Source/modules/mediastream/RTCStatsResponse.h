@@ -26,19 +26,19 @@
 #define RTCStatsResponse_h
 
 #include "bindings/v8/ScriptWrappable.h"
-#include "core/platform/mediastream/RTCStatsResponseBase.h"
 #include "modules/mediastream/RTCStatsReport.h"
+#include "platform/mediastream/RTCStatsResponseBase.h"
 #include "wtf/HashMap.h"
 #include "wtf/Vector.h"
 #include "wtf/text/WTFString.h"
 
 namespace WebCore {
 
-class RTCStatsResponse : public RTCStatsResponseBase, public ScriptWrappable {
+class RTCStatsResponse FINAL : public RTCStatsResponseBase, public ScriptWrappable {
 public:
     static PassRefPtr<RTCStatsResponse> create();
 
-    const Vector<RefPtr<RTCStatsReport> >& result() const { return m_result; };
+    const Vector<RefPtr<RTCStatsReport> >& result() const { return m_result; }
 
     PassRefPtr<RTCStatsReport> namedItem(const AtomicString& name);
 

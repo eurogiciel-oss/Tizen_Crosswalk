@@ -32,10 +32,8 @@
 #include "core/inspector/InspectorCanvasAgent.h"
 
 #include "HTMLNames.h"
-#include "InspectorFrontend.h"
 #include "bindings/v8/ScriptObject.h"
 #include "bindings/v8/ScriptProfiler.h"
-#include "bindings/v8/ScriptState.h"
 #include "core/html/HTMLCanvasElement.h"
 #include "core/inspector/BindingVisitors.h"
 #include "core/inspector/InjectedScript.h"
@@ -62,8 +60,8 @@ namespace CanvasAgentState {
 static const char canvasAgentEnabled[] = "canvasAgentEnabled";
 };
 
-InspectorCanvasAgent::InspectorCanvasAgent(InstrumentingAgents* instrumentingAgents, InspectorCompositeState* state, InspectorPageAgent* pageAgent, InjectedScriptManager* injectedScriptManager)
-    : InspectorBaseAgent<InspectorCanvasAgent>("Canvas", instrumentingAgents, state)
+InspectorCanvasAgent::InspectorCanvasAgent(InspectorPageAgent* pageAgent, InjectedScriptManager* injectedScriptManager)
+    : InspectorBaseAgent<InspectorCanvasAgent>("Canvas")
     , m_pageAgent(pageAgent)
     , m_injectedScriptManager(injectedScriptManager)
     , m_frontend(0)
@@ -262,7 +260,7 @@ InjectedScriptCanvasModule InspectorCanvasAgent::injectedScriptCanvasModule(Erro
 
 void InspectorCanvasAgent::findFramesWithUninstrumentedCanvases()
 {
-    class NodeVisitor : public WrappedNodeVisitor {
+    class NodeVisitor FINAL : public WrappedNodeVisitor {
     public:
         NodeVisitor(Page* page, FramesWithUninstrumentedCanvases& result)
             : m_page(page)

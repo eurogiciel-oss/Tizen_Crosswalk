@@ -3,6 +3,7 @@
 CanvasTest.StringSizeEmptyString
 CanvasTest.StringWidth
 ClipboardTest.RTFTest
+FontListTest.FontDescString_DeriveFontListWithSizeDeltaAndStyle
 FontListTest.FontDescString_FromFont
 FontListTest.FontDescString_FromFontNamesStyleAndSize
 FontListTest.FontDescString_FromFontVector
@@ -25,6 +26,7 @@ FontTest.Ascent
 FontTest.AvgCharWidth
 FontTest.AvgWidths
 FontTest.CapHeight
+FontTest.GetActualFontNameForTesting
 FontTest.Height
 FontTest.LoadArial
 FontTest.LoadArialBold

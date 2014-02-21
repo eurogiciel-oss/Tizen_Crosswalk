@@ -29,11 +29,12 @@
 #include "core/editing/FrameSelection.h"
 #include "core/html/shadow/ShadowElementNames.h"
 #include "core/frame/Frame.h"
-#include "core/platform/graphics/SimpleFontData.h"
 #include "core/rendering/HitTestResult.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/RenderLayer.h"
 #include "core/rendering/RenderTheme.h"
 #include "platform/PlatformKeyboardEvent.h"
+#include "platform/fonts/SimpleFontData.h"
 
 using namespace std;
 
@@ -94,6 +95,7 @@ LayoutUnit RenderTextControlSingleLine::computeLogicalHeightLimit() const
 
 void RenderTextControlSingleLine::layout()
 {
+    LayoutRectRecorder recorder(*this);
     SubtreeLayoutScope layoutScope(this);
 
     // FIXME: We should remove the height-related hacks in layout() and
@@ -179,6 +181,8 @@ void RenderTextControlSingleLine::layout()
     HTMLElement* placeholderElement = inputElement()->placeholderElement();
     if (RenderBox* placeholderBox = placeholderElement ? placeholderElement->renderBox() : 0) {
         LayoutSize innerTextSize;
+        LayoutRectRecorder placeholderBoxRecorder(*placeholderBox);
+
         if (innerTextRenderer)
             innerTextSize = innerTextRenderer->size();
         placeholderBox->style()->setWidth(Length(innerTextSize.width() - placeholderBox->borderAndPaddingWidth(), Fixed));

@@ -8,18 +8,20 @@
 #include <vector>
 
 #include "base/bind.h"
+#include "base/sequenced_task_runner.h"
 #include "base/strings/stringprintf.h"
 #include "base/task_runner_util.h"
 #include "base/values.h"
 #include "chrome/browser/drive/drive_api_util.h"
-#include "chrome/browser/google_apis/auth_service.h"
-#include "chrome/browser/google_apis/drive_api_parser.h"
-#include "chrome/browser/google_apis/drive_api_requests.h"
-#include "chrome/browser/google_apis/gdata_errorcode.h"
-#include "chrome/browser/google_apis/gdata_wapi_parser.h"
-#include "chrome/browser/google_apis/gdata_wapi_requests.h"
-#include "chrome/browser/google_apis/request_sender.h"
 #include "content/public/browser/browser_thread.h"
+#include "google_apis/drive/auth_service.h"
+#include "google_apis/drive/drive_api_parser.h"
+#include "google_apis/drive/drive_api_requests.h"
+#include "google_apis/drive/gdata_errorcode.h"
+#include "google_apis/drive/gdata_wapi_parser.h"
+#include "google_apis/drive/gdata_wapi_requests.h"
+#include "google_apis/drive/request_sender.h"
+#include "google_apis/google_api_keys.h"
 #include "net/url_request/url_request_context_getter.h"
 
 using content::BrowserThread;
@@ -66,6 +68,7 @@ using google_apis::drive::FilesInsertRequest;
 using google_apis::drive::FilesPatchRequest;
 using google_apis::drive::FilesListRequest;
 using google_apis::drive::FilesListNextPageRequest;
+using google_apis::drive::FilesDeleteRequest;
 using google_apis::drive::FilesTrashRequest;
 using google_apis::drive::GetUploadStatusRequest;
 using google_apis::drive::InitiateUploadExistingFileRequest;
@@ -104,7 +107,7 @@ const char kFileResourceFields[] =
     "md5Checksum,fileSize,labels/trashed,imageMediaMetadata/width,"
     "imageMediaMetadata/height,imageMediaMetadata/rotation,etag,"
     "parents/parentLink,selfLink,thumbnailLink,alternateLink,embedLink,"
-    "modifiedDate,lastViewedByMeDate";
+    "modifiedDate,lastViewedByMeDate,shared";
 const char kFileResourceOpenWithLinksFields[] =
     "kind,id,openWithLinks/*";
 const char kFileListFields[] =
@@ -112,13 +115,13 @@ const char kFileListFields[] =
     "mimeType,md5Checksum,fileSize,labels/trashed,imageMediaMetadata/width,"
     "imageMediaMetadata/height,imageMediaMetadata/rotation,etag,"
     "parents/parentLink,selfLink,thumbnailLink,alternateLink,embedLink,"
-    "modifiedDate,lastViewedByMeDate),nextLink";
+    "modifiedDate,lastViewedByMeDate,shared),nextLink";
 const char kChangeListFields[] =
     "kind,items(file(kind,id,title,createdDate,sharedWithMeDate,downloadUrl,"
     "mimeType,md5Checksum,fileSize,labels/trashed,imageMediaMetadata/width,"
     "imageMediaMetadata/height,imageMediaMetadata/rotation,etag,"
     "parents/parentLink,selfLink,thumbnailLink,alternateLink,embedLink,"
-    "modifiedDate,lastViewedByMeDate),deleted,id,fileId),nextLink,"
+    "modifiedDate,lastViewedByMeDate,shared),deleted,id,fileId),nextLink,"
     "largestChangeId";
 
 // Callback invoked when the parsing of resource list is completed,
@@ -282,7 +285,7 @@ const char kDriveApiRootDirectoryResourceId[] = "root";
 DriveAPIService::DriveAPIService(
     OAuth2TokenService* oauth2_token_service,
     net::URLRequestContextGetter* url_request_context_getter,
-    base::TaskRunner* blocking_task_runner,
+    base::SequencedTaskRunner* blocking_task_runner,
     const GURL& base_url,
     const GURL& base_download_url,
     const GURL& wapi_base_url,
@@ -308,10 +311,10 @@ void DriveAPIService::Initialize(const std::string& account_id) {
   std::vector<std::string> scopes;
   scopes.push_back(kDriveScope);
   scopes.push_back(kDriveAppsReadonlyScope);
-
-  // GData WAPI token. These are for GetShareUrl().
-  scopes.push_back(util::kDocsListScope);
   scopes.push_back(util::kDriveAppsScope);
+
+  // GData WAPI token for GetShareUrl() and GetResourceListInDirectoryByWapi().
+  scopes.push_back(util::kDocsListScope);
 
   sender_.reset(new RequestSender(
       new google_apis::AuthService(oauth2_token_service_,
@@ -560,6 +563,19 @@ CancelCallback DriveAPIService::DeleteResource(
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   DCHECK(!callback.is_null());
 
+  FilesDeleteRequest* request = new FilesDeleteRequest(
+      sender_.get(), url_generator_, callback);
+  request->set_file_id(resource_id);
+  request->set_etag(etag);
+  return sender_->StartRequestWithRetry(request);
+}
+
+CancelCallback DriveAPIService::TrashResource(
+    const std::string& resource_id,
+    const EntryActionCallback& callback) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  DCHECK(!callback.is_null());
+
   FilesTrashRequest* request = new FilesTrashRequest(
       sender_.get(), url_generator_,
       base::Bind(&EntryActionCallbackAdapter, callback));
@@ -605,27 +621,12 @@ CancelCallback DriveAPIService::CopyResource(
   return sender_->StartRequestWithRetry(request);
 }
 
-CancelCallback DriveAPIService::CopyHostedDocument(
-    const std::string& resource_id,
-    const std::string& new_title,
-    const GetResourceEntryCallback& callback) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  DCHECK(!callback.is_null());
-
-  FilesCopyRequest* request = new FilesCopyRequest(
-      sender_.get(), url_generator_,
-      base::Bind(&ConvertFileEntryToResourceEntryAndRun, callback));
-  request->set_file_id(resource_id);
-  request->set_title(new_title);
-  request->set_fields(kFileResourceFields);
-  return sender_->StartRequestWithRetry(request);
-}
-
-CancelCallback DriveAPIService::MoveResource(
+CancelCallback DriveAPIService::UpdateResource(
     const std::string& resource_id,
     const std::string& parent_resource_id,
     const std::string& new_title,
     const base::Time& last_modified,
+    const base::Time& last_viewed_by_me,
     const GetResourceEntryCallback& callback) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   DCHECK(!callback.is_null());
@@ -638,8 +639,15 @@ CancelCallback DriveAPIService::MoveResource(
   if (!parent_resource_id.empty())
     request->add_parent(parent_resource_id);
   if (!last_modified.is_null()) {
+    // Need to set setModifiedDate to true to overwrite modifiedDate.
     request->set_set_modified_date(true);
     request->set_modified_date(last_modified);
+  }
+  if (!last_viewed_by_me.is_null()) {
+    // Need to set updateViewedDate to false, otherwise the lastViewedByMeDate
+    // will be set to the request time (not the specified time via request).
+    request->set_update_viewed_date(false);
+    request->set_last_viewed_by_me_date(last_viewed_by_me);
   }
   request->set_fields(kFileResourceFields);
   return sender_->StartRequestWithRetry(request);
@@ -657,32 +665,6 @@ CancelCallback DriveAPIService::RenameResource(
       base::Bind(&EntryActionCallbackAdapter, callback));
   request->set_file_id(resource_id);
   request->set_title(new_title);
-  request->set_fields(kFileResourceFields);
-  return sender_->StartRequestWithRetry(request);
-}
-
-CancelCallback DriveAPIService::TouchResource(
-    const std::string& resource_id,
-    const base::Time& modified_date,
-    const base::Time& last_viewed_by_me_date,
-    const GetResourceEntryCallback& callback) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  DCHECK(!modified_date.is_null());
-  DCHECK(!last_viewed_by_me_date.is_null());
-  DCHECK(!callback.is_null());
-
-  FilesPatchRequest* request = new FilesPatchRequest(
-      sender_.get(), url_generator_,
-      base::Bind(&ConvertFileEntryToResourceEntryAndRun, callback));
-  // Need to set setModifiedDate to true to overwrite modifiedDate.
-  request->set_set_modified_date(true);
-
-  // Need to set updateViewedDate to false, otherwise the lastViewedByMeDate
-  // will be set to the request time (not the specified time via request).
-  request->set_update_viewed_date(false);
-
-  request->set_modified_date(modified_date);
-  request->set_last_viewed_by_me_date(last_viewed_by_me_date);
   request->set_fields(kFileResourceFields);
   return sender_->StartRequestWithRetry(request);
 }
@@ -720,39 +702,46 @@ CancelCallback DriveAPIService::InitiateUploadNewFile(
     int64 content_length,
     const std::string& parent_resource_id,
     const std::string& title,
+    const InitiateUploadNewFileOptions& options,
     const InitiateUploadCallback& callback) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   DCHECK(!callback.is_null());
 
-  return sender_->StartRequestWithRetry(
-      new InitiateUploadNewFileRequest(
-          sender_.get(),
-          url_generator_,
-          content_type,
-          content_length,
-          parent_resource_id,
-          title,
-          callback));
+  InitiateUploadNewFileRequest* request =
+      new InitiateUploadNewFileRequest(sender_.get(),
+                                       url_generator_,
+                                       content_type,
+                                       content_length,
+                                       parent_resource_id,
+                                       title,
+                                       callback);
+  request->set_modified_date(options.modified_date);
+  request->set_last_viewed_by_me_date(options.last_viewed_by_me_date);
+  return sender_->StartRequestWithRetry(request);
 }
 
 CancelCallback DriveAPIService::InitiateUploadExistingFile(
     const std::string& content_type,
     int64 content_length,
     const std::string& resource_id,
-    const std::string& etag,
+    const InitiateUploadExistingFileOptions& options,
     const InitiateUploadCallback& callback) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   DCHECK(!callback.is_null());
 
-  return sender_->StartRequestWithRetry(
-      new InitiateUploadExistingFileRequest(
-          sender_.get(),
-          url_generator_,
-          content_type,
-          content_length,
-          resource_id,
-          etag,
-          callback));
+  InitiateUploadExistingFileRequest* request =
+      new InitiateUploadExistingFileRequest(sender_.get(),
+                                            url_generator_,
+                                            content_type,
+                                            content_length,
+                                            resource_id,
+                                            options.etag,
+                                            callback);
+  request->set_parent_resource_id(options.parent_resource_id);
+  request->set_title(options.title);
+  request->set_modified_date(options.modified_date);
+  request->set_last_viewed_by_me_date(options.last_viewed_by_me_date);
+  return sender_->StartRequestWithRetry(request);
 }
 
 CancelCallback DriveAPIService::ResumeUpload(
@@ -803,11 +792,40 @@ CancelCallback DriveAPIService::AuthorizeApp(
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   DCHECK(!callback.is_null());
 
-  FilesGetRequest* request = new FilesGetRequest(
-      sender_.get(), url_generator_,
-      base::Bind(&ExtractOpenUrlAndRun, app_id, callback));
-  request->set_file_id(resource_id);
-  request->set_fields(kFileResourceOpenWithLinksFields);
+  // Files.Authorize is only available for whitelisted clients like official
+  // Google Chrome. In other cases, we fall back to Files.Get that returns the
+  // same value as Files.Authorize without doing authorization. In that case,
+  // the app can open if it was authorized by other means (from whitelisted
+  // clients or drive.google.com web UI.)
+  if (google_apis::IsGoogleChromeAPIKeyUsed()) {
+    google_apis::drive::FilesAuthorizeRequest* request =
+        new google_apis::drive::FilesAuthorizeRequest(
+            sender_.get(), url_generator_,
+            base::Bind(&ExtractOpenUrlAndRun, app_id, callback));
+    request->set_app_id(app_id);
+    request->set_file_id(resource_id);
+    request->set_fields(kFileResourceOpenWithLinksFields);
+    return sender_->StartRequestWithRetry(request);
+  } else {
+    FilesGetRequest* request = new FilesGetRequest(
+        sender_.get(), url_generator_,
+        base::Bind(&ExtractOpenUrlAndRun, app_id, callback));
+    request->set_file_id(resource_id);
+    request->set_fields(kFileResourceOpenWithLinksFields);
+    return sender_->StartRequestWithRetry(request);
+  }
+}
+
+CancelCallback DriveAPIService::UninstallApp(
+    const std::string& app_id,
+    const google_apis::EntryActionCallback& callback) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  DCHECK(!callback.is_null());
+
+  google_apis::drive::AppsDeleteRequest* request =
+      new google_apis::drive::AppsDeleteRequest(sender_.get(), url_generator_,
+                                                callback);
+  request->set_app_id(app_id);
   return sender_->StartRequestWithRetry(request);
 }
 

@@ -8,6 +8,7 @@
 #include "base/basictypes.h"
 #include "base/bind.h"
 #include "base/command_line.h"
+#include "base/compiler_specific.h"
 #include "base/message_loop/message_loop.h"
 #include "base/prefs/pref_service.h"
 #include "base/prefs/scoped_user_pref_update.h"
@@ -33,8 +34,6 @@
 #include "chrome/browser/ui/browser_tabstrip.h"
 #include "chrome/browser/ui/host_desktop.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/background_info.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/extension_icon_set.h"
 #include "chrome/common/extensions/manifest_handlers/icons_handler.h"
@@ -42,12 +41,20 @@
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/site_instance.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/extension_set.h"
+#include "extensions/common/manifest_handlers/background_info.h"
 #include "grit/generated_resources.h"
 #include "grit/theme_resources.h"
 #include "ipc/ipc_message.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/image/image.h"
+
+#if defined(ENABLE_NOTIFICATIONS)
+#include "ui/message_center/message_center.h"
+#include "ui/message_center/message_center_util.h"
+#endif
 
 using content::SiteInstance;
 using content::WebContents;
@@ -60,8 +67,17 @@ namespace {
 const char kNotificationPrefix[] = "app.background.crashed.";
 
 void CloseBalloon(const std::string& balloon_id) {
-  g_browser_process->notification_ui_manager()->
-      CancelById(balloon_id);
+  NotificationUIManager* notification_ui_manager =
+      g_browser_process->notification_ui_manager();
+  bool cancelled ALLOW_UNUSED = notification_ui_manager->CancelById(balloon_id);
+#if defined(ENABLE_NOTIFICATIONS)
+  if (cancelled && message_center::IsRichNotificationEnabled()) {
+    // TODO(dewittj): Add this functionality to the notification UI manager's
+    // API.
+    g_browser_process->message_center()->SetVisibility(
+        message_center::VISIBILITY_TRANSIENT);
+  }
+#endif
 }
 
 // Closes the crash notification balloon for the app/extension with this id.
@@ -103,9 +119,11 @@ class CrashNotificationDelegate : public NotificationDelegate {
       // loading the background page.
       BackgroundContentsService* service =
           BackgroundContentsServiceFactory::GetForProfile(profile_);
-      if (!service->GetAppBackgroundContents(ASCIIToUTF16(copied_extension_id)))
+      if (!service->GetAppBackgroundContents(
+              base::ASCIIToUTF16(copied_extension_id))) {
         service->LoadBackgroundContentsForExtension(profile_,
                                                     copied_extension_id);
+      }
     } else if (is_platform_app_) {
       apps::AppLoadService::Get(profile_)->
           RestartApplication(copied_extension_id);
@@ -143,8 +161,7 @@ class CrashNotificationDelegate : public NotificationDelegate {
 #if defined(ENABLE_NOTIFICATIONS)
 void NotificationImageReady(
     const std::string extension_name,
-    const string16 message,
-    const GURL extension_url,
+    const base::string16 message,
     scoped_refptr<CrashNotificationDelegate> delegate,
     Profile* profile,
     const gfx::Image& icon) {
@@ -153,14 +170,20 @@ void NotificationImageReady(
     ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
     notification_icon = rb.GetImageNamed(IDR_EXTENSION_DEFAULT_ICON);
   }
-  string16 title;  // no notification title
-  DesktopNotificationService::AddIconNotification(extension_url,
-                                                  title,
-                                                  message,
-                                                  notification_icon,
-                                                  string16(),
-                                                  delegate.get(),
-                                                  profile);
+
+  // Origin URL must be different from the crashed extension to avoid the
+  // conflict. NotificationSystemObserver will cancel all notifications from
+  // the same origin when NOTIFICATION_EXTENSION_UNLOADED.
+  // TODO(mukai, dewittj): remove this and switch to message center
+  // notifications.
+  DesktopNotificationService::AddIconNotification(
+      GURL() /* empty origin */,
+      base::string16(),
+      message,
+      icon,
+      base::string16(),
+      delegate.get(),
+      profile);
 }
 #endif
 
@@ -168,10 +191,10 @@ void NotificationImageReady(
 // extension.
 void ShowBalloon(const Extension* extension, Profile* profile) {
 #if defined(ENABLE_NOTIFICATIONS)
-  const string16 message = l10n_util::GetStringFUTF16(
+  const base::string16 message = l10n_util::GetStringFUTF16(
       extension->is_app() ? IDS_BACKGROUND_CRASHED_APP_BALLOON_MESSAGE :
                             IDS_BACKGROUND_CRASHED_EXTENSION_BALLOON_MESSAGE,
-      UTF8ToUTF16(extension->name()));
+      base::UTF8ToUTF16(extension->name()));
   extension_misc::ExtensionIcons size(extension_misc::EXTENSION_ICON_MEDIUM);
   extensions::ExtensionResource resource =
       extensions::IconsInfo::GetIconResource(
@@ -188,7 +211,6 @@ void ShowBalloon(const Extension* extension, Profile* profile) {
           &NotificationImageReady,
           extension->name(),
           message,
-          extension->url(),
           make_scoped_refptr(new CrashNotificationDelegate(profile, extension)),
           profile));
 #endif
@@ -347,13 +369,13 @@ void BackgroundContentsService::Observe(
       BackgroundContents* bgcontents =
           content::Details<BackgroundContents>(details).ptr();
       Profile* profile = content::Source<Profile>(source).ptr();
-      const string16& appid = GetParentApplicationId(bgcontents);
+      const base::string16& appid = GetParentApplicationId(bgcontents);
       ExtensionService* extension_service =
           extensions::ExtensionSystem::Get(profile)->extension_service();
       // extension_service can be NULL when running tests.
       if (extension_service) {
-        const Extension* extension =
-            extension_service->GetExtensionById(UTF16ToUTF8(appid), false);
+        const Extension* extension = extension_service->GetExtensionById(
+            base::UTF16ToUTF8(appid), false);
         if (extension && BackgroundInfo::HasBackgroundPage(extension))
           break;
       }
@@ -368,7 +390,8 @@ void BackgroundContentsService::Observe(
           BackgroundInfo::HasBackgroundPage(extension)) {
         // If there is a background page specified in the manifest for a hosted
         // app, then blow away registered urls in the pref.
-        ShutdownAssociatedBackgroundContents(ASCIIToUTF16(extension->id()));
+        ShutdownAssociatedBackgroundContents(
+            base::ASCIIToUTF16(extension->id()));
 
         ExtensionService* service =
             extensions::ExtensionSystem::Get(profile)->extension_service();
@@ -378,8 +401,8 @@ void BackgroundContentsService::Observe(
           // EXTENSIONS_READY callback.
           LoadBackgroundContents(profile,
                                  BackgroundInfo::GetBackgroundURL(extension),
-                                 ASCIIToUTF16("background"),
-                                 UTF8ToUTF16(extension->id()));
+                                 base::ASCIIToUTF16("background"),
+                                 base::UTF8ToUTF16(extension->id()));
         }
       }
 
@@ -412,14 +435,7 @@ void BackgroundContentsService::Observe(
       const bool force_installed =
           extensions::Manifest::IsPolicyLocation(extension->location());
       if (!force_installed) {
-        // When an extension crashes, EXTENSION_PROCESS_TERMINATED is followed
-        // by an EXTENSION_UNLOADED notification. This UNLOADED signal causes
-        // all the notifications for this extension to be cancelled by
-        // DesktopNotificationService. For this reason, we post the crash
-        // handling code as a task here so that it is not executed before this
-        // event.
-        base::MessageLoop::current()->PostTask(
-            FROM_HERE, base::Bind(&ShowBalloon, extension, profile));
+        ShowBalloon(extension, profile);
       } else {
         // Restart the extension.
         RestartForceInstalledExtensionOnCrash(extension, profile);
@@ -432,8 +448,8 @@ void BackgroundContentsService::Observe(
         case UnloadedExtensionInfo::REASON_TERMINATE:  // Fall through.
         case UnloadedExtensionInfo::REASON_UNINSTALL:  // Fall through.
         case UnloadedExtensionInfo::REASON_BLACKLIST:
-          ShutdownAssociatedBackgroundContents(
-              ASCIIToUTF16(content::Details<UnloadedExtensionInfo>(details)->
+          ShutdownAssociatedBackgroundContents(base::ASCIIToUTF16(
+              content::Details<UnloadedExtensionInfo>(details)->
                   extension->id()));
           SendChangeNotification(content::Source<Profile>(source).ptr());
           break;
@@ -446,14 +462,16 @@ void BackgroundContentsService::Observe(
           // from the LOADED callback.
           const Extension* extension =
               content::Details<UnloadedExtensionInfo>(details)->extension;
-          if (BackgroundInfo::HasBackgroundPage(extension))
-            ShutdownAssociatedBackgroundContents(ASCIIToUTF16(extension->id()));
+          if (BackgroundInfo::HasBackgroundPage(extension)) {
+            ShutdownAssociatedBackgroundContents(
+                base::ASCIIToUTF16(extension->id()));
+          }
           break;
         }
         default:
           NOTREACHED();
-          ShutdownAssociatedBackgroundContents(
-              ASCIIToUTF16(content::Details<UnloadedExtensionInfo>(details)->
+          ShutdownAssociatedBackgroundContents(base::ASCIIToUTF16(
+              content::Details<UnloadedExtensionInfo>(details)->
                   extension->id()));
           break;
       }
@@ -485,14 +503,15 @@ void BackgroundContentsService::LoadBackgroundContentsFromPrefs(
     Profile* profile) {
   if (!prefs_)
     return;
-  const DictionaryValue* contents =
+  const base::DictionaryValue* contents =
       prefs_->GetDictionary(prefs::kRegisteredBackgroundContents);
   if (!contents)
     return;
   ExtensionService* extensions_service =
           extensions::ExtensionSystem::Get(profile)->extension_service();
   DCHECK(extensions_service);
-  for (DictionaryValue::Iterator it(*contents); !it.IsAtEnd(); it.Advance()) {
+  for (base::DictionaryValue::Iterator it(*contents);
+       !it.IsAtEnd(); it.Advance()) {
     // Check to make sure that the parent extension is still enabled.
     const Extension* extension = extensions_service->
         GetExtensionById(it.key(), false);
@@ -530,15 +549,15 @@ void BackgroundContentsService::LoadBackgroundContentsForExtension(
   if (extension && BackgroundInfo::HasBackgroundPage(extension)) {
     LoadBackgroundContents(profile,
                            BackgroundInfo::GetBackgroundURL(extension),
-                           ASCIIToUTF16("background"),
-                           UTF8ToUTF16(extension->id()));
+                           base::ASCIIToUTF16("background"),
+                           base::UTF8ToUTF16(extension->id()));
     return;
   }
 
   // Now look in the prefs.
   if (!prefs_)
     return;
-  const DictionaryValue* contents =
+  const base::DictionaryValue* contents =
       prefs_->GetDictionary(prefs::kRegisteredBackgroundContents);
   if (!contents)
     return;
@@ -548,39 +567,40 @@ void BackgroundContentsService::LoadBackgroundContentsForExtension(
 void BackgroundContentsService::LoadBackgroundContentsFromDictionary(
     Profile* profile,
     const std::string& extension_id,
-    const DictionaryValue* contents) {
+    const base::DictionaryValue* contents) {
   ExtensionService* extensions_service =
       extensions::ExtensionSystem::Get(profile)->extension_service();
   DCHECK(extensions_service);
 
-  const DictionaryValue* dict;
+  const base::DictionaryValue* dict;
   if (!contents->GetDictionaryWithoutPathExpansion(extension_id, &dict) ||
       dict == NULL)
     return;
 
-  string16 frame_name;
+  base::string16 frame_name;
   std::string url;
   dict->GetString(kUrlKey, &url);
   dict->GetString(kFrameNameKey, &frame_name);
   LoadBackgroundContents(profile,
                          GURL(url),
                          frame_name,
-                         UTF8ToUTF16(extension_id));
+                         base::UTF8ToUTF16(extension_id));
 }
 
 void BackgroundContentsService::LoadBackgroundContentsFromManifests(
     Profile* profile) {
-  const ExtensionSet* extensions = extensions::ExtensionSystem::Get(profile)->
-      extension_service()->extensions();
-  ExtensionSet::const_iterator iter = extensions->begin();
-  for (; iter != extensions->end(); ++iter) {
+  const extensions::ExtensionSet* extensions =
+      extensions::ExtensionSystem::Get(profile)->
+          extension_service()->extensions();
+  for (extensions::ExtensionSet::const_iterator iter = extensions->begin();
+       iter != extensions->end(); ++iter) {
     const Extension* extension = iter->get();
     if (extension->is_hosted_app() &&
         BackgroundInfo::HasBackgroundPage(extension)) {
       LoadBackgroundContents(profile,
                              BackgroundInfo::GetBackgroundURL(extension),
-                             ASCIIToUTF16("background"),
-                             UTF8ToUTF16(extension->id()));
+                             base::ASCIIToUTF16("background"),
+                             base::UTF8ToUTF16(extension->id()));
     }
   }
 }
@@ -588,8 +608,8 @@ void BackgroundContentsService::LoadBackgroundContentsFromManifests(
 void BackgroundContentsService::LoadBackgroundContents(
     Profile* profile,
     const GURL& url,
-    const string16& frame_name,
-    const string16& application_id) {
+    const base::string16& frame_name,
+    const base::string16& application_id) {
   // We are depending on the fact that we will initialize before any user
   // actions or session restore can take place, so no BackgroundContents should
   // be running yet for the passed application_id.
@@ -617,8 +637,8 @@ BackgroundContents* BackgroundContentsService::CreateBackgroundContents(
     SiteInstance* site,
     int routing_id,
     Profile* profile,
-    const string16& frame_name,
-    const string16& application_id,
+    const base::string16& frame_name,
+    const base::string16& application_id,
     const std::string& partition_id,
     content::SessionStorageNamespace* session_storage_namespace) {
   BackgroundContents* contents = new BackgroundContents(
@@ -651,25 +671,27 @@ void BackgroundContentsService::RegisterBackgroundContents(
   // TODO(atwilson): Verify that this is the desired behavior based on developer
   // feedback (http://crbug.com/47118).
   DictionaryPrefUpdate update(prefs_, prefs::kRegisteredBackgroundContents);
-  DictionaryValue* pref = update.Get();
-  const string16& appid = GetParentApplicationId(background_contents);
-  DictionaryValue* current;
-  if (pref->GetDictionaryWithoutPathExpansion(UTF16ToUTF8(appid), &current))
+  base::DictionaryValue* pref = update.Get();
+  const base::string16& appid = GetParentApplicationId(background_contents);
+  base::DictionaryValue* current;
+  if (pref->GetDictionaryWithoutPathExpansion(base::UTF16ToUTF8(appid),
+                                              &current)) {
     return;
+  }
 
   // No entry for this application yet, so add one.
-  DictionaryValue* dict = new DictionaryValue();
+  base::DictionaryValue* dict = new base::DictionaryValue();
   dict->SetString(kUrlKey, background_contents->GetURL().spec());
   dict->SetString(kFrameNameKey, contents_map_[appid].frame_name);
-  pref->SetWithoutPathExpansion(UTF16ToUTF8(appid), dict);
+  pref->SetWithoutPathExpansion(base::UTF16ToUTF8(appid), dict);
 }
 
 bool BackgroundContentsService::HasRegisteredBackgroundContents(
-    const string16& app_id) {
+    const base::string16& app_id) {
   if (!prefs_)
     return false;
-  std::string app = UTF16ToUTF8(app_id);
-  const DictionaryValue* contents =
+  std::string app = base::UTF16ToUTF8(app_id);
+  const base::DictionaryValue* contents =
       prefs_->GetDictionary(prefs::kRegisteredBackgroundContents);
   return contents->HasKey(app);
 }
@@ -679,13 +701,13 @@ void BackgroundContentsService::UnregisterBackgroundContents(
   if (!prefs_)
     return;
   DCHECK(IsTracked(background_contents));
-  const string16 appid = GetParentApplicationId(background_contents);
+  const base::string16 appid = GetParentApplicationId(background_contents);
   DictionaryPrefUpdate update(prefs_, prefs::kRegisteredBackgroundContents);
-  update.Get()->RemoveWithoutPathExpansion(UTF16ToUTF8(appid), NULL);
+  update.Get()->RemoveWithoutPathExpansion(base::UTF16ToUTF8(appid), NULL);
 }
 
 void BackgroundContentsService::ShutdownAssociatedBackgroundContents(
-    const string16& appid) {
+    const base::string16& appid) {
   BackgroundContents* contents = GetAppBackgroundContents(appid);
   if (contents) {
     UnregisterBackgroundContents(contents);
@@ -716,24 +738,24 @@ void BackgroundContentsService::BackgroundContentsShutdown(
     BackgroundContents* background_contents) {
   // Remove the passed object from our list.
   DCHECK(IsTracked(background_contents));
-  string16 appid = GetParentApplicationId(background_contents);
+  base::string16 appid = GetParentApplicationId(background_contents);
   contents_map_.erase(appid);
 }
 
 BackgroundContents* BackgroundContentsService::GetAppBackgroundContents(
-    const string16& application_id) {
+    const base::string16& application_id) {
   BackgroundContentsMap::const_iterator it = contents_map_.find(application_id);
   return (it != contents_map_.end()) ? it->second.contents : NULL;
 }
 
-const string16& BackgroundContentsService::GetParentApplicationId(
+const base::string16& BackgroundContentsService::GetParentApplicationId(
     BackgroundContents* contents) const {
   for (BackgroundContentsMap::const_iterator it = contents_map_.begin();
        it != contents_map_.end(); ++it) {
     if (contents == it->second.contents)
       return it->first;
   }
-  return EmptyString16();
+  return base::EmptyString16();
 }
 
 void BackgroundContentsService::AddWebContents(

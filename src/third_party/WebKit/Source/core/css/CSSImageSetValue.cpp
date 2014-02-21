@@ -49,7 +49,7 @@ CSSImageSetValue::CSSImageSetValue()
 CSSImageSetValue::~CSSImageSetValue()
 {
     if (m_imageSet && m_imageSet->isImageResourceSet())
-        static_cast<StyleFetchedImageSet*>(m_imageSet.get())->clearImageSetValue();
+        toStyleFetchedImageSet(m_imageSet)->clearImageSetValue();
 }
 
 void CSSImageSetValue::fillImageSet()
@@ -88,7 +88,7 @@ CSSImageSetValue::ImageWithScale CSSImageSetValue::bestImageForScaleFactor()
     return image;
 }
 
-StyleFetchedImageSet* CSSImageSetValue::cachedImageSet(ResourceFetcher* loader, float deviceScaleFactor)
+StyleFetchedImageSet* CSSImageSetValue::cachedImageSet(ResourceFetcher* loader, float deviceScaleFactor, const ResourceLoaderOptions& options)
 {
     ASSERT(loader);
 
@@ -103,7 +103,11 @@ StyleFetchedImageSet* CSSImageSetValue::cachedImageSet(ResourceFetcher* loader, 
         // and any CSS transforms. https://bugs.webkit.org/show_bug.cgi?id=81698
         ImageWithScale image = bestImageForScaleFactor();
         if (Document* document = loader->document()) {
-            FetchRequest request(ResourceRequest(document->completeURL(image.imageURL)), FetchInitiatorTypeNames::css);
+            FetchRequest request(ResourceRequest(document->completeURL(image.imageURL)), FetchInitiatorTypeNames::css, options);
+
+            if (options.corsEnabled == IsCORSEnabled)
+                request.setCrossOriginAccessControl(loader->document()->securityOrigin(), options.allowCredentials);
+
             if (ResourcePtr<ImageResource> cachedImage = loader->fetchImage(request)) {
                 m_imageSet = StyleFetchedImageSet::create(cachedImage.get(), image.scaleFactor, this);
                 m_accessedBestFitImage = true;
@@ -111,7 +115,12 @@ StyleFetchedImageSet* CSSImageSetValue::cachedImageSet(ResourceFetcher* loader, 
         }
     }
 
-    return (m_imageSet && m_imageSet->isImageResourceSet()) ? static_cast<StyleFetchedImageSet*>(m_imageSet.get()) : 0;
+    return (m_imageSet && m_imageSet->isImageResourceSet()) ? toStyleFetchedImageSet(m_imageSet) : 0;
+}
+
+StyleFetchedImageSet* CSSImageSetValue::cachedImageSet(ResourceFetcher* fetcher, float deviceScaleFactor)
+{
+    return cachedImageSet(fetcher, deviceScaleFactor, ResourceFetcher::defaultResourceOptions());
 }
 
 StyleImage* CSSImageSetValue::cachedOrPendingImageSet(float deviceScaleFactor)
@@ -163,10 +172,9 @@ bool CSSImageSetValue::hasFailedOrCanceledSubresources() const
 {
     if (!m_imageSet || !m_imageSet->isImageResourceSet())
         return false;
-    Resource* cachedResource = static_cast<StyleFetchedImageSet*>(m_imageSet.get())->cachedImage();
-    if (!cachedResource)
-        return true;
-    return cachedResource->loadFailedOrCanceled();
+    if (Resource* cachedResource = toStyleFetchedImageSet(m_imageSet)->cachedImage())
+        return cachedResource->loadFailedOrCanceled();
+    return true;
 }
 
 CSSImageSetValue::CSSImageSetValue(const CSSImageSetValue& cloneFrom)

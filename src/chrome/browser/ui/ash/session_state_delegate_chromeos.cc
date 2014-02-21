@@ -15,7 +15,7 @@
 #include "chrome/browser/chromeos/login/user_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/ui/ash/multi_user_window_manager.h"
+#include "chrome/browser/ui/ash/multi_user/multi_user_window_manager.h"
 #include "chrome/common/pref_names.h"
 #include "chromeos/chromeos_switches.h"
 #include "chromeos/dbus/dbus_thread_manager.h"
@@ -30,7 +30,14 @@ SessionStateDelegateChromeos::~SessionStateDelegateChromeos() {
 }
 
 int SessionStateDelegateChromeos::GetMaximumNumberOfLoggedInUsers() const {
-  return 3;
+  // TODO(nkostylev): Show some UI messages why no more users could be added
+  // to this session. http://crbug.com/230863
+  // We limit list of logged in users to 10 due to memory constraints.
+  // Note that 10 seems excessive, but we want to test how many users are
+  // actually added to a session.
+  // TODO(nkostylev): Adjust this limitation based on device capabilites.
+  // http://crbug.com/230865
+  return 10;
 }
 
 int SessionStateDelegateChromeos::NumberOfLoggedInUsers() const {
@@ -44,8 +51,7 @@ bool SessionStateDelegateChromeos::IsActiveUserSessionStarted() const {
 bool SessionStateDelegateChromeos::CanLockScreen() const {
   const chromeos::UserList unlock_users =
       chromeos::UserManager::Get()->GetUnlockUsers();
-  DCHECK_LE(unlock_users.size(), 1u);
-  return !unlock_users.empty() && unlock_users[0]->can_lock();
+  return !unlock_users.empty();
 }
 
 bool SessionStateDelegateChromeos::IsScreenLocked() const {
@@ -54,14 +60,16 @@ bool SessionStateDelegateChromeos::IsScreenLocked() const {
 }
 
 bool SessionStateDelegateChromeos::ShouldLockScreenBeforeSuspending() const {
-  const chromeos::UserList unlock_users =
-      chromeos::UserManager::Get()->GetUnlockUsers();
-  DCHECK_LE(unlock_users.size(), 1u);
-  Profile* profile =
-      !unlock_users.empty()
-          ? chromeos::UserManager::Get()->GetProfileByUser(unlock_users[0])
-          : NULL;
-  return profile && profile->GetPrefs()->GetBoolean(prefs::kEnableScreenLock);
+  const chromeos::UserList logged_in_users =
+      chromeos::UserManager::Get()->GetLoggedInUsers();
+  for (chromeos::UserList::const_iterator it = logged_in_users.begin();
+       it != logged_in_users.end(); ++it) {
+    chromeos::User* user = (*it);
+    Profile* profile = chromeos::UserManager::Get()->GetProfileByUser(user);
+    if (profile->GetPrefs()->GetBoolean(prefs::kEnableAutoScreenLock))
+      return true;
+  }
+  return false;
 }
 
 void SessionStateDelegateChromeos::LockScreen() {
@@ -135,7 +143,7 @@ void SessionStateDelegateChromeos::SwitchActiveUser(
   chromeos::UserManager::Get()->SwitchActiveUser(user_id);
 }
 
-void SessionStateDelegateChromeos::SwitchActiveUserToNext() {
+void SessionStateDelegateChromeos::CycleActiveUser(CycleUser cycle_user) {
   // Make sure there is a user to switch to.
   if (NumberOfLoggedInUsers() <= 1)
     return;
@@ -157,11 +165,21 @@ void SessionStateDelegateChromeos::SwitchActiveUserToNext() {
   if (it == logged_in_users.end())
     return;
 
-  // Get the next user's email, wrapping to the start of the list if necessary.
-  if (++it == logged_in_users.end())
-    user_id = (*logged_in_users.begin())->email();
-  else
-    user_id = (*it)->email();
+  // Get the user's email to select, wrapping to the start/end of the list if
+  // necessary.
+  switch (cycle_user) {
+    case CYCLE_TO_NEXT_USER:
+      if (++it == logged_in_users.end())
+        user_id = (*logged_in_users.begin())->email();
+      else
+        user_id = (*it)->email();
+      break;
+    case CYCLE_TO_PREVIOUS_USER:
+      if (it == logged_in_users.begin())
+        it = logged_in_users.end();
+      user_id = (*(--it))->email();
+      break;
+  }
 
   // Switch using the transformed |user_id|.
   chromeos::UserManager::Get()->SwitchActiveUser(user_id);
@@ -180,9 +198,12 @@ void SessionStateDelegateChromeos::RemoveSessionStateObserver(
 bool SessionStateDelegateChromeos::TransferWindowToDesktopOfUser(
     aura::Window* window,
     ash::MultiProfileIndex index) {
+  if (chrome::MultiUserWindowManager::GetMultiProfileMode() !=
+          chrome::MultiUserWindowManager::MULTI_PROFILE_MODE_SEPARATED)
+    return false;
   chrome::MultiUserWindowManager* window_manager =
       chrome::MultiUserWindowManager::GetInstance();
-  if (!window_manager || window_manager->GetWindowOwner(window).empty())
+  if (window_manager->GetWindowOwner(window).empty())
     return false;
 
   ash::MultiProfileUMA::RecordTeleportAction(

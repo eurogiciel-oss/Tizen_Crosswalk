@@ -72,14 +72,22 @@ def SvnUrlToGitUrl(path, svn_url):
   if svn_url == '/trunk/deps/cdm':
     return (path, GIT_HOST + 'chromium/cdm.git', GIT_HOST)
 
+  # TODO(niklase) Remove after landing https://codereview.chromium.org/86563002
   if re.match('^https?://webrtc.googlecode.com/svn/stable/webrtc$', svn_url):
     return (path, GIT_HOST + 'external/webrtc/stable/webrtc.git', GIT_HOST)
 
+  # TODO(niklase) Remove after landing https://codereview.chromium.org/86563002
   if re.match('^https?://webrtc.googlecode.com/svn/stable/talk$', svn_url):
     return (path, GIT_HOST + 'external/webrtc/stable/talk.git', GIT_HOST)
 
+  # TODO(niklase) Remove after landing https://codereview.chromium.org/86563002
   if re.match('^https?://webrtc.googlecode.com/svn/stable/src$', svn_url):
     return (path, GIT_HOST + 'external/webrtc/stable/src.git', GIT_HOST)
+
+  match = re.match('^https?://webrtc.googlecode.com/svn/trunk/(.*)', svn_url)
+  if match:
+    repo = '%s.git' % match.group(1)
+    return (path, GIT_HOST + 'external/webrtc/trunk/%s' % repo, GIT_HOST)
 
   if re.match('^https?://webrtc.googlecode.com/svn/deps/third_party/openmax$',
               svn_url):
@@ -105,6 +113,12 @@ def SvnUrlToGitUrl(path, svn_url):
   if match:
     repo = '%s%s.git' % (match.group(2), match.group(3))
     return (path, GIT_HOST + 'external/%s' % repo, GIT_HOST)
+
+  # Subdirectories of libaddressinput
+  if re.match('^https?://libaddressinput.googlecode.com/svn/trunk', svn_url):
+    if 'libaddressinput' in path:
+      path = path[:path.index('libaddressinput')] + 'libaddressinput/src'
+    return (path, GIT_HOST + 'external/libaddressinput.git', GIT_HOST)
 
   # Projects on googlecode.com using trunk.
   match = re.match('^https?://(.*).googlecode.com/svn/trunk(.*)', svn_url)

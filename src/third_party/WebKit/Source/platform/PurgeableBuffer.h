@@ -27,11 +27,12 @@
 #ifndef PurgeableBuffer_h
 #define PurgeableBuffer_h
 
+#include "wtf/Compiler.h"
 #include "wtf/OwnPtr.h"
 #include "wtf/PassOwnPtr.h"
 #include "platform/PlatformExport.h"
 
-namespace WebKit {
+namespace blink {
 class WebDiscardableMemory;
 }
 
@@ -47,24 +48,19 @@ public:
     const char* data() const;
     size_t size() const { return m_size; }
 
-    bool isPurgeable() const { return m_state != Locked; }
-    bool wasPurged() const;
+    bool isLocked() const { return m_isLocked; }
 
-    bool lock();
+    // Locks the underlying memory and returns whether it was preserved (i.e. not purged).
+    bool lock() WARN_UNUSED_RETURN;
+
     void unlock();
 
 private:
-    enum State {
-        Locked,
-        Unlocked,
-        Purged
-    };
+    PurgeableBuffer(PassOwnPtr<blink::WebDiscardableMemory>, const char* data, size_t);
 
-    PurgeableBuffer(PassOwnPtr<WebKit::WebDiscardableMemory>, const char* data, size_t);
-
-    OwnPtr<WebKit::WebDiscardableMemory> m_memory;
+    OwnPtr<blink::WebDiscardableMemory> m_memory;
     size_t m_size;
-    State m_state;
+    bool m_isLocked;
 };
 
 }

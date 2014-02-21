@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_MEDIA_MEDIA_CAPTURE_DEVICES_DISPATCHER_H_
 
 #include <deque>
+#include <list>
 #include <map>
 
 #include "base/callback.h"
@@ -57,7 +58,7 @@ class MediaCaptureDevicesDispatcher : public content::MediaObserver,
 
     // Handle an information update that a new stream is being created.
     virtual void OnCreatingAudioStream(int render_process_id,
-                                       int render_view_id) {}
+                                       int render_frame_id) {}
 
     virtual ~Observer() {}
   };
@@ -120,6 +121,7 @@ class MediaCaptureDevicesDispatcher : public content::MediaObserver,
       int render_process_id,
       int render_view_id,
       int page_request_id,
+      const GURL& security_origin,
       const content::MediaStreamDevice& device,
       content::MediaRequestState state) OVERRIDE;
   virtual void OnAudioStreamPlayingChanged(
@@ -130,13 +132,15 @@ class MediaCaptureDevicesDispatcher : public content::MediaObserver,
       float power_dBFS,
       bool clipped) OVERRIDE;
   virtual void OnCreatingAudioStream(int render_process_id,
-                                     int render_view_id) OVERRIDE;
+                                     int render_frame_id) OVERRIDE;
 
   scoped_refptr<MediaStreamCaptureIndicator> GetMediaStreamCaptureIndicator();
 
   scoped_refptr<AudioStreamIndicator> GetAudioStreamIndicator();
 
   DesktopStreamsRegistry* GetDesktopStreamsRegistry();
+
+  bool IsDesktopCaptureInProgress();
 
  private:
   friend struct DefaultSingletonTraits<MediaCaptureDevicesDispatcher>;
@@ -146,6 +150,8 @@ class MediaCaptureDevicesDispatcher : public content::MediaObserver,
                          const content::MediaResponseCallback& callback);
     ~PendingAccessRequest();
 
+    // TODO(gbillock): make the MediaStreamDevicesController owned by
+    // this object when we're using bubbles.
     content::MediaStreamRequest request;
     content::MediaResponseCallback callback;
   };
@@ -197,10 +203,11 @@ class MediaCaptureDevicesDispatcher : public content::MediaObserver,
       int render_process_id,
       int render_view_id,
       int page_request_id,
+      const GURL& security_origin,
       const content::MediaStreamDevice& device,
       content::MediaRequestState state);
   void OnCreatingAudioStreamOnUIThread(int render_process_id,
-                                       int render_view_id);
+                                       int render_frame_id);
 
   // A list of cached audio capture devices.
   content::MediaStreamDevices audio_devices_;
@@ -227,6 +234,17 @@ class MediaCaptureDevicesDispatcher : public content::MediaObserver,
   scoped_ptr<DesktopStreamsRegistry> desktop_streams_registry_;
 
   content::NotificationRegistrar notifications_registrar_;
+
+  // Tracks MEDIA_DESKTOP_VIDEO_CAPTURE sessions which reach the
+  // MEDIA_REQUEST_STATE_DONE state.  Sessions are remove when
+  // MEDIA_REQUEST_STATE_CLOSING is encountered.
+  struct DesktopCaptureSession {
+    int render_process_id;
+    int render_view_id;
+    int page_request_id;
+  };
+  typedef std::list<DesktopCaptureSession> DesktopCaptureSessions;
+  DesktopCaptureSessions desktop_capture_sessions_;
 
   DISALLOW_COPY_AND_ASSIGN(MediaCaptureDevicesDispatcher);
 };

@@ -10,7 +10,7 @@
 
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
-#include "chrome/common/extensions/extension.h"
+#include "extensions/common/extension.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
 #include "skia/ext/skia_utils_mac.h"
@@ -59,7 +59,7 @@ void ExtensionUninstallDialogCocoa::Show() {
 
   [alert setMessageText:l10n_util::GetNSStringF(
        IDS_EXTENSION_UNINSTALL_PROMPT_HEADING,
-       UTF8ToUTF16(extension_->name()))];
+       base::UTF8ToUTF16(extension_->name()))];
   [alert setAlertStyle:NSWarningAlertStyle];
   [alert setIcon:gfx::NSImageFromImageSkia(icon_)];
 

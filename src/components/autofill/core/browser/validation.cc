@@ -18,7 +18,7 @@ using base::StringPiece16;
 namespace {
 
 // The separator characters for SSNs.
-const char16 kSSNSeparators[] = {' ', '-', 0};
+const base::char16 kSSNSeparators[] = {' ', '-', 0};
 
 }  // namespace
 
@@ -139,7 +139,7 @@ bool IsValidCreditCardSecurityCode(const base::string16& code,
 
 bool IsValidEmailAddress(const base::string16& text) {
   // E-Mail pattern as defined by the WhatWG. (4.10.7.1.5 E-Mail state)
-  const base::string16 kEmailPattern = ASCIIToUTF16(
+  const base::string16 kEmailPattern = base::ASCIIToUTF16(
       "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@"
       "[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$");
   return MatchesPattern(text, kEmailPattern);
@@ -151,13 +151,13 @@ bool IsValidState(const base::string16& text) {
 }
 
 bool IsValidZip(const base::string16& text) {
-  const base::string16 kZipPattern = ASCIIToUTF16("^\\d{5}(-\\d{4})?$");
+  const base::string16 kZipPattern = base::ASCIIToUTF16("^\\d{5}(-\\d{4})?$");
   return MatchesPattern(text, kZipPattern);
 }
 
-bool IsSSN(const string16& text) {
-  string16 number_string;
-  RemoveChars(text, kSSNSeparators, &number_string);
+bool IsSSN(const base::string16& text) {
+  base::string16 number_string;
+  base::RemoveChars(text, kSSNSeparators, &number_string);
 
   // A SSN is of the form AAA-GG-SSSS (A = area number, G = group number, S =
   // serial number). The validation we do here is simply checking if the area,

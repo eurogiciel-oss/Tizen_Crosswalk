@@ -35,12 +35,13 @@
 #include "wtf/ThreadIdentifierDataPthreads.h"
 
 #include "wtf/Assertions.h"
-#include "wtf/Threading.h"
 #include "wtf/WTF.h"
 
 #if OS(ANDROID)
 // PTHREAD_KEYS_MAX is not defined in bionic, so explicitly define it here.
+#ifndef PTHREAD_KEYS_MAX
 #define PTHREAD_KEYS_MAX 1024
+#endif // PTHREAD_KEYS_MAX
 #else
 #include <limits.h>
 #endif

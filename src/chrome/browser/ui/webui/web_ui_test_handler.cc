@@ -27,25 +27,26 @@ WebUITestHandler::WebUITestHandler()
       is_waiting_(false) {
 }
 
-void WebUITestHandler::PreloadJavaScript(const string16& js_text,
+void WebUITestHandler::PreloadJavaScript(const base::string16& js_text,
                                          RenderViewHost* preload_host) {
   DCHECK(preload_host);
   preload_host->Send(new ChromeViewMsg_WebUIJavaScript(
-      preload_host->GetRoutingID(), string16(), js_text, 0,
+      preload_host->GetRoutingID(), base::string16(), js_text, 0,
       false));
 }
 
-void WebUITestHandler::RunJavaScript(const string16& js_text) {
+void WebUITestHandler::RunJavaScript(const base::string16& js_text) {
   web_ui()->GetWebContents()->GetRenderViewHost()->ExecuteJavascriptInWebFrame(
-      string16(), js_text);
+      base::string16(), js_text);
 }
 
-bool WebUITestHandler::RunJavaScriptTestWithResult(const string16& js_text) {
+bool WebUITestHandler::RunJavaScriptTestWithResult(
+    const base::string16& js_text) {
   test_succeeded_ = false;
   run_test_succeeded_ = false;
   RenderViewHost* rvh = web_ui()->GetWebContents()->GetRenderViewHost();
   rvh->ExecuteJavascriptInWebFrameCallbackResult(
-      string16(),  // frame_xpath
+      base::string16(),  // frame_xpath
       js_text,
       base::Bind(&WebUITestHandler::JavaScriptComplete,
                  base::Unretained(this)));
@@ -57,7 +58,7 @@ void WebUITestHandler::RegisterMessages() {
       base::Bind(&WebUITestHandler::HandleTestResult, base::Unretained(this)));
 }
 
-void WebUITestHandler::HandleTestResult(const ListValue* test_result) {
+void WebUITestHandler::HandleTestResult(const base::ListValue* test_result) {
   // Quit the message loop if |is_waiting_| so waiting process can get result or
   // error. To ensure this gets done, do this before ASSERT* calls.
   if (is_waiting_)

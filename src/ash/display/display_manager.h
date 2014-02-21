@@ -24,11 +24,13 @@ namespace gfx {
 class Display;
 class Insets;
 class Rect;
+class Screen;
 }
 
 namespace ash {
 class AcceleratorControllerTest;
 class DisplayController;
+class ScreenAsh;
 
 namespace test {
 class DisplayManagerTestApi;
@@ -59,7 +61,9 @@ class ASH_EXPORT DisplayManager
     virtual void CloseNonDesktopDisplay() = 0;
 
     // Called before and after the display configuration changes.
-    virtual void PreDisplayConfigurationChange(bool display_removed) = 0;
+    // When |clear_focus| is true, the implementation should
+    // deactivate the active window and set the focus window to NULL.
+    virtual void PreDisplayConfigurationChange(bool clear_focus) = 0;
     virtual void PostDisplayConfigurationChange() = 0;
   };
 
@@ -94,6 +98,10 @@ class ASH_EXPORT DisplayManager
 
   DisplayLayoutStore* layout_store() {
     return layout_store_.get();
+  }
+
+  gfx::Screen* screen() {
+    return screen_;
   }
 
   void set_delegate(Delegate* delegate) { delegate_ = delegate; }
@@ -245,6 +253,10 @@ class ASH_EXPORT DisplayManager
     return second_display_mode_ == MIRRORING;
   };
 
+  bool virtual_keyboard_root_window_enabled() const {
+    return second_display_mode_ == VIRTUAL_KEYBOARD;
+  };
+
   // Sets/gets second display mode.
   void SetSecondDisplayMode(SecondDisplayMode mode);
   SecondDisplayMode second_display_mode() const {
@@ -258,6 +270,9 @@ class ASH_EXPORT DisplayManager
   // Creates mirror window if the software mirror mode is enabled.
   // This is used only for bootstrap.
   void CreateMirrorWindowIfAny();
+
+  // Create a screen instance to be used during shutdown.
+  void CreateScreenForShutdown() const;
 
 private:
   FRIEND_TEST_ALL_PREFIXES(ExtendedDesktopTest, ConvertPoint);
@@ -307,11 +322,15 @@ private:
 
   Delegate* delegate_;  // not owned.
 
+  scoped_ptr<ScreenAsh> screen_ash_;
+  // This is to have an accessor without ScreenAsh definition.
+  gfx::Screen* screen_;
+
   scoped_ptr<DisplayLayoutStore> layout_store_;
 
   int64 first_display_id_;
 
-  // List of current active dispays.
+  // List of current active displays.
   DisplayList displays_;
 
   int num_connected_displays_;
@@ -321,13 +340,13 @@ private:
   // The mapping from the display ID to its internal data.
   std::map<int64, DisplayInfo> display_info_;
 
-  // Selected resolutions for displays. Key is the displays' ID.
+  // Selected resolutions in pixels for displays. Key is the displays' ID.
   std::map<int64, gfx::Size> resolutions_;
 
   // When set to true, the host window's resize event updates
   // the display's size. This is set to true when running on
   // desktop environment (for debugging) so that resizing the host
-  // window wil update the display properly. This is set to false
+  // window will update the display properly. This is set to false
   // on device as well as during the unit tests.
   bool change_display_upon_host_resize_;
 

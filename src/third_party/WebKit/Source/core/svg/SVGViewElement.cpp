@@ -22,45 +22,38 @@
 
 #include "core/svg/SVGViewElement.h"
 
-#include "SVGNames.h"
-#include "core/svg/SVGFitToViewBox.h"
-#include "core/svg/SVGStringList.h"
-#include "core/svg/SVGZoomAndPan.h"
 
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_BOOLEAN(SVGViewElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
-DEFINE_ANIMATED_RECT(SVGViewElement, SVGNames::viewBoxAttr, ViewBox, viewBox)
-DEFINE_ANIMATED_PRESERVEASPECTRATIO(SVGViewElement, SVGNames::preserveAspectRatioAttr, PreserveAspectRatio, preserveAspectRatio)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGViewElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(viewBox)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(preserveAspectRatio)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGViewElement::SVGViewElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+inline SVGViewElement::SVGViewElement(Document& document)
+    : SVGElement(SVGNames::viewTag, document)
+    , m_viewBox(SVGAnimatedRect::create(this, SVGNames::viewBoxAttr))
+    , m_preserveAspectRatio(SVGAnimatedPreserveAspectRatio::create(this, SVGNames::preserveAspectRatioAttr, SVGPreserveAspectRatio::create()))
     , m_zoomAndPan(SVGZoomAndPanMagnify)
     , m_viewTarget(SVGNames::viewTargetAttr)
 {
-    ASSERT(hasTagName(SVGNames::viewTag));
     ScriptWrappable::init(this);
+
+    addToPropertyMap(m_viewBox);
+    addToPropertyMap(m_preserveAspectRatio);
     registerAnimatedPropertiesForSVGViewElement();
 }
 
-PassRefPtr<SVGViewElement> SVGViewElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGViewElement> SVGViewElement::create(Document& document)
 {
-    return adoptRef(new SVGViewElement(tagName, document));
+    return adoptRef(new SVGViewElement(document));
 }
 
 bool SVGViewElement::isSupportedAttribute(const QualifiedName& attrName)
 {
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
     if (supportedAttributes.isEmpty()) {
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
         SVGFitToViewBox::addSupportedAttributes(supportedAttributes);
         SVGZoomAndPan::addSupportedAttributes(supportedAttributes);
         supportedAttributes.add(SVGNames::viewTargetAttr);
@@ -80,8 +73,6 @@ void SVGViewElement::parseAttribute(const QualifiedName& name, const AtomicStrin
         return;
     }
 
-    if (SVGExternalResourcesRequired::parseAttribute(name, value))
-        return;
     if (SVGFitToViewBox::parseAttribute(this, name, value))
         return;
     if (SVGZoomAndPan::parseAttribute(this, name, value))

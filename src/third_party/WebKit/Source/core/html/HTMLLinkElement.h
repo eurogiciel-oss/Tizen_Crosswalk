@@ -27,7 +27,8 @@
 #include "core/css/CSSStyleSheet.h"
 #include "core/dom/DOMSettableTokenList.h"
 #include "core/dom/IconURL.h"
-#include "core/fetch/ResourcePtr.h"
+#include "core/fetch/ResourceOwner.h"
+#include "core/fetch/StyleSheetResource.h"
 #include "core/fetch/StyleSheetResourceClient.h"
 #include "core/html/HTMLElement.h"
 #include "core/html/LinkRelAttribute.h"
@@ -54,10 +55,10 @@ typedef EventSender<HTMLLinkElement> LinkEventSender;
 // changing @rel makes it harder to move such a design so we are
 // sticking current way so far.
 //
-class LinkStyle FINAL : public LinkResource, StyleSheetResourceClient {
+class LinkStyle FINAL : public LinkResource, ResourceOwner<StyleSheetResource> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static PassRefPtr<LinkStyle> create(HTMLLinkElement* owner);
+    static PassOwnPtr<LinkStyle> create(HTMLLinkElement* owner);
 
     explicit LinkStyle(HTMLLinkElement* owner);
     virtual ~LinkStyle();
@@ -84,7 +85,7 @@ public:
 
 private:
     // From ResourceClient
-    virtual void setCSSStyleSheet(const String& href, const KURL& baseURL, const String& charset, const CSSStyleSheetResource*);
+    virtual void setCSSStyleSheet(const String& href, const KURL& baseURL, const String& charset, const CSSStyleSheetResource*) OVERRIDE;
 
     enum DisabledState {
         Unset,
@@ -108,7 +109,6 @@ private:
     void removePendingSheet(RemovePendingSheetNotificationType = RemovePendingSheetNotifyImmediately);
     Document& document();
 
-    ResourcePtr<CSSStyleSheetResource> m_resource;
     RefPtr<CSSStyleSheet> m_sheet;
     DisabledState m_disabledState;
     PendingSheetType m_pendingSheetType;
@@ -120,35 +120,36 @@ private:
 
 class HTMLLinkElement FINAL : public HTMLElement, public LinkLoaderClient {
 public:
-    static PassRefPtr<HTMLLinkElement> create(const QualifiedName&, Document&, bool createdByParser);
+    static PassRefPtr<HTMLLinkElement> create(Document&, bool createdByParser);
     virtual ~HTMLLinkElement();
 
     KURL href() const;
-    String rel() const;
+    const AtomicString& rel() const;
     String media() const { return m_media; }
     String typeValue() const { return m_type; }
     const LinkRelAttribute& relAttribute() const { return m_relAttribute; }
 
-    virtual String target() const;
-
-    String type() const;
+    const AtomicString& type() const;
 
     IconType iconType() const;
 
     // the icon size string as parsed from the HTML attribute
-    String iconSizes() const;
+    const AtomicString& iconSizes() const;
 
     CSSStyleSheet* sheet() const { return linkStyle() ? linkStyle()->sheet() : 0; }
     Document* import() const;
 
     bool styleSheetIsLoading() const;
 
+    bool isImport() const { return linkImport(); }
+    bool importOwnsLoader() const;
     bool isDisabled() const { return linkStyle() && linkStyle()->isDisabled(); }
     bool isEnabledViaScript() const { return linkStyle() && linkStyle()->isEnabledViaScript(); }
     DOMSettableTokenList* sizes() const;
 
     void dispatchPendingEvent(LinkEventSender*);
     void scheduleEvent();
+    void dispatchEventImmediately();
     static void dispatchPendingLoadEvents();
 
     // From LinkLoaderClient
@@ -158,6 +159,7 @@ public:
     bool loadLink(const String& type, const KURL& url) { return m_linkLoader.loadLink(m_relAttribute, type, url, document()); }
     bool isAlternate() const { return linkStyle()->isUnset() && m_relAttribute.isAlternate(); }
     bool shouldProcessStyle() { return linkResourceToProcess() && linkStyle(); }
+    bool isCreatedByParser() const { return m_createdByParser; }
 
 private:
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
@@ -176,8 +178,7 @@ private:
     virtual bool sheetLoaded() OVERRIDE;
     virtual void notifyLoadedSheetAndAllCriticalSubresources(bool errorOccurred) OVERRIDE;
     virtual void startLoadingDynamicSheet() OVERRIDE;
-    virtual void addSubresourceAttributeURLs(ListHashSet<KURL>&) const OVERRIDE;
-    virtual void finishParsingChildren();
+    virtual void finishParsingChildren() OVERRIDE;
 
     // From LinkLoaderClient
     virtual void linkLoaded() OVERRIDE;
@@ -188,9 +189,9 @@ private:
     virtual void didSendDOMContentLoadedForLinkPrerender() OVERRIDE;
 
 private:
-    HTMLLinkElement(const QualifiedName&, Document&, bool createdByParser);
+    HTMLLinkElement(Document&, bool createdByParser);
 
-    RefPtr<LinkResource> m_link;
+    OwnPtr<LinkResource> m_link;
     LinkLoader m_linkLoader;
 
     String m_type;

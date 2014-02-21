@@ -15,9 +15,10 @@
 #include "chrome/browser/browsing_data/browsing_data_helper.h"
 #include "chrome/browser/browsing_data/browsing_data_remover.h"
 #include "chrome/browser/chromeos/policy/policy_oauth2_token_fetcher.h"
-#include "chrome/browser/policy/cloud/message_util.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/chromeos/login/authenticated_user_email_retriever.h"
 #include "chrome/browser/ui/webui/chromeos/login/oobe_ui.h"
+#include "components/policy/core/browser/cloud/message_util.h"
 #include "content/public/browser/web_contents.h"
 #include "google_apis/gaia/gaia_auth_fetcher.h"
 #include "google_apis/gaia/gaia_auth_util.h"
@@ -26,6 +27,7 @@
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
+#include "net/url_request/url_request_context_getter.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace {
@@ -77,6 +79,7 @@ EnrollmentScreenHandler::EnrollmentScreenHandler()
       is_auto_enrollment_(false),
       can_exit_enrollment_(true),
       browsing_data_remover_(NULL) {
+  set_async_assets_load_id(OobeUI::kScreenOobeEnrollment);
 }
 
 EnrollmentScreenHandler::~EnrollmentScreenHandler() {
@@ -87,6 +90,8 @@ EnrollmentScreenHandler::~EnrollmentScreenHandler() {
 // EnrollmentScreenHandler, WebUIMessageHandler implementation --
 
 void EnrollmentScreenHandler::RegisterMessages() {
+  AddCallback("oauthEnrollRetrieveAuthenticatedUserEmail",
+              &EnrollmentScreenHandler::HandleRetrieveAuthenticatedUserEmail);
   AddCallback("oauthEnrollClose",
               &EnrollmentScreenHandler::HandleClose);
   AddCallback("oauthEnrollCompleteLogin",
@@ -222,6 +227,9 @@ void EnrollmentScreenHandler::ShowEnrollmentStatus(
         case policy::DM_STATUS_SERVICE_MISSING_LICENSES:
           ShowError(IDS_ENTERPRISE_ENROLLMENT_MISSING_LICENSES_ERROR, true);
           break;
+        case policy::DM_STATUS_SERVICE_DEPROVISIONED:
+          ShowError(IDS_ENTERPRISE_ENROLLMENT_DEPROVISIONED_ERROR, true);
+          break;
         case policy::DM_STATUS_SERVICE_MANAGEMENT_NOT_SUPPORTED:
           ShowError(IDS_ENTERPRISE_ENROLLMENT_ACCOUNT_ERROR, true);
           break;
@@ -324,6 +332,16 @@ void EnrollmentScreenHandler::OnBrowsingDataRemoverDone() {
 
 // EnrollmentScreenHandler, private -----------------------------
 
+void EnrollmentScreenHandler::HandleRetrieveAuthenticatedUserEmail(
+    double attempt_token) {
+  email_retriever_.reset(new AuthenticatedUserEmailRetriever(
+      base::Bind(&EnrollmentScreenHandler::CallJS<double, std::string>,
+                 base::Unretained(this),
+                 "setAuthenticatedUserEmail",
+                 attempt_token),
+      Profile::FromWebUI(web_ui())->GetRequestContext()));
+}
+
 void EnrollmentScreenHandler::HandleClose(const std::string& reason) {
   if (!controller_) {
     NOTREACHED();
@@ -384,7 +402,7 @@ void EnrollmentScreenHandler::OnTokenFetched(
 }
 
 void EnrollmentScreenHandler::DoShow() {
-  DictionaryValue screen_data;
+  base::DictionaryValue screen_data;
   screen_data.SetString("signin_url", kGaiaExtStartPage);
   screen_data.SetString("gaiaUrl", GaiaUrls::GetInstance()->gaia_url().spec());
   screen_data.SetBoolean("is_auto_enrollment", is_auto_enrollment_);

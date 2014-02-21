@@ -45,20 +45,20 @@ class SQLStatementCallback;
 class SQLStatementErrorCallback;
 class SQLTransaction;
 
-class SQLStatement : public AbstractSQLStatement {
+class SQLStatement FINAL : public AbstractSQLStatement {
 public:
     static PassOwnPtr<SQLStatement> create(Database*,
-        PassRefPtr<SQLStatementCallback>, PassRefPtr<SQLStatementErrorCallback>);
+        PassOwnPtr<SQLStatementCallback>, PassOwnPtr<SQLStatementErrorCallback>);
 
     bool performCallback(SQLTransaction*);
 
-    virtual void setBackend(AbstractSQLStatementBackend*);
+    virtual void setBackend(AbstractSQLStatementBackend*) OVERRIDE;
 
-    virtual bool hasCallback();
-    virtual bool hasErrorCallback();
+    virtual bool hasCallback() OVERRIDE;
+    virtual bool hasErrorCallback() OVERRIDE;
 
 private:
-    SQLStatement(Database*, PassRefPtr<SQLStatementCallback>, PassRefPtr<SQLStatementErrorCallback>);
+    SQLStatement(Database*, PassOwnPtr<SQLStatementCallback>, PassOwnPtr<SQLStatementErrorCallback>);
 
     // The AbstractSQLStatementBackend owns the SQLStatement. Hence, the backend is
     // guaranteed to be outlive the SQLStatement, and it is safe for us to refer

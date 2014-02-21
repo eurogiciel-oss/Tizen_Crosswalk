@@ -12,7 +12,7 @@
 #include "base/basictypes.h"
 #include "base/bind.h"
 #include "base/logging.h"
-#include "base/safe_numerics.h"
+#include "base/numerics/safe_conversions.h"
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
 #include "net/socket/client_socket_handle.h"
@@ -68,10 +68,19 @@ int CalculateSerializedSizeAndTurnOnMaskBit(
 }  // namespace
 
 WebSocketBasicStream::WebSocketBasicStream(
-    scoped_ptr<ClientSocketHandle> connection)
+    scoped_ptr<ClientSocketHandle> connection,
+    const scoped_refptr<GrowableIOBuffer>& http_read_buffer,
+    const std::string& sub_protocol,
+    const std::string& extensions)
     : read_buffer_(new IOBufferWithSize(kReadBufferSize)),
       connection_(connection.Pass()),
+      http_read_buffer_(http_read_buffer),
+      sub_protocol_(sub_protocol),
+      extensions_(extensions),
       generate_websocket_masking_key_(&GenerateWebSocketMaskingKey) {
+  // http_read_buffer_ should not be set if it contains no data.
+  if (http_read_buffer_ && http_read_buffer_->offset() == 0)
+    http_read_buffer_ = NULL;
   DCHECK(connection_->is_initialized());
 }
 
@@ -148,13 +157,15 @@ int WebSocketBasicStream::WriteFrames(ScopedVector<WebSocketFrame>* frames,
     dest += result;
     remaining_size -= result;
 
-    const char* const frame_data = frame->data->data();
     const int frame_size = frame->header.payload_length;
-    CHECK_GE(remaining_size, frame_size);
-    std::copy(frame_data, frame_data + frame_size, dest);
-    MaskWebSocketFramePayload(mask, 0, dest, frame_size);
-    dest += frame_size;
-    remaining_size -= frame_size;
+    if (frame_size > 0) {
+      CHECK_GE(remaining_size, frame_size);
+      const char* const frame_data = frame->data->data();
+      std::copy(frame_data, frame_data + frame_size, dest);
+      MaskWebSocketFramePayload(mask, 0, dest, frame_size);
+      dest += frame_size;
+      remaining_size -= frame_size;
+    }
   }
   DCHECK_EQ(0, remaining_size) << "Buffer size calculation was wrong; "
                                << remaining_size << " bytes left over.";
@@ -179,13 +190,8 @@ WebSocketBasicStream::CreateWebSocketBasicStreamForTesting(
     const std::string& sub_protocol,
     const std::string& extensions,
     WebSocketMaskingKeyGeneratorFunction key_generator_function) {
-  scoped_ptr<WebSocketBasicStream> stream(
-      new WebSocketBasicStream(connection.Pass()));
-  if (http_read_buffer) {
-    stream->http_read_buffer_ = http_read_buffer;
-  }
-  stream->sub_protocol_ = sub_protocol;
-  stream->extensions_ = extensions;
+  scoped_ptr<WebSocketBasicStream> stream(new WebSocketBasicStream(
+      connection.Pass(), http_read_buffer, sub_protocol, extensions));
   stream->generate_websocket_masking_key_ = key_generator_function;
   return stream.Pass();
 }
@@ -343,10 +349,10 @@ int WebSocketBasicStream::ConvertChunkToFrame(
   // header. A check for exact equality can only be used when the whole frame
   // arrives in one chunk.
   DCHECK_GE(current_frame_header_->payload_length,
-            base::checked_numeric_cast<uint64>(chunk_size));
+            base::checked_cast<uint64>(chunk_size));
   DCHECK(!is_first_chunk || !is_final_chunk ||
          current_frame_header_->payload_length ==
-             base::checked_numeric_cast<uint64>(chunk_size));
+             base::checked_cast<uint64>(chunk_size));
 
   // Convert the chunk to a complete frame.
   *frame = CreateFrame(is_final_chunk, data_buffer);

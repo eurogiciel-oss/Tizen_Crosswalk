@@ -116,11 +116,12 @@ void ResourceLoader::releaseResources()
 void ResourceLoader::init(const ResourceRequest& passedRequest)
 {
     ResourceRequest request(passedRequest);
-    m_host->willSendRequest(m_resource->identifier(), request, ResourceResponse(), m_options);
+    m_host->willSendRequest(m_resource->identifier(), request, ResourceResponse(), m_options.initiatorInfo);
     request.setReportLoadTiming(true);
     ASSERT(m_state != Terminated);
     ASSERT(!request.isNull());
     m_originalRequest = m_request = request;
+    m_resource->updateRequest(request);
     m_host->didInitializeResourceLoader(this);
 }
 
@@ -148,9 +149,9 @@ void ResourceLoader::start()
     RELEASE_ASSERT(m_connectionState == ConnectionStateNew);
     m_connectionState = ConnectionStateStarted;
 
-    m_loader = adoptPtr(WebKit::Platform::current()->createURLLoader());
+    m_loader = adoptPtr(blink::Platform::current()->createURLLoader());
     ASSERT(m_loader);
-    WebKit::WrappedResourceRequest wrappedRequest(m_request);
+    blink::WrappedResourceRequest wrappedRequest(m_request);
     wrappedRequest.setAllowStoredCredentials(m_options.allowCredentials == AllowStoredCredentials);
     m_loader->loadAsynchronously(wrappedRequest, this);
 }
@@ -161,6 +162,7 @@ void ResourceLoader::changeToSynchronous()
     ASSERT(m_loader);
     m_loader->cancel();
     m_loader.clear();
+    m_request.setPriority(ResourceLoadPriorityHighest);
     m_connectionState = ConnectionStateNew;
     requestSynchronously();
 }
@@ -177,10 +179,11 @@ void ResourceLoader::setDefersLoading(bool defers)
     }
 }
 
-void ResourceLoader::didDownloadData(WebKit::WebURLLoader*, int length, int encodedDataLength)
+void ResourceLoader::didDownloadData(blink::WebURLLoader*, int length, int encodedDataLength)
 {
     RefPtr<ResourceLoader> protect(this);
     RELEASE_ASSERT(m_connectionState == ConnectionStateReceivedResponse);
+    m_host->didDownloadData(m_resource, length, encodedDataLength);
     m_resource->didDownloadData(length);
 }
 
@@ -194,14 +197,14 @@ void ResourceLoader::didFinishLoadingOnePart(double finishTime)
     if (m_notifiedLoadComplete)
         return;
     m_notifiedLoadComplete = true;
-    m_host->didFinishLoading(m_resource, finishTime, m_options);
+    m_host->didFinishLoading(m_resource, finishTime);
 }
 
 void ResourceLoader::didChangePriority(ResourceLoadPriority loadPriority)
 {
     if (m_loader) {
         m_host->didChangeLoadingPriority(m_resource, loadPriority);
-        m_loader->didChangePriority(static_cast<WebKit::WebURLRequest::Priority>(loadPriority));
+        m_loader->didChangePriority(static_cast<blink::WebURLRequest::Priority>(loadPriority));
     }
 }
 
@@ -233,7 +236,7 @@ void ResourceLoader::cancel(const ResourceError& error)
     // something that causes the last reference to this object to go away.
     RefPtr<ResourceLoader> protector(this);
 
-    LOG(ResourceLoading, "Cancelled load of '%s'.\n", m_resource->url().string().latin1().data());
+    WTF_LOG(ResourceLoading, "Cancelled load of '%s'.\n", m_resource->url().string().latin1().data());
     if (m_state == Initialized)
         m_state = Finishing;
     m_resource->setResourceError(nonNullError);
@@ -244,7 +247,7 @@ void ResourceLoader::cancel(const ResourceError& error)
         m_loader.clear();
     }
 
-    m_host->didFailLoading(m_resource, nonNullError, m_options);
+    m_host->didFailLoading(m_resource, nonNullError);
 
     if (m_state == Finishing)
         m_resource->error(Resource::LoadError);
@@ -252,7 +255,7 @@ void ResourceLoader::cancel(const ResourceError& error)
         releaseResources();
 }
 
-void ResourceLoader::willSendRequest(WebKit::WebURLLoader*, WebKit::WebURLRequest& passedRequest, const WebKit::WebURLResponse& passedRedirectResponse)
+void ResourceLoader::willSendRequest(blink::WebURLLoader*, blink::WebURLRequest& passedRequest, const blink::WebURLResponse& passedRedirectResponse)
 {
     RefPtr<ResourceLoader> protect(this);
 
@@ -269,27 +272,34 @@ void ResourceLoader::willSendRequest(WebKit::WebURLLoader*, WebKit::WebURLReques
     if (request.isNull() || m_state == Terminated)
         return;
 
-    m_host->willSendRequest(m_resource->identifier(), request, redirectResponse, m_options);
+    m_host->willSendRequest(m_resource->identifier(), request, redirectResponse, m_options.initiatorInfo);
     request.setReportLoadTiming(true);
     ASSERT(!request.isNull());
+    m_resource->updateRequest(request);
     m_request = request;
 }
 
-void ResourceLoader::didReceiveCachedMetadata(WebKit::WebURLLoader*, const char* data, int length)
+void ResourceLoader::didReceiveCachedMetadata(blink::WebURLLoader*, const char* data, int length)
 {
     RELEASE_ASSERT(m_connectionState == ConnectionStateReceivedResponse || m_connectionState == ConnectionStateReceivingData);
     ASSERT(m_state == Initialized);
     m_resource->setSerializedCachedMetadata(data, length);
 }
 
-void ResourceLoader::didSendData(WebKit::WebURLLoader*, unsigned long long bytesSent, unsigned long long totalBytesToBeSent)
+void ResourceLoader::didSendData(blink::WebURLLoader*, unsigned long long bytesSent, unsigned long long totalBytesToBeSent)
 {
     ASSERT(m_state == Initialized);
     RefPtr<ResourceLoader> protect(this);
     m_resource->didSendData(bytesSent, totalBytesToBeSent);
 }
 
-void ResourceLoader::didReceiveResponse(WebKit::WebURLLoader*, const WebKit::WebURLResponse& response)
+bool ResourceLoader::responseNeedsAccessControlCheck() const
+{
+    // If the fetch was (potentially) CORS enabled, an access control check of the response is required.
+    return m_options.corsEnabled == IsCORSEnabled;
+}
+
+void ResourceLoader::didReceiveResponse(blink::WebURLLoader*, const blink::WebURLResponse& response)
 {
     ASSERT(!response.isNull());
     ASSERT(m_state == Initialized);
@@ -300,14 +310,24 @@ void ResourceLoader::didReceiveResponse(WebKit::WebURLLoader*, const WebKit::Web
     RELEASE_ASSERT(isMultipartPayload || isValidStateTransition);
     m_connectionState = ConnectionStateReceivedResponse;
 
+    const ResourceResponse& resourceResponse = response.toResourceResponse();
+
+    if (responseNeedsAccessControlCheck()) {
+        m_resource->setResponse(resourceResponse);
+        if (!m_host->canAccessResource(m_resource, response.url())) {
+            cancel();
+            return;
+        }
+    }
+
     // Reference the object in this method since the additional processing can do
     // anything including removing the last reference to this object.
     RefPtr<ResourceLoader> protect(this);
-    m_resource->responseReceived(response.toResourceResponse());
+    m_resource->responseReceived(resourceResponse);
     if (m_state == Terminated)
         return;
 
-    m_host->didReceiveResponse(m_resource, response.toResourceResponse(), m_options);
+    m_host->didReceiveResponse(m_resource, resourceResponse);
 
     if (response.toResourceResponse().isMultipart()) {
         // We don't count multiParts in a ResourceFetcher's request count
@@ -330,7 +350,7 @@ void ResourceLoader::didReceiveResponse(WebKit::WebURLLoader*, const WebKit::Web
     cancel();
 }
 
-void ResourceLoader::didReceiveData(WebKit::WebURLLoader*, const char* data, int length, int encodedDataLength)
+void ResourceLoader::didReceiveData(blink::WebURLLoader*, const char* data, int length, int encodedDataLength)
 {
     RELEASE_ASSERT(m_connectionState == ConnectionStateReceivedResponse || m_connectionState == ConnectionStateReceivingData);
     m_connectionState = ConnectionStateReceivingData;
@@ -348,18 +368,18 @@ void ResourceLoader::didReceiveData(WebKit::WebURLLoader*, const char* data, int
     // FIXME: If we get a resource with more than 2B bytes, this code won't do the right thing.
     // However, with today's computers and networking speeds, this won't happen in practice.
     // Could be an issue with a giant local file.
-    m_host->didReceiveData(m_resource, data, length, encodedDataLength, m_options);
+    m_host->didReceiveData(m_resource, data, length, encodedDataLength);
     m_resource->appendData(data, length);
 }
 
-void ResourceLoader::didFinishLoading(WebKit::WebURLLoader*, double finishTime)
+void ResourceLoader::didFinishLoading(blink::WebURLLoader*, double finishTime)
 {
     RELEASE_ASSERT(m_connectionState == ConnectionStateReceivedResponse || m_connectionState == ConnectionStateReceivingData);
     m_connectionState = ConnectionStateFinishedLoading;
     if (m_state != Initialized)
         return;
     ASSERT(m_state != Terminated);
-    LOG(ResourceLoading, "Received '%s'.", m_resource->url().string().latin1().data());
+    WTF_LOG(ResourceLoading, "Received '%s'.", m_resource->url().string().latin1().data());
 
     RefPtr<ResourceLoader> protect(this);
     ResourcePtr<Resource> protectResource(m_resource);
@@ -374,11 +394,11 @@ void ResourceLoader::didFinishLoading(WebKit::WebURLLoader*, double finishTime)
     releaseResources();
 }
 
-void ResourceLoader::didFail(WebKit::WebURLLoader*, const WebKit::WebURLError& error)
+void ResourceLoader::didFail(blink::WebURLLoader*, const blink::WebURLError& error)
 {
     m_connectionState = ConnectionStateFailed;
     ASSERT(m_state != Terminated);
-    LOG(ResourceLoading, "Failed to load '%s'.\n", m_resource->url().string().latin1().data());
+    WTF_LOG(ResourceLoading, "Failed to load '%s'.\n", m_resource->url().string().latin1().data());
 
     RefPtr<ResourceLoader> protect(this);
     RefPtr<ResourceLoaderHost> protectHost(m_host);
@@ -392,7 +412,7 @@ void ResourceLoader::didFail(WebKit::WebURLLoader*, const WebKit::WebURLError& e
 
     if (!m_notifiedLoadComplete) {
         m_notifiedLoadComplete = true;
-        m_host->didFailLoading(m_resource, error, m_options);
+        m_host->didFailLoading(m_resource, error);
     }
 
     releaseResources();
@@ -405,7 +425,7 @@ bool ResourceLoader::isLoadedBy(ResourceLoaderHost* loader) const
 
 void ResourceLoader::requestSynchronously()
 {
-    OwnPtr<WebKit::WebURLLoader> loader = adoptPtr(WebKit::Platform::current()->createURLLoader());
+    OwnPtr<blink::WebURLLoader> loader = adoptPtr(blink::Platform::current()->createURLLoader());
     ASSERT(loader);
 
     RefPtr<ResourceLoader> protect(this);
@@ -415,12 +435,12 @@ void ResourceLoader::requestSynchronously()
     RELEASE_ASSERT(m_connectionState == ConnectionStateNew);
     m_connectionState = ConnectionStateStarted;
 
-    WebKit::WrappedResourceRequest requestIn(m_request);
+    blink::WrappedResourceRequest requestIn(m_request);
     requestIn.setAllowStoredCredentials(m_options.allowCredentials == AllowStoredCredentials);
-    WebKit::WebURLResponse responseOut;
+    blink::WebURLResponse responseOut;
     responseOut.initialize();
-    WebKit::WebURLError errorOut;
-    WebKit::WebData dataOut;
+    blink::WebURLError errorOut;
+    blink::WebData dataOut;
     loader->loadSynchronously(requestIn, responseOut, errorOut, dataOut);
     if (errorOut.reason) {
         didFail(0, errorOut);
@@ -430,7 +450,7 @@ void ResourceLoader::requestSynchronously()
     if (m_state == Terminated)
         return;
     RefPtr<ResourceLoadInfo> resourceLoadInfo = responseOut.toResourceResponse().resourceLoadInfo();
-    m_host->didReceiveData(m_resource, dataOut.data(), dataOut.size(), resourceLoadInfo ? resourceLoadInfo->encodedDataLength : -1, m_options);
+    m_host->didReceiveData(m_resource, dataOut.data(), dataOut.size(), resourceLoadInfo ? resourceLoadInfo->encodedDataLength : -1);
     m_resource->setResourceBuffer(dataOut);
     didFinishLoading(0, monotonicallyIncreasingTime());
 }

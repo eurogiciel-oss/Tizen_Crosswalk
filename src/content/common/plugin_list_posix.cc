@@ -108,7 +108,7 @@ bool IsBlacklistedBySha1sumAndQuirks(const base::FilePath& path) {
   };
 
   int64 size;
-  if (!file_util::GetFileSize(path, &size))
+  if (!base::GetFileSize(path, &size))
     return false;
   for (size_t i = 0; i < ARRAYSIZE_UNSAFE(bad_entries); i++) {
     if (bad_entries[i].size != size)
@@ -173,14 +173,14 @@ bool ELFMatchesCurrentArchitecture(const base::FilePath& filename) {
   if (fd < 0)
     return false;
   bool ret = (fstat(fd, &stat_buf) >= 0 && S_ISREG(stat_buf.st_mode));
-  if (HANDLE_EINTR(close(fd)) < 0)
+  if (IGNORE_EINTR(close(fd)) < 0)
     return false;
   if (!ret)
     return false;
 
   const size_t kELFBufferSize = 5;
   char buffer[kELFBufferSize];
-  if (!file_util::ReadFile(filename, buffer, kELFBufferSize))
+  if (!base::ReadFile(filename, buffer, kELFBufferSize))
     return false;
 
   if (buffer[0] != ELFMAG0 ||
@@ -321,23 +321,23 @@ bool PluginList::ReadWebPluginInfo(const base::FilePath& filename,
     const char* name = NULL;
     NP_GetValue(NULL, nsPluginVariable_NameString, &name);
     if (name) {
-      info->name = UTF8ToUTF16(name);
+      info->name = base::UTF8ToUTF16(name);
       ExtractVersionString(name, info);
     }
 
     const char* description = NULL;
     NP_GetValue(NULL, nsPluginVariable_DescriptionString, &description);
     if (description) {
-      info->desc = UTF8ToUTF16(description);
+      info->desc = base::UTF8ToUTF16(description);
       if (info->version.empty())
         ExtractVersionString(description, info);
     }
 
     LOG_IF(ERROR, PluginList::DebugPluginLoading())
         << "Got info for plugin " << filename.value()
-        << " Name = \"" << UTF16ToUTF8(info->name)
-        << "\", Description = \"" << UTF16ToUTF8(info->desc)
-        << "\", Version = \"" << UTF16ToUTF8(info->version)
+        << " Name = \"" << base::UTF16ToUTF8(info->name)
+        << "\", Description = \"" << base::UTF16ToUTF8(info->desc)
+        << "\", Version = \"" << base::UTF16ToUTF8(info->version)
         << "\".";
   } else {
     LOG_IF(ERROR, PluginList::DebugPluginLoading())
@@ -383,9 +383,10 @@ void PluginList::ParseMIMEDescription(
     // It's ok for end to run off the string here.  If there's no
     // trailing semicolon we consume the remainder of the string.
     if (end != std::string::npos) {
-      mime_type.description = UTF8ToUTF16(description.substr(ofs, end - ofs));
+      mime_type.description =
+          base::UTF8ToUTF16(description.substr(ofs, end - ofs));
     } else {
-      mime_type.description = UTF8ToUTF16(description.substr(ofs));
+      mime_type.description = base::UTF8ToUTF16(description.substr(ofs));
     }
     mime_types->push_back(mime_type);
     if (end == std::string::npos)
@@ -423,7 +424,7 @@ void PluginList::ExtractVersionString(const std::string& desc,
     }
   }
   if (!version.empty()) {
-    info->version = UTF8ToUTF16(version);
+    info->version = base::UTF8ToUTF16(version);
   }
 }
 
@@ -464,7 +465,7 @@ void PluginList::GetPluginDirectories(std::vector<base::FilePath>* plugin_dirs) 
   // 2) NS_USER_PLUGINS_DIR: ~/.mozilla/plugins.
   // This is a de-facto standard, so even though we're not Mozilla, let's
   // look in there too.
-  base::FilePath home = file_util::GetHomeDir();
+  base::FilePath home = base::GetHomeDir();
   if (!home.empty())
     plugin_dirs->push_back(home.Append(".mozilla/plugins"));
 
@@ -544,8 +545,8 @@ void PluginList::GetPluginsInDir(
     }
 
     // Get mtime.
-    base::PlatformFileInfo info;
-    if (!file_util::GetFileInfo(path, &info))
+    base::File::Info info;
+    if (!base::GetFileInfo(path, &info))
       continue;
 
     files.push_back(std::make_pair(path, info.last_modified));

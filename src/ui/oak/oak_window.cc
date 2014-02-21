@@ -7,6 +7,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "grit/ui_resources.h"
 #include "ui/aura/root_window.h"
+#include "ui/aura/window.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/image/image.h"
@@ -49,7 +50,7 @@ bool OakWindow::CanMaximize() const {
 }
 
 base::string16 OakWindow::GetWindowTitle() const {
-  return ASCIIToUTF16("Oak");
+  return base::ASCIIToUTF16("Oak");
 }
 
 views::View* OakWindow::GetContentsView() {

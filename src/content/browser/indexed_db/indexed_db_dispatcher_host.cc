@@ -27,17 +27,15 @@
 #include "webkit/common/database/database_identifier.h"
 
 using webkit_database::DatabaseUtil;
-using WebKit::WebIDBKey;
+using blink::WebIDBKey;
 
 namespace content {
 
 IndexedDBDispatcherHost::IndexedDBDispatcherHost(
-    int ipc_process_id,
     IndexedDBContextImpl* indexed_db_context)
     : indexed_db_context_(indexed_db_context),
       database_dispatcher_host_(new DatabaseDispatcherHost(this)),
-      cursor_dispatcher_host_(new CursorDispatcherHost(this)),
-      ipc_process_id_(ipc_process_id) {
+      cursor_dispatcher_host_(new CursorDispatcherHost(this)) {
   DCHECK(indexed_db_context_);
 }
 
@@ -307,7 +305,7 @@ ObjectType* IndexedDBDispatcherHost::GetOrTerminateProcess(
   if (!return_object) {
     NOTREACHED() << "Uh oh, couldn't find object with id "
                  << ipc_return_object_id;
-    RecordAction(UserMetricsAction("BadMessageTerminate_IDBMF"));
+    RecordAction(base::UserMetricsAction("BadMessageTerminate_IDBMF"));
     BadMessageReceived();
   }
   return return_object;
@@ -322,7 +320,7 @@ ObjectType* IndexedDBDispatcherHost::GetOrTerminateProcess(
   if (!return_object) {
     NOTREACHED() << "Uh oh, couldn't find object with id "
                  << ipc_return_object_id;
-    RecordAction(UserMetricsAction("BadMessageTerminate_IDBMF"));
+    RecordAction(base::UserMetricsAction("BadMessageTerminate_IDBMF"));
     BadMessageReceived();
   }
   return return_object;
@@ -366,7 +364,7 @@ void IndexedDBDispatcherHost::DatabaseDispatcherHost::CloseAll() {
     if (connection && connection->IsConnected()) {
       connection->database()->Abort(
           transaction_id,
-          IndexedDBDatabaseError(WebKit::WebIDBDatabaseExceptionUnknownError));
+          IndexedDBDatabaseError(blink::WebIDBDatabaseExceptionUnknownError));
     }
   }
   DCHECK(transaction_database_map_.empty());
@@ -416,11 +414,6 @@ bool IndexedDBDispatcherHost::DatabaseDispatcherHost::OnMessageReceived(
   return handled;
 }
 
-void IndexedDBDispatcherHost::DatabaseDispatcherHost::Send(
-    IPC::Message* message) {
-  parent_->Send(message);
-}
-
 void IndexedDBDispatcherHost::DatabaseDispatcherHost::OnCreateObjectStore(
     const IndexedDBHostMsg_DatabaseCreateObjectStore_Params& params) {
   DCHECK(
@@ -440,7 +433,7 @@ void IndexedDBDispatcherHost::DatabaseDispatcherHost::OnCreateObjectStore(
           database_url_map_[params.ipc_database_id])) {
     connection->database()->Abort(
         host_transaction_id,
-        IndexedDBDatabaseError(WebKit::WebIDBDatabaseExceptionQuotaError));
+        IndexedDBDatabaseError(blink::WebIDBDatabaseExceptionQuotaError));
   }
 }
 
@@ -547,7 +540,6 @@ void IndexedDBDispatcherHost::DatabaseDispatcherHost::OnPut(
       make_scoped_ptr(new IndexedDBKey(params.key)),
       static_cast<IndexedDBDatabase::PutMode>(params.put_mode),
       callbacks,
-      params.index_ids,
       params.index_keys);
   TransactionIDToSizeMap* map =
       &parent_->database_dispatcher_host_->transaction_size_map_;
@@ -566,20 +558,10 @@ void IndexedDBDispatcherHost::DatabaseDispatcherHost::OnSetIndexKeys(
     return;
 
   int64 host_transaction_id = parent_->HostTransactionId(params.transaction_id);
-  if (params.index_ids.size() != params.index_keys.size()) {
-    connection->database()->Abort(
-        host_transaction_id,
-        IndexedDBDatabaseError(
-            WebKit::WebIDBDatabaseExceptionUnknownError,
-            "Malformed IPC message: index_ids.size() != index_keys.size()"));
-    return;
-  }
-
   connection->database()->SetIndexKeys(
       host_transaction_id,
       params.object_store_id,
       make_scoped_ptr(new IndexedDBKey(params.primary_key)),
-      params.index_ids,
       params.index_keys);
 }
 
@@ -708,7 +690,7 @@ void IndexedDBDispatcherHost::DatabaseDispatcherHost::OnCommit(
           transaction_url_map_[host_transaction_id], transaction_size)) {
     connection->database()->Abort(
         host_transaction_id,
-        IndexedDBDatabaseError(WebKit::WebIDBDatabaseExceptionQuotaError));
+        IndexedDBDatabaseError(blink::WebIDBDatabaseExceptionQuotaError));
     return;
   }
 
@@ -736,7 +718,7 @@ void IndexedDBDispatcherHost::DatabaseDispatcherHost::OnCreateIndex(
           database_url_map_[params.ipc_database_id])) {
     connection->database()->Abort(
         host_transaction_id,
-        IndexedDBDatabaseError(WebKit::WebIDBDatabaseExceptionQuotaError));
+        IndexedDBDatabaseError(blink::WebIDBDatabaseExceptionQuotaError));
   }
 }
 
@@ -787,11 +769,6 @@ bool IndexedDBDispatcherHost::CursorDispatcherHost::OnMessageReceived(
   return handled;
 }
 
-void IndexedDBDispatcherHost::CursorDispatcherHost::Send(
-    IPC::Message* message) {
-  parent_->Send(message);
-}
-
 void IndexedDBDispatcherHost::CursorDispatcherHost::OnAdvance(
     int32 ipc_cursor_id,
     int32 ipc_thread_id,
@@ -814,7 +791,8 @@ void IndexedDBDispatcherHost::CursorDispatcherHost::OnContinue(
     int32 ipc_cursor_id,
     int32 ipc_thread_id,
     int32 ipc_callbacks_id,
-    const IndexedDBKey& key) {
+    const IndexedDBKey& key,
+    const IndexedDBKey& primary_key) {
   DCHECK(
       parent_->indexed_db_context_->TaskRunner()->RunsTasksOnCurrentThread());
   IndexedDBCursor* idb_cursor =
@@ -823,7 +801,10 @@ void IndexedDBDispatcherHost::CursorDispatcherHost::OnContinue(
     return;
 
   idb_cursor->Continue(
-      make_scoped_ptr(new IndexedDBKey(key)),
+      key.IsValid() ? make_scoped_ptr(new IndexedDBKey(key))
+                    : scoped_ptr<IndexedDBKey>(),
+      primary_key.IsValid() ? make_scoped_ptr(new IndexedDBKey(primary_key))
+                            : scoped_ptr<IndexedDBKey>(),
       new IndexedDBCallbacks(
           parent_, ipc_thread_id, ipc_callbacks_id, ipc_cursor_id));
 }

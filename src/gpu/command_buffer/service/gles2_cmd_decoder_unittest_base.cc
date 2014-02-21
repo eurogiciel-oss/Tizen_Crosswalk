@@ -62,6 +62,7 @@ GLES2DecoderTestBase::~GLES2DecoderTestBase() {}
 void GLES2DecoderTestBase::SetUp() {
   InitDecoder(
       "",      // extensions
+      "3.0",   // gl version
       true,    // has alpha
       true,    // has depth
       false,   // has stencil
@@ -81,6 +82,7 @@ void GLES2DecoderTestBase::AddExpectationsForVertexAttribManager() {
 
 void GLES2DecoderTestBase::InitDecoder(
     const char* extensions,
+    const char* gl_version,
     bool has_alpha,
     bool has_depth,
     bool has_stencil,
@@ -88,21 +90,49 @@ void GLES2DecoderTestBase::InitDecoder(
     bool request_depth,
     bool request_stencil,
     bool bind_generates_resource) {
+  InitDecoderWithCommandLine(extensions,
+                             gl_version,
+                             has_alpha,
+                             has_depth,
+                             has_stencil,
+                             request_alpha,
+                             request_depth,
+                             request_stencil,
+                             bind_generates_resource,
+                             NULL);
+}
+
+void GLES2DecoderTestBase::InitDecoderWithCommandLine(
+    const char* extensions,
+    const char* gl_version,
+    bool has_alpha,
+    bool has_depth,
+    bool has_stencil,
+    bool request_alpha,
+    bool request_depth,
+    bool request_stencil,
+    bool bind_generates_resource,
+    const CommandLine* command_line) {
   Framebuffer::ClearFramebufferCompleteComboMap();
+
+  gfx::ClearGLBindings();
+  gfx::SetGLGetProcAddressProc(gfx::MockGLInterface::GetGLProcAddress);
+  gfx::InitializeStaticGLBindings(gfx::kGLImplementationMockGL);
+
   gl_.reset(new StrictMock<MockGLInterface>());
-  ::gfx::GLInterface::SetGLInterface(gl_.get());
+  ::gfx::MockGLInterface::SetGLInterface(gl_.get());
 
   // Only create stream texture manager if extension is requested.
   std::vector<std::string> list;
   base::SplitString(std::string(extensions), ' ', &list);
-  if (std::find(list.begin(), list.end(),
-                "GL_CHROMIUM_stream_texture") != list.end())
-      stream_texture_manager_.reset(new StrictMock<MockStreamTextureManager>);
+  scoped_refptr<FeatureInfo> feature_info;
+  if (command_line)
+    feature_info = new FeatureInfo(*command_line);
   group_ = scoped_refptr<ContextGroup>(new ContextGroup(
       NULL,
       NULL,
       memory_tracker_,
-      stream_texture_manager_.get(),
+      feature_info.get(),
       bind_generates_resource));
   // These two workarounds are always turned on.
   group_->feature_info(
@@ -254,9 +284,12 @@ void GLES2DecoderTestBase::InitDecoder(
   surface_ = new gfx::GLSurfaceStub;
   surface_->SetSize(gfx::Size(kBackBufferWidth, kBackBufferHeight));
 
-  context_ = new gfx::GLContextStub;
+  context_ = new gfx::GLContextStubWithExtensions;
+  context_->AddExtensionsString(extensions);
+  context_->SetGLVersionString(gl_version);
 
   context_->MakeCurrent(surface_.get());
+  gfx::InitializeDynamicGLBindings(gfx::kGLImplementationMockGL, context_);
 
   int32 attributes[] = {
     EGL_ALPHA_SIZE, request_alpha ? 8 : 0,
@@ -275,6 +308,7 @@ void GLES2DecoderTestBase::InitDecoder(
                        attribs);
   decoder_->MakeCurrent();
   decoder_->set_engine(engine_.get());
+  decoder_->BeginDecoding();
 
   EXPECT_CALL(*gl_, GenBuffersARB(_, _))
       .WillOnce(SetArgumentPointee<1>(kServiceBufferId))
@@ -311,11 +345,12 @@ void GLES2DecoderTestBase::TearDown() {
       .Times(2)
       .RetiresOnSaturation();
 
+  decoder_->EndDecoding();
   decoder_->Destroy(true);
   decoder_.reset();
   group_->Destroy(mock_decoder_.get(), false);
   engine_.reset();
-  ::gfx::GLInterface::SetGLInterface(NULL);
+  ::gfx::MockGLInterface::SetGLInterface(NULL);
   gl_.reset();
 }
 
@@ -819,34 +854,6 @@ void GLES2DecoderTestBase::DoCompressedTexImage2D(
   cmd.Init(
       target, level, format, width, height, border,
       bucket_id);
-  EXPECT_EQ(error::kNoError, ExecuteCmd(cmd));
-}
-
-void GLES2DecoderTestBase::DoTexImage2DSameSize(
-    GLenum target, GLint level, GLenum internal_format,
-    GLsizei width, GLsizei height, GLint border,
-    GLenum format, GLenum type,
-    uint32 shared_memory_id, uint32 shared_memory_offset) {
-  if (GLES2Decoder::IsAngle()) {
-    EXPECT_CALL(*gl_, TexSubImage2D(
-        target, level, 0, 0, width, height, format, type, _))
-        .Times(1)
-        .RetiresOnSaturation();
-  } else {
-    EXPECT_CALL(*gl_, GetError())
-        .WillOnce(Return(GL_NO_ERROR))
-        .RetiresOnSaturation();
-    EXPECT_CALL(*gl_, TexImage2D(target, level, internal_format,
-                                 width, height, border, format, type, _))
-        .Times(1)
-        .RetiresOnSaturation();
-    EXPECT_CALL(*gl_, GetError())
-        .WillOnce(Return(GL_NO_ERROR))
-        .RetiresOnSaturation();
-  }
-  cmds::TexImage2D cmd;
-  cmd.Init(target, level, internal_format, width, height, border, format,
-           type, shared_memory_id, shared_memory_offset);
   EXPECT_EQ(error::kNoError, ExecuteCmd(cmd));
 }
 

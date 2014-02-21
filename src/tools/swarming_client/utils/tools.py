@@ -1,15 +1,18 @@
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Various utility functions and classes not specific to any single area."""
 
+import json
 import logging
 import logging.handlers
 import optparse
 import os
+import re
 import sys
 import time
+import traceback
 
 
 class OptionParserWithLogging(optparse.OptionParser):
@@ -21,21 +24,25 @@ class OptionParserWithLogging(optparse.OptionParser):
   def __init__(self, verbose=0, log_file=None, **kwargs):
     kwargs.setdefault('description', sys.modules['__main__'].__doc__)
     optparse.OptionParser.__init__(self, **kwargs)
-    self.add_option(
+    self.group_logging = optparse.OptionGroup(self, 'Logging')
+    self.group_logging.add_option(
         '-v', '--verbose',
         action='count',
         default=verbose,
         help='Use multiple times to increase verbosity')
     if self.enable_log_file:
-      self.add_option(
+      self.group_logging.add_option(
           '-l', '--log-file',
           default=log_file,
           help='The name of the file to store rotating log details')
-      self.add_option(
+      self.group_logging.add_option(
           '--no-log', action='store_const', const='', dest='log_file',
           help='Disable log file')
 
   def parse_args(self, *args, **kwargs):
+    # Make sure this group is always the last one.
+    self.add_option_group(self.group_logging)
+
     options, args = optparse.OptionParser.parse_args(self, *args, **kwargs)
     levels = [logging.ERROR, logging.INFO, logging.DEBUG]
     level = levels[min(len(levels) - 1, options.verbose)]
@@ -112,3 +119,51 @@ def fix_python_path(cmd):
   elif out[0].endswith('.py'):
     out.insert(0, sys.executable)
   return out
+
+
+def read_json(filepath):
+  with open(filepath, 'r') as f:
+    return json.load(f)
+
+
+def write_json(filepath_or_handle, data, dense):
+  """Writes data into filepath or file handle encoded as json.
+
+  If dense is True, the json is packed. Otherwise, it is human readable.
+  """
+  if dense:
+    kwargs = {'sort_keys': True, 'separators': (',',':')}
+  else:
+    kwargs = {'sort_keys': True, 'indent': 2}
+
+  if hasattr(filepath_or_handle, 'write'):
+    json.dump(data, filepath_or_handle, **kwargs)
+  else:
+    with open(filepath_or_handle, 'wb') as f:
+      json.dump(data, f, **kwargs)
+
+
+def report_error(error):
+  """Prints a error to stderr, wrapping it into header and footer.
+
+  That way errors can be reliably extracted from logs. It's indented to be used
+  only for non recoverable unexpected errors. Is should NOT be used for input
+  validation, command line argument errors, etc.
+
+  Arguments:
+    error: error message string (possibly multiple lines) or an instance of
+           Exception subclass. In the later case a traceback will also be
+           reported. It's assumed that |report_error| is called in an except
+           block where |error| was caught.
+  """
+  print >> sys.stderr, '[------ Swarming Error ------]'
+  print >> sys.stderr, str(error)
+  if isinstance(error, Exception):
+    print >> sys.stderr, traceback.format_exc(),
+  print >> sys.stderr, '[----------------------------]'
+
+
+def gen_blacklist(regexes):
+  """Returns a lambda to be used as a blacklist."""
+  compiled = [re.compile(i) for i in regexes]
+  return lambda f: any(j.match(f) for j in compiled)

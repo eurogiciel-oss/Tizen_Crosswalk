@@ -27,8 +27,6 @@
 #ifndef MediaKeyMessageEvent_h
 #define MediaKeyMessageEvent_h
 
-#if ENABLE(ENCRYPTED_MEDIA_V2)
-
 #include "core/events/Event.h"
 #include "core/html/MediaKeyError.h"
 
@@ -41,7 +39,7 @@ struct MediaKeyMessageEventInit : public EventInit {
     String destinationURL;
 };
 
-class MediaKeyMessageEvent : public Event {
+class MediaKeyMessageEvent FINAL : public Event {
 public:
     virtual ~MediaKeyMessageEvent();
 
@@ -70,5 +68,4 @@ private:
 
 } // namespace WebCore
 
-#endif
 #endif

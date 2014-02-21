@@ -6,14 +6,22 @@
 
 #include "base/bind.h"
 #include "base/message_loop/message_loop.h"
+#include "ozone/impl/ozone_display.h"
+#include "ozone/ui/events/window_state_change_handler.h"
 #include "ozone/wayland/display.h"
 
 namespace ozonewayland {
 
-WaylandSyncProvider::WaylandSyncProvider() {
+WaylandSyncProvider::WaylandSyncProvider(unsigned handle) : handle_(handle) {
 }
 
-WaylandSyncProvider::~WaylandSyncProvider() {}
+WaylandSyncProvider::~WaylandSyncProvider() {
+  // WaylandSyncProvider is destroyed when the associated NativeSurface is
+  // destroyed. Inform OzoneDisplay to release Wayland resources.
+  WindowStateChangeHandler::GetInstance()->SetWidgetState(handle_,
+                                                          DESTROYED);
+  WaylandDisplay::GetInstance()->FlushDisplay();
+}
 
 void WaylandSyncProvider::GetVSyncParameters(
          const UpdateVSyncCallback& callback) {

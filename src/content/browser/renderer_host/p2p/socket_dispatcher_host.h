@@ -11,9 +11,9 @@
 #include <vector>
 
 #include "content/browser/renderer_host/p2p/socket_host_throttler.h"
-#include "content/common/p2p_sockets.h"
 #include "content/public/browser/browser_message_filter.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/common/p2p_socket_type.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/network_change_notifier.h"
 
@@ -74,13 +74,14 @@ class P2PSocketDispatcherHost
               const std::vector<char>& data,
               net::DiffServCodePoint dscp,
               uint64 packet_id);
+  void OnSetOption(int socket_id, P2PSocketOption option, int value);
   void OnDestroySocket(int socket_id);
 
   void DoGetNetworkList();
   void SendNetworkList(const net::NetworkInterfaceList& list);
 
   void OnAddressResolved(DnsRequest* request,
-                         const net::IPAddressNumber& result);
+                         const net::IPAddressList& addresses);
 
   content::ResourceContext* resource_context_;
   scoped_refptr<net::URLRequestContextGetter> url_context_;

@@ -8,8 +8,8 @@
       'dependencies': [
         '../base/base.gyp:base',
         '../ppapi/ppapi_internal.gyp:ppapi_ipc',
-        '../skia/skia.gyp:skia',
         '../ui/gfx/gfx.gyp:gfx',
+        '../ui/gfx/gfx.gyp:gfx_geometry',
         '../ui/ui.gyp:ui',
       ],
       'sources': [

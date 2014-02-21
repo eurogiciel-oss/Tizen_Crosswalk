@@ -35,8 +35,7 @@ class HTMLImageLoader;
 
 class HTMLVideoElement FINAL : public HTMLMediaElement {
 public:
-    static PassRefPtr<HTMLVideoElement> create(Document& document) { return create(HTMLNames::videoTag, document, false); }
-    static PassRefPtr<HTMLVideoElement> create(const QualifiedName&, Document&, bool);
+    static PassRefPtr<HTMLVideoElement> create(Document&, bool createdByParser = false);
 
     unsigned videoWidth() const;
     unsigned videoHeight() const;
@@ -63,7 +62,7 @@ public:
     KURL posterImageURL() const;
 
 private:
-    HTMLVideoElement(const QualifiedName&, Document&, bool);
+    HTMLVideoElement(Document&, bool);
 
     virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE;
     virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
@@ -73,7 +72,7 @@ private:
     virtual void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStylePropertySet*) OVERRIDE;
     virtual bool isVideo() const OVERRIDE { return true; }
     virtual bool hasVideo() const OVERRIDE { return player() && player()->hasVideo(); }
-    virtual bool supportsFullscreen() const OVERRIDE;
+    bool supportsFullscreen() const;
     virtual bool isURLAttribute(const Attribute&) const OVERRIDE;
     virtual const AtomicString imageSourceURL() const OVERRIDE;
 
@@ -86,16 +85,6 @@ private:
 
     AtomicString m_defaultPosterURL;
 };
-
-inline bool isHTMLVideoElement(const Node* node)
-{
-    return node->hasTagName(HTMLNames::videoTag);
-}
-
-inline bool isHTMLVideoElement(const Element* element)
-{
-    return element->hasTagName(HTMLNames::videoTag);
-}
 
 DEFINE_NODE_TYPE_CASTS(HTMLVideoElement, hasTagName(HTMLNames::videoTag));
 

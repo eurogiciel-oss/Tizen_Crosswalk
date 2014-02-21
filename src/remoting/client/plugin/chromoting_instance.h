@@ -62,6 +62,7 @@ class PepperTokenFetcher;
 class PepperView;
 class RectangleUpdateDecoder;
 class SignalStrategy;
+class VideoRenderer;
 
 struct ClientConfig;
 
@@ -116,6 +117,8 @@ class ChromotingInstance :
   virtual void OnConnectionState(protocol::ConnectionToHost::State state,
                                  protocol::ErrorCode error) OVERRIDE;
   virtual void OnConnectionReady(bool ready) OVERRIDE;
+  virtual void OnRouteChanged(const std::string& channel_name,
+                              const protocol::TransportRoute& route) OVERRIDE;
   virtual void SetCapabilities(const std::string& capabilities) OVERRIDE;
   virtual void SetPairingResponse(
       const protocol::PairingResponse& pairing_response) OVERRIDE;
@@ -237,7 +240,7 @@ class ChromotingInstance :
   PepperPluginThreadDelegate plugin_thread_delegate_;
   scoped_refptr<PluginThreadTaskRunner> plugin_task_runner_;
   ClientContext context_;
-  scoped_refptr<RectangleUpdateDecoder> rectangle_decoder_;
+  scoped_ptr<VideoRenderer> video_renderer_;
   scoped_ptr<PepperView> view_;
   scoped_ptr<base::WeakPtrFactory<FrameConsumer> > view_weak_factory_;
   pp::View plugin_view_;

@@ -7,11 +7,15 @@
 
 #include "SkGpuDevice.h"
 
-#include "effects/GrTextureDomainEffect.h"
+#include "effects/GrBicubicEffect.h"
+#include "effects/GrTextureDomain.h"
 #include "effects/GrSimpleTextureEffect.h"
 
 #include "GrContext.h"
 #include "GrBitmapTextContext.h"
+#if SK_DISTANCEFIELD_FONTS
+#include "GrDistanceFieldTextContext.h"
+#endif
 
 #include "SkGrTexturePixelRef.h"
 
@@ -23,6 +27,7 @@
 #include "SkPathEffect.h"
 #include "SkRRect.h"
 #include "SkStroke.h"
+#include "SkTLazy.h"
 #include "SkUtils.h"
 #include "SkErrorInternals.h"
 
@@ -42,7 +47,7 @@
 // This constant represents the screen alignment criterion in texels for
 // requiring texture domain clamping to prevent color bleeding when drawing
 // a sub region of a larger source image.
-#define COLOR_BLEED_TOLERANCE SkFloatToScalar(0.001f)
+#define COLOR_BLEED_TOLERANCE 0.001f
 
 #define DO_DEFERRED_CLEAR()             \
     do {                                \
@@ -151,6 +156,20 @@ static SkBitmap make_bitmap(GrContext* context, GrRenderTarget* renderTarget) {
     return bitmap;
 }
 
+/*
+ *  Calling SkBitmapDevice with individual params asks it to allocate pixel memory.
+ *  We never want that, so we always need to call it with a bitmap argument
+ *  (which says take my allocate (or lack thereof)).
+ *
+ *  This is a REALLY good reason to finish the clean-up of SkBaseDevice, and have
+ *  SkGpuDevice inherit from that instead of SkBitmapDevice.
+ */
+static SkBitmap make_bitmap(SkBitmap::Config config, int width, int height, bool isOpaque) {
+    SkBitmap bm;
+    bm.setConfig(config, width, height, isOpaque);
+    return bm;
+}
+
 SkGpuDevice* SkGpuDevice::Create(GrSurface* surface) {
     SkASSERT(NULL != surface);
     if (NULL == surface->asRenderTarget() || NULL == surface->getContext()) {
@@ -181,6 +200,12 @@ void SkGpuDevice::initFromRenderTarget(GrContext* context,
     fContext = context;
     fContext->ref();
 
+#if SK_DISTANCEFIELD_FONTS
+    fTextContextManager = SkNEW(GrTTextContextManager<GrDistanceFieldTextContext>);
+#else
+    fTextContextManager = SkNEW(GrTTextContextManager<GrBitmapTextContext>);
+#endif
+
     fRenderTarget = NULL;
     fNeedClear = false;
 
@@ -196,9 +221,12 @@ void SkGpuDevice::initFromRenderTarget(GrContext* context,
     if (NULL == surface) {
         surface = fRenderTarget;
     }
-    SkPixelRef* pr = SkNEW_ARGS(SkGrPixelRef, (surface, cached));
 
-    this->setPixelRef(pr, 0)->unref();
+    SkImageInfo info;
+    surface->asImageInfo(&info);
+    SkPixelRef* pr = SkNEW_ARGS(SkGrPixelRef, (info, surface, cached));
+
+    this->setPixelRef(pr)->unref();
 }
 
 SkGpuDevice::SkGpuDevice(GrContext* context,
@@ -206,12 +234,18 @@ SkGpuDevice::SkGpuDevice(GrContext* context,
                          int width,
                          int height,
                          int sampleCount)
-    : SkBitmapDevice(config, width, height, false /*isOpaque*/) {
-
+    : SkBitmapDevice(make_bitmap(config, width, height, false /*isOpaque*/))
+{
     fDrawProcs = NULL;
 
     fContext = context;
     fContext->ref();
+
+#if SK_DISTANCEFIELD_FONTS
+    fTextContextManager = SkNEW(GrTTextContextManager<GrDistanceFieldTextContext>);
+#else
+    fTextContextManager = SkNEW(GrTTextContextManager<GrBitmapTextContext>);
+#endif
 
     fRenderTarget = NULL;
     fNeedClear = false;
@@ -227,6 +261,14 @@ SkGpuDevice::SkGpuDevice(GrContext* context,
     desc.fConfig = SkBitmapConfig2GrPixelConfig(config);
     desc.fSampleCnt = sampleCount;
 
+    SkImageInfo info;
+    if (!GrPixelConfig2ColorType(desc.fConfig, &info.fColorType)) {
+        sk_throw();
+    }
+    info.fWidth = width;
+    info.fHeight = height;
+    info.fAlphaType = kPremul_SkAlphaType;
+
     SkAutoTUnref<GrTexture> texture(fContext->createUncachedTexture(desc, NULL, 0));
 
     if (NULL != texture) {
@@ -236,8 +278,8 @@ SkGpuDevice::SkGpuDevice(GrContext* context,
         SkASSERT(NULL != fRenderTarget);
 
         // wrap the bitmap with a pixelref to expose our texture
-        SkGrPixelRef* pr = SkNEW_ARGS(SkGrPixelRef, (texture));
-        this->setPixelRef(pr, 0)->unref();
+        SkGrPixelRef* pr = SkNEW_ARGS(SkGrPixelRef, (info, texture));
+        this->setPixelRef(pr)->unref();
     } else {
         GrPrintf("--- failed to create gpu-offscreen [%d %d]\n",
                  width, height);
@@ -249,6 +291,8 @@ SkGpuDevice::~SkGpuDevice() {
     if (fDrawProcs) {
         delete fDrawProcs;
     }
+
+    delete fTextContextManager;
 
     // The GrContext takes a ref on the target. We don't want to cause the render
     // target to be unnecessarily kept alive.
@@ -344,34 +388,15 @@ void SkGpuDevice::writePixels(const SkBitmap& bitmap, int x, int y,
                                config, bitmap.getPixels(), bitmap.rowBytes(), flags);
 }
 
-namespace {
-void purgeClipCB(int genID, void* ) {
-
-    if (SkClipStack::kInvalidGenID == genID ||
-        SkClipStack::kEmptyGenID == genID ||
-        SkClipStack::kWideOpenGenID == genID) {
-        // none of these cases will have a cached clip mask
-        return;
-    }
-
-}
-};
-
 void SkGpuDevice::onAttachToCanvas(SkCanvas* canvas) {
     INHERITED::onAttachToCanvas(canvas);
 
     // Canvas promises that this ptr is valid until onDetachFromCanvas is called
     fClipData.fClipStack = canvas->getClipStack();
-
-    fClipData.fClipStack->addPurgeClipCallback(purgeClipCB, fContext);
 }
 
 void SkGpuDevice::onDetachFromCanvas() {
     INHERITED::onDetachFromCanvas();
-
-    // TODO: iterate through the clip stack and clean up any cached clip masks
-    fClipData.fClipStack->removePurgeClipCallback(purgeClipCB, fContext);
-
     fClipData.fClipStack = NULL;
 }
 
@@ -495,10 +520,9 @@ inline bool skPaint2GrPaintShader(SkGpuDevice* dev,
         return skPaint2GrPaintNoShader(dev, skPaint, false, constantColor, grPaint);
     }
 
-    // SkShader::asNewEffect() may do offscreen rendering. Setup default drawing state
-    // Also require shader to set the render target .
+    // SkShader::asNewEffect() may do offscreen rendering. Setup default drawing state and require
+    // the shader to set a render target .
     GrContext::AutoWideOpenIdentityDraw awo(dev->context(), NULL);
-    GrContext::AutoRenderTarget(dev->context(), NULL);
 
     // setup the shader as the first color effect on the paint
     SkAutoTUnref<GrEffectRef> effect(shader->asNewEffect(dev->context(), skPaint));
@@ -529,13 +553,6 @@ inline bool skPaint2GrPaintShader(SkGpuDevice* dev,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void SkGpuDevice::getGlobalBounds(SkIRect* bounds) const {
-    if (NULL != bounds) {
-        const SkIPoint& origin = this->getOrigin();
-        bounds->setXYWH(origin.x(), origin.y(),
-                        this->width(), this->height());
-    }
-}
 
 SkBitmap::Config SkGpuDevice::config() const {
     if (NULL == fRenderTarget) {
@@ -594,7 +611,7 @@ void SkGpuDevice::drawPoints(const SkDraw& draw, SkCanvas::PointMode mode,
 
     fContext->drawVertices(grPaint,
                            gPointMode2PrimtiveType[mode],
-                           count,
+                           SkToS32(count),
                            (GrPoint*)pts,
                            NULL,
                            NULL,
@@ -613,11 +630,12 @@ void SkGpuDevice::drawRect(const SkDraw& draw, const SkRect& rect,
     SkScalar width = paint.getStrokeWidth();
 
     /*
-        We have special code for hairline strokes, miter-strokes, and fills.
-        Anything else we just call our path code.
+        We have special code for hairline strokes, miter-strokes, bevel-stroke
+        and fills. Anything else we just call our path code.
      */
     bool usePath = doStroke && width > 0 &&
-                    paint.getStrokeJoin() != SkPaint::kMiter_Join;
+                   (paint.getStrokeJoin() == SkPaint::kRound_Join ||
+                    (paint.getStrokeJoin() == SkPaint::kBevel_Join && rect.isEmpty()));
     // another two reasons we might need to call drawPath...
     if (paint.getMaskFilter() || paint.getPathEffect()) {
         usePath = true;
@@ -632,12 +650,6 @@ void SkGpuDevice::drawRect(const SkDraw& draw, const SkRect& rect,
             usePath = !fContext->getMatrix().preservesRightAngles();
         }
 #endif
-    }
-    // small miter limit means right angles show bevel...
-    if (SkPaint::kMiter_Join == paint.getStrokeJoin() &&
-        paint.getStrokeMiter() < SK_ScalarSqrt2)
-    {
-        usePath = true;
     }
     // until we can both stroke and fill rectangles
     if (paint.getStyle() == SkPaint::kStrokeAndFill_Style) {
@@ -655,7 +667,13 @@ void SkGpuDevice::drawRect(const SkDraw& draw, const SkRect& rect,
     if (!skPaint2GrPaintShader(this, paint, true, &grPaint)) {
         return;
     }
-    fContext->drawRect(grPaint, rect, doStroke ? width : -1);
+
+    if (!doStroke) {
+        fContext->drawRect(grPaint, rect);
+    } else {
+        SkStrokeRec stroke(paint);
+        fContext->drawRect(grPaint, rect, &stroke);
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -847,11 +865,12 @@ bool create_mask_GPU(GrContext* context,
 }
 
 SkBitmap wrap_texture(GrTexture* texture) {
+    SkImageInfo info;
+    texture->asImageInfo(&info);
+
     SkBitmap result;
-    bool dummy;
-    SkBitmap::Config config = grConfig2skConfig(texture->config(), &dummy);
-    result.setConfig(config, texture->width(), texture->height());
-    result.setPixelRef(SkNEW_ARGS(SkGrPixelRef, (texture)))->unref();
+    result.setConfig(info);
+    result.setPixelRef(SkNEW_ARGS(SkGrPixelRef, (info, texture)))->unref();
     return result;
 }
 
@@ -868,25 +887,18 @@ void SkGpuDevice::drawPath(const SkDraw& draw, const SkPath& origSrcPath,
         return;
     }
 
-    // can we cheat, and treat a thin stroke as a hairline w/ coverage
-    // if we can, we draw lots faster (raster device does this same test)
-    SkScalar hairlineCoverage;
-    bool doHairLine = SkDrawTreatAsHairline(paint, fContext->getMatrix(), &hairlineCoverage);
-    if (doHairLine) {
-        grPaint.setCoverage(SkScalarRoundToInt(hairlineCoverage * grPaint.getCoverage()));
-    }
-
     // If we have a prematrix, apply it to the path, optimizing for the case
     // where the original path can in fact be modified in place (even though
     // its parameter type is const).
     SkPath* pathPtr = const_cast<SkPath*>(&origSrcPath);
-    SkPath  tmpPath, effectPath;
+    SkTLazy<SkPath> tmpPath;
+    SkTLazy<SkPath> effectPath;
 
     if (prePathMatrix) {
         SkPath* result = pathPtr;
 
         if (!pathIsMutable) {
-            result = &tmpPath;
+            result = tmpPath.init();
             pathIsMutable = true;
         }
         // should I push prePathMatrix on our MV stack temporarily, instead
@@ -900,26 +912,24 @@ void SkGpuDevice::drawPath(const SkDraw& draw, const SkPath& origSrcPath,
     SkStrokeRec stroke(paint);
     SkPathEffect* pathEffect = paint.getPathEffect();
     const SkRect* cullRect = NULL;  // TODO: what is our bounds?
-    if (pathEffect && pathEffect->filterPath(&effectPath, *pathPtr, &stroke,
+    if (pathEffect && pathEffect->filterPath(effectPath.init(), *pathPtr, &stroke,
                                              cullRect)) {
-        pathPtr = &effectPath;
-    }
-
-    if (!pathEffect && doHairLine) {
-        stroke.setHairlineStyle();
+        pathPtr = effectPath.get();
+        pathIsMutable = true;
     }
 
     if (paint.getMaskFilter()) {
         if (!stroke.isHairlineStyle()) {
-            if (stroke.applyToPath(&tmpPath, *pathPtr)) {
-                pathPtr = &tmpPath;
+            SkPath* strokedPath = pathIsMutable ? pathPtr : tmpPath.init();
+            if (stroke.applyToPath(strokedPath, *pathPtr)) {
+                pathPtr = strokedPath;
                 pathIsMutable = true;
                 stroke.setFillStyle();
             }
         }
 
         // avoid possibly allocating a new path in transform if we can
-        SkPath* devPathPtr = pathIsMutable ? pathPtr : &tmpPath;
+        SkPath* devPathPtr = pathIsMutable ? pathPtr : tmpPath.init();
 
         // transform the path into device space
         pathPtr->transform(fContext->getMatrix(), devPathPtr);
@@ -929,6 +939,10 @@ void SkGpuDevice::drawPath(const SkDraw& draw, const SkPath& origSrcPath,
                                                     draw.fClip->getBounds(),
                                                     fContext->getMatrix(),
                                                     &maskRect)) {
+            // The context's matrix may change while creating the mask, so save the CTM here to
+            // pass to filterMaskGPU.
+            const SkMatrix ctm = fContext->getMatrix();
+
             SkIRect finalIRect;
             maskRect.roundOut(&finalIRect);
             if (draw.fClip->quickReject(finalIRect)) {
@@ -946,7 +960,8 @@ void SkGpuDevice::drawPath(const SkDraw& draw, const SkPath& origSrcPath,
                                 grPaint.isAntiAlias(), &mask)) {
                 GrTexture* filtered;
 
-                if (paint.getMaskFilter()->filterMaskGPU(mask.texture(), maskRect, &filtered, true)) {
+                if (paint.getMaskFilter()->filterMaskGPU(mask.texture(),
+                                                         ctm, maskRect, &filtered, true)) {
                     // filterMaskGPU gives us ownership of a ref to the result
                     SkAutoTUnref<GrTexture> atu(filtered);
 
@@ -1020,6 +1035,8 @@ static void determine_clipped_src_rect(const GrContext* context,
     SkRect clippedSrcRect = SkRect::Make(*clippedSrcIRect);
     inv.mapRect(&clippedSrcRect);
     if (NULL != srcRectPtr) {
+        // we've setup src space 0,0 to map to the top left of the src rect.
+        clippedSrcRect.offset(srcRectPtr->fLeft, srcRectPtr->fTop);
         if (!clippedSrcRect.intersect(*srcRectPtr)) {
             clippedSrcIRect->setEmpty();
             return;
@@ -1082,31 +1099,42 @@ bool SkGpuDevice::shouldTileBitmap(const SkBitmap& bitmap,
     return usedTileBytes < 2 * bmpSize;
 }
 
-void SkGpuDevice::drawBitmap(const SkDraw& draw,
+void SkGpuDevice::drawBitmap(const SkDraw& origDraw,
                              const SkBitmap& bitmap,
                              const SkMatrix& m,
                              const SkPaint& paint) {
-    // We cannot call drawBitmapRect here since 'm' could be anything
-    this->drawBitmapCommon(draw, bitmap, NULL, m, paint,
-                           SkCanvas::kNone_DrawBitmapRectFlag);
+    SkMatrix concat;
+    SkTCopyOnFirstWrite<SkDraw> draw(origDraw);
+    if (!m.isIdentity()) {
+        concat.setConcat(*draw->fMatrix, m);
+        draw.writable()->fMatrix = &concat;
+    }
+    this->drawBitmapCommon(*draw, bitmap, NULL, NULL, paint, SkCanvas::kNone_DrawBitmapRectFlag);
 }
 
-// This method outsets 'iRect' by 1 all around and then clamps its extents to
+// This method outsets 'iRect' by 'outset' all around and then clamps its extents to
 // 'clamp'. 'offset' is adjusted to remain positioned over the top-left corner
 // of 'iRect' for all possible outsets/clamps.
-static inline void clamped_unit_outset_with_offset(SkIRect* iRect, SkPoint* offset,
-                                                   const SkIRect& clamp) {
-    iRect->outset(1, 1);
+static inline void clamped_outset_with_offset(SkIRect* iRect,
+                                              int outset,
+                                              SkPoint* offset,
+                                              const SkIRect& clamp) {
+    iRect->outset(outset, outset);
 
-    if (iRect->fLeft < clamp.fLeft) {
+    int leftClampDelta = clamp.fLeft - iRect->fLeft;
+    if (leftClampDelta > 0) {
+        offset->fX -= outset - leftClampDelta;
         iRect->fLeft = clamp.fLeft;
     } else {
-        offset->fX -= SK_Scalar1;
+        offset->fX -= outset;
     }
-    if (iRect->fTop < clamp.fTop) {
+
+    int topClampDelta = clamp.fTop - iRect->fTop;
+    if (topClampDelta > 0) {
+        offset->fY -= outset - topClampDelta;
         iRect->fTop = clamp.fTop;
     } else {
-        offset->fY -= SK_Scalar1;
+        offset->fY -= outset;
     }
 
     if (iRect->fRight > clamp.fRight) {
@@ -1120,110 +1148,143 @@ static inline void clamped_unit_outset_with_offset(SkIRect* iRect, SkPoint* offs
 void SkGpuDevice::drawBitmapCommon(const SkDraw& draw,
                                    const SkBitmap& bitmap,
                                    const SkRect* srcRectPtr,
-                                   const SkMatrix& m,
+                                   const SkSize* dstSizePtr,
                                    const SkPaint& paint,
                                    SkCanvas::DrawBitmapRectFlags flags) {
     CHECK_SHOULD_DRAW(draw, false);
 
     SkRect srcRect;
+    SkSize dstSize;
+    // If there is no src rect, or the src rect contains the entire bitmap then we're effectively
+    // in the (easier) bleed case, so update flags.
     if (NULL == srcRectPtr) {
-        srcRect.set(0, 0, SkIntToScalar(bitmap.width()), SkIntToScalar(bitmap.height()));
+        SkScalar w = SkIntToScalar(bitmap.width());
+        SkScalar h = SkIntToScalar(bitmap.height());
+        dstSize.fWidth = w;
+        dstSize.fHeight = h;
+        srcRect.set(0, 0, w, h);
+        flags = (SkCanvas::DrawBitmapRectFlags) (flags | SkCanvas::kBleed_DrawBitmapRectFlag);
     } else {
+        SkASSERT(NULL != dstSizePtr);
         srcRect = *srcRectPtr;
+        dstSize = *dstSizePtr;
+        if (srcRect.fLeft <= 0 && srcRect.fTop <= 0 &&
+            srcRect.fRight >= bitmap.width() && srcRect.fBottom >= bitmap.height()) {
+            flags = (SkCanvas::DrawBitmapRectFlags) (flags | SkCanvas::kBleed_DrawBitmapRectFlag);
+        }
     }
 
     if (paint.getMaskFilter()){
         // Convert the bitmap to a shader so that the rect can be drawn
         // through drawRect, which supports mask filters.
-        SkMatrix        newM(m);
         SkBitmap        tmp;    // subset of bitmap, if necessary
         const SkBitmap* bitmapPtr = &bitmap;
+        SkMatrix localM;
         if (NULL != srcRectPtr) {
-            SkIRect iSrc;
-            srcRect.roundOut(&iSrc);
+            localM.setTranslate(-srcRectPtr->fLeft, -srcRectPtr->fTop);
+            localM.postScale(dstSize.fWidth / srcRectPtr->width(),
+                             dstSize.fHeight / srcRectPtr->height());
+            // In bleed mode we position and trim the bitmap based on the src rect which is
+            // already accounted for in 'm' and 'srcRect'. In clamp mode we need to chop out
+            // the desired portion of the bitmap and then update 'm' and 'srcRect' to
+            // compensate.
+            if (!(SkCanvas::kBleed_DrawBitmapRectFlag & flags)) {
+                SkIRect iSrc;
+                srcRect.roundOut(&iSrc);
 
-            SkPoint offset = SkPoint::Make(SkIntToScalar(iSrc.fLeft),
-                                           SkIntToScalar(iSrc.fTop));
+                SkPoint offset = SkPoint::Make(SkIntToScalar(iSrc.fLeft),
+                                               SkIntToScalar(iSrc.fTop));
 
-            if (SkCanvas::kBleed_DrawBitmapRectFlag & flags) {
-                // In bleed mode we want to expand the src rect on all sides
-                // but stay within the bitmap bounds
-                SkIRect iClampRect = SkIRect::MakeWH(bitmap.width(), bitmap.height());
-                clamped_unit_outset_with_offset(&iSrc, &offset, iClampRect);
+                if (!bitmap.extractSubset(&tmp, iSrc)) {
+                    return;     // extraction failed
+                }
+                bitmapPtr = &tmp;
+                srcRect.offset(-offset.fX, -offset.fY);
+
+                // The source rect has changed so update the matrix
+                localM.preTranslate(offset.fX, offset.fY);
             }
-
-            if (!bitmap.extractSubset(&tmp, iSrc)) {
-                return;     // extraction failed
-            }
-            bitmapPtr = &tmp;
-            srcRect.offset(-offset.fX, -offset.fY);
-            // The source rect has changed so update the matrix
-            newM.preTranslate(offset.fX, offset.fY);
+        } else {
+            localM.reset();
         }
 
-        SkPaint paintWithTexture(paint);
-        paintWithTexture.setShader(SkShader::CreateBitmapShader(*bitmapPtr,
+        SkPaint paintWithShader(paint);
+        paintWithShader.setShader(SkShader::CreateBitmapShader(*bitmapPtr,
             SkShader::kClamp_TileMode, SkShader::kClamp_TileMode))->unref();
-
-        // Transform 'newM' needs to be concatenated to the current matrix,
-        // rather than transforming the primitive directly, so that 'newM' will
-        // also affect the behavior of the mask filter.
-        SkMatrix drawMatrix;
-        drawMatrix.setConcat(fContext->getMatrix(), newM);
-        SkDraw transformedDraw(draw);
-        transformedDraw.fMatrix = &drawMatrix;
-
-        this->drawRect(transformedDraw, srcRect, paintWithTexture);
+        paintWithShader.getShader()->setLocalMatrix(localM);
+        SkRect dstRect = {0, 0, dstSize.fWidth, dstSize.fHeight};
+        this->drawRect(draw, dstRect, paintWithShader);
 
         return;
     }
 
+    // If there is no mask filter than it is OK to handle the src rect -> dst rect scaling using
+    // the view matrix rather than a local matrix.
+    SkMatrix m;
+    m.setScale(dstSize.fWidth / srcRect.width(),
+               dstSize.fHeight / srcRect.height());
     fContext->concatMatrix(m);
 
     GrTextureParams params;
     SkPaint::FilterLevel paintFilterLevel = paint.getFilterLevel();
     GrTextureParams::FilterMode textureFilterMode;
+
+    int tileFilterPad;
+    bool doBicubic = false;
+
     switch(paintFilterLevel) {
         case SkPaint::kNone_FilterLevel:
+            tileFilterPad = 0;
             textureFilterMode = GrTextureParams::kNone_FilterMode;
             break;
         case SkPaint::kLow_FilterLevel:
+            tileFilterPad = 1;
             textureFilterMode = GrTextureParams::kBilerp_FilterMode;
             break;
         case SkPaint::kMedium_FilterLevel:
-            textureFilterMode = GrTextureParams::kMipMap_FilterMode;
+            tileFilterPad = 1;
+            if (fContext->getMatrix().getMinStretch() < SK_Scalar1) {
+                textureFilterMode = GrTextureParams::kMipMap_FilterMode;
+            } else {
+                // Don't trigger MIP level generation unnecessarily.
+                textureFilterMode = GrTextureParams::kBilerp_FilterMode;
+            }
             break;
         case SkPaint::kHigh_FilterLevel:
-            // Fall back to mips for now
-            textureFilterMode = GrTextureParams::kMipMap_FilterMode;
+            // Minification can look bad with the bicubic effect.
+            if (fContext->getMatrix().getMinStretch() >= SK_Scalar1) {
+                // We will install an effect that does the filtering in the shader.
+                textureFilterMode = GrTextureParams::kNone_FilterMode;
+                tileFilterPad = GrBicubicEffect::kFilterTexelPad;
+                doBicubic = true;
+            } else {
+                textureFilterMode = GrTextureParams::kMipMap_FilterMode;
+                tileFilterPad = 1;
+            }
             break;
         default:
             SkErrorInternals::SetError( kInvalidPaint_SkError,
                                         "Sorry, I don't understand the filtering "
                                         "mode you asked for.  Falling back to "
                                         "MIPMaps.");
+            tileFilterPad = 1;
             textureFilterMode = GrTextureParams::kMipMap_FilterMode;
             break;
-
     }
 
     params.setFilterMode(textureFilterMode);
 
-    int maxTileSize = fContext->getMaxTextureSize();
-    if (SkPaint::kNone_FilterLevel != paint.getFilterLevel()) {
-        // We may need a skosh more room if we have to bump out the tile
-        // by 1 pixel all around
-        maxTileSize -= 2;
-    }
+    int maxTileSize = fContext->getMaxTextureSize() - 2 * tileFilterPad;
     int tileSize;
 
     SkIRect clippedSrcRect;
     if (this->shouldTileBitmap(bitmap, params, srcRectPtr, maxTileSize, &tileSize,
                                &clippedSrcRect)) {
-        this->drawTiledBitmap(bitmap, srcRect, clippedSrcRect, params, paint, flags, tileSize);
+        this->drawTiledBitmap(bitmap, srcRect, clippedSrcRect, params, paint, flags, tileSize,
+                              doBicubic);
     } else {
         // take the simple case
-        this->internalDrawBitmap(bitmap, srcRect, params, paint, flags);
+        this->internalDrawBitmap(bitmap, srcRect, params, paint, flags, doBicubic);
     }
 }
 
@@ -1235,7 +1296,8 @@ void SkGpuDevice::drawTiledBitmap(const SkBitmap& bitmap,
                                   const GrTextureParams& params,
                                   const SkPaint& paint,
                                   SkCanvas::DrawBitmapRectFlags flags,
-                                  int tileSize) {
+                                  int tileSize,
+                                  bool bicubic) {
     SkRect clippedSrcRect = SkRect::Make(clippedSrcIRect);
 
     int nx = bitmap.width() / tileSize;
@@ -1262,7 +1324,13 @@ void SkGpuDevice::drawTiledBitmap(const SkBitmap& bitmap,
             SkPoint offset = SkPoint::Make(SkIntToScalar(iTileR.fLeft),
                                            SkIntToScalar(iTileR.fTop));
 
-            if (SkPaint::kNone_FilterLevel != paint.getFilterLevel()) {
+            // Adjust the context matrix to draw at the right x,y in device space
+            SkMatrix tmpM;
+            GrContext::AutoMatrix am;
+            tmpM.setTranslate(offset.fX - srcRect.fLeft, offset.fY - srcRect.fTop);
+            am.setPreConcat(fContext, tmpM);
+
+            if (SkPaint::kNone_FilterLevel != paint.getFilterLevel() || bicubic) {
                 SkIRect iClampRect;
 
                 if (SkCanvas::kBleed_DrawBitmapRectFlag & flags) {
@@ -1275,18 +1343,15 @@ void SkGpuDevice::drawTiledBitmap(const SkBitmap& bitmap,
                     // not bleed across the original clamped edges)
                     srcRect.roundOut(&iClampRect);
                 }
-
-                clamped_unit_outset_with_offset(&iTileR, &offset, iClampRect);
+                int outset = bicubic ? GrBicubicEffect::kFilterTexelPad : 1;
+                clamped_outset_with_offset(&iTileR, outset, &offset, iClampRect);
             }
 
             if (bitmap.extractSubset(&tmpB, iTileR)) {
                 // now offset it to make it "local" to our tmp bitmap
                 tileR.offset(-offset.fX, -offset.fY);
-                SkMatrix tmpM;
-                tmpM.setTranslate(offset.fX, offset.fY);
-                GrContext::AutoMatrix am;
-                am.setPreConcat(fContext, tmpM);
-                this->internalDrawBitmap(tmpB, tileR, params, paint, flags);
+
+                this->internalDrawBitmap(tmpB, tileR, params, paint, flags, bicubic);
             }
         }
     }
@@ -1345,7 +1410,8 @@ void SkGpuDevice::internalDrawBitmap(const SkBitmap& bitmap,
                                      const SkRect& srcRect,
                                      const GrTextureParams& params,
                                      const SkPaint& paint,
-                                     SkCanvas::DrawBitmapRectFlags flags) {
+                                     SkCanvas::DrawBitmapRectFlags flags,
+                                     bool bicubic) {
     SkASSERT(bitmap.width() <= fContext->getMaxTextureSize() &&
              bitmap.height() <= fContext->getMaxTextureSize());
 
@@ -1355,7 +1421,7 @@ void SkGpuDevice::internalDrawBitmap(const SkBitmap& bitmap,
         return;
     }
 
-    SkRect dstRect(srcRect);
+    SkRect dstRect = {0, 0, srcRect.width(), srcRect.height() };
     SkRect paintRect;
     SkScalar wInv = SkScalarInvert(SkIntToScalar(texture->width()));
     SkScalar hInv = SkScalarInvert(SkIntToScalar(texture->height()));
@@ -1366,11 +1432,11 @@ void SkGpuDevice::internalDrawBitmap(const SkBitmap& bitmap,
 
     bool needsTextureDomain = false;
     if (!(flags & SkCanvas::kBleed_DrawBitmapRectFlag) &&
-        params.filterMode() != GrTextureParams::kNone_FilterMode) {
-        // Need texture domain if drawing a sub rect.
+        (bicubic || params.filterMode() != GrTextureParams::kNone_FilterMode)) {
+        // Need texture domain if drawing a sub rect
         needsTextureDomain = srcRect.width() < bitmap.width() ||
                              srcRect.height() < bitmap.height();
-        if (needsTextureDomain && fContext->getMatrix().rectStaysRect()) {
+        if (!bicubic && needsTextureDomain && fContext->getMatrix().rectStaysRect()) {
             const SkMatrix& matrix = fContext->getMatrix();
             // sampling is axis-aligned
             SkRect transformedRect;
@@ -1406,11 +1472,19 @@ void SkGpuDevice::internalDrawBitmap(const SkBitmap& bitmap,
             top = bottom = SkScalarHalf(paintRect.top() + paintRect.bottom());
         }
         textureDomain.setLTRB(left, top, right, bottom);
-        effect.reset(GrTextureDomainEffect::Create(texture,
-                                                   SkMatrix::I(),
-                                                   textureDomain,
-                                                   GrTextureDomainEffect::kClamp_WrapMode,
-                                                   params.filterMode()));
+        if (bicubic) {
+            effect.reset(GrBicubicEffect::Create(texture, SkMatrix::I(), textureDomain));
+        } else {
+            effect.reset(GrTextureDomainEffect::Create(texture,
+                                                       SkMatrix::I(),
+                                                       textureDomain,
+                                                       GrTextureDomain::kClamp_Mode,
+                                                       params.filterMode()));
+        }
+    } else if (bicubic) {
+        SkASSERT(GrTextureParams::kNone_FilterMode == params.filterMode());
+        SkShader::TileMode tileModes[2] = { params.getTileModeX(), params.getTileModeY() };
+        effect.reset(GrBicubicEffect::Create(texture, SkMatrix::I(), tileModes));
     } else {
         effect.reset(GrSimpleTextureEffect::Create(texture, SkMatrix::I(), params));
     }
@@ -1462,11 +1536,11 @@ void SkGpuDevice::drawSprite(const SkDraw& draw, const SkBitmap& bitmap,
     SkAutoCachedTexture act(this, bitmap, NULL, &texture);
 
     SkImageFilter* filter = paint.getImageFilter();
-    SkIPoint offset = SkIPoint::Make(left, top);
     // This bitmap will own the filtered result as a texture.
     SkBitmap filteredBitmap;
 
     if (NULL != filter) {
+        SkIPoint offset = SkIPoint::Make(0, 0);
         SkMatrix matrix(*draw.fMatrix);
         matrix.postTranslate(SkIntToScalar(-left), SkIntToScalar(-top));
         if (filter_texture(this, fContext, texture, filter, w, h, matrix, &filteredBitmap,
@@ -1474,6 +1548,8 @@ void SkGpuDevice::drawSprite(const SkDraw& draw, const SkBitmap& bitmap,
             texture = (GrTexture*) filteredBitmap.getTexture();
             w = filteredBitmap.width();
             h = filteredBitmap.height();
+            left += offset.x();
+            top += offset.y();
         } else {
             return;
         }
@@ -1487,8 +1563,8 @@ void SkGpuDevice::drawSprite(const SkDraw& draw, const SkBitmap& bitmap,
     }
 
     fContext->drawRectToRect(grPaint,
-                             SkRect::MakeXYWH(SkIntToScalar(offset.fX),
-                                              SkIntToScalar(offset.fY),
+                             SkRect::MakeXYWH(SkIntToScalar(left),
+                                              SkIntToScalar(top),
                                               SkIntToScalar(w),
                                               SkIntToScalar(h)),
                              SkRect::MakeXYWH(0,
@@ -1497,7 +1573,7 @@ void SkGpuDevice::drawSprite(const SkDraw& draw, const SkBitmap& bitmap,
                                               SK_Scalar1 * h / texture->height()));
 }
 
-void SkGpuDevice::drawBitmapRect(const SkDraw& draw, const SkBitmap& bitmap,
+void SkGpuDevice::drawBitmapRect(const SkDraw& origDraw, const SkBitmap& bitmap,
                                  const SkRect* src, const SkRect& dst,
                                  const SkPaint& paint,
                                  SkCanvas::DrawBitmapRectFlags flags) {
@@ -1514,6 +1590,7 @@ void SkGpuDevice::drawBitmapRect(const SkDraw& draw, const SkBitmap& bitmap,
     } else {
         tmpSrc = bitmapBounds;
     }
+
     matrix.setRectToRect(tmpSrc, dst, SkMatrix::kFill_ScaleToFit);
 
     // clip the tmpSrc to the bounds of the bitmap. No check needed if src==null.
@@ -1525,7 +1602,21 @@ void SkGpuDevice::drawBitmapRect(const SkDraw& draw, const SkBitmap& bitmap,
         }
     }
 
-    this->drawBitmapCommon(draw, bitmap, &tmpSrc, matrix, paint, flags);
+    SkRect tmpDst;
+    matrix.mapRect(&tmpDst, tmpSrc);
+
+    SkTCopyOnFirstWrite<SkDraw> draw(origDraw);
+    if (0 != tmpDst.fLeft || 0 != tmpDst.fTop) {
+        // Translate so that tempDst's top left is at the origin.
+        matrix = *origDraw.fMatrix;
+        matrix.preTranslate(tmpDst.fLeft, tmpDst.fTop);
+        draw.writable()->fMatrix = &matrix;
+    }
+    SkSize dstSize;
+    dstSize.fWidth = tmpDst.width();
+    dstSize.fHeight = tmpDst.height();
+
+    this->drawBitmapCommon(*draw, bitmap, &tmpSrc, &dstSize, paint, flags);
 }
 
 void SkGpuDevice::drawDevice(const SkDraw& draw, SkBaseDevice* device,
@@ -1732,9 +1823,27 @@ void SkGpuDevice::drawText(const SkDraw& draw, const void* text,
                           const SkPaint& paint) {
     CHECK_SHOULD_DRAW(draw, false);
 
-    if (fContext->getMatrix().hasPerspective()) {
-        // this guy will just call our drawPath()
-        draw.drawText((const char*)text, byteLength, x, y, paint);
+    if (SkDraw::ShouldDrawTextAsPaths(paint, fContext->getMatrix())) {
+        draw.drawText_asPaths((const char*)text, byteLength, x, y, paint);
+#if SK_DISTANCEFIELD_FONTS
+    } else if (!paint.getRasterizer()) {
+        GrPaint grPaint;
+        if (!skPaint2GrPaintShader(this, paint, true, &grPaint)) {
+            return;
+        }
+
+        SkDEBUGCODE(this->validate();)
+
+        SkAutoTDelete<GrTextContext> context(fTextContextManager->create(fContext, grPaint, paint));
+        GrDistanceFieldTextContext* dfContext =
+                                            static_cast<GrDistanceFieldTextContext*>(context.get());
+
+        SkAutoGlyphCache    autoCache(dfContext->getSkPaint(), &this->fLeakyProperties, NULL);
+        SkGlyphCache*       cache = autoCache.getCache();
+        GrFontScaler*       fontScaler = get_gr_font_scaler(cache);
+
+        dfContext->drawText((const char *)text, byteLength, x, y, cache, fontScaler);
+#endif
     } else {
         SkDraw myDraw(draw);
 
@@ -1743,8 +1852,8 @@ void SkGpuDevice::drawText(const SkDraw& draw, const void* text,
             return;
         }
 
-        GrBitmapTextContext context(fContext, grPaint, paint.getColor());
-        myDraw.fProcs = this->initDrawForText(&context);
+        SkAutoTDelete<GrTextContext> context(fTextContextManager->create(fContext, grPaint, paint));
+        myDraw.fProcs = this->initDrawForText(context.get());
         this->INHERITED::drawText(myDraw, text, byteLength, x, y, paint);
     }
 }
@@ -1755,10 +1864,30 @@ void SkGpuDevice::drawPosText(const SkDraw& draw, const void* text,
                              const SkPaint& paint) {
     CHECK_SHOULD_DRAW(draw, false);
 
-    if (fContext->getMatrix().hasPerspective()) {
+    if (SkDraw::ShouldDrawTextAsPaths(paint, fContext->getMatrix())) {
         // this guy will just call our drawPath()
-        draw.drawPosText((const char*)text, byteLength, pos, constY,
+        draw.drawPosText_asPaths((const char*)text, byteLength, pos, constY,
                          scalarsPerPos, paint);
+#if SK_DISTANCEFIELD_FONTS
+    } else if (!paint.getRasterizer()) {
+        GrPaint grPaint;
+        if (!skPaint2GrPaintShader(this, paint, true, &grPaint)) {
+            return;
+        }
+
+        SkDEBUGCODE(this->validate();)
+
+        SkAutoTDelete<GrTextContext> context(fTextContextManager->create(fContext, grPaint, paint));
+        GrDistanceFieldTextContext* dfContext =
+                                            static_cast<GrDistanceFieldTextContext*>(context.get());
+
+        SkAutoGlyphCache    autoCache(dfContext->getSkPaint(), &this->fLeakyProperties, NULL);
+        SkGlyphCache*       cache = autoCache.getCache();
+        GrFontScaler*       fontScaler = get_gr_font_scaler(cache);
+
+        dfContext->drawPosText((const char *)text, byteLength, pos, constY, scalarsPerPos,
+                            cache, fontScaler);
+#endif
     } else {
         SkDraw myDraw(draw);
 
@@ -1766,10 +1895,11 @@ void SkGpuDevice::drawPosText(const SkDraw& draw, const void* text,
         if (!skPaint2GrPaintShader(this, paint, true, &grPaint)) {
             return;
         }
-        GrBitmapTextContext context(fContext, grPaint, paint.getColor());
-        myDraw.fProcs = this->initDrawForText(&context);
+
+        SkAutoTDelete<GrTextContext> context(fTextContextManager->create(fContext, grPaint, paint));
+        myDraw.fProcs = this->initDrawForText(context.get());
         this->INHERITED::drawPosText(myDraw, text, byteLength, pos, constY,
-                                     scalarsPerPos, paint);
+                                        scalarsPerPos, paint);
     }
 }
 

@@ -177,9 +177,10 @@ bool ViEReceiver::SetReceiveAbsoluteSendTimeStatus(bool enable, int id) {
 }
 
 int ViEReceiver::ReceivedRTPPacket(const void* rtp_packet,
-                                   int rtp_packet_length) {
+                                   int rtp_packet_length,
+                                   const PacketTime& packet_time) {
   return InsertRTPPacket(static_cast<const int8_t*>(rtp_packet),
-                         rtp_packet_length);
+                         rtp_packet_length, packet_time);
 }
 
 int ViEReceiver::ReceivedRTCPPacket(const void* rtcp_packet,
@@ -211,7 +212,8 @@ bool ViEReceiver::OnRecoveredPacket(const uint8_t* rtp_packet,
 }
 
 int ViEReceiver::InsertRTPPacket(const int8_t* rtp_packet,
-                                 int rtp_packet_length) {
+                                 int rtp_packet_length,
+                                 const PacketTime& packet_time) {
   // TODO(mflodman) Change decrypt to get rid of this cast.
   int8_t* tmp_ptr = const_cast<int8_t*>(rtp_packet);
   unsigned char* received_packet = reinterpret_cast<unsigned char*>(tmp_ptr);
@@ -256,15 +258,24 @@ int ViEReceiver::InsertRTPPacket(const int8_t* rtp_packet,
     return -1;
   }
   int payload_length = received_packet_length - header.headerLength;
-  remote_bitrate_estimator_->IncomingPacket(TickTime::MillisecondTimestamp(),
+  int64_t arrival_time_ms;
+  if (packet_time.timestamp != -1)
+    arrival_time_ms = (packet_time.timestamp + 500) / 1000;
+  else
+    arrival_time_ms = TickTime::MillisecondTimestamp();
+
+  remote_bitrate_estimator_->IncomingPacket(arrival_time_ms,
                                             payload_length, header);
   header.payload_type_frequency = kVideoPayloadTypeFrequency;
 
-  rtp_receive_statistics_->IncomingPacket(header, received_packet_length,
-                                          IsPacketRetransmitted(header));
+  bool in_order = IsPacketInOrder(header);
+  rtp_receive_statistics_->IncomingPacket(
+      header, received_packet_length, IsPacketRetransmitted(header, in_order));
   rtp_payload_registry_->SetIncomingPayloadType(header);
-  return ReceivePacket(received_packet, received_packet_length, header,
-                       IsPacketInOrder(header)) ? 0 : -1;
+  return ReceivePacket(
+             received_packet, received_packet_length, header, in_order)
+             ? 0
+             : -1;
 }
 
 bool ViEReceiver::ReceivePacket(const uint8_t* packet,
@@ -290,9 +301,11 @@ bool ViEReceiver::ParseAndHandleEncapsulatingHeader(const uint8_t* packet,
                                                     int packet_length,
                                                     const RTPHeader& header) {
   if (rtp_payload_registry_->IsRed(header)) {
+    int8_t ulpfec_pt = rtp_payload_registry_->ulpfec_payload_type();
+    if (packet[header.headerLength] == ulpfec_pt)
+      rtp_receive_statistics_->FecPacketReceived(header.ssrc);
     if (fec_receiver_->AddReceivedRedPacket(
-        header, packet, packet_length,
-        rtp_payload_registry_->ulpfec_payload_type()) != 0) {
+            header, packet, packet_length, ulpfec_pt) != 0) {
       WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideo, channel_id_,
                    "Incoming RED packet error");
       return false;
@@ -457,7 +470,8 @@ bool ViEReceiver::IsPacketInOrder(const RTPHeader& header) const {
   return statistician->IsPacketInOrder(header.sequenceNumber);
 }
 
-bool ViEReceiver::IsPacketRetransmitted(const RTPHeader& header) const {
+bool ViEReceiver::IsPacketRetransmitted(const RTPHeader& header,
+                                        bool in_order) const {
   // Retransmissions are handled separately if RTX is enabled.
   if (rtp_payload_registry_->RtxEnabled())
     return false;
@@ -468,7 +482,7 @@ bool ViEReceiver::IsPacketRetransmitted(const RTPHeader& header) const {
   // Check if this is a retransmission.
   uint16_t min_rtt = 0;
   rtp_rtcp_->RTT(rtp_receiver_->SSRC(), NULL, NULL, &min_rtt, NULL);
-  return !IsPacketInOrder(header) &&
+  return !in_order &&
       statistician->IsRetransmitOfOldPacket(header, min_rtt);
 }
 }  // namespace webrtc

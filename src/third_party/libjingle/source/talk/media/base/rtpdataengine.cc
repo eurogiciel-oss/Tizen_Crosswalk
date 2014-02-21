@@ -230,7 +230,8 @@ bool RtpDataMediaChannel::RemoveRecvStream(uint32 ssrc) {
   return true;
 }
 
-void RtpDataMediaChannel::OnPacketReceived(talk_base::Buffer* packet) {
+void RtpDataMediaChannel::OnPacketReceived(
+    talk_base::Buffer* packet, const talk_base::PacketTime& packet_time) {
   RtpHeader header;
   if (!GetRtpHeader(packet->data(), packet->length(), &header)) {
     // Don't want to log for every corrupt packet.
@@ -259,10 +260,12 @@ void RtpDataMediaChannel::OnPacketReceived(talk_base::Buffer* packet) {
 
   DataCodec codec;
   if (!FindCodecById(recv_codecs_, header.payload_type, &codec)) {
-    LOG(LS_WARNING) << "Not receiving packet "
-                    << header.ssrc << ":" << header.seq_num
-                    << " (" << data_len << ")"
-                    << " because unknown payload id: " << header.payload_type;
+    // For bundling, this will be logged for every message.
+    // So disable this logging.
+    // LOG(LS_WARNING) << "Not receiving packet "
+    //                << header.ssrc << ":" << header.seq_num
+    //                << " (" << data_len << ")"
+    //                << " because unknown payload id: " << header.payload_type;
     return;
   }
 
@@ -287,8 +290,8 @@ void RtpDataMediaChannel::OnPacketReceived(talk_base::Buffer* packet) {
   SignalDataReceived(params, data, data_len);
 }
 
-bool RtpDataMediaChannel::SetSendBandwidth(bool autobw, int bps) {
-  if (autobw || bps <= 0) {
+bool RtpDataMediaChannel::SetMaxSendBandwidth(int bps) {
+  if (bps <= 0) {
     bps = kDataMaxBandwidth;
   }
   send_limiter_.reset(new talk_base::RateLimiter(bps / 8, 1.0));

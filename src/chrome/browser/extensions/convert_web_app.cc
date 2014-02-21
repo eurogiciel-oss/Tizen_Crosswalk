@@ -15,17 +15,17 @@
 #include "base/files/scoped_temp_dir.h"
 #include "base/json/json_file_value_serializer.h"
 #include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/path_service.h"
-#include "base/safe_numerics.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "chrome/common/chrome_paths.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_file_util.h"
 #include "chrome/common/web_application_info.h"
 #include "crypto/sha2.h"
 #include "extensions/common/constants.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest_constants.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/codec/png_codec.h"
@@ -102,7 +102,7 @@ scoped_refptr<Extension> ConvertWebAppToExtension(
   }
 
   // Create the manifest
-  scoped_ptr<DictionaryValue> root(new DictionaryValue);
+  scoped_ptr<base::DictionaryValue> root(new base::DictionaryValue);
   if (!web_app.is_bookmark_app)
     root->SetString(keys::kPublicKey, GenerateKey(web_app.manifest_url));
   else
@@ -111,16 +111,16 @@ scoped_refptr<Extension> ConvertWebAppToExtension(
   if (web_app.is_offline_enabled)
     root->SetBoolean(keys::kOfflineEnabled, true);
 
-  root->SetString(keys::kName, UTF16ToUTF8(web_app.title));
+  root->SetString(keys::kName, base::UTF16ToUTF8(web_app.title));
   root->SetString(keys::kVersion, ConvertTimeToExtensionVersion(create_time));
-  root->SetString(keys::kDescription, UTF16ToUTF8(web_app.description));
+  root->SetString(keys::kDescription, base::UTF16ToUTF8(web_app.description));
   root->SetString(keys::kLaunchWebURL, web_app.app_url.spec());
 
   if (!web_app.launch_container.empty())
     root->SetString(keys::kLaunchContainer, web_app.launch_container);
 
   // Add the icons.
-  DictionaryValue* icons = new DictionaryValue();
+  base::DictionaryValue* icons = new base::DictionaryValue();
   root->Set(keys::kIcons, icons);
   for (size_t i = 0; i < web_app.icons.size(); ++i) {
     std::string size = base::StringPrintf("%i", web_app.icons[i].width);
@@ -153,7 +153,7 @@ scoped_refptr<Extension> ConvertWebAppToExtension(
 
   // Write the icon files.
   base::FilePath icons_dir = temp_dir.path().AppendASCII(kIconsDirName);
-  if (!file_util::CreateDirectory(icons_dir)) {
+  if (!base::CreateDirectory(icons_dir)) {
     LOG(ERROR) << "Could not create icons directory.";
     return NULL;
   }
@@ -173,7 +173,7 @@ scoped_refptr<Extension> ConvertWebAppToExtension(
     }
 
     const char* image_data_ptr = reinterpret_cast<const char*>(&image_data[0]);
-    int size = base::checked_numeric_cast<int>(image_data.size());
+    int size = base::checked_cast<int>(image_data.size());
     if (file_util::WriteFile(icon_file, image_data_ptr, size) != size) {
       LOG(ERROR) << "Could not write icon file.";
       return NULL;

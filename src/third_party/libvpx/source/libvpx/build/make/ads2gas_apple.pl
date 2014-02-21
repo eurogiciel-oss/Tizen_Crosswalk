@@ -9,6 +9,7 @@
 ##  be found in the AUTHORS file in the root of the source tree.
 ##
 
+
 # ads2gas_apple.pl
 # Author: Eric Fung (efung (at) acm.org)
 #
@@ -16,6 +17,13 @@
 #
 # Usage: cat inputfile | perl ads2gas_apple.pl > outputfile
 #
+
+my $chromium = 0;
+
+foreach my $arg (@ARGV) {
+    $chromium = 1 if ($arg eq "-chromium");
+}
+
 print "@ This file was created from a .asm file\n";
 print "@  using the ads2gas_apple.pl script.\n\n";
 print "\t.set WIDE_REFERENCE, 0\n";
@@ -187,7 +195,7 @@ while (<STDIN>)
         $trimmed =~ s/,//g;
 
         # string to array
-        @incoming_array = split(/ /, $trimmed);
+        @incoming_array = split(/\s+/, $trimmed);
 
         print ".macro @incoming_array[0]\n";
 
@@ -210,12 +218,18 @@ while (<STDIN>)
     s/MEND/.endm/;              # No need to tell it where to stop assembling
     next if /^\s*END\s*$/;
 
-    s/qsubaddx/qsax/i;
-    s/qaddsubx/qasx/i;
-    s/ldrneb/ldrbne/i;
-    s/ldrneh/ldrhne/i;
-    s/(vqshrun\.s16 .*, \#)0$/${1}8/i;
-    s/\.include/#include/;
+    # Clang used by Chromium differs slightly from clang in XCode in what it
+    # will accept in the assembly.
+    if ($chromium) {
+        s/qsubaddx/qsax/i;
+        s/qaddsubx/qasx/i;
+        s/ldrneb/ldrbne/i;
+        s/ldrneh/ldrhne/i;
+        s/(vqshrun\.s16 .*, \#)0$/${1}8/i;
+
+        # http://llvm.org/bugs/show_bug.cgi?id=16022
+        s/\.include/#include/;
+    }
 
     print;
 }

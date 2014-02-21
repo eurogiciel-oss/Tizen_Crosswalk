@@ -26,6 +26,8 @@
 #   include "unicode/pmac.h"
 #elif defined(ANDROID)
 #   include "unicode/pandroid.h"
+#elif defined(__native_client__)
+#   include "unicode/pnacl.h"
 #elif defined(__linux__)
 #   include "unicode/plinux.h"
 #elif defined(__FreeBSD__)

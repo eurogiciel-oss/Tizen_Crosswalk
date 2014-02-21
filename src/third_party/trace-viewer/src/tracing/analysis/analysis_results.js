@@ -223,7 +223,7 @@ base.exportTo('tracing.analysis', function() {
      *          or min/max/avg/start/end for counters.
      */
     appendDetailsRow: function(table, start, duration, selfTime, args,
-        opt_selectionGenerator, opt_threadTime) {
+        opt_selectionGenerator, opt_threadDuration) {
       var row = this.appendBodyRow(table);
 
       if (opt_selectionGenerator) {
@@ -237,14 +237,17 @@ base.exportTo('tracing.analysis', function() {
         this.appendTableCell(table, row, tracing.analysis.tsRound(start));
       }
 
-      this.appendTableCell(table, row, tracing.analysis.tsRound(duration));
+      if (duration !== null)
+        this.appendTableCell(table, row, tracing.analysis.tsRound(duration));
 
-      if (opt_threadTime)
+      if (opt_threadDuration)
         this.appendTableCell(table, row,
-                             opt_threadTime != '' ?
-                                 tracing.analysis.tsRound(opt_threadTime) : '');
+                             opt_threadDuration != '' ?
+                             tracing.analysis.tsRound(opt_threadDuration) :
+                             '');
 
-      this.appendTableCell(table, row, tracing.analysis.tsRound(selfTime));
+      if (selfTime !== null)
+        this.appendTableCell(table, row, tracing.analysis.tsRound(selfTime));
 
       var argsCell = this.appendTableCell(table, row, '');
       var n = 0;
@@ -275,9 +278,10 @@ base.exportTo('tracing.analysis', function() {
      *          contains calculated staistics containing min/max/avg for slices,
      *          or min/max/avg/start/end for counters.
      */
-    appendDataRow: function(
-        table, label, opt_duration, opt_threadTime, opt_selfTime,
-        opt_occurences, opt_statistics, opt_selectionGenerator, opt_inFoot) {
+    appendDataRow: function(table, label, opt_duration, opt_threadDuration,
+                            opt_selfTime, opt_occurences, opt_percentage,
+                            opt_statistics, opt_selectionGenerator,
+                            opt_inFoot) {
 
       var tooltip = undefined;
       if (opt_statistics) {
@@ -311,51 +315,73 @@ base.exportTo('tracing.analysis', function() {
       else
         var row = this.appendBodyRow(table);
 
+      var cellNum = 0;
       if (!opt_selectionGenerator) {
-        this.appendTableCellWithTooltip_(table, row, 0, label, tooltip);
+        this.appendTableCellWithTooltip_(table, row, cellNum, label, tooltip);
       } else {
         var labelEl = this.appendTableCellWithTooltip_(
-            table, row, 0, label, tooltip);
-        labelEl.textContent = '';
-        labelEl.appendChild(
+            table, row, cellNum, label, tooltip);
+        if (labelEl) {
+          labelEl.textContent = '';
+          labelEl.appendChild(
             this.createSelectionChangingLink(label, opt_selectionGenerator,
-            tooltip));
-      }
-
-      if (opt_duration) {
-        if (opt_duration instanceof Array) {
-          this.appendTableCellWithTooltip_(table, row, 1,
-              '[' + opt_duration.join(', ') + ']', tooltip);
-        } else {
-          this.appendTableCellWithTooltip_(table, row, 1,
-              tracing.analysis.tsRound(opt_duration), tooltip);
-        }
-      } else {
-        this.appendTableCell_(table, row, 1, '');
-      }
-
-      if (opt_threadTime !== null) {
-        if (opt_threadTime != '') {
-          this.appendTableCellWithTooltip_(table, row, 2,
-              tracing.analysis.tsRound(opt_threadTime), tooltip);
-        } else {
-          this.appendTableCell_(table, row, 2, '');
+                                             tooltip));
         }
       }
+      cellNum++;
 
-      if (opt_selfTime) {
-        this.appendTableCellWithTooltip_(table, row, 2,
-            tracing.analysis.tsRound(opt_selfTime), tooltip);
-      } else {
-        this.appendTableCell_(table, row, 2, '');
+      if (opt_duration !== null) {
+        if (opt_duration) {
+          if (opt_duration instanceof Array) {
+            this.appendTableCellWithTooltip_(table, row, cellNum,
+                '[' + opt_duration.join(', ') + ']', tooltip);
+          } else {
+            this.appendTableCellWithTooltip_(table, row, cellNum,
+                tracing.analysis.tsRound(opt_duration), tooltip);
+          }
+        } else {
+          this.appendTableCell_(table, row, cellNum, '');
+        }
+        cellNum++;
+      }
+
+      if (opt_threadDuration !== null) {
+        if (opt_threadDuration != '') {
+          this.appendTableCellWithTooltip_(table, row, cellNum,
+              tracing.analysis.tsRound(opt_threadDuration), tooltip);
+        } else {
+          this.appendTableCell_(table, row, cellNum, '');
+        }
+        cellNum++;
+      }
+
+      if (opt_selfTime !== null) {
+        if (opt_selfTime) {
+          this.appendTableCellWithTooltip_(table, row, cellNum,
+              tracing.analysis.tsRound(opt_selfTime), tooltip);
+        } else {
+          this.appendTableCell_(table, row, cellNum, '');
+        }
+        cellNum++;
+      }
+
+      if (opt_percentage !== null) {
+        if (opt_percentage) {
+          this.appendTableCellWithTooltip_(table, row, cellNum,
+                                           opt_percentage, tooltip);
+        } else {
+          this.appendTableCell_(table, row, cellNum, '');
+        }
+        cellNum++;
       }
 
       if (opt_occurences) {
-        this.appendTableCellWithTooltip_(table, row, 2,
+        this.appendTableCellWithTooltip_(table, row, cellNum,
             String(opt_occurences), tooltip);
       } else {
-        this.appendTableCell_(table, row, 2, '');
+        this.appendTableCell_(table, row, cellNum, '');
       }
+      cellNum++;
     }
   };
   return {

@@ -31,17 +31,14 @@
 #include "config.h"
 #include "WebPagePopupImpl.h"
 
-#include "PageWidgetDelegate.h"
-#include "WebCursorInfo.h"
 #include "WebInputEventConversion.h"
-#include "WebPagePopup.h"
 #include "WebSettingsImpl.h"
 #include "WebViewClient.h"
 #include "WebViewImpl.h"
 #include "WebWidgetClient.h"
 #include "core/dom/ContextFeatures.h"
-#include "core/loader/DocumentLoader.h"
 #include "core/loader/EmptyClients.h"
+#include "core/loader/FrameLoadRequest.h"
 #include "core/page/Chrome.h"
 #include "core/page/DOMWindowPagePopup.h"
 #include "core/page/EventHandler.h"
@@ -50,12 +47,13 @@
 #include "core/frame/FrameView.h"
 #include "core/page/Page.h"
 #include "core/page/PagePopupClient.h"
-#include "core/page/Settings.h"
+#include "core/frame/Settings.h"
+#include "public/platform/WebCursorInfo.h"
 
 using namespace WebCore;
 using namespace std;
 
-namespace WebKit {
+namespace blink {
 
 class PagePopupChromeClient : public EmptyChromeClient {
     WTF_MAKE_NONCOPYABLE(PagePopupChromeClient);
@@ -89,9 +87,6 @@ private:
     {
 #ifndef NDEBUG
         fprintf(stderr, "CONSOLE MESSSAGE:%u: %s\n", lineNumber, message.utf8().data());
-#else
-        UNUSED_PARAM(message);
-        UNUSED_PARAM(lineNumber);
 #endif
     }
 
@@ -204,7 +199,7 @@ bool WebPagePopupImpl::initializePage()
     static ContextFeaturesClient* pagePopupFeaturesClient =  new PagePopupFeaturesClient();
     provideContextFeaturesTo(m_page.get(), pagePopupFeaturesClient);
     static FrameLoaderClient* emptyFrameLoaderClient =  new EmptyFrameLoaderClient();
-    RefPtr<Frame> frame = Frame::create(FrameInit::create(0, m_page.get(), emptyFrameLoaderClient));
+    RefPtr<Frame> frame = Frame::create(FrameInit::create(0, &m_page->frameHost(), emptyFrameLoaderClient));
     frame->setView(FrameView::create(frame.get()));
     frame->init();
     frame->view()->resize(m_popupClient->contentSize());
@@ -212,9 +207,9 @@ bool WebPagePopupImpl::initializePage()
 
     DOMWindowPagePopup::install(frame->domWindow(), m_popupClient);
 
-    DocumentWriter* writer = frame->loader().activeDocumentLoader()->beginWriting("text/html", "UTF-8");
-    m_popupClient->writeDocument(*writer);
-    frame->loader().activeDocumentLoader()->endWriting(writer);
+    RefPtr<SharedBuffer> data = SharedBuffer::create();
+    m_popupClient->writeDocument(data.get());
+    frame->loader().load(FrameLoadRequest(0, blankURL(), SubstituteData(data, "text/html", "UTF-8", KURL(), ForceSynchronousLoad)));
     return true;
 }
 
@@ -348,4 +343,4 @@ WebPagePopup* WebPagePopup::create(WebWidgetClient* client)
     return adoptRef(new WebPagePopupImpl(client)).leakRef();
 }
 
-} // namespace WebKit
+} // namespace blink

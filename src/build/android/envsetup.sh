@@ -108,30 +108,8 @@ elif [[ -n "$CHROME_ANDROID_BUILD_WEBVIEW" ]]; then
   webview_build_init
 fi
 
-# Workaround for valgrind build
-if [[ -n "$CHROME_ANDROID_VALGRIND_BUILD" ]]; then
-# arm_thumb=0 is a workaround for https://bugs.kde.org/show_bug.cgi?id=270709
-  DEFINES+=" arm_thumb=0 release_extra_cflags='-fno-inline\
- -fno-omit-frame-pointer -fno-builtin' release_valgrind_build=1\
- release_optimize=1"
-fi
-
 # Source a bunch of helper functions
 . ${CHROME_SRC}/build/android/adb_device_functions.sh
-
-ANDROID_GOMA_WRAPPER=""
-if [[ -d $GOMA_DIR ]]; then
-  ANDROID_GOMA_WRAPPER="$GOMA_DIR/gomacc"
-  num_cores="$(grep --count ^processor /proc/cpuinfo)"
-# Goma is IO-ish you want more threads than you have cores.
-  let "goma_threads=num_cores*2"
-  if [ -z "${GOMA_COMPILER_PROXY_THREADS}" -a "${goma_threads}" -gt 16 ]; then
-# The default is 16 threads, if the machine has many cores we crank it up a bit
-    GOMA_COMPILER_PROXY_THREADS="${goma_threads}"
-    export GOMA_COMPILER_PROXY_THREADS
-  fi
-fi
-export ANDROID_GOMA_WRAPPER
 
 # Declare Android are cross compile.
 export GYP_CROSSCOMPILE=1
@@ -145,6 +123,3 @@ android_gyp() {
     "${CHROME_SRC}/build/gyp_chromium" --depth="${CHROME_SRC}" --check "$@"
   )
 }
-
-# FLOCK needs to be null on system that has no flock
-which flock > /dev/null || export FLOCK=

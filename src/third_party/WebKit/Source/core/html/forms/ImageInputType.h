@@ -38,7 +38,7 @@
 
 namespace WebCore {
 
-class ImageInputType : public BaseButtonInputType {
+class ImageInputType FINAL : public BaseButtonInputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -53,7 +53,7 @@ private:
     virtual void handleDOMActivateEvent(Event*) OVERRIDE;
     virtual void altAttributeChanged() OVERRIDE;
     virtual void srcAttributeChanged() OVERRIDE;
-    virtual void attach() OVERRIDE;
+    virtual void startResourceLoading() OVERRIDE;
     virtual bool shouldRespectAlignAttribute() OVERRIDE;
     virtual bool canBeSuccessfulSubmitButton() OVERRIDE;
     virtual bool isImageButton() const OVERRIDE;

@@ -253,7 +253,7 @@ STDMETHODIMP TSFTextStore::GetText(LONG acp_start,
   acp_end = std::min(acp_end, acp_start + static_cast<LONG>(text_buffer_size));
   *text_buffer_copied = acp_end - acp_start;
 
-  const string16& result =
+  const base::string16& result =
       string_buffer_.substr(acp_start, *text_buffer_copied);
   for (size_t i = 0; i < result.size(); ++i) {
     text_buffer[i] = result[i];
@@ -412,7 +412,7 @@ STDMETHODIMP TSFTextStore::InsertTextAtSelection(DWORD flags,
 
   DCHECK_LE(start_pos, end_pos);
   string_buffer_ = string_buffer_.substr(0, start_pos) +
-                   string16(text_buffer, text_buffer + text_buffer_size) +
+                   base::string16(text_buffer, text_buffer + text_buffer_size) +
                    string_buffer_.substr(end_pos);
   if (acp_start)
     *acp_start = start_pos;
@@ -434,15 +434,14 @@ STDMETHODIMP TSFTextStore::QueryInsert(
     ULONG text_size,
     LONG* acp_result_start,
     LONG* acp_result_end) {
-  if (!acp_result_start || !acp_result_end)
+  if (!acp_result_start || !acp_result_end || acp_test_start > acp_test_end)
     return E_INVALIDARG;
-  if (!((static_cast<LONG>(committed_size_) <= acp_test_start) &&
-        (acp_test_start <= acp_test_end) &&
-        (acp_test_end <= static_cast<LONG>(string_buffer_.size())))) {
-    return E_INVALIDARG;
-  }
-  *acp_result_start = acp_test_start;
-  *acp_result_end = acp_test_end;
+  const LONG committed_size = static_cast<LONG>(committed_size_);
+  const LONG buffer_size = static_cast<LONG>(string_buffer_.size());
+  *acp_result_start = std::min(std::max(committed_size, acp_test_start),
+                               buffer_size);
+  *acp_result_end = std::min(std::max(committed_size, acp_test_end),
+                             buffer_size);
   return S_OK;
 }
 
@@ -524,10 +523,10 @@ STDMETHODIMP TSFTextStore::RequestLock(DWORD lock_flags, HRESULT* result) {
   // If the text store is edited in OnLockGranted(), we may need to call
   // TextInputClient::InsertText() or TextInputClient::SetCompositionText().
   const size_t new_committed_size = committed_size_;
-  const string16& new_committed_string =
+  const base::string16& new_committed_string =
       string_buffer_.substr(last_committed_size,
                             new_committed_size - last_committed_size);
-  const string16& composition_string =
+  const base::string16& composition_string =
       string_buffer_.substr(new_committed_size);
 
   // If there is new committed string, calls TextInputClient::InsertText().
@@ -885,7 +884,8 @@ bool TSFTextStore::ConfirmComposition() {
   // This logic is based on the observation about how to emulate
   // ImmNotifyIME(NI_COMPOSITIONSTR, CPS_COMPLETE, 0) by CUAS.
 
-  const string16& composition_text = string_buffer_.substr(committed_size_);
+  const base::string16& composition_text =
+      string_buffer_.substr(committed_size_);
   if (!composition_text.empty())
     text_input_client_->InsertText(composition_text);
 

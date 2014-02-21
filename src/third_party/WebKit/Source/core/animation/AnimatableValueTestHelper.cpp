@@ -32,22 +32,6 @@
 
 #include "core/animation/AnimatableValueTestHelper.h"
 
-#include "core/animation/AnimatableClipPathOperation.h"
-#include "core/animation/AnimatableColor.h"
-#include "core/animation/AnimatableDouble.h"
-#include "core/animation/AnimatableImage.h"
-#include "core/animation/AnimatableLength.h"
-#include "core/animation/AnimatableLengthBox.h"
-#include "core/animation/AnimatableLengthPoint.h"
-#include "core/animation/AnimatableLengthSize.h"
-#include "core/animation/AnimatableNeutral.h"
-#include "core/animation/AnimatableSVGLength.h"
-#include "core/animation/AnimatableSVGPaint.h"
-#include "core/animation/AnimatableShapeValue.h"
-#include "core/animation/AnimatableTransform.h"
-#include "core/animation/AnimatableUnknown.h"
-#include "core/animation/AnimatableValue.h"
-#include "core/animation/AnimatableVisibility.h"
 
 
 namespace WebCore {
@@ -136,7 +120,7 @@ void PrintTo(const AnimatableRepeatable& animValue, ::std::ostream* os)
 void PrintTo(const AnimatableSVGLength& animSVGLength, ::std::ostream* os)
 {
     *os << "AnimatableSVGLength("
-        << animSVGLength.toSVGLength().valueAsString().utf8().data() << ")";
+        << animSVGLength.toSVGLength()->valueAsString().utf8().data() << ")";
 }
 
 void PrintTo(const AnimatableSVGPaint& animSVGPaint, ::std::ostream* os)
@@ -159,10 +143,11 @@ void PrintTo(const AnimatableShapeValue& animValue, ::std::ostream* os)
 void PrintTo(const AnimatableStrokeDasharrayList& animValue, ::std::ostream* os)
 {
     *os << "AnimatableStrokeDasharrayList(";
-    const Vector<SVGLength> v = animValue.toSVGLengthVector();
-    for (Vector<SVGLength>::const_iterator it = v.begin(); it != v.end(); ++it) {
-        *os << it->valueAsString().utf8().data();
-        if (it+1 != v.end())
+    RefPtr<SVGLengthList> list = animValue.toSVGLengthList();
+    size_t length = list->numberOfItems();
+    for (size_t i = 0; i < length; ++i) {
+        *os << list->at(i)->valueAsString().utf8().data();
+        if (i != length-1)
             *os << ", ";
     }
     *os << ")";

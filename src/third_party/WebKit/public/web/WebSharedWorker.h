@@ -38,7 +38,7 @@ namespace WebCore {
 class ScriptExecutionContext;
 }
 
-namespace WebKit {
+namespace blink {
 
 class WebString;
 class WebMessagePortChannel;
@@ -46,7 +46,6 @@ class WebSharedWorkerClient;
 class WebURL;
 
 // This is the interface to a SharedWorker thread.
-// Since SharedWorkers communicate entirely through MessagePorts this interface only contains APIs for starting up a SharedWorker.
 class WebSharedWorker {
 public:
     // Invoked from the worker thread to instantiate a WebSharedWorker that interacts with the WebKit worker components.
@@ -54,26 +53,17 @@ public:
 
     virtual ~WebSharedWorker() {};
 
-    // Returns false if the thread hasn't been started yet (script loading has not taken place).
-    // FIXME(atwilson): Remove this when we move the initial script loading into the worker process.
-    virtual bool isStarted() = 0;
+    virtual void startWorkerContext(
+        const WebURL& scriptURL,
+        const WebString& name,
+        const WebString& userAgent,
+        const WebString& sourceCode,
+        const WebString& contentSecurityPolicy,
+        WebContentSecurityPolicyType,
+        long long scriptResourceAppCacheID) = 0;
 
-    virtual void startWorkerContext(const WebURL& scriptURL,
-                                    const WebString& name,
-                                    const WebString& userAgent,
-                                    const WebString& sourceCode,
-                                    const WebString& contentSecurityPolicy,
-                                    WebContentSecurityPolicyType,
-                                    long long scriptResourceAppCacheID) = 0;
-
-    class ConnectListener {
-    public:
-        // Invoked once the connect event has been sent so the caller can free this object.
-        virtual void connected() = 0;
-    };
-
-    // Sends a connect event to the SharedWorker context. The listener is invoked when this async operation completes.
-    virtual void connect(WebMessagePortChannel*, ConnectListener*) = 0;
+    // Sends a connect event to the SharedWorker context.
+    virtual void connect(WebMessagePortChannel*) = 0;
 
     // Invoked to shutdown the worker when there are no more associated documents.
     virtual void terminateWorkerContext() = 0;
@@ -81,14 +71,14 @@ public:
     // Notification when the WebCommonWorkerClient is destroyed.
     virtual void clientDestroyed() = 0;
 
-    virtual void pauseWorkerContextOnStart() { }
-    virtual void resumeWorkerContext() { }
-    virtual void attachDevTools() { }
-    virtual void reattachDevTools(const WebString& savedState) { }
-    virtual void detachDevTools() { }
-    virtual void dispatchDevToolsMessage(const WebString&) { }
+    virtual void pauseWorkerContextOnStart() = 0;
+    virtual void resumeWorkerContext() = 0;
+    virtual void attachDevTools() = 0;
+    virtual void reattachDevTools(const WebString& savedState) = 0;
+    virtual void detachDevTools() = 0;
+    virtual void dispatchDevToolsMessage(const WebString&) = 0;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

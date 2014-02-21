@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 # Lambda may not be necessary.
 # pylint: disable=W0108
@@ -13,6 +13,7 @@ import signal
 import sys
 import threading
 import time
+import traceback
 import unittest
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -454,6 +455,21 @@ class AutoRetryThreadPoolTest(unittest.TestCase):
       with self.assertRaises(OSError):
         channel.pull()
 
+  def test_add_task_with_channel_captures_stack_trace(self):
+    with threading_utils.AutoRetryThreadPool([OSError], 2, 1, 1, 0) as pool:
+      channel = threading_utils.TaskChannel()
+      def throw(exc):
+        def function_with_some_unusual_name():
+          raise exc
+        function_with_some_unusual_name()
+      pool.add_task_with_channel(channel, 0, throw, OSError())
+      exc_traceback = ''
+      try:
+        channel.pull()
+      except OSError:
+        exc_traceback = traceback.format_exc()
+      self.assertIn('function_with_some_unusual_name', exc_traceback)
+
 
 class FakeProgress(object):
   @staticmethod
@@ -518,7 +534,8 @@ class TaskChannelTest(unittest.TestCase):
       pass
     with threading_utils.ThreadPool(1, 1, 0) as tp:
       channel = threading_utils.TaskChannel()
-      tp.add_task(0, lambda: channel.send_exception(CustomError()))
+      exc_info = (CustomError, CustomError(), None)
+      tp.add_task(0, lambda: channel.send_exception(exc_info))
       with self.assertRaises(CustomError):
         channel.pull()
 
@@ -532,6 +549,23 @@ class TaskChannelTest(unittest.TestCase):
       tp.add_task(0, channel.wrap_task(task_func))
       with self.assertRaises(CustomError):
         channel.pull()
+
+  def test_wrap_task_exception_captures_stack_trace(self):
+    class CustomError(Exception):
+      pass
+    with threading_utils.ThreadPool(1, 1, 0) as tp:
+      channel = threading_utils.TaskChannel()
+      def task_func():
+        def function_with_some_unusual_name():
+          raise CustomError()
+        function_with_some_unusual_name()
+      tp.add_task(0, channel.wrap_task(task_func))
+      exc_traceback = ''
+      try:
+        channel.pull()
+      except CustomError:
+        exc_traceback = traceback.format_exc()
+      self.assertIn('function_with_some_unusual_name', exc_traceback)
 
 
 if __name__ == '__main__':

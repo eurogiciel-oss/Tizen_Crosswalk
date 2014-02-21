@@ -53,6 +53,11 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramerVisitorInterface {
                          bool fin,
                          const SpdyHeaderBlock& headers) = 0;
 
+  // Called when a data frame header is received.
+  virtual void OnDataFrameHeader(SpdyStreamId stream_id,
+                                 size_t length,
+                                 bool fin) = 0;
+
   // Called when data is received.
   // |stream_id| The stream receiving data.
   // |data| A buffer containing the data received.
@@ -127,8 +132,6 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
                            bool unidirectional) OVERRIDE;
   virtual void OnSynReply(SpdyStreamId stream_id, bool fin) OVERRIDE;
   virtual void OnHeaders(SpdyStreamId stream_id, bool fin) OVERRIDE;
-  virtual bool OnCredentialFrameData(const char* frame_data,
-                                     size_t len) OVERRIDE;
   virtual bool OnControlFrameHeaderData(SpdyStreamId stream_id,
                                         const char* header_data,
                                         size_t len) OVERRIDE;
@@ -154,7 +157,7 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
 
   // SpdyFramer methods.
   size_t ProcessInput(const char* data, size_t len);
-  int protocol_version();
+  SpdyMajorVersion protocol_version();
   void Reset();
   SpdyFramer::SpdyError error_code() const;
   SpdyFramer::SpdyState state() const;
@@ -165,11 +168,9 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
                              SpdyPriority priority,
                              uint8 credential_slot,
                              SpdyControlFlags flags,
-                             bool compressed,
                              const SpdyHeaderBlock* headers);
   SpdyFrame* CreateSynReply(SpdyStreamId stream_id,
                             SpdyControlFlags flags,
-                            bool compressed,
                             const SpdyHeaderBlock* headers);
   SpdyFrame* CreateRstStream(SpdyStreamId stream_id,
                              SpdyRstStreamStatus status) const;
@@ -180,7 +181,6 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
       SpdyGoAwayStatus status) const;
   SpdyFrame* CreateHeaders(SpdyStreamId stream_id,
                            SpdyControlFlags flags,
-                           bool compressed,
                            const SpdyHeaderBlock* headers);
   SpdyFrame* CreateWindowUpdate(
       SpdyStreamId stream_id,

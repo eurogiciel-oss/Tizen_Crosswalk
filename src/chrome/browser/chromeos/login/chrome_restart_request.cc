@@ -30,6 +30,7 @@
 #include "chromeos/chromeos_switches.h"
 #include "chromeos/dbus/dbus_thread_manager.h"
 #include "chromeos/dbus/session_manager_client.h"
+#include "components/policy/core/common/policy_switches.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_switches.h"
 #include "gpu/command_buffer/service/gpu_switches.h"
@@ -48,7 +49,7 @@ namespace chromeos {
 
 namespace {
 
-// Increase logging level for Guest mode to avoid LOG(INFO) messages in logs.
+// Increase logging level for Guest mode to avoid INFO messages in logs.
 const char kGuestModeLoggingLevel[] = "1";
 
 // Format of command line switch.
@@ -65,9 +66,7 @@ std::string DeriveCommandLine(const GURL& start_url,
   DCHECK_NE(&base_command_line, command_line);
 
   static const char* kForwardSwitches[] = {
-      ::switches::kAllowFiltersOverIPC,
       ::switches::kAllowWebUICompositing,
-      ::switches::kDeviceManagementUrl,
       ::switches::kDisableAccelerated2dCanvas,
       ::switches::kDisableAcceleratedOverflowScroll,
       ::switches::kDisableAcceleratedPlugins,
@@ -75,6 +74,7 @@ std::string DeriveCommandLine(const GURL& start_url,
       ::switches::kDisableBrowserPluginCompositing,
       ::switches::kDisableDeadlineScheduling,
       ::switches::kDisableDelegatedRenderer,
+      ::switches::kDisableFiltersOverIPC,
       ::switches::kDisableForceCompositingMode,
       ::switches::kDisableGpuShaderDiskCache,
       ::switches::kDisableGpuWatchdog,
@@ -87,6 +87,7 @@ std::string DeriveCommandLine(const GURL& start_url,
       ::switches::kDisableTouchDragDrop,
       ::switches::kDisableTouchEditing,
       ::switches::kDisableUniversalAcceleratedOverflowScroll,
+      ::switches::kDisableUnprefixedMediaSource,
       ::switches::kDisableWebKitMediaSource,
       ::switches::kDisableAcceleratedFixedRootBackground,
       ::switches::kEnableAcceleratedFixedRootBackground,
@@ -99,6 +100,7 @@ std::string DeriveCommandLine(const GURL& start_url,
       ::switches::kEnableGestureTapHighlight,
       ::switches::kDisableGestureTapHighlight,
       ::switches::kDisableGpuSandbox,
+      ::switches::kEnableDeferredFilters,
       ::switches::kEnableLogging,
       ::switches::kEnablePinch,
       ::switches::kEnableRepaintAfterLayout,
@@ -107,11 +109,14 @@ std::string DeriveCommandLine(const GURL& start_url,
       ::switches::kEnableTouchEditing,
       ::switches::kEnableUniversalAcceleratedOverflowScroll,
       ::switches::kEnableViewport,
+      ::switches::kEnableViewportMeta,
+      ::switches::kMainFrameResizesAreOrientationChanges,
       ::switches::kForceDeviceScaleFactor,
       ::switches::kGpuStartupDialog,
       ::switches::kGpuSandboxAllowSysVShm,
       ::switches::kMultiProfiles,
       ::switches::kNoSandbox,
+      ::switches::kNumRasterThreads,
       ::switches::kPpapiFlashArgs,
       ::switches::kPpapiFlashInProcess,
       ::switches::kPpapiFlashPath,
@@ -135,14 +140,17 @@ std::string DeriveCommandLine(const GURL& start_url,
 #if defined(USE_CRAS)
       ::switches::kUseCras,
 #endif
+      ::switches::kUseDiscardableMemory,
       ::switches::kUseGL,
       ::switches::kUserDataDir,
       ::switches::kV,
       ::switches::kVModule,
+      ::switches::kWebGLCommandBufferSizeKb,
       ::switches::kEnableWebGLDraftExtensions,
 #if defined(ENABLE_WEBRTC)
       ::switches::kDisableWebRtcHWDecoding,
       ::switches::kDisableWebRtcHWEncoding,
+      ::switches::kEnableAudioTrackProcessing,
       ::switches::kEnableWebRtcHWVp8Encoding,
 #endif
       ash::switches::kAshDefaultWallpaperLarge,
@@ -162,22 +170,22 @@ std::string DeriveCommandLine(const GURL& start_url,
       cc::switches::kCompositeToMailbox,
       cc::switches::kDisableCompositedAntialiasing,
       cc::switches::kDisableCompositorTouchHitTesting,
+      cc::switches::kDisableGPURasterization,
       cc::switches::kDisableImplSidePainting,
       cc::switches::kDisableMapImage,
       cc::switches::kDisableThreadedAnimation,
+      cc::switches::kEnableGPURasterization,
       cc::switches::kEnableImplSidePainting,
       cc::switches::kEnableMapImage,
       cc::switches::kEnablePartialSwap,
       cc::switches::kEnablePerTilePainting,
       cc::switches::kEnablePinchVirtualViewport,
       cc::switches::kEnableTopControlsPositionCalculation,
-      cc::switches::kForceDirectLayerDrawing,
-      cc::switches::kLowResolutionContentsScaleFactor,
       cc::switches::kMaxTilesForInterestArea,
       cc::switches::kMaxUnusedResourceMemoryUsagePercentage,
-      cc::switches::kNumRasterThreads,
       cc::switches::kShowCompositedLayerBorders,
       cc::switches::kShowFPSCounter,
+      cc::switches::kShowLayerAnimationBounds,
       cc::switches::kShowNonOccludingRects,
       cc::switches::kShowOccludingRects,
       cc::switches::kShowPropertyChangedRects,
@@ -191,12 +199,14 @@ std::string DeriveCommandLine(const GURL& start_url,
       chromeos::switches::kDbusStub,
       chromeos::switches::kDisableLoginAnimations,
       chromeos::switches::kDisableOobeAnimation,
+      chromeos::switches::kGpuSandboxFailuresNonfatal,
       chromeos::switches::kHasChromeOSDiamondKey,
       chromeos::switches::kHasChromeOSKeyboard,
       chromeos::switches::kLoginProfile,
       chromeos::switches::kNaturalScrollDefault,
       ::switches::kEnableBrowserTextSubpixelPositioning,
       ::switches::kEnableWebkitTextSubpixelPositioning,
+      policy::switches::kDeviceManagementUrl,
       views::corewm::switches::kNoDropShadows,
       views::corewm::switches::kWindowAnimationsDisabled,
   };

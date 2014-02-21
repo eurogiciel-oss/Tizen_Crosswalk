@@ -77,9 +77,11 @@ scoped_ptr<DataModelWrapper> CreateWrapper(
 }
 
 void FillOutputForSectionWithComparator(
-    DialogSection section, const DetailInputs& inputs,
+    DialogSection section,
+    const DetailInputs& inputs,
     const InputFieldComparator& compare,
-    FormStructure& form_structure, wallet::FullWallet* full_wallet,
+    FormStructure& form_structure,
+    wallet::FullWallet* full_wallet,
     const base::string16& email_address) {
   scoped_ptr<DataModelWrapper> wrapper = CreateWrapper(section, full_wallet);
   if (wrapper)
@@ -92,11 +94,11 @@ void FillOutputForSection(
     wallet::FullWallet* full_wallet,
     const base::string16& email_address) {
   DetailInputs inputs;
-  common::BuildInputsForSection(section, &inputs);
+  common::BuildInputsForSection(section, "US", &inputs);
 
   FillOutputForSectionWithComparator(
       section, inputs,
-      base::Bind(common::DetailInputMatchesField, section),
+      base::Bind(common::ServerTypeMatchesField, section),
       form_structure, full_wallet, email_address);
 
   if (section == SECTION_CC_BILLING) {
@@ -113,10 +115,9 @@ void FillOutputForSection(
 bool IsSectionInputUsedInFormStructure(DialogSection section,
                                        ServerFieldType input_type,
                                        const FormStructure& form_structure) {
-  const DetailInput input = { 0, input_type };
   for (size_t i = 0; i < form_structure.field_count(); ++i) {
     const AutofillField* field = form_structure.field(i);
-    if (field && common::DetailInputMatchesField(section, input, *field))
+    if (field && common::ServerTypeMatchesField(section, input_type, *field))
       return true;
   }
   return false;
@@ -192,9 +193,9 @@ void AutofillDialogControllerAndroid::Show() {
   JNIEnv* env = base::android::AttachCurrentThread();
   dialog_shown_timestamp_ = base::Time::Now();
 
-  content::NavigationEntry* entry = contents_->GetController().GetActiveEntry();
-  const GURL& active_url = entry ? entry->GetURL() : contents_->GetURL();
-  invoked_from_same_origin_ = active_url.GetOrigin() == source_url_.GetOrigin();
+  const GURL& current_url = contents_->GetLastCommittedURL();
+  invoked_from_same_origin_ =
+      current_url.GetOrigin() == source_url_.GetOrigin();
 
   // Determine what field types should be included in the dialog.
   bool has_types = false;
@@ -207,8 +208,6 @@ void AutofillDialogControllerAndroid::Show() {
   if (!has_types ||
       !Java_AutofillDialogControllerAndroid_isDialogAllowed(
           env,
-          RequestingCreditCardInfo(),
-          TransmissionWillBeSecure(),
           invoked_from_same_origin_)) {
     callback_.Run(NULL);
     delete this;
@@ -220,11 +219,6 @@ void AutofillDialogControllerAndroid::Show() {
 
   GetMetricLogger().LogDialogSecurityMetric(
       AutofillMetrics::SECURITY_METRIC_DIALOG_SHOWN);
-
-  if (RequestingCreditCardInfo() && !TransmissionWillBeSecure()) {
-    GetMetricLogger().LogDialogSecurityMetric(
-        AutofillMetrics::SECURITY_METRIC_CREDIT_CARD_OVER_HTTP);
-  }
 
   if (!invoked_from_same_origin_) {
     GetMetricLogger().LogDialogSecurityMetric(
@@ -257,11 +251,11 @@ void AutofillDialogControllerAndroid::Show() {
   bool request_shipping_address = false;
   {
     DetailInputs inputs;
-    common::BuildInputsForSection(SECTION_SHIPPING, &inputs);
+    common::BuildInputsForSection(SECTION_SHIPPING, "US", &inputs);
     EmptyDataModelWrapper empty_wrapper;
     request_shipping_address = empty_wrapper.FillFormStructure(
         inputs,
-        base::Bind(common::DetailInputMatchesField, SECTION_SHIPPING),
+        base::Bind(common::ServerTypeMatchesField, SECTION_SHIPPING),
         &form_structure_);
   }
 
@@ -307,7 +301,7 @@ void AutofillDialogControllerAndroid::Show() {
           env, source_url_.GetOrigin().spec());
   java_object_.Reset(Java_AutofillDialogControllerAndroid_create(
       env,
-      reinterpret_cast<jint>(this),
+      reinterpret_cast<intptr_t>(this),
       WindowAndroidHelper::FromWebContents(contents_)->
           GetWindowAndroid()->GetJavaObject().obj(),
       request_full_billing_address, request_shipping_address,
@@ -319,8 +313,7 @@ void AutofillDialogControllerAndroid::Show() {
 }
 
 void AutofillDialogControllerAndroid::Hide() {
-  // TODO(aruslan): http://crbug.com/177373 Autocheckout.
-  NOTIMPLEMENTED();
+  delete this;
 }
 
 void AutofillDialogControllerAndroid::TabActivated() {}
@@ -346,11 +339,12 @@ void AutofillDialogControllerAndroid::DialogContinue(
     jstring jlast_used_billing,
     jstring jlast_used_shipping,
     jstring jlast_used_card) {
-  const string16 email = AutofillDialogResult::GetWalletEmail(env, wallet);
+  const base::string16 email =
+      AutofillDialogResult::GetWalletEmail(env, wallet);
   const std::string google_transaction_id =
       AutofillDialogResult::GetWalletGoogleTransactionId(env, wallet);
 
-  const string16 last_used_account_name =
+  const base::string16 last_used_account_name =
       base::android::ConvertJavaStringToUTF16(env, jlast_used_account_name);
   const std::string last_used_billing =
       base::android::ConvertJavaStringToUTF8(env, jlast_used_billing);
@@ -411,22 +405,6 @@ AutofillDialogControllerAndroid::AutofillDialogControllerAndroid(
       weak_ptr_factory_(this),
       was_ui_latency_logged_(false) {
   DCHECK(!callback_.is_null());
-}
-
-bool AutofillDialogControllerAndroid::RequestingCreditCardInfo() const {
-  DCHECK_GT(form_structure_.field_count(), 0U);
-
-  for (size_t i = 0; i < form_structure_.field_count(); ++i) {
-    AutofillType type = form_structure_.field(i)->Type();
-    if (common::IsCreditCardType(type.GetStorableType()))
-      return true;
-  }
-
-  return false;
-}
-
-bool AutofillDialogControllerAndroid::TransmissionWillBeSecure() const {
-  return source_url_.SchemeIs(content::kHttpsScheme);
 }
 
 void AutofillDialogControllerAndroid::LogOnFinishSubmitMetrics() {

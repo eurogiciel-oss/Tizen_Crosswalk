@@ -13,7 +13,6 @@
 #include "extensions/common/manifest.h"
 
 class ExtensionIconSet;
-class GURL;
 
 namespace base {
 class DictionaryValue;
@@ -101,9 +100,13 @@ std::vector<base::FilePath> FindPrivateKeyFiles(
 //
 // Obsolete version directories are removed, as are directories that aren't
 // found in |extension_paths|.
+//
+// The "Temp" directory that is used during extension installation only gets
+// removed if |clean_temp_dir| is true.
 void GarbageCollectExtensions(
     const base::FilePath& extensions_dir,
-    const std::multimap<std::string, base::FilePath>& extension_paths);
+    const std::multimap<std::string, base::FilePath>& extension_paths,
+    bool clean_temp_dir);
 
 // Loads extension message catalogs and returns message bundle.
 // Returns NULL on error, or if extension is not localized.
@@ -125,14 +128,6 @@ extensions::MessageBundle::SubstitutionMap* LoadMessageBundleSubstitutionMap(
 // reserved list we return false, and set error message.
 bool CheckForIllegalFilenames(const base::FilePath& extension_path,
                               std::string* error);
-
-// Get a relative file path from a chrome-extension:// URL.
-base::FilePath ExtensionURLToRelativeFilePath(const GURL& url);
-
-// Get a full file path from a chrome-extension-resource:// URL, If the URL
-// points a file outside of root, this function will return empty FilePath.
-base::FilePath ExtensionResourceURLToFilePath(const GURL& url,
-                                              const base::FilePath& root);
 
 // Returns a path to a temporary directory for unpacking an extension that will
 // be installed into |extensions_dir|. Creates the directory if necessary.

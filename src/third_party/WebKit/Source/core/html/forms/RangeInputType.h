@@ -38,7 +38,7 @@ namespace WebCore {
 class ExceptionState;
 class SliderThumbElement;
 
-class RangeInputType : public InputType {
+class RangeInputType FINAL : public InputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -69,6 +69,7 @@ private:
     virtual bool shouldRespectListAttribute() OVERRIDE;
     SliderThumbElement* sliderThumbElement() const;
     Element* sliderTrackElement() const;
+    virtual void disabledAttributeChanged() OVERRIDE;
     virtual void listAttributeTargetChanged() OVERRIDE;
     void updateTickMarkValues();
     virtual Decimal findClosestTickMarkValue(const Decimal&) OVERRIDE;

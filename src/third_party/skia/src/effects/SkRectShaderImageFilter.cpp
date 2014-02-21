@@ -35,7 +35,7 @@ SkRectShaderImageFilter::SkRectShaderImageFilter(SkShader* s, const CropRect* cr
 }
 
 SkRectShaderImageFilter::SkRectShaderImageFilter(SkFlattenableReadBuffer& buffer)
-  : INHERITED(buffer) {
+  : INHERITED(1, buffer) {
     fShader = buffer.readShader();
 }
 
@@ -62,6 +62,9 @@ bool SkRectShaderImageFilter::onFilterImage(Proxy* proxy,
 
     SkAutoTUnref<SkBaseDevice> device(proxy->createDevice(bounds.width(),
                                                           bounds.height()));
+    if (NULL == device.get()) {
+        return false;
+    }
     SkCanvas canvas(device.get());
     SkPaint paint;
     paint.setShader(fShader);
@@ -71,7 +74,7 @@ bool SkRectShaderImageFilter::onFilterImage(Proxy* proxy,
     SkRect rect = SkRect::MakeWH(SkIntToScalar(bounds.width()), SkIntToScalar(bounds.height()));
     canvas.drawRect(rect, paint);
     *result = device.get()->accessBitmap(false);
-    offset->fX += bounds.fLeft;
-    offset->fY += bounds.fTop;
+    offset->fX = bounds.fLeft;
+    offset->fY = bounds.fTop;
     return true;
 }

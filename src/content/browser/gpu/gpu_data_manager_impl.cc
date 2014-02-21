@@ -162,11 +162,6 @@ void GpuDataManagerImpl::UpdateRendererWebPrefs(
   private_->UpdateRendererWebPrefs(prefs);
 }
 
-gpu::GpuSwitchingOption GpuDataManagerImpl::GetGpuSwitchingOption() const {
-  base::AutoLock auto_lock(lock_);
-  return private_->GetGpuSwitchingOption();
-}
-
 std::string GpuDataManagerImpl::GetBlacklistVersion() const {
   base::AutoLock auto_lock(lock_);
   return private_->GetBlacklistVersion();
@@ -210,13 +205,6 @@ void GpuDataManagerImpl::HandleGpuSwitch() {
   base::AutoLock auto_lock(lock_);
   private_->HandleGpuSwitch();
 }
-
-#if defined(OS_WIN)
-bool GpuDataManagerImpl::IsUsingAcceleratedSurface() const {
-  base::AutoLock auto_lock(lock_);
-  return private_->IsUsingAcceleratedSurface();
-}
-#endif
 
 void GpuDataManagerImpl::BlockDomainFrom3DAPIs(
     const GURL& url, DomainGuilt guilt) {

@@ -1203,6 +1203,14 @@ void SkXPSDevice::drawRect(const SkDraw& d,
     this->internalDrawRect(d, r, true, paint);
 }
 
+void SkXPSDevice::drawRRect(const SkDraw& d,
+                            const SkRRect& rr,
+                            const SkPaint& paint) {
+    SkPath path;
+    path.addRRect(rr);
+    this->drawPath(d, path, paint, NULL, true);
+}
+
 void SkXPSDevice::internalDrawRect(const SkDraw& d,
                                    const SkRect& r,
                                    bool transformRect,
@@ -2086,7 +2094,7 @@ HRESULT SkXPSDevice::CreateTypefaceUse(const SkPaint& paint,
     newTypefaceUse.fontData = fontData;
     newTypefaceUse.xpsFont = xpsFontResource.release();
 
-    SkAutoGlyphCache agc = SkAutoGlyphCache(paint, NULL, &SkMatrix::I());
+    SkAutoGlyphCache agc(paint, NULL, &SkMatrix::I());
     SkGlyphCache* glyphCache = agc.getCache();
     unsigned int glyphCount = glyphCache->getGlyphCount();
     newTypefaceUse.glyphsUsed = new SkBitSet(glyphCount);

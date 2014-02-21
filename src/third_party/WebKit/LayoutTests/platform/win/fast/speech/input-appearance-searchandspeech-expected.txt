@@ -17,7 +17,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 97x11
                       RenderBlock {DIV} at (0,0) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 76x10
-                      RenderBlock {DIV} at (78,2.50) size 6x6
                       RenderBlock {DIV} at (87,0.50) size 10x10
                   RenderBR {BR} at (103,11) size 0x0
                   RenderTextControl {INPUT} at (0,17) size 103x17 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -37,7 +36,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 100x12
                       RenderBlock {DIV} at (0,0.50) size 1x11
                       RenderBlock {DIV} at (1,0) size 78x12
-                      RenderBlock {DIV} at (80,3) size 6x6
                       RenderBlock {DIV} at (89,0.50) size 11x11
                   RenderBR {BR} at (106,63) size 0x0
                   RenderTextControl {INPUT} at (0,69) size 106x18 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -57,7 +55,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 103x13
                       RenderBlock {DIV} at (0,1) size 1x11
                       RenderBlock {DIV} at (1,0) size 79x13
-                      RenderBlock {DIV} at (81,3) size 7x7
                       RenderBlock {DIV} at (91,0.50) size 12x12
                   RenderBR {BR} at (109,118) size 0x0
                   RenderTextControl {INPUT} at (0,124) size 109x19 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -77,7 +74,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 124x14
                       RenderBlock {DIV} at (0,1.50) size 1x11
                       RenderBlock {DIV} at (1,0) size 97x14
-                      RenderBlock {DIV} at (99,3) size 8x8
                       RenderBlock {DIV} at (110,0) size 14x14
                   RenderBR {BR} at (134,178) size 0x0
                   RenderTextControl {INPUT} at (2,188) size 130x20 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -97,7 +93,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 127x15
                       RenderBlock {DIV} at (0,2) size 1x11
                       RenderBlock {DIV} at (1,0) size 99x15
-                      RenderBlock {DIV} at (101,3.50) size 8x8
                       RenderBlock {DIV} at (112,0) size 15x15
                   RenderBR {BR} at (137,251) size 0x0
                   RenderTextControl {INPUT} at (2,261) size 133x21 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -117,7 +112,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 149x16
                       RenderBlock {DIV} at (0,2.50) size 1x11
                       RenderBlock {DIV} at (1,0) size 119x16
-                      RenderBlock {DIV} at (121,3.50) size 9x9
                       RenderBlock {DIV} at (133,0) size 16x16
                   RenderBR {BR} at (159,327) size 0x0
                   RenderTextControl {INPUT} at (2,337) size 155x22 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -137,7 +131,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 151x17
                       RenderBlock {DIV} at (0,3) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 119x16
-                      RenderBlock {DIV} at (121,3.50) size 10x10
                       RenderBlock {DIV} at (134,0) size 17x17
                   RenderBR {BR} at (161,404) size 0x0
                   RenderTextControl {INPUT} at (2,415) size 157x22 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -159,7 +152,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 173x18
                       RenderBlock {DIV} at (0,3.50) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 140x17
-                      RenderBlock {DIV} at (142,4) size 10x10
                       RenderBlock {DIV} at (155,0) size 18x18
                   RenderBR {BR} at (183,18) size 0x0
                   RenderTextControl {INPUT} at (2,29) size 179x23 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -179,7 +171,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 176x20
                       RenderBlock {DIV} at (0,4.50) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 140x19
-                      RenderBlock {DIV} at (142,4.50) size 11x11
                       RenderBlock {DIV} at (156,0) size 20x20
                   RenderBR {BR} at (186,100) size 0x0
                   RenderTextControl {INPUT} at (2,112) size 182x25 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -199,7 +190,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 197x21
                       RenderBlock {DIV} at (0,5) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 159x20
-                      RenderBlock {DIV} at (161,4.50) size 12x12
                       RenderBlock {DIV} at (176,0) size 21x21
                   RenderBR {BR} at (207,187) size 0x0
                   RenderTextControl {INPUT} at (2,200) size 203x26 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -219,7 +209,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 200x22
                       RenderBlock {DIV} at (0,5.50) size 1x11
                       RenderBlock {DIV} at (1,0) size 161x22
-                      RenderBlock {DIV} at (163,5) size 12x12
                       RenderBlock {DIV} at (178,0) size 22x22
                   RenderBR {BR} at (210,280) size 0x0
                   RenderTextControl {INPUT} at (2,292) size 206x28 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -239,7 +228,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,3) size 203x23
                       RenderBlock {DIV} at (0,6) size 1x11
                       RenderBlock {DIV} at (1,0) size 162x23
-                      RenderBlock {DIV} at (164,5) size 13x13
                       RenderBlock {DIV} at (180,0) size 23x23
                   RenderBR {BR} at (213,377) size 0x0
                   RenderTextControl {INPUT} at (2,389) size 209x29 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -261,7 +249,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 224x25
                       RenderBlock {DIV} at (0,7) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 180x24
-                      RenderBlock {DIV} at (182,5.50) size 14x14
                       RenderBlock {DIV} at (199,0) size 25x25
                   RenderBR {BR} at (234,23) size 0x0
                   RenderTextControl {INPUT} at (2,36) size 230x30 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -281,7 +268,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 227x26
                       RenderBlock {DIV} at (0,7.50) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 181x25
-                      RenderBlock {DIV} at (183,5.50) size 15x15
                       RenderBlock {DIV} at (201,0) size 26x26
                   RenderBR {BR} at (237,125) size 0x0
                   RenderTextControl {INPUT} at (2,139) size 233x31 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -301,7 +287,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 249x27
                       RenderBlock {DIV} at (0,8) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 202x26
-                      RenderBlock {DIV} at (204,6) size 15x15
                       RenderBlock {DIV} at (222,0) size 27x27
                   RenderBR {BR} at (259,231) size 0x0
                   RenderTextControl {INPUT} at (2,245) size 255x32 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -321,7 +306,6 @@ layer at (0,0) size 800x600
                     RenderFlexibleBox {DIV} at (3,2.50) size 251x28
                       RenderBlock {DIV} at (0,8.50) size 1x11
                       RenderBlock {DIV} at (1,0.50) size 202x27
-                      RenderBlock {DIV} at (204,6) size 16x16
                       RenderBlock {DIV} at (223,0) size 28x28
                   RenderBR {BR} at (261,340) size 0x0
                   RenderTextControl {INPUT} at (2,354) size 257x33 [bgcolor=#FFFFFF] [border: (2px inset #EEEEEE)]
@@ -497,3 +481,35 @@ layer at (399,460) size 202x27 scrollWidth 391
   RenderBlock {DIV} at (0,0) size 202x27
     RenderText {#text} at (0,0) size 390x26
       text run at (0,0) width 390: "012345678901234567890123456789"
+layer at (92,53) size 6x6 transparent
+  RenderBlock {DIV} at (78,2.50) size 6x6
+layer at (94,104) size 6x6 transparent
+  RenderBlock {DIV} at (80,3) size 6x6
+layer at (95,158) size 7x7 transparent
+  RenderBlock {DIV} at (81,3) size 7x7
+layer at (115,217) size 8x8 transparent
+  RenderBlock {DIV} at (99,3) size 8x8
+layer at (117,290) size 8x8 transparent
+  RenderBlock {DIV} at (101,3.50) size 8x8
+layer at (137,365) size 9x9 transparent
+  RenderBlock {DIV} at (121,3.50) size 9x9
+layer at (137,442) size 10x10 transparent
+  RenderBlock {DIV} at (121,3.50) size 10x10
+layer at (323,62) size 10x10 transparent
+  RenderBlock {DIV} at (142,4) size 10x10
+layer at (323,143) size 11x11 transparent
+  RenderBlock {DIV} at (142,4.50) size 11x11
+layer at (342,230) size 12x12 transparent
+  RenderBlock {DIV} at (161,4.50) size 12x12
+layer at (344,321) size 12x12 transparent
+  RenderBlock {DIV} at (163,5) size 12x12
+layer at (345,417) size 13x13 transparent
+  RenderBlock {DIV} at (164,5) size 13x13
+layer at (580,76) size 14x14 transparent
+  RenderBlock {DIV} at (182,5.50) size 14x14
+layer at (581,178) size 15x15 transparent
+  RenderBlock {DIV} at (183,5.50) size 15x15
+layer at (602,284) size 15x15 transparent
+  RenderBlock {DIV} at (204,6) size 15x15
+layer at (602,392) size 16x16 transparent
+  RenderBlock {DIV} at (204,6) size 16x16

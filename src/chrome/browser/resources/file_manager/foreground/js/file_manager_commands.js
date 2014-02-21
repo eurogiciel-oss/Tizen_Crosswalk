@@ -48,10 +48,10 @@ var CommandUtil = {};
 CommandUtil.getCommandEntry = function(element) {
   if (element instanceof NavigationList) {
     // element is a NavigationList.
-
     /** @type {NavigationModelItem} */
-    var selectedItem = element.selectedItem;
-    return selectedItem && selectedItem.getCachedEntry();
+    var item = element.selectedItem;
+    return element.selectedItem &&
+        CommandUtil.getEntryFromNavigationModelItem_(item);
   } else if (element instanceof NavigationListItem) {
     // element is a subitem of NavigationList.
     /** @type {NavigationList} */
@@ -59,21 +59,18 @@ CommandUtil.getCommandEntry = function(element) {
     var index = navigationList.getIndexOfListItem(element);
     /** @type {NavigationModelItem} */
     var item = (index != -1) ? navigationList.dataModel.item(index) : null;
-    return item && item.getCachedEntry();
+    return item && CommandUtil.getEntryFromNavigationModelItem_(item);
   } else if (element instanceof DirectoryTree) {
     // element is a DirectoryTree.
-    return element.selectedItem;
+    return element.selectedItem.entry;
   } else if (element instanceof DirectoryItem) {
     // element is a sub item in DirectoryTree.
-
-    // DirectoryItem.fullPath is set on initialization, but entry is lazily.
-    // We may use fullPath just in case that the entry has not been set yet.
     return element.entry;
   } else if (element instanceof cr.ui.List) {
     // element is a normal List (eg. the file list on the right panel).
     var entry = element.selectedItem;
-    // Check if it is Entry or not by referring the fullPath member variable.
-    return entry && entry.fullPath ? entry : null;
+    // Check if it is Entry or not by checking for toURL().
+    return entry && 'toURL' in entry ? entry : null;
   } else {
     console.warn('Unsupported element');
     return null;
@@ -81,14 +78,17 @@ CommandUtil.getCommandEntry = function(element) {
 };
 
 /**
- * @param {NavigationList} navigationList navigation list to extract root node.
- * @return {?RootType} Type of the found root.
+ * Obtains an entry from the give navigation model item.
+ * @param {NavigationModelItem} item Navigation modle item.
+ * @return {Entry} Related entry.
+ * @private
  */
-CommandUtil.getCommandRootType = function(navigationList) {
-  var root = CommandUtil.getCommandEntry(navigationList);
-  return root &&
-         PathUtil.isRootPath(root.fullPath) &&
-         PathUtil.getRootType(root.fullPath);
+CommandUtil.getEntryFromNavigationModelItem_ = function(item) {
+  if (item.isVolume)
+    return item.volumeInfo.displayRoot;
+  if (item.isShortcut)
+    return item.entry;
+  return null;
 };
 
 /**
@@ -358,14 +358,29 @@ CommandHandler.COMMANDS_['unmount'] = {
    */
   execute: function(event, fileManager) {
     var root = CommandUtil.getCommandEntry(event.target);
-    if (root)
-      fileManager.unmountVolume(PathUtil.getRootPath(root.fullPath));
+    if (!root)
+      return;
+    var errorCallback = function() {
+      fileManager.alert.showHtml('', str('UNMOUNT_FAILED'));
+    };
+    var volumeInfo = fileManager.volumeManager.getVolumeInfo(root);
+    if (!volumeInfo) {
+      errorCallback();
+      return;
+    }
+    fileManager.volumeManager_.unmount(
+        volumeInfo,
+        function() {},
+        errorCallback);
   },
   /**
    * @param {Event} event Command event.
    */
   canExecute: function(event, fileManager) {
-    var rootType = CommandUtil.getCommandRootType(event.target);
+    var root = CommandUtil.getCommandEntry(this.fileManager_.navigationList);
+    var location =
+        root && this.fileManager_.volumeManager.getLocationInfo(root);
+    var rootType = location && location.isRootEntry && location.rootType;
 
     event.canExecute = (rootType == RootType.ARCHIVE ||
                         rootType == RootType.REMOVABLE);
@@ -386,13 +401,20 @@ CommandHandler.COMMANDS_['format'] = {
    * @param {FileManager} fileManager The file manager instance.
    */
   execute: function(event, fileManager) {
+    var directoryModel = fileManager.directoryModel;
     var root = CommandUtil.getCommandEntry(event.target);
+    // If an entry is not found from the event target, use the current
+    // directory. This can happen for the format button for unsupported and
+    // unrecognized volumes.
+    if (!root)
+      root = directoryModel.getCurrentDirEntry();
 
-    if (root) {
-      var url = util.makeFilesystemUrl(PathUtil.getRootPath(root.fullPath));
+    var volumeInfo = fileManager.volumeManager.getVolumeInfo(root);
+    if (volumeInfo) {
       fileManager.confirm.show(
           loadTimeData.getString('FORMATTING_WARNING'),
-          chrome.fileBrowserPrivate.formatDevice.bind(null, url));
+          chrome.fileBrowserPrivate.formatVolume.bind(null,
+                                                      volumeInfo.volumeId));
     }
   },
   /**
@@ -402,39 +424,16 @@ CommandHandler.COMMANDS_['format'] = {
   canExecute: function(event, fileManager) {
     var directoryModel = fileManager.directoryModel;
     var root = CommandUtil.getCommandEntry(event.target);
-    var removable = root &&
-                    PathUtil.getRootType(root.fullPath) == RootType.REMOVABLE;
-    var isReadOnly = root && directoryModel.isPathReadOnly(root.fullPath);
-    event.canExecute = removable && !isReadOnly;
-    event.command.setHidden(!removable);
-  }
-};
-
-/**
- * Imports photos from external drive.
- * @type {Command}
- */
-CommandHandler.COMMANDS_['import-photos'] = {
-  /**
-   * @param {Event} event Command event.
-   * @param {NavigationList} navigationList Target navigation list.
-   */
-  execute: function(event, fileManager) {
-    var navigationList = fileManager.navigationList;
-    var root = CommandUtil.getCommandEntry(navigationList);
+    // See the comment in execute() for why doing this.
     if (!root)
-      return;
-
-    // TODO(mtomasz): Implement launching Photo Importer.
-  },
-  /**
-   * @param {Event} event Command event.
-   * @param {NavigationList} navigationList Target navigation list.
-   */
-  canExecute: function(event, fileManager) {
-    var navigationList = fileManager.navigationList;
-    var rootType = CommandUtil.getCommandRootType(navigationList);
-    event.canExecute = (rootType != RootType.DRIVE);
+      root = directoryModel.getCurrentDirEntry();
+    var location = root && fileManager.volumeManager.getLocationInfo(root);
+    var removable = location && location.rootType === RootType.REMOVABLE;
+    // Don't check if the volume is read-only. Unformatted volume is considered
+    // read-only per VolumeInfo.isReadOnly, but can be formatted. An error will
+    // be raised if formatting failed anyway.
+    event.canExecute = removable;
+    event.command.setHidden(!removable);
   }
 };
 
@@ -461,8 +460,10 @@ CommandHandler.COMMANDS_['new-folder'] = {
  */
 CommandHandler.COMMANDS_['new-window'] = {
   execute: function(event, fileManager) {
+    // TODO(mtomasz): Use Entry.toURL() instead of fullPath.
     fileManager.backgroundPage.launchFileManager({
-      defaultPath: fileManager.getCurrentDirectory()
+      defaultPath: fileManager.getCurrentDirectoryEntry() &&
+          fileManager.getCurrentDirectoryEntry().fullPath
     });
   },
   canExecute: function(event, fileManager) {
@@ -470,17 +471,6 @@ CommandHandler.COMMANDS_['new-window'] = {
         fileManager.getCurrentDirectoryEntry() &&
         (fileManager.dialogType === DialogType.FULL_PAGE);
   }
-};
-
-/**
- * Changed the default app handling inserted media.
- * @type {Command}
- */
-CommandHandler.COMMANDS_['change-default-app'] = {
-  execute: function(event, fileManager) {
-    fileManager.showChangeDefaultAppPicker();
-  },
-  canExecute: CommandUtil.canExecuteAlways
 };
 
 /**
@@ -492,8 +482,11 @@ CommandHandler.COMMANDS_['delete'] = {
     fileManager.deleteSelection();
   },
   canExecute: function(event, fileManager) {
+    var allowDeletingWhileOffline =
+        fileManager.directoryModel.getCurrentRootType() === RootType.DRIVE;
     var selection = fileManager.getSelection();
-    event.canExecute = !fileManager.isOnReadonlyDirectory() &&
+    event.canExecute = (!fileManager.isOnReadonlyDirectory() ||
+                        allowDeletingWhileOffline) &&
                        selection &&
                        selection.totalCount > 0;
   }
@@ -527,10 +520,12 @@ CommandHandler.COMMANDS_['rename'] = {
     fileManager.initiateRename();
   },
   canExecute: function(event, fileManager) {
+    var allowRenamingWhileOffline =
+        fileManager.directoryModel.getCurrentRootType() === RootType.DRIVE;
     var selection = fileManager.getSelection();
     event.canExecute =
         !fileManager.isRenamingInProgress() &&
-        !fileManager.isOnReadonlyDirectory() &&
+        (!fileManager.isOnReadonlyDirectory() || allowRenamingWhileOffline) &&
         selection &&
         selection.totalCount == 1;
   }
@@ -543,9 +538,9 @@ CommandHandler.COMMANDS_['rename'] = {
 CommandHandler.COMMANDS_['volume-help'] = {
   execute: function(event, fileManager) {
     if (fileManager.isOnDrive())
-      util.visitURL(urlConstants.GOOGLE_DRIVE_HELP);
+      util.visitURL(str('GOOGLE_DRIVE_HELP_URL'));
     else
-      util.visitURL(urlConstants.FILES_APP_HELP);
+      util.visitURL(str('FILES_APP_HELP_URL'));
   },
   canExecute: CommandUtil.canExecuteAlways
 };
@@ -556,23 +551,9 @@ CommandHandler.COMMANDS_['volume-help'] = {
  */
 CommandHandler.COMMANDS_['drive-buy-more-space'] = {
   execute: function(event, fileManager) {
-    util.visitURL(urlConstants.GOOGLE_DRIVE_BUY_STORAGE);
+    util.visitURL(str('GOOGLE_DRIVE_BUY_STORAGE_URL'));
   },
   canExecute: CommandUtil.canExecuteVisibleOnDriveOnly
-};
-
-/**
- * Clears drive cache.
- * @type {Command}
- */
-CommandHandler.COMMANDS_['drive-clear-local-cache'] = {
-  execute: function(event, fileManager) {
-    chrome.fileBrowserPrivate.clearDriveCache();
-  },
-  canExecute: function(event, fileManager) {
-    event.canExecute = fileManager.isOnDrive() && this.ctrlKeyPressed_;
-    event.command.setHidden(!event.canExecute);
-  }
 };
 
 /**
@@ -581,7 +562,7 @@ CommandHandler.COMMANDS_['drive-clear-local-cache'] = {
  */
 CommandHandler.COMMANDS_['drive-go-to-drive'] = {
   execute: function(event, fileManager) {
-    util.visitURL(urlConstants.GOOGLE_DRIVE_ROOT);
+    util.visitURL(str('GOOGLE_DRIVE_ROOT_URL'));
   },
   canExecute: CommandUtil.canExecuteVisibleOnDriveOnly
 };
@@ -596,7 +577,7 @@ CommandHandler.COMMANDS_['open-with'] = {
     if (tasks) {
       tasks.showTaskPicker(fileManager.defaultTaskPicker,
           str('OPEN_WITH_BUTTON_LABEL'),
-          null,
+          '',
           function(task) {
             tasks.execute(task.taskId);
           });
@@ -750,8 +731,11 @@ CommandHandler.COMMANDS_['share'] = {
   },
   canExecute: function(event, fileManager) {
     var selection = fileManager.getSelection();
+    var isDriveOffline =
+        fileManager.volumeManager.getDriveConnectionState().type ===
+            util.DriveConnectionType.OFFLINE;
     event.canExecute = fileManager.isOnDrive() &&
-        !fileManager.isDriveOffline() &&
+        !isDriveOffline &&
         selection && selection.totalCount == 1;
     event.command.setHidden(!fileManager.isOnDrive());
   }
@@ -769,7 +753,7 @@ CommandHandler.COMMANDS_['create-folder-shortcut'] = {
   execute: function(event, fileManager) {
     var entry = CommandUtil.getCommandEntry(event.target);
     if (entry)
-      fileManager.createFolderShortcut(entry.fullPath);
+      fileManager.createFolderShortcut(entry);
   },
 
   /**
@@ -777,16 +761,9 @@ CommandHandler.COMMANDS_['create-folder-shortcut'] = {
    * @param {FileManager} fileManager The file manager instance.
    */
   canExecute: function(event, fileManager) {
-    var target = event.target;
-    if (!(target instanceof NavigationListItem) &&
-        !(target instanceof DirectoryItem)) {
-      event.command.setHidden(true);
-      return;
-    }
-
     var entry = CommandUtil.getCommandEntry(event.target);
     var folderShortcutExists = entry &&
-                               fileManager.folderShortcutExists(entry.fullPath);
+                               fileManager.folderShortcutExists(entry);
 
     var onlyOneFolderSelected = true;
     // Only on list, user can select multiple files. The command is enabled only
@@ -797,8 +774,8 @@ CommandHandler.COMMANDS_['create-folder-shortcut'] = {
       onlyOneFolderSelected = (items.length == 1 && items[0].isDirectory);
     }
 
-    var eligible = entry &&
-                   PathUtil.isEligibleForFolderShortcut(entry.fullPath);
+    var location = entry && fileManager.volumeManager.getLocationInfo(entry);
+    var eligible = location && location.isEligibleForFolderShortcut;
     event.canExecute =
         eligible && onlyOneFolderSelected && !folderShortcutExists;
     event.command.setHidden(!eligible || !onlyOneFolderSelected);
@@ -816,8 +793,8 @@ CommandHandler.COMMANDS_['remove-folder-shortcut'] = {
    */
   execute: function(event, fileManager) {
     var entry = CommandUtil.getCommandEntry(event.target);
-    if (entry && entry.fullPath)
-      fileManager.removeFolderShortcut(entry.fullPath);
+    if (entry)
+      fileManager.removeFolderShortcut(entry);
   },
 
   /**
@@ -825,18 +802,11 @@ CommandHandler.COMMANDS_['remove-folder-shortcut'] = {
    * @param {FileManager} fileManager The file manager instance.
    */
   canExecute: function(event, fileManager) {
-    var target = event.target;
-    if (!target instanceof NavigationListItem &&
-        !target instanceof DirectoryItem) {
-      event.command.setHidden(true);
-      return;
-    }
+    var entry = CommandUtil.getCommandEntry(event.target);
+    var location = entry && fileManager.volumeManager.getLocationInfo(entry);
 
-    var entry = CommandUtil.getCommandEntry(target);
-    var path = entry && entry.fullPath;
-
-    var eligible = path && PathUtil.isEligibleForFolderShortcut(path);
-    var isShortcut = path && fileManager.folderShortcutExists(path);
+    var eligible = location && location.isEligibleForFolderShortcut;
+    var isShortcut = entry && fileManager.folderShortcutExists(entry);
     event.canExecute = isShortcut && eligible;
     event.command.setHidden(!event.canExecute);
   }

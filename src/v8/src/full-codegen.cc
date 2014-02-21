@@ -312,6 +312,10 @@ void BreakableStatementChecker::VisitThisFunction(ThisFunction* expr) {
 
 bool FullCodeGenerator::MakeCode(CompilationInfo* info) {
   Isolate* isolate = info->isolate();
+
+  Logger::TimerEventScope timer(
+      isolate, Logger::TimerEventScope::v8_compile_full_code);
+
   Handle<Script> script = info->script();
   if (!script->IsUndefined() && !script->source()->IsUndefined()) {
     int len = String::cast(script->source())->length();
@@ -417,7 +421,7 @@ void FullCodeGenerator::Initialize() {
                          !Snapshot::HaveASnapshotToStartFrom();
   masm_->set_emit_debug_code(generate_debug_code_);
   masm_->set_predictable_code_size(true);
-  InitializeAstVisitor(info_->isolate());
+  InitializeAstVisitor(info_->zone());
 }
 
 
@@ -436,9 +440,20 @@ void FullCodeGenerator::PopulateTypeFeedbackCells(Handle<Code> code) {
 }
 
 
-
 void FullCodeGenerator::PrepareForBailout(Expression* node, State state) {
   PrepareForBailoutForId(node->id(), state);
+}
+
+
+void FullCodeGenerator::CallLoadIC(ContextualMode mode, TypeFeedbackId id) {
+  Handle<Code> ic = LoadIC::initialize_stub(isolate(), mode);
+  CallIC(ic, mode, id);
+}
+
+
+void FullCodeGenerator::CallStoreIC(ContextualMode mode, TypeFeedbackId id) {
+  Handle<Code> ic = StoreIC::initialize_stub(isolate(), strict_mode());
+  CallIC(ic, mode, id);
 }
 
 
@@ -832,7 +847,7 @@ void FullCodeGenerator::SetStatementPosition(Statement* stmt) {
   } else {
     // Check if the statement will be breakable without adding a debug break
     // slot.
-    BreakableStatementChecker checker(isolate());
+    BreakableStatementChecker checker(zone());
     checker.Check(stmt);
     // Record the statement position right here if the statement is not
     // breakable. For breakable statements the actual recording of the
@@ -858,7 +873,7 @@ void FullCodeGenerator::SetExpressionPosition(Expression* expr) {
   } else {
     // Check if the expression will be breakable without adding a debug break
     // slot.
-    BreakableStatementChecker checker(isolate());
+    BreakableStatementChecker checker(zone());
     checker.Check(expr);
     // Record a statement position right here if the expression is not
     // breakable. For breakable expressions the actual recording of the
@@ -1579,7 +1594,8 @@ void FullCodeGenerator::VisitNativeFunctionLiteral(
   // Compute the function template for the native function.
   Handle<String> name = expr->name();
   v8::Handle<v8::FunctionTemplate> fun_template =
-      expr->extension()->GetNativeFunction(v8::Utils::ToLocal(name));
+      expr->extension()->GetNativeFunctionTemplate(
+          reinterpret_cast<v8::Isolate*>(isolate()), v8::Utils::ToLocal(name));
   ASSERT(!fun_template.IsEmpty());
 
   // Instantiate the function and create a shared function info from it.
@@ -1643,8 +1659,7 @@ bool FullCodeGenerator::TryLiteralCompare(CompareOperation* expr) {
 }
 
 
-void BackEdgeTable::Patch(Isolate* isolate,
-                          Code* unoptimized) {
+void BackEdgeTable::Patch(Isolate* isolate, Code* unoptimized) {
   DisallowHeapAllocation no_gc;
   Code* patch = isolate->builtins()->builtin(Builtins::kOnStackReplacement);
 
@@ -1667,8 +1682,7 @@ void BackEdgeTable::Patch(Isolate* isolate,
 }
 
 
-void BackEdgeTable::Revert(Isolate* isolate,
-                           Code* unoptimized) {
+void BackEdgeTable::Revert(Isolate* isolate, Code* unoptimized) {
   DisallowHeapAllocation no_gc;
   Code* patch = isolate->builtins()->builtin(Builtins::kInterruptCheck);
 
@@ -1693,25 +1707,23 @@ void BackEdgeTable::Revert(Isolate* isolate,
 }
 
 
-void BackEdgeTable::AddStackCheck(CompilationInfo* info) {
+void BackEdgeTable::AddStackCheck(Handle<Code> code, uint32_t pc_offset) {
   DisallowHeapAllocation no_gc;
-  Isolate* isolate = info->isolate();
-  Code* code = info->shared_info()->code();
-  Address pc = code->instruction_start() + info->osr_pc_offset();
-  ASSERT_EQ(ON_STACK_REPLACEMENT, GetBackEdgeState(isolate, code, pc));
+  Isolate* isolate = code->GetIsolate();
+  Address pc = code->instruction_start() + pc_offset;
   Code* patch = isolate->builtins()->builtin(Builtins::kOsrAfterStackCheck);
-  PatchAt(code, pc, OSR_AFTER_STACK_CHECK, patch);
+  PatchAt(*code, pc, OSR_AFTER_STACK_CHECK, patch);
 }
 
 
-void BackEdgeTable::RemoveStackCheck(CompilationInfo* info) {
+void BackEdgeTable::RemoveStackCheck(Handle<Code> code, uint32_t pc_offset) {
   DisallowHeapAllocation no_gc;
-  Isolate* isolate = info->isolate();
-  Code* code = info->shared_info()->code();
-  Address pc = code->instruction_start() + info->osr_pc_offset();
-  if (GetBackEdgeState(isolate, code, pc) == OSR_AFTER_STACK_CHECK) {
+  Isolate* isolate = code->GetIsolate();
+  Address pc = code->instruction_start() + pc_offset;
+
+  if (OSR_AFTER_STACK_CHECK == GetBackEdgeState(isolate, *code, pc)) {
     Code* patch = isolate->builtins()->builtin(Builtins::kOnStackReplacement);
-    PatchAt(code, pc, ON_STACK_REPLACEMENT, patch);
+    PatchAt(*code, pc, ON_STACK_REPLACEMENT, patch);
   }
 }
 

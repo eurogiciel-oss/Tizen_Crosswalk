@@ -42,9 +42,8 @@ namespace WebCore {
 
 class V8TestCustomAccessors {
 public:
-    static bool HasInstance(v8::Handle<v8::Value>, v8::Isolate*, WrapperWorldType);
-    static bool HasInstanceInAnyWorld(v8::Handle<v8::Value>, v8::Isolate*);
-    static v8::Handle<v8::FunctionTemplate> GetTemplate(v8::Isolate*, WrapperWorldType);
+    static bool hasInstance(v8::Handle<v8::Value>, v8::Isolate*);
+    static v8::Handle<v8::FunctionTemplate> domTemplate(v8::Isolate*, WrapperWorldType);
     static TestCustomAccessors* toNative(v8::Handle<v8::Object> object)
     {
         return fromInternalPointer(object->GetAlignedPointerFromInternalField(v8DOMWrapperObjectIndex));
@@ -70,7 +69,7 @@ public:
         return static_cast<TestCustomAccessors*>(object);
     }
     static void installPerContextEnabledProperties(v8::Handle<v8::Object>, TestCustomAccessors*, v8::Isolate*) { }
-    static void installPerContextEnabledPrototypeProperties(v8::Handle<v8::Object>, v8::Isolate*) { }
+    static void installPerContextEnabledMethods(v8::Handle<v8::Object>, v8::Isolate*) { }
 
 private:
     friend v8::Handle<v8::Object> wrap(TestCustomAccessors*, v8::Handle<v8::Object> creationContext, v8::Isolate*);
@@ -93,7 +92,7 @@ inline v8::Handle<v8::Object> wrap(TestCustomAccessors* impl, v8::Handle<v8::Obj
 inline v8::Handle<v8::Value> toV8(TestCustomAccessors* impl, v8::Handle<v8::Object> creationContext, v8::Isolate* isolate)
 {
     if (UNLIKELY(!impl))
-        return v8NullWithCheck(isolate);
+        return v8::Null(isolate);
     v8::Handle<v8::Value> wrapper = DOMDataStore::getWrapper<V8TestCustomAccessors>(impl, isolate);
     if (!wrapper.IsEmpty())
         return wrapper;
@@ -164,5 +163,4 @@ inline void v8SetReturnValueFast(const CallbackInfo& callbackInfo, PassRefPtr<Te
 }
 
 }
-
 #endif // V8TestCustomAccessors_h

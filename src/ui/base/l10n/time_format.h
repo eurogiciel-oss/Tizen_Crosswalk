@@ -7,7 +7,7 @@
 
 #include "base/basictypes.h"
 #include "base/strings/string16.h"
-#include "ui/base/ui_export.h"
+#include "ui/base/ui_base_export.h"
 
 namespace base {
 class Time;
@@ -17,7 +17,7 @@ class TimeDelta;
 namespace ui {
 
 // Methods to format time values as strings.
-class UI_EXPORT TimeFormat {
+class UI_BASE_EXPORT TimeFormat {
  public:
   // TimeElapsed, TimeRemaining and TimeRemainingShort functions:
   // These functions return a localized string of approximate time duration. The
@@ -25,21 +25,21 @@ class UI_EXPORT TimeFormat {
   // in-progress operations and users have different expectations of units.
 
   // Returns times in elapsed-format: "3 mins ago", "2 days ago".
-  static string16 TimeElapsed(const base::TimeDelta& delta);
+  static base::string16 TimeElapsed(const base::TimeDelta& delta);
 
   // Returns times in remaining-format: "3 mins left", "2 days left".
-  static string16 TimeRemaining(const base::TimeDelta& delta);
+  static base::string16 TimeRemaining(const base::TimeDelta& delta);
 
   // Returns times in remaining-long-format: "3 minutes left", "2 days left".
   // Currently, this only affects the minutes in long format, the rest
   // of the time units are formatted the same as TimeRemaining does.
-  static string16 TimeRemainingLong(const base::TimeDelta& delta);
+  static base::string16 TimeRemainingLong(const base::TimeDelta& delta);
 
   // Returns times in short-format: "3 mins", "2 days".
-  static string16 TimeRemainingShort(const base::TimeDelta& delta);
+  static base::string16 TimeRemainingShort(const base::TimeDelta& delta);
 
   // Return times in long-format: "2 hours", "25 minutes".
-  static string16 TimeDurationLong(const base::TimeDelta& delta);
+  static base::string16 TimeDurationLong(const base::TimeDelta& delta);
 
   // For displaying a relative time in the past.  This method returns either
   // "Today", "Yesterday", or an empty string if it's older than that.  Returns
@@ -55,8 +55,8 @@ class UI_EXPORT TimeFormat {
   // If NULL, the current day's midnight will be retrieved, which can be
   // slow. If many items are being processed, it is best to get the current
   // time once at the beginning and pass it for each computation.
-  static string16 RelativeDate(const base::Time& time,
-                               const base::Time* optional_midnight_today);
+  static base::string16 RelativeDate(const base::Time& time,
+                                     const base::Time* optional_midnight_today);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(TimeFormat);

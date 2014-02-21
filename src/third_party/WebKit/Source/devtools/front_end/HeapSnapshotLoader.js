@@ -30,8 +30,7 @@
 
 /**
  * @constructor
- * @param{WebInspector.HeapSnapshotWorkerDispatcher} dispatcher
- * @implements {WebInspector.OutputStream}
+ * @param {!WebInspector.HeapSnapshotWorkerDispatcher} dispatcher
  */
 WebInspector.HeapSnapshotLoader = function(dispatcher)
 {
@@ -58,6 +57,11 @@ WebInspector.HeapSnapshotLoader.prototype = {
             this._parseStringsArray();
     },
 
+    /**
+     * @param {string} constructorName
+     * @return {T}
+     * @template T
+     */
     buildSnapshot: function(constructorName)
     {
         this._progress.updateStatus("Processing snapshot\u2026");
@@ -134,10 +138,10 @@ WebInspector.HeapSnapshotLoader.prototype = {
                 break;
             }
             case "parse-snapshot-info": {
-                var closingBracketIndex = WebInspector.findBalancedCurlyBrackets(this._json);
+                var closingBracketIndex = WebInspector.TextUtils.findBalancedCurlyBrackets(this._json);
                 if (closingBracketIndex === -1)
                     return;
-                this._snapshot.snapshot = /** @type {HeapSnapshotHeader} */ (JSON.parse(this._json.slice(0, closingBracketIndex)));
+                this._snapshot.snapshot = /** @type {!HeapSnapshotHeader} */ (JSON.parse(this._json.slice(0, closingBracketIndex)));
                 this._json = this._json.slice(closingBracketIndex);
                 this._state = "find-nodes";
                 break;

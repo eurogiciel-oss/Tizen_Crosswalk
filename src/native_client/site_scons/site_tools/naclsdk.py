@@ -42,14 +42,14 @@ NACL_TOOL_MAP = {
             'other_libdir': 'lib32',
             'as_flag': '--32',
             'cc_flag': '-m32',
-            'ld_flag': ' -melf_nacl',
+            'ld_flag': ' -melf_i386_nacl',
             },
         '64': {
             'tooldir': 'x86_64-nacl',
             'other_libdir': 'lib64',
             'as_flag': '--64',
             'cc_flag': '-m64',
-            'ld_flag': ' -melf64_nacl',
+            'ld_flag': ' -melf_x86_64_nacl',
             },
         },
     }
@@ -798,3 +798,17 @@ def generate(env):
       recursive=True
       )
   env.Append(SCANNERS=ldscript_scanner)
+
+  # Scons tests can check this version number to decide whether to
+  # enable tests for toolchain bug fixes or new features.  See
+  # description in pnacl/build.sh.
+  if 'toolchain_feature_version' in SCons.Script.ARGUMENTS:
+    version = int(SCons.Script.ARGUMENTS['toolchain_feature_version'])
+  else:
+    version_file = os.path.join(root, 'FEATURE_VERSION')
+    if os.path.exists(version_file):
+      with open(version_file, 'r') as fh:
+        version = int(fh.read())
+    else:
+      version = 0
+  env.Replace(TOOLCHAIN_FEATURE_VERSION=version)

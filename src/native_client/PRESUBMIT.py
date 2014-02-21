@@ -136,8 +136,6 @@ def GetPreferredTrySlaves(_, change):
       'nacl-precise64_newlib_dbg',
       'nacl-precise64_newlib_opt',
       'nacl-precise64_glibc_opt',
-      'nacl-precise64_newlib_dbg_valgrind',
-      'nacl-precise64_glibc_dbg_valgrind',
       'nacl-mac10.6_newlib_opt',
       'nacl-mac10.6_glibc_opt',
       'nacl-mac10.6_64_newlib_dbg',
@@ -155,6 +153,8 @@ def GetPreferredTrySlaves(_, change):
       'nacl-win64_newlib_dbg',
       'nacl-win64_newlib_opt',
       'nacl-win64_glibc_opt',
+      'nacl-win8-64_newlib_dbg',
+      'nacl-win8-64_newlib_opt',
       'nacl-arm_opt_panda',
       # arm-nacl-gcc bots
       'nacl-win7_64_arm_newlib_opt',
@@ -166,7 +166,6 @@ def GetPreferredTrySlaves(_, change):
       # pnacl scons bots
       'nacl-precise_64-newlib-arm_qemu-pnacl',
       'nacl-precise_64-newlib-x86_32-pnacl',
-      'nacl-precise_64-newlib-x86_64-pnacl',
       'nacl-precise_64-newlib-x86_64-pnacl',
       # pnacl spec2k bots
       'nacl-arm_perf_panda',

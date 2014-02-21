@@ -34,12 +34,16 @@ class CONTENT_EXPORT VideoCaptureMessageFilter
 
     // Called when a video frame buffer is received from the browser process.
     virtual void OnBufferReceived(int buffer_id,
-                                  base::Time timestamp,
+                                  base::TimeTicks timestamp,
                                   const media::VideoCaptureFormat& format) = 0;
 
     // Called when state of a video capture device has changed in the browser
     // process.
     virtual void OnStateChanged(VideoCaptureState state) = 0;
+
+    // Called upon reception of device's supported formats back from browser.
+    virtual void OnDeviceSupportedFormatsEnumerated(
+        const media::VideoCaptureFormats& supported_formats) = 0;
 
     // Called when the delegate has been added to filter's delegate list.
     // |device_id| is the device id for the delegate.
@@ -85,11 +89,16 @@ class CONTENT_EXPORT VideoCaptureMessageFilter
   // Receive a filled buffer from browser process.
   void OnBufferReceived(int device_id,
                         int buffer_id,
-                        base::Time timestamp,
+                        base::TimeTicks timestamp,
                         const media::VideoCaptureFormat& format);
 
   // State of browser process' video capture device has changed.
   void OnDeviceStateChanged(int device_id, VideoCaptureState state);
+
+  // Receive a device's supported formats back from browser process.
+  void OnDeviceSupportedFormatsEnumerated(
+      int device_id,
+      const media::VideoCaptureFormats& supported_formats);
 
   // Finds the delegate associated with |device_id|, NULL if not found.
   Delegate* find_delegate(int device_id) const;

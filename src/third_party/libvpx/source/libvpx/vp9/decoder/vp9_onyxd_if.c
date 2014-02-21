@@ -25,7 +25,7 @@
 #include "vpx_scale/vpx_scale.h"
 #include "vp9/common/vp9_systemdependent.h"
 #include "vpx_ports/vpx_timer.h"
-#include "vp9/decoder/vp9_decodframe.h"
+#include "vp9/decoder/vp9_decodeframe.h"
 #include "vp9/decoder/vp9_detokenize.h"
 #include "./vpx_scale_rtcd.h"
 
@@ -107,6 +107,15 @@ void vp9_initialize_dec() {
   }
 }
 
+static void init_macroblockd(VP9D_COMP *const pbi) {
+  MACROBLOCKD *xd = &pbi->mb;
+  struct macroblockd_plane *const pd = xd->plane;
+  int i;
+
+  for (i = 0; i < MAX_MB_PLANE; ++i)
+    pd[i].dqcoeff = pbi->dqcoeff[i];
+}
+
 VP9D_PTR vp9_create_decompressor(VP9D_CONFIG *oxcf) {
   VP9D_COMP *const pbi = vpx_memalign(32, sizeof(VP9D_COMP));
   VP9_COMMON *const cm = pbi ? &pbi->common : NULL;
@@ -115,6 +124,9 @@ VP9D_PTR vp9_create_decompressor(VP9D_CONFIG *oxcf) {
     return NULL;
 
   vp9_zero(*pbi);
+
+  // Initialize the references to not point to any frame buffers.
+  memset(&cm->ref_frame_map, -1, sizeof(cm->ref_frame_map));
 
   if (setjmp(cm->error.jmp)) {
     cm->error.setjmp = 0;
@@ -140,6 +152,8 @@ VP9D_PTR vp9_create_decompressor(VP9D_CONFIG *oxcf) {
 
   cm->error.setjmp = 0;
   pbi->decoded_key_frame = 0;
+
+  init_macroblockd(pbi);
 
   vp9_worker_init(&pbi->lf_worker);
 
@@ -247,7 +261,7 @@ int vp9_get_reference_dec(VP9D_PTR ptr, int index, YV12_BUFFER_CONFIG **fb) {
   VP9D_COMP *pbi = (VP9D_COMP *) ptr;
   VP9_COMMON *cm = &pbi->common;
 
-  if (index < 0 || index >= NUM_REF_FRAMES)
+  if (index < 0 || index >= REF_FRAMES)
     return -1;
 
   *fb = &cm->yv12_fb[cm->ref_frame_map[index]];
@@ -364,10 +378,6 @@ int vp9_receive_compressed_data(VP9D_PTR ptr,
     write_dx_frame_to_file(cm->frame_to_show,
                            cm->current_video_frame + 3000);
 #endif
-
-  vp9_extend_frame_inner_borders(cm->frame_to_show,
-                                 cm->subsampling_x,
-                                 cm->subsampling_y);
 
 #if WRITE_RECON_BUFFER == 1
   if (cm->show_frame)

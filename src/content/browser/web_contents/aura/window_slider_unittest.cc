@@ -15,14 +15,14 @@
 
 namespace content {
 
-void DispatchEventDuringScrollCallback(aura::RootWindow* root_window,
+void DispatchEventDuringScrollCallback(aura::WindowEventDispatcher* dispatcher,
                                        ui::Event* event,
                                        ui::EventType type,
                                        const gfx::Vector2dF& delta) {
   if (type != ui::ET_GESTURE_SCROLL_UPDATE)
     return;
-  aura::RootWindowHostDelegate* delegate =
-      root_window->AsRootWindowHostDelegate();
+  aura::WindowTreeHostDelegate* delegate =
+      dispatcher->AsWindowTreeHostDelegate();
   if (event->IsMouseEvent())
     delegate->OnHostMouseEvent(static_cast<ui::MouseEvent*>(event));
   else if (event->IsKeyEvent())
@@ -36,7 +36,7 @@ void ChangeSliderOwnerDuringScrollCallback(scoped_ptr<aura::Window>* window,
   if (type != ui::ET_GESTURE_SCROLL_UPDATE)
     return;
   aura::Window* new_window = new aura::Window(NULL);
-  new_window->Init(ui::LAYER_TEXTURED);
+  new_window->Init(aura::WINDOW_LAYER_TEXTURED);
   new_window->Show();
   slider->ChangeOwner(new_window);
   (*window)->parent()->AddChild(new_window);
@@ -251,7 +251,7 @@ TEST_F(WindowSliderTest, WindowSlideIsCancelledOnEvent) {
     new ui::MouseEvent(ui::ET_MOUSE_MOVED,
                        gfx::Point(55, 10),
                        gfx::Point(55, 10),
-                       0),
+                       0, 0),
     new ui::KeyEvent(ui::ET_KEY_PRESSED,
                      ui::VKEY_A,
                      0,
@@ -269,7 +269,7 @@ TEST_F(WindowSliderTest, WindowSlideIsCancelledOnEvent) {
         base::TimeDelta::FromMilliseconds(10),
         1,
         base::Bind(&DispatchEventDuringScrollCallback,
-                   root_window(),
+                   root_window()->GetDispatcher(),
                    base::Owned(events[i])));
     EXPECT_TRUE(slider_delegate.created_back_layer());
     EXPECT_TRUE(slider_delegate.slide_aborted());

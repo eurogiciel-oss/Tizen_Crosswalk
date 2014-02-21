@@ -195,8 +195,7 @@ AppListServiceImpl::AppListServiceImpl(
 
 AppListServiceImpl::~AppListServiceImpl() {}
 
-void AppListServiceImpl::SetAppListNextPaintCallback(
-    const base::Closure& callback) {}
+void AppListServiceImpl::SetAppListNextPaintCallback(void (*callback)()) {}
 
 void AppListServiceImpl::HandleFirstRun() {}
 
@@ -263,8 +262,10 @@ void AppListServiceImpl::EnableAppList(Profile* initial_profile) {
 
   local_state_->SetBoolean(prefs::kAppLauncherHasBeenEnabled, true);
   CreateShortcut();
-  AppShortcutManagerFactory::GetForProfile(initial_profile)->
-      OnceOffCreateShortcuts();
+  AppShortcutManager* shortcut_manager =
+      AppShortcutManagerFactory::GetForProfile(initial_profile);
+  if (shortcut_manager)
+    shortcut_manager->OnceOffCreateShortcuts();
 }
 
 void AppListServiceImpl::InvalidatePendingProfileLoads() {
@@ -272,11 +273,11 @@ void AppListServiceImpl::InvalidatePendingProfileLoads() {
 }
 
 void AppListServiceImpl::HandleCommandLineFlags(Profile* initial_profile) {
-  if (command_line_.HasSwitch(switches::kEnableAppList))
-    EnableAppList(initial_profile);
-
   if (command_line_.HasSwitch(switches::kResetAppListInstallState))
     local_state_->SetBoolean(prefs::kAppLauncherHasBeenEnabled, false);
+
+  if (command_line_.HasSwitch(switches::kEnableAppList))
+    EnableAppList(initial_profile);
 }
 
 void AppListServiceImpl::SendUsageStats() {

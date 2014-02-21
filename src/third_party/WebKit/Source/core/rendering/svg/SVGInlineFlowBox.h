@@ -35,14 +35,14 @@ public:
     {
     }
 
-    virtual bool isSVGInlineFlowBox() const { return true; }
-    virtual float virtualLogicalHeight() const { return m_logicalHeight; }
+    virtual bool isSVGInlineFlowBox() const OVERRIDE { return true; }
+    virtual float virtualLogicalHeight() const OVERRIDE { return m_logicalHeight; }
     void setLogicalHeight(float h) { m_logicalHeight = h; }
 
     void paintSelectionBackground(PaintInfo&);
-    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom);
+    virtual void paint(PaintInfo&, const LayoutPoint&, LayoutUnit lineTop, LayoutUnit lineBottom) OVERRIDE;
 
-    virtual FloatRect calculateBoundaries() const;
+    virtual FloatRect calculateBoundaries() const OVERRIDE;
 
     static void computeTextMatchMarkerRectForRenderer(RenderSVGInlineText*);
 
@@ -50,11 +50,7 @@ private:
     float m_logicalHeight;
 };
 
-inline SVGInlineFlowBox* toSVGInlineFlowBox(InlineBox* box)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!box || box->isSVGInlineFlowBox());
-    return static_cast<SVGInlineFlowBox*>(box);
-}
+DEFINE_INLINE_BOX_TYPE_CASTS(SVGInlineFlowBox);
 
 } // namespace WebCore
 

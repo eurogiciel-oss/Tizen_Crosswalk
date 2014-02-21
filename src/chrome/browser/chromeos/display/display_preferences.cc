@@ -77,10 +77,6 @@ bool UserCanSaveDisplayPreference() {
        user_manager->IsLoggedInAsKioskApp());
 }
 
-ash::DisplayController* GetDisplayController() {
-  return ash::Shell::GetInstance()->display_controller();
-}
-
 void LoadDisplayLayouts() {
   PrefService* local_state = g_browser_process->local_state();
   ash::internal::DisplayLayoutStore* layout_store =
@@ -88,7 +84,8 @@ void LoadDisplayLayouts() {
 
   const base::DictionaryValue* layouts = local_state->GetDictionary(
       prefs::kSecondaryDisplays);
-  for (DictionaryValue::Iterator it(*layouts); !it.IsAtEnd(); it.Advance()) {
+  for (base::DictionaryValue::Iterator it(*layouts);
+       !it.IsAtEnd(); it.Advance()) {
     ash::DisplayLayout layout;
     if (!ash::DisplayLayout::ConvertFromValue(it.value(), &layout)) {
       LOG(WARNING) << "Invalid preference value for " << it.key();
@@ -115,7 +112,8 @@ void LoadDisplayProperties() {
   PrefService* local_state = g_browser_process->local_state();
   const base::DictionaryValue* properties = local_state->GetDictionary(
       prefs::kDisplayProperties);
-  for (DictionaryValue::Iterator it(*properties); !it.IsAtEnd(); it.Advance()) {
+  for (base::DictionaryValue::Iterator it(*properties);
+       !it.IsAtEnd(); it.Advance()) {
     const base::DictionaryValue* dict_value = NULL;
     if (!it.value().GetAsDictionary(&dict_value) || dict_value == NULL)
       continue;
@@ -198,8 +196,9 @@ void StoreCurrentDisplayProperties() {
     scoped_ptr<base::DictionaryValue> property_value(
         new base::DictionaryValue());
     property_value->SetInteger("rotation", static_cast<int>(info.rotation()));
-    property_value->SetInteger("ui-scale",
-                               static_cast<int>(info.ui_scale() * 1000));
+    property_value->SetInteger(
+        "ui-scale",
+        static_cast<int>(info.configured_ui_scale() * 1000));
     gfx::Size resolution;
     if (!display.IsInternal() &&
         display_manager->GetSelectedResolutionForDisplayId(id, &resolution)) {
@@ -217,9 +216,9 @@ typedef std::map<chromeos::DisplayPowerState, std::string>
     DisplayPowerStateToStringMap;
 
 const DisplayPowerStateToStringMap* GetDisplayPowerStateToStringMap() {
+  // Don't save or retore ALL_OFF state. crbug.com/318456.
   static const DisplayPowerStateToStringMap* map = ash::CreateToStringMap(
       chromeos::DISPLAY_POWER_ALL_ON, "all_on",
-      chromeos::DISPLAY_POWER_ALL_OFF, "all_off",
       chromeos::DISPLAY_POWER_INTERNAL_OFF_EXTERNAL_ON,
       "internal_off_external_on",
       chromeos::DISPLAY_POWER_INTERNAL_ON_EXTERNAL_OFF,
@@ -238,9 +237,10 @@ bool GetDisplayPowerStateFromString(const base::StringPiece& state,
 void StoreDisplayPowerState(DisplayPowerState power_state) {
   const DisplayPowerStateToStringMap* map = GetDisplayPowerStateToStringMap();
   DisplayPowerStateToStringMap::const_iterator iter = map->find(power_state);
-  std::string value = iter != map->end() ? iter->second : std::string();
-  PrefService* local_state = g_browser_process->local_state();
-  local_state->SetString(prefs::kDisplayPowerState, value);
+  if (iter != map->end()) {
+    PrefService* local_state = g_browser_process->local_state();
+    local_state->SetString(prefs::kDisplayPowerState, iter->second);
+  }
 }
 
 void StoreCurrentDisplayPowerState() {

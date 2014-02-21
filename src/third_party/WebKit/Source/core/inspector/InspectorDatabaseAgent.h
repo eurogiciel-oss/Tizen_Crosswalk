@@ -46,32 +46,33 @@ class InstrumentingAgents;
 
 typedef String ErrorString;
 
-class InspectorDatabaseAgent : public InspectorBaseAgent<InspectorDatabaseAgent>, public InspectorBackendDispatcher::DatabaseCommandHandler {
+class InspectorDatabaseAgent FINAL : public InspectorBaseAgent<InspectorDatabaseAgent>, public InspectorBackendDispatcher::DatabaseCommandHandler {
 public:
-    static PassOwnPtr<InspectorDatabaseAgent> create(InstrumentingAgents* instrumentingAgents, InspectorCompositeState* state)
+    static PassOwnPtr<InspectorDatabaseAgent> create()
     {
-        return adoptPtr(new InspectorDatabaseAgent(instrumentingAgents, state));
+        return adoptPtr(new InspectorDatabaseAgent());
     }
-    ~InspectorDatabaseAgent();
+    virtual ~InspectorDatabaseAgent();
 
-    virtual void setFrontend(InspectorFrontend*);
-    virtual void clearFrontend();
-    virtual void restore();
+    virtual void init() OVERRIDE;
+    virtual void setFrontend(InspectorFrontend*) OVERRIDE;
+    virtual void clearFrontend() OVERRIDE;
+    virtual void restore() OVERRIDE;
 
     void didCommitLoad(Frame*, DocumentLoader*);
 
     // Called from the front-end.
-    virtual void enable(ErrorString*);
-    virtual void disable(ErrorString*);
-    virtual void getDatabaseTableNames(ErrorString*, const String& databaseId, RefPtr<TypeBuilder::Array<String> >& names);
-    virtual void executeSQL(ErrorString*, const String& databaseId, const String& query, PassRefPtr<ExecuteSQLCallback>);
+    virtual void enable(ErrorString*) OVERRIDE;
+    virtual void disable(ErrorString*) OVERRIDE;
+    virtual void getDatabaseTableNames(ErrorString*, const String& databaseId, RefPtr<TypeBuilder::Array<String> >& names) OVERRIDE;
+    virtual void executeSQL(ErrorString*, const String& databaseId, const String& query, PassRefPtr<ExecuteSQLCallback>) OVERRIDE;
 
     // Called from the injected script.
     String databaseId(Database*);
 
     void didOpenDatabase(PassRefPtr<Database>, const String& domain, const String& name, const String& version);
 private:
-    explicit InspectorDatabaseAgent(InstrumentingAgents*, InspectorCompositeState*);
+    explicit InspectorDatabaseAgent();
 
     Database* databaseForId(const String& databaseId);
     InspectorDatabaseResource* findByFileName(const String& fileName);

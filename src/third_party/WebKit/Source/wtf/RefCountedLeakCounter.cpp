@@ -43,7 +43,7 @@ void RefCountedLeakCounter::decrement() { }
 #else
 
 #define LOG_CHANNEL_PREFIX Log
-static WTFLogChannel LogRefCountedLeaks = { 0x00000000, "", WTFLogChannelOn };
+static WTFLogChannel LogRefCountedLeaks = { WTFLogChannelOn };
 
 typedef HashCountedSet<const char*, PtrHash<const char*> > ReasonSet;
 static ReasonSet* leakMessageSuppressionReasons;
@@ -72,10 +72,10 @@ RefCountedLeakCounter::~RefCountedLeakCounter()
     static bool loggedSuppressionReason;
     if (m_count) {
         if (!leakMessageSuppressionReasons || leakMessageSuppressionReasons->isEmpty())
-            LOG(RefCountedLeaks, "LEAK: %u %s", m_count, m_description);
+            WTF_LOG(RefCountedLeaks, "LEAK: %u %s", m_count, m_description);
         else if (!loggedSuppressionReason) {
             // This logs only one reason. Later we could change it so we log all the reasons.
-            LOG(RefCountedLeaks, "No leak checking done: %s", leakMessageSuppressionReasons->begin()->key);
+            WTF_LOG(RefCountedLeaks, "No leak checking done: %s", leakMessageSuppressionReasons->begin()->key);
             loggedSuppressionReason = true;
         }
     }

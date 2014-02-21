@@ -1,6 +1,4 @@
-importScripts('../../js/resources/js-test-pre.js');
-
-var IndexSizeError = "IndexSizeError: Index or size was negative, or greater than the allowed value.";
+importScripts('../../../resources/js-test.js');
 
 self.jsTestIsAsync = true;
 
@@ -10,7 +8,7 @@ var data;
 
 self.addEventListener('message', function(e) {
   data = e.data;
-  shouldThrow("createImageBitmap(data, 0, 0, 10, 0)", "IndexSizeError");
-  shouldThrow("createImageBitmap(data, 0, 0, 0, 10)", "IndexSizeError");
+  shouldThrow("createImageBitmap(data, 0, 0, 10, 0)");
+  shouldThrow("createImageBitmap(data, 0, 0, 0, 10)");
   finishJSTest();
 });

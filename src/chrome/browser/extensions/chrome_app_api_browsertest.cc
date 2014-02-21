@@ -15,10 +15,10 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test_utils.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest.h"
 #include "net/dns/mock_host_resolver.h"
 #include "url/gurl.h"
@@ -143,8 +143,8 @@ IN_PROC_BROWSER_TEST_F(ChromeAppAPITest, MAYBE_IsInstalled) {
           browser()->tab_strip_model()->GetActiveWebContents(),
           kGetAppDetails,
           &result));
-  scoped_ptr<DictionaryValue> app_details(
-      static_cast<DictionaryValue*>(base::JSONReader::Read(result)));
+  scoped_ptr<base::DictionaryValue> app_details(
+      static_cast<base::DictionaryValue*>(base::JSONReader::Read(result)));
   // extension->manifest() does not contain the id.
   app_details->Remove("id", NULL);
   EXPECT_TRUE(app_details.get());
@@ -222,8 +222,8 @@ IN_PROC_BROWSER_TEST_F(ChromeAppAPITest, GetDetailsForFrame) {
           kGetDetailsForFrame,
           &json));
 
-  scoped_ptr<DictionaryValue> app_details(
-      static_cast<DictionaryValue*>(base::JSONReader::Read(json)));
+  scoped_ptr<base::DictionaryValue> app_details(
+      static_cast<base::DictionaryValue*>(base::JSONReader::Read(json)));
   // extension->manifest() does not contain the id.
   app_details->Remove("id", NULL);
   EXPECT_TRUE(app_details.get());

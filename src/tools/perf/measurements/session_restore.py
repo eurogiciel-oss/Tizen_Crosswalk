@@ -15,8 +15,8 @@ class SessionRestore(startup.Startup):
   see startup.py for details.
   """
 
-  def __init__(self):
-    super(SessionRestore, self).__init__()
+  def __init__(self, action_name_to_run = ''):
+    super(SessionRestore, self).__init__(action_name_to_run=action_name_to_run)
     self.close_tabs_before_run = False
     self._cpu_metric = None
 
@@ -38,7 +38,8 @@ class SessionRestore(startup.Startup):
     # Reject any pageset that contains more than one WPR archive.
     wpr_archives = {}
     for page in page_set:
-      wpr_archives[page_set.WprFilePathForPage(page)] = True
+      if not page.is_local:
+        wpr_archives[page_set.WprFilePathForPage(page)] = True
 
     if len(wpr_archives.keys()) > 1:
       raise Exception("Invalid pageset: more than 1 WPR archive found.: " +

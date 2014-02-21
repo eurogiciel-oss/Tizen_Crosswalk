@@ -87,8 +87,6 @@ SkGlyphCache::SkGlyphCache(SkTypeface* typeface, const SkDescriptor* desc, SkSca
 
     fGlyphArray.setReserve(kMinGlyphCount);
 
-    fMetricsCount = 0;
-    fAdvanceCount = 0;
     fAuxProcList = NULL;
 }
 
@@ -320,11 +318,9 @@ SkGlyph* SkGlyphCache::lookupMetrics(uint32_t id, MetricsType mtype) {
 
     if (kJustAdvance_MetricsType == mtype) {
         fScalerContext->getAdvance(glyph);
-        fAdvanceCount += 1;
     } else {
         SkASSERT(kFull_MetricsType == mtype);
         fScalerContext->getMetrics(glyph);
-        fMetricsCount += 1;
     }
 
     return glyph;
@@ -564,10 +560,10 @@ size_t SkGlyphCache_Globals::internalPurge(size_t minBytesNeeded) {
     if (fTotalMemoryUsed > fCacheSizeLimit) {
         bytesNeeded = fTotalMemoryUsed - fCacheSizeLimit;
     }
-    bytesNeeded = SkMax32(bytesNeeded, minBytesNeeded);
+    bytesNeeded = SkTMax(bytesNeeded, minBytesNeeded);
     if (bytesNeeded) {
         // no small purges!
-        bytesNeeded = SkMax32(bytesNeeded, fTotalMemoryUsed >> 2);
+        bytesNeeded = SkTMax(bytesNeeded, fTotalMemoryUsed >> 2);
     }
 
     int countNeeded = 0;

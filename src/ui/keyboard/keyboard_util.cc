@@ -29,7 +29,7 @@ void SendProcessKeyEvent(ui::EventType type,
   ui::TranslatedKeyEvent event(type == ui::ET_KEY_PRESSED,
                                ui::VKEY_PROCESSKEY,
                                ui::EF_NONE);
-  dispatcher->AsRootWindowHostDelegate()->OnHostKeyEvent(&event);
+  dispatcher->AsWindowTreeHostDelegate()->OnHostKeyEvent(&event);
 }
 
 base::LazyInstance<base::Time> g_keyboard_load_time_start =
@@ -42,9 +42,12 @@ namespace keyboard {
 bool IsKeyboardEnabled() {
   return CommandLine::ForCurrentProcess()->HasSwitch(
       switches::kEnableVirtualKeyboard) ||
-          CommandLine::ForCurrentProcess()->HasSwitch(
-              switches::kKeyboardUsabilityTest);
+          IsKeyboardUsabilityExperimentEnabled();
+}
 
+bool IsKeyboardUsabilityExperimentEnabled() {
+  return CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kKeyboardUsabilityExperiment);
 }
 
 bool InsertText(const base::string16& text, aura::Window* root_window) {
@@ -89,17 +92,17 @@ bool MoveCursor(int swipe_direction,
   // First deal with the x movement.
   if (codex != ui::VKEY_UNKNOWN) {
     ui::KeyEvent press_event(ui::ET_KEY_PRESSED, codex, modifier_flags, 0);
-    dispatcher->AsRootWindowHostDelegate()->OnHostKeyEvent(&press_event);
+    dispatcher->AsWindowTreeHostDelegate()->OnHostKeyEvent(&press_event);
     ui::KeyEvent release_event(ui::ET_KEY_RELEASED, codex, modifier_flags, 0);
-    dispatcher->AsRootWindowHostDelegate()->OnHostKeyEvent(&release_event);
+    dispatcher->AsWindowTreeHostDelegate()->OnHostKeyEvent(&release_event);
   }
 
   // Then deal with the y movement.
   if (codey != ui::VKEY_UNKNOWN) {
     ui::KeyEvent press_event(ui::ET_KEY_PRESSED, codey, modifier_flags, 0);
-    dispatcher->AsRootWindowHostDelegate()->OnHostKeyEvent(&press_event);
+    dispatcher->AsWindowTreeHostDelegate()->OnHostKeyEvent(&press_event);
     ui::KeyEvent release_event(ui::ET_KEY_RELEASED, codey, modifier_flags, 0);
-    dispatcher->AsRootWindowHostDelegate()->OnHostKeyEvent(&release_event);
+    dispatcher->AsWindowTreeHostDelegate()->OnHostKeyEvent(&release_event);
   }
   return true;
 }
@@ -107,6 +110,7 @@ bool MoveCursor(int swipe_direction,
 bool SendKeyEvent(const std::string type,
                   int key_value,
                   int key_code,
+                  std::string key_name,
                   int modifiers,
                   aura::WindowEventDispatcher* dispatcher) {
   ui::EventType event_type = ui::ET_UNKNOWN;
@@ -123,7 +127,7 @@ bool SendKeyEvent(const std::string type,
     // Handling of special printable characters (e.g. accented characters) for
     // which there is no key code.
     if (event_type == ui::ET_KEY_RELEASED) {
-      ui::InputMethod* input_method = dispatcher->GetProperty(
+      ui::InputMethod* input_method = dispatcher->window()->GetProperty(
           aura::client::kRootWindowInputMethodKey);
       if (!input_method)
         return false;
@@ -150,8 +154,8 @@ bool SendKeyEvent(const std::string type,
       }
     }
 
-    ui::KeyEvent event(event_type, code, modifiers, false);
-    dispatcher->AsRootWindowHostDelegate()->OnHostKeyEvent(&event);
+    ui::KeyEvent event(event_type, code, key_name, modifiers, false);
+    dispatcher->AsWindowTreeHostDelegate()->OnHostKeyEvent(&event);
   }
   return true;
 }
@@ -162,6 +166,11 @@ const void MarkKeyboardLoadStarted() {
 }
 
 const void MarkKeyboardLoadFinished() {
+  // Possible to get a load finished without a start if navigating directly to
+  // chrome://keyboard.
+  if (!g_keyboard_load_time_start.Get().ToInternalValue())
+    return;
+
   // It should not be possible to finish loading the keyboard without starting
   // to load it first.
   DCHECK(g_keyboard_load_time_start.Get().ToInternalValue());
@@ -221,6 +230,7 @@ const GritResourceMap* GetKeyboardExtensionResources(size_t* size) {
     {"keyboard/images/mute.svg", IDR_KEYBOARD_IMAGES_MUTE},
     {"keyboard/images/reload.svg", IDR_KEYBOARD_IMAGES_RELOAD},
     {"keyboard/images/right.svg", IDR_KEYBOARD_IMAGES_RIGHT},
+    {"keyboard/images/search.svg", IDR_KEYBOARD_IMAGES_SEARCH},
     {"keyboard/images/shutdown.svg", IDR_KEYBOARD_IMAGES_SHUTDOWN},
     {"keyboard/images/up.svg", IDR_KEYBOARD_IMAGES_UP},
     {"keyboard/images/volume-down.svg", IDR_KEYBOARD_IMAGES_VOLUME_DOWN},
@@ -237,7 +247,7 @@ const GritResourceMap* GetKeyboardExtensionResources(size_t* size) {
     {"keyboard/main.js", IDR_KEYBOARD_MAIN_JS},
     {"keyboard/manifest.json", IDR_KEYBOARD_MANIFEST},
     {"keyboard/main.css", IDR_KEYBOARD_MAIN_CSS},
-    {"keyboard/polymer.min.js", IDR_KEYBOARD_POLYMER},
+    {"keyboard/polymer_loader.js", IDR_KEYBOARD_POLYMER_LOADER},
     {"keyboard/voice_input.js", IDR_KEYBOARD_VOICE_INPUT_JS},
   };
   static const size_t kKeyboardResourcesSize = arraysize(kKeyboardResources);

@@ -46,7 +46,7 @@ function onRadioClicked(e) {
     if (functionEls[i].id === divId)
       functionEls[i].removeAttribute('hidden');
     else
-      functionEls[i].setAttribute('hidden');
+      functionEls[i].setAttribute('hidden', '');
   }
 }
 
@@ -133,6 +133,16 @@ function fseekResult(filehandle, filepos) {
   var filename = filehandle_map[filehandle];
   common.logMessage('Seeked to location ' + filepos + ' in file ' + filename +
       '.');
+}
+
+function fflush(e) {
+  var filehandle = document.getElementById('fflushHandle').value;
+  nacl_module.postMessage(makeCall('fflush', filehandle));
+}
+
+function fflushResult(filehandle, filepos) {
+  var filename = filehandle_map[filehandle];
+  common.logMessage('flushed ' + filename + '.');
 }
 
 function stat(e) {

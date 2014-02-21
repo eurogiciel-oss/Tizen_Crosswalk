@@ -64,6 +64,13 @@ extern "C"
     FRAMEFLAGS_ALTREF = 4,
   } FRAMETYPE_FLAGS;
 
+  typedef enum {
+    NO_AQ = 0,
+    VARIANCE_AQ = 1,
+    COMPLEXITY_AQ = 2,
+    AQ_MODES_COUNT  // This should always be the last member of the enum
+  } AQ_MODES;
+
   typedef struct {
     int version;  // 4 versions of bitstream defined:
                   //   0 - best quality/slowest decode,
@@ -122,12 +129,16 @@ extern "C"
     int64_t optimal_buffer_level;
     int64_t maximum_buffer_size;
 
+    // Frame drop threshold.
+    int drop_frames_water_mark;
+
     // controlling quality
     int fixed_q;
     int worst_allowed_q;
     int best_allowed_q;
     int cq_level;
     int lossless;
+    int aq_mode;  // Adaptive Quantization mode
 
     // two pass datarate control
     int two_pass_vbrbias;        // two pass datarate control tweaks
@@ -185,7 +196,7 @@ extern "C"
                             int64_t end_time_stamp);
 
   int vp9_get_compressed_data(VP9_PTR comp, unsigned int *frame_flags,
-                              unsigned long *size, unsigned char *dest,
+                              size_t *size, uint8_t *dest,
                               int64_t *time_stamp, int64_t *time_end,
                               int flush);
 
@@ -220,8 +231,6 @@ extern "C"
 
   int vp9_set_size_literal(VP9_PTR comp, unsigned int width,
                            unsigned int height);
-
-  int vp9_switch_layer(VP9_PTR comp, int layer);
 
   void vp9_set_svc(VP9_PTR comp, int use_svc);
 

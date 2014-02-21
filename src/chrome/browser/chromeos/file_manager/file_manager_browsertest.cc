@@ -25,22 +25,25 @@
 #include "chrome/browser/chromeos/drive/file_system_interface.h"
 #include "chrome/browser/chromeos/drive/test_util.h"
 #include "chrome/browser/chromeos/file_manager/drive_test_util.h"
+#include "chrome/browser/chromeos/file_manager/path_util.h"
 #include "chrome/browser/drive/fake_drive_service.h"
 #include "chrome/browser/extensions/api/test/test_api.h"
 #include "chrome/browser/extensions/component_loader.h"
 #include "chrome/browser/extensions/extension_apitest.h"
 #include "chrome/browser/extensions/extension_test_message_listener.h"
-#include "chrome/browser/google_apis/gdata_wapi_parser.h"
-#include "chrome/browser/google_apis/test_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
 #include "chromeos/chromeos_switches.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/test/test_utils.h"
+#include "extensions/common/extension.h"
+#include "google_apis/drive/gdata_wapi_parser.h"
+#include "google_apis/drive/test_util.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "webkit/browser/fileapi/external_mount_points.h"
+
+using drive::DriveIntegrationServiceFactory;
 
 namespace file_manager {
 namespace {
@@ -192,20 +195,14 @@ class LocalTestVolume {
   // Adds this volume to the file system as a local volume. Returns true on
   // success.
   bool Mount(Profile* profile) {
-    const std::string kDownloads = "Downloads";
-
     if (local_path_.empty()) {
       if (!tmp_dir_.CreateUniqueTempDir())
         return false;
-      local_path_ = tmp_dir_.path().Append(kDownloads);
+      local_path_ = tmp_dir_.path().Append("Downloads");
     }
-    fileapi::ExternalMountPoints* const mount_points =
-        content::BrowserContext::GetMountPoints(profile);
-    mount_points->RevokeFileSystem(kDownloads);
 
-    return mount_points->RegisterFileSystem(
-        kDownloads, fileapi::kFileSystemTypeNativeLocal, local_path_) &&
-        file_util::CreateDirectory(local_path_);
+    return util::RegisterDownloadsMountPoint(profile, local_path_) &&
+        base::CreateDirectory(local_path_);
   }
 
   void CreateEntry(const TestEntryInfo& entry) {
@@ -224,7 +221,7 @@ class LocalTestVolume {
         break;
       }
       case DIRECTORY:
-        ASSERT_TRUE(file_util::CreateDirectory(target_path)) <<
+        ASSERT_TRUE(base::CreateDirectory(target_path)) <<
             "Failed to create a directory: " << target_path.value();
         break;
     }
@@ -236,7 +233,8 @@ class LocalTestVolume {
   // TestEntryInfo. Returns true on success.
   bool UpdateModifiedTime(const TestEntryInfo& entry) {
     const base::FilePath path = local_path_.AppendASCII(entry.target_path);
-    if (!file_util::SetLastModifiedTime(path, entry.last_modified_time))
+    if (!base::TouchFile(path, entry.last_modified_time,
+                         entry.last_modified_time))
       return false;
 
     // Update the modified time of parent directories because it may be also
@@ -266,14 +264,17 @@ class DriveTestVolume {
   }
 
   // Sends request to add this volume to the file system as Google drive.
-  // This method must be calld at SetUp method of FileManagerBrowserTestBase.
+  // This method must be called at SetUp method of FileManagerBrowserTestBase.
   // Returns true on success.
   bool SetUp() {
     if (!test_cache_root_.CreateUniqueTempDir())
       return false;
-    drive::DriveIntegrationServiceFactory::SetFactoryForTest(
+    create_drive_integration_service_ =
         base::Bind(&DriveTestVolume::CreateDriveIntegrationService,
-                   base::Unretained(this)));
+                   base::Unretained(this));
+    service_factory_for_test_.reset(
+        new DriveIntegrationServiceFactory::ScopedFactoryForTest(
+            &create_drive_integration_service_));
     return true;
   }
 
@@ -285,7 +286,7 @@ class DriveTestVolume {
     // Obtain the parent entry.
     drive::FileError error = drive::FILE_ERROR_OK;
     scoped_ptr<drive::ResourceEntry> parent_entry(new drive::ResourceEntry);
-    integration_service_->file_system()->GetResourceEntryByPath(
+    integration_service_->file_system()->GetResourceEntry(
         drive::util::GetDriveMyDriveRootPath().Append(path).DirName(),
         google_apis::test_util::CreateCopyResultCallback(
             &error, &parent_entry));
@@ -410,6 +411,10 @@ class DriveTestVolume {
   base::ScopedTempDir test_cache_root_;
   drive::FakeDriveService* fake_drive_service_;
   drive::DriveIntegrationService* integration_service_;
+  DriveIntegrationServiceFactory::FactoryCallback
+      create_drive_integration_service_;
+  scoped_ptr<DriveIntegrationServiceFactory::ScopedFactoryForTest>
+      service_factory_for_test_;
 };
 
 // Listener to obtain the test relative messages synchronously.
@@ -418,7 +423,7 @@ class FileManagerTestListener : public content::NotificationObserver {
   struct Message {
     int type;
     std::string message;
-    extensions::TestSendMessageFunction* function;
+    scoped_refptr<extensions::TestSendMessageFunction> function;
   };
 
   FileManagerTestListener() {
@@ -474,14 +479,6 @@ class FileManagerBrowserTest :
       local_volume_(new LocalTestVolume),
       drive_volume_(std::tr1::get<0>(GetParam()) != IN_GUEST_MODE ?
                     new DriveTestVolume() : NULL) {}
-
-  virtual void SetUp() OVERRIDE {
-    // TODO(danakj): The GPU Video Decoder needs real GL bindings.
-    // crbug.com/269087
-    UseRealGLBindings();
-
-    ExtensionApiTest::SetUp();
-  }
 
   virtual void SetUpInProcessBrowserTestFixture() OVERRIDE;
 
@@ -568,6 +565,15 @@ IN_PROC_BROWSER_TEST_P(FileManagerBrowserTest, Test) {
     if (name == "getTestName") {
       // Pass the test case name.
       entry.function->Reply(std::tr1::get<1>(GetParam()));
+    } else if (name == "getRootPaths") {
+      // Pass the root paths.
+      const scoped_ptr<base::DictionaryValue> res(new base::DictionaryValue());
+      res->SetString("downloads",
+          "/" + util::GetDownloadsMountPointName(browser()->profile()));
+      res->SetString("drive", "/drive/root");
+      std::string jsonString;
+      base::JSONWriter::Write(res.get(), &jsonString);
+      entry.function->Reply(jsonString);
     } else if (name == "isInGuestMode") {
       // Obtain whether the test is in guest mode or not.
       entry.function->Reply(std::tr1::get<0>(GetParam()) ? "true" : "false");
@@ -695,7 +701,7 @@ INSTANTIATE_TEST_CASE_P(
                       TestParameter(NOT_IN_GUEST_MODE, "shareDirectory")));
 
 INSTANTIATE_TEST_CASE_P(
-    restoreGeometry,
+    RestoreGeometry,
     FileManagerBrowserTest,
     ::testing::Values(TestParameter(NOT_IN_GUEST_MODE, "restoreGeometry"),
                       TestParameter(IN_GUEST_MODE, "restoreGeometry")));
@@ -713,6 +719,19 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(TestParameter(NOT_IN_GUEST_MODE, "suggestAppDialog")));
 
 INSTANTIATE_TEST_CASE_P(
+    ExecuteDefaultTaskOnDownloads,
+    FileManagerBrowserTest,
+    ::testing::Values(
+        TestParameter(NOT_IN_GUEST_MODE, "executeDefaultTaskOnDownloads"),
+        TestParameter(IN_GUEST_MODE, "executeDefaultTaskOnDownloads")));
+
+INSTANTIATE_TEST_CASE_P(
+    ExecuteDefaultTaskOnDrive,
+    FileManagerBrowserTest,
+    ::testing::Values(
+        TestParameter(NOT_IN_GUEST_MODE, "executeDefaultTaskOnDrive")));
+
+INSTANTIATE_TEST_CASE_P(
     NavigationList,
     FileManagerBrowserTest,
     ::testing::Values(TestParameter(NOT_IN_GUEST_MODE,
@@ -721,8 +740,13 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     TabIndex,
     FileManagerBrowserTest,
-    ::testing::Values(TestParameter(NOT_IN_GUEST_MODE,
-                                    "searchBoxFocus")));
+    ::testing::Values(TestParameter(NOT_IN_GUEST_MODE, "searchBoxFocus")));
+
+INSTANTIATE_TEST_CASE_P(
+    Thumbnails,
+    FileManagerBrowserTest,
+    ::testing::Values(TestParameter(NOT_IN_GUEST_MODE, "thumbnailsDownloads"),
+                      TestParameter(IN_GUEST_MODE, "thumbnailsDownloads")));
 
 }  // namespace
 }  // namespace file_manager

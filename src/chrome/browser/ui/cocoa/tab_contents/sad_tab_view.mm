@@ -11,7 +11,7 @@
 #include "chrome/common/url_constants.h"
 #include "grit/generated_resources.h"
 #include "grit/theme_resources.h"
-#import "third_party/GTM/AppKit/GTMUILocalizerAndLayoutTweaker.h"
+#import "third_party/google_toolbox_for_mac/src/AppKit/GTMUILocalizerAndLayoutTweaker.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/l10n/l10n_util_mac.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -147,7 +147,7 @@ static const CGFloat kTabHorzMargin = 13;
   // Get the help text and link.
   size_t linkOffset = 0;
   NSString* helpMessage(base::SysUTF16ToNSString(l10n_util::GetStringFUTF16(
-      IDS_SAD_TAB_HELP_MESSAGE, string16(), &linkOffset)));
+      IDS_SAD_TAB_HELP_MESSAGE, base::string16(), &linkOffset)));
   NSString* helpLink = l10n_util::GetNSString(IDS_SAD_TAB_HELP_LINK);
   NSFont* font = [NSFont systemFontOfSize:[NSFont smallSystemFontSize]];
   [help_.get() setMessageAndLink:helpMessage

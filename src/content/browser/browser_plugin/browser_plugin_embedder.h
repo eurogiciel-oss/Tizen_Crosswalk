@@ -52,6 +52,9 @@ class CONTENT_EXPORT BrowserPluginEmbedder : public WebContentsObserver {
       int y,
       const WebContents::GetRenderViewHostCallback& callback);
 
+  // Returns this embedder's WebContentsImpl.
+  WebContentsImpl* GetWebContents();
+
   // Called when embedder's |rwh| has sent screen rects to renderer.
   void DidSendScreenRects();
 
@@ -67,12 +70,15 @@ class CONTENT_EXPORT BrowserPluginEmbedder : public WebContentsObserver {
     factory_ = factory;
   }
 
+  // Sets the zoom level for all guests within this embedder.
+  void SetZoomLevel(double level);
+
   // WebContentsObserver implementation.
   virtual void RenderProcessGone(base::TerminationStatus status) OVERRIDE;
   virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE;
 
   void DragSourceEndedAt(int client_x, int client_y, int screen_x,
-      int screen_y, WebKit::WebDragOperation operation);
+      int screen_y, blink::WebDragOperation operation);
 
   void DragSourceMovedTo(int client_x, int client_y,
                          int screen_x, int screen_y);
@@ -87,6 +93,8 @@ class CONTENT_EXPORT BrowserPluginEmbedder : public WebContentsObserver {
 
   void StopDrag(BrowserPluginGuest* guest);
 
+  // Sends EndSystemDrag message to the guest that initiated the last drag/drop
+  // operation, if there's any.
   void SystemDragEnded();
 
  private:
@@ -97,6 +105,13 @@ class CONTENT_EXPORT BrowserPluginEmbedder : public WebContentsObserver {
   void CleanUp();
 
   BrowserPluginGuestManager* GetBrowserPluginGuestManager();
+
+  bool DidSendScreenRectsCallback(BrowserPluginGuest* guest);
+
+  bool SetZoomLevelCallback(double level, BrowserPluginGuest* guest);
+
+  bool UnlockMouseIfNecessaryCallback(const NativeWebKeyboardEvent& event,
+                                      BrowserPluginGuest* guest);
 
   // Message handlers.
 

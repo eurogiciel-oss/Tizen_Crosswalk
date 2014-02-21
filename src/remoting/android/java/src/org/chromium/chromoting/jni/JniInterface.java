@@ -6,18 +6,15 @@ package org.chromium.chromoting.jni;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Point;
 import android.os.Looper;
-import android.text.InputType;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.inputmethod.EditorInfo;
 import android.widget.CheckBox;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -35,29 +32,117 @@ import java.nio.ByteOrder;
  */
 @JNINamespace("remoting")
 public class JniInterface {
-    /** The status code indicating successful connection. */
-    private static final int SUCCESSFUL_CONNECTION = 3;
-
-    /** The application context. */
-    private static Activity sContext = null;
-
     /*
      * Library-loading state machine.
      */
-    /** Whether we've already loaded the library. */
+    /** Whether the library has been loaded. Accessed on the UI thread. */
     private static boolean sLoaded = false;
+
+    /** The application context. Accessed on the UI thread. */
+    private static Activity sContext = null;
+
+    /** Interface used for connection state notifications. */
+    public interface ConnectionListener {
+        /**
+         * This enum must match the C++ enumeration remoting::protocol::ConnectionToHost::State.
+         */
+        public enum State {
+            INITIALIZING(0),
+            CONNECTING(1),
+            AUTHENTICATED(2),
+            CONNECTED(3),
+            FAILED(4),
+            CLOSED(5);
+
+            private final int mValue;
+
+            State(int value) {
+                mValue = value;
+            }
+
+            public int value() {
+                return mValue;
+            }
+
+            public static State fromValue(int value) {
+                return values()[value];
+            }
+        }
+
+        /**
+         * This enum must match the C++ enumeration remoting::protocol::ErrorCode.
+         */
+        public enum Error {
+            OK(0),
+            PEER_IS_OFFLINE(1),
+            SESSION_REJECTED(2),
+            INCOMPATIBLE_PROTOCOL(3),
+            AUTHENTICATION_FAILED(4),
+            CHANNEL_CONNECTION_ERROR(5),
+            SIGNALING_ERROR(6),
+            SIGNALING_TIMEOUT(7),
+            HOST_OVERLOAD(8),
+            UNKNOWN_ERROR(9);
+
+            private final int mValue;
+
+            Error(int value) {
+                mValue = value;
+            }
+
+            public int value() {
+                return mValue;
+            }
+
+            public static Error fromValue(int value) {
+                return values()[value];
+            }
+        }
+
+        /**
+         * Notified on connection state change.
+         * @param state The new connection state.
+         * @param error The error code, if state is STATE_FAILED.
+         */
+        void onConnectionState(State state, Error error);
+    }
+
+    /*
+     * Connection-initiating state machine.
+     */
+    /** Whether the native code is attempting a connection. Accessed on the UI thread. */
+    private static boolean sConnected = false;
+
+    /** Notified upon successful connection or disconnection. Accessed on the UI thread. */
+    private static ConnectionListener sConnectionListener = null;
+
+    /**
+     * Callback invoked on the graphics thread to repaint the desktop. Accessed on the UI and
+     * graphics threads.
+     */
+    private static Runnable sRedrawCallback = null;
+
+    /** Bitmap holding a copy of the latest video frame. Accessed on the UI and graphics threads. */
+    private static Bitmap sFrameBitmap = null;
+
+    /** Protects access to sFrameBitmap. */
+    private static final Object sFrameLock = new Object();
+
+    /** Position of cursor hot-spot. Accessed on the graphics thread. */
+    private static Point sCursorHotspot = new Point();
+
+    /** Bitmap holding the cursor shape. Accessed on the graphics thread. */
+    private static Bitmap sCursorBitmap = null;
 
     /**
      * To be called once from the main Activity. Any subsequent calls will update the application
      * context, but not reload the library. This is useful e.g. when the activity is closed and the
-     * user later wants to return to the application.
+     * user later wants to return to the application. Called on the UI thread.
      */
     public static void loadLibrary(Activity context) {
         sContext = context;
 
-        synchronized(JniInterface.class) {
-            if (sLoaded) return;
-        }
+        if (sLoaded) return;
 
         System.loadLibrary("remoting_client_jni");
 
@@ -75,49 +160,31 @@ public class JniInterface {
     public static native String nativeGetClientId();
     public static native String nativeGetClientSecret();
 
-    /*
-     * Connection-initiating state machine.
-     */
-    /** Whether the native code is attempting a connection. */
-    private static boolean sConnected = false;
-
-    /** Callback to signal upon successful connection. */
-    private static Runnable sSuccessCallback = null;
-
-    /** Dialog for reporting connection progress. */
-    private static ProgressDialog sProgressIndicator = null;
-
-    /** Attempts to form a connection to the user-selected host. */
+    /** Attempts to form a connection to the user-selected host. Called on the UI thread. */
     public static void connectToHost(String username, String authToken,
-            String hostJid, String hostId, String hostPubkey, Runnable successCallback) {
-        synchronized(JniInterface.class) {
-            if (!sLoaded) return;
+            String hostJid, String hostId, String hostPubkey, ConnectionListener listener) {
+        disconnectFromHost();
 
-            if (sConnected) {
-                disconnectFromHost();
-            }
-        }
-
-        sSuccessCallback = successCallback;
+        sConnectionListener = listener;
         SharedPreferences prefs = sContext.getPreferences(Activity.MODE_PRIVATE);
         nativeConnect(username, authToken, hostJid, hostId, hostPubkey,
                 prefs.getString(hostId + "_id", ""), prefs.getString(hostId + "_secret", ""));
         sConnected = true;
     }
 
-    /** Severs the connection and cleans up. */
-    public static void disconnectFromHost() {
-        synchronized(JniInterface.class) {
-            if (!sLoaded || !sConnected) return;
+    /** Performs the native portion of the connection. */
+    private static native void nativeConnect(String username, String authToken, String hostJid,
+            String hostId, String hostPubkey, String pairId, String pairSecret);
 
-            if (sProgressIndicator != null) {
-                sProgressIndicator.dismiss();
-                sProgressIndicator = null;
-            }
-        }
+    /** Severs the connection and cleans up. Called on the UI thread. */
+    public static void disconnectFromHost() {
+        if (!sConnected) return;
+
+        sConnectionListener.onConnectionState(ConnectionListener.State.CLOSED,
+                ConnectionListener.Error.OK);
 
         nativeDisconnect();
-        sSuccessCallback = null;
+        sConnectionListener = null;
         sConnected = false;
 
         // Drop the reference to free the Bitmap for GC.
@@ -126,86 +193,17 @@ public class JniInterface {
         }
     }
 
-    /** Performs the native portion of the connection. */
-    private static native void nativeConnect(String username, String authToken, String hostJid,
-            String hostId, String hostPubkey, String pairId, String pairSecret);
-
     /** Performs the native portion of the cleanup. */
     private static native void nativeDisconnect();
 
-    /** Position of cursor hotspot within cursor image. */
-    public static Point getCursorHotspot() { return sCursorHotspot; }
-
-    /** Returns the current cursor shape. */
-    public static Bitmap getCursorBitmap() { return sCursorBitmap; }
-
-    /*
-     * Entry points *from* the native code.
-     */
-    /** Callback to signal whenever we need to redraw. */
-    private static Runnable sRedrawCallback = null;
-
-    /** Bitmap holding a copy of the latest video frame. */
-    private static Bitmap sFrameBitmap = null;
-
-    /** Lock to protect the frame bitmap reference. */
-    private static final Object sFrameLock = new Object();
-
-    /** Position of cursor hot-spot. */
-    private static Point sCursorHotspot = new Point();
-
-    /** Bitmap holding the cursor shape. */
-    private static Bitmap sCursorBitmap = null;
-
-    /** Reports whenever the connection status changes. */
+    /** Reports whenever the connection status changes. Called on the UI thread. */
     @CalledByNative
     private static void reportConnectionStatus(int state, int error) {
-        if (state < SUCCESSFUL_CONNECTION && error == 0) {
-            // The connection is still being established, so we'll report the current progress.
-            synchronized (JniInterface.class) {
-                if (sProgressIndicator == null) {
-                    sProgressIndicator = ProgressDialog.show(sContext, sContext.
-                            getString(R.string.progress_title), sContext.getResources().
-                            getStringArray(R.array.protoc_states)[state], true, true,
-                            new DialogInterface.OnCancelListener() {
-                                @Override
-                                public void onCancel(DialogInterface dialog) {
-                                    Log.i("jniiface", "User canceled connection initiation");
-                                    disconnectFromHost();
-                                }
-                            });
-                }
-                else {
-                    sProgressIndicator.setMessage(
-                            sContext.getResources().getStringArray(R.array.protoc_states)[state]);
-                }
-            }
-        }
-        else {
-            // The connection is complete or has failed, so we can lose the progress indicator.
-            synchronized (JniInterface.class) {
-                if (sProgressIndicator != null) {
-                    sProgressIndicator.dismiss();
-                    sProgressIndicator = null;
-                }
-            }
-
-            if (state == SUCCESSFUL_CONNECTION) {
-                Toast.makeText(sContext, sContext.getResources().
-                        getStringArray(R.array.protoc_states)[state], Toast.LENGTH_SHORT).show();
-
-                // Actually display the remote desktop.
-                sSuccessCallback.run();
-            } else {
-                Toast.makeText(sContext, sContext.getResources().getStringArray(
-                        R.array.protoc_states)[state] + (error == 0 ? "" : ": " +
-                        sContext.getResources().getStringArray(R.array.protoc_errors)[error]),
-                        Toast.LENGTH_LONG).show();
-            }
-        }
+        sConnectionListener.onConnectionState(ConnectionListener.State.fromValue(state),
+                ConnectionListener.Error.fromValue(error));
     }
 
-    /** Prompts the user to enter a PIN. */
+    /** Prompts the user to enter a PIN. Called on the UI thread. */
     @CalledByNative
     private static void displayAuthenticationPrompt(boolean pairingSupported) {
         AlertDialog.Builder pinPrompt = new AlertDialog.Builder(sContext);
@@ -271,40 +269,86 @@ public class JniInterface {
         pinDialog.show();
     }
 
-    /** Saves newly-received pairing credentials to permanent storage. */
+    /** Performs the native response to the user's PIN. */
+    private static native void nativeAuthenticationResponse(String pin, boolean createPair);
+
+    /** Saves newly-received pairing credentials to permanent storage. Called on the UI thread. */
     @CalledByNative
     private static void commitPairingCredentials(String host, byte[] id, byte[] secret) {
-        synchronized (sContext) {
-            sContext.getPreferences(Activity.MODE_PRIVATE).edit().
-                    putString(host + "_id", new String(id)).
-                    putString(host + "_secret", new String(secret)).
-                    apply();
-        }
+        sContext.getPreferences(Activity.MODE_PRIVATE).edit().
+                putString(host + "_id", new String(id)).
+                putString(host + "_secret", new String(secret)).
+                apply();
     }
 
     /**
+     * Moves the mouse cursor, possibly while clicking the specified (nonnegative) button. Called
+     * on the UI thread.
+     */
+    public static void mouseAction(int x, int y, int whichButton, boolean buttonDown) {
+        if (!sConnected) {
+            return;
+        }
+
+        nativeMouseAction(x, y, whichButton, buttonDown);
+    }
+
+    /** Passes mouse information to the native handling code. */
+    private static native void nativeMouseAction(int x, int y, int whichButton, boolean buttonDown);
+
+    /** Injects a mouse-wheel event with delta values. Called on the UI thread. */
+    public static void mouseWheelDeltaAction(int deltaX, int deltaY) {
+        if (!sConnected) {
+            return;
+        }
+
+        nativeMouseWheelDeltaAction(deltaX, deltaY);
+    }
+
+    /** Passes mouse-wheel information to the native handling code. */
+    private static native void nativeMouseWheelDeltaAction(int deltaX, int deltaY);
+
+    /** Presses and releases the specified (nonnegative) key. Called on the UI thread. */
+    public static void keyboardAction(int keyCode, boolean keyDown) {
+        if (!sConnected) {
+            return;
+        }
+
+        nativeKeyboardAction(keyCode, keyDown);
+    }
+
+    /** Passes key press information to the native handling code. */
+    private static native void nativeKeyboardAction(int keyCode, boolean keyDown);
+
+    /**
      * Sets the redraw callback to the provided functor. Provide a value of null whenever the
-     * window is no longer visible so that we don't continue to draw onto it.
+     * window is no longer visible so that we don't continue to draw onto it. Called on the UI
+     * thread.
      */
     public static void provideRedrawCallback(Runnable redrawCallback) {
         sRedrawCallback = redrawCallback;
     }
 
-    /** Forces the native graphics thread to redraw to the canvas. */
+    /** Forces the native graphics thread to redraw to the canvas. Called on the UI thread. */
     public static boolean redrawGraphics() {
-        synchronized(JniInterface.class) {
-            if (!sConnected || sRedrawCallback == null) return false;
-        }
+        if (!sConnected || sRedrawCallback == null) return false;
 
         nativeScheduleRedraw();
         return true;
     }
 
-    /** Performs the redrawing callback. This is a no-op if the window isn't visible. */
+    /** Schedules a redraw on the native graphics thread. */
+    private static native void nativeScheduleRedraw();
+
+    /**
+     * Performs the redrawing callback. This is a no-op if the window isn't visible. Called on the
+     * graphics thread.
+     */
     @CalledByNative
     private static void redrawGraphicsInternal() {
-        if (sRedrawCallback != null) {
-            sRedrawCallback.run();
+        Runnable callback = sRedrawCallback;
+        if (callback != null) {
+            callback.run();
         }
     }
 
@@ -315,10 +359,6 @@ public class JniInterface {
     public static Bitmap getVideoFrame() {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             Log.w("jniiface", "Canvas being redrawn on UI thread");
-        }
-
-        if (!sConnected) {
-            return null;
         }
 
         synchronized (sFrameLock) {
@@ -364,33 +404,9 @@ public class JniInterface {
         sCursorBitmap = Bitmap.createBitmap(data, width, height, Bitmap.Config.ARGB_8888);
     }
 
-    /** Moves the mouse cursor, possibly while clicking the specified (nonnegative) button. */
-    public static void mouseAction(int x, int y, int whichButton, boolean buttonDown) {
-        if (!sConnected) {
-            return;
-        }
+    /** Position of cursor hotspot within cursor image. Called on the graphics thread. */
+    public static Point getCursorHotspot() { return sCursorHotspot; }
 
-        nativeMouseAction(x, y, whichButton, buttonDown);
-    }
-
-    /** Presses and releases the specified (nonnegative) key. */
-    public static void keyboardAction(int keyCode, boolean keyDown) {
-        if (!sConnected) {
-            return;
-        }
-
-        nativeKeyboardAction(keyCode, keyDown);
-    }
-
-    /** Performs the native response to the user's PIN. */
-    private static native void nativeAuthenticationResponse(String pin, boolean createPair);
-
-    /** Schedules a redraw on the native graphics thread. */
-    private static native void nativeScheduleRedraw();
-
-    /** Passes mouse information to the native handling code. */
-    private static native void nativeMouseAction(int x, int y, int whichButton, boolean buttonDown);
-
-    /** Passes key press information to the native handling code. */
-    private static native void nativeKeyboardAction(int keyCode, boolean keyDown);
+    /** Returns the current cursor shape. Called on the graphics thread. */
+    public static Bitmap getCursorBitmap() { return sCursorBitmap; }
 }

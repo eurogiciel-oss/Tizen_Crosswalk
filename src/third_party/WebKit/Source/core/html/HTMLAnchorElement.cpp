@@ -24,13 +24,14 @@
 #include "config.h"
 #include "core/html/HTMLAnchorElement.h"
 
-#include "HTMLNames.h"
 #include "core/dom/Attribute.h"
 #include "core/editing/FrameSelection.h"
 #include "core/events/KeyboardEvent.h"
 #include "core/events/MouseEvent.h"
 #include "core/events/ThreadLocalEventNames.h"
 #include "core/frame/Frame.h"
+#include "core/frame/FrameHost.h"
+#include "core/frame/Settings.h"
 #include "core/html/HTMLFormElement.h"
 #include "core/html/HTMLImageElement.h"
 #include "core/html/parser/HTMLParserIdioms.h"
@@ -41,28 +42,26 @@
 #include "core/loader/PingLoader.h"
 #include "core/page/Chrome.h"
 #include "core/page/ChromeClient.h"
-#include "core/page/Page.h"
-#include "core/page/Settings.h"
 #include "core/rendering/RenderImage.h"
 #include "core/svg/graphics/SVGImage.h"
 #include "platform/PlatformMouseEvent.h"
 #include "platform/network/DNS.h"
 #include "platform/network/ResourceRequest.h"
+#include "platform/weborigin/KnownPorts.h"
+#include "platform/weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityPolicy.h"
 #include "public/platform/Platform.h"
 #include "public/platform/WebPrescientNetworking.h"
 #include "public/platform/WebURL.h"
-#include "weborigin/KnownPorts.h"
-#include "weborigin/SecurityOrigin.h"
-#include "weborigin/SecurityPolicy.h"
 #include "wtf/text/StringBuilder.h"
 
 namespace WebCore {
 
 namespace {
 
-void preconnectToURL(const KURL& url, WebKit::WebPreconnectMotivation motivation)
+void preconnectToURL(const KURL& url, blink::WebPreconnectMotivation motivation)
 {
-    WebKit::WebPrescientNetworking* prescientNetworking = WebKit::Platform::current()->prescientNetworking();
+    blink::WebPrescientNetworking* prescientNetworking = blink::Platform::current()->prescientNetworking();
     if (!prescientNetworking)
         return;
 
@@ -95,7 +94,7 @@ private:
     void handleClick(Event* event);
 
     bool shouldPrefetch(const KURL&);
-    void prefetch(WebKit::WebPreconnectMotivation);
+    void prefetch(blink::WebPreconnectMotivation);
 
     HTMLAnchorElement* m_anchorElement;
     double m_mouseOverTimestamp;
@@ -153,16 +152,13 @@ bool HTMLAnchorElement::isMouseFocusable() const
 
 bool HTMLAnchorElement::isKeyboardFocusable() const
 {
+    ASSERT(document().isActive());
+
     if (isFocusable() && Element::supportsFocus())
         return HTMLElement::isKeyboardFocusable();
 
-    if (isLink()) {
-        Page* page = document().page();
-        if (!page)
-            return false;
-        if (!page->chrome().client().tabsToLinks())
-            return false;
-    }
+    if (isLink() && !document().frameHost()->chrome().client().tabsToLinks())
+        return false;
     return HTMLElement::isKeyboardFocusable();
 }
 
@@ -230,7 +226,7 @@ void HTMLAnchorElement::defaultEventHandler(Event* event)
     HTMLElement::defaultEventHandler(event);
 }
 
-void HTMLAnchorElement::setActive(bool down, bool pause)
+void HTMLAnchorElement::setActive(bool down)
 {
     if (rendererIsEditable()) {
         EditableLinkBehavior editableLinkBehavior = EditableLinkDefaultBehavior;
@@ -259,7 +255,7 @@ void HTMLAnchorElement::setActive(bool down, bool pause)
 
     }
 
-    ContainerNode::setActive(down, pause);
+    ContainerNode::setActive(down);
 }
 
 void HTMLAnchorElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
@@ -340,7 +336,7 @@ KURL HTMLAnchorElement::url() const
 
 void HTMLAnchorElement::setURL(const KURL& url)
 {
-    setHref(url.string());
+    setHref(AtomicString(url.string()));
 }
 
 String HTMLAnchorElement::input() const
@@ -350,7 +346,7 @@ String HTMLAnchorElement::input() const
 
 void HTMLAnchorElement::setInput(const String& value)
 {
-    setHref(value);
+    setHref(AtomicString(value));
 }
 
 bool HTMLAnchorElement::hasRel(uint32_t relation) const
@@ -358,7 +354,7 @@ bool HTMLAnchorElement::hasRel(uint32_t relation) const
     return m_linkRelations & relation;
 }
 
-void HTMLAnchorElement::setRel(const String& value)
+void HTMLAnchorElement::setRel(const AtomicString& value)
 {
     m_linkRelations = 0;
     SpaceSplitString newLinkRelations(value, true);
@@ -378,7 +374,7 @@ short HTMLAnchorElement::tabIndex() const
     return Element::tabIndex();
 }
 
-String HTMLAnchorElement::target() const
+AtomicString HTMLAnchorElement::target() const
 {
     return getAttribute(targetAttr);
 }
@@ -426,14 +422,14 @@ void HTMLAnchorElement::handleClick(Event* event)
         frame->loader().client()->dispatchWillRequestAfterPreconnect(request);
     if (hasAttribute(downloadAttr)) {
         if (!hasRel(RelationNoReferrer)) {
-            String referrer = SecurityPolicy::generateReferrerHeader(document().referrerPolicy(), completedURL, frame->loader().outgoingReferrer());
+            String referrer = SecurityPolicy::generateReferrerHeader(document().referrerPolicy(), completedURL, document().outgoingReferrer());
             if (!referrer.isEmpty())
-                request.setHTTPReferrer(referrer);
+                request.setHTTPReferrer(AtomicString(referrer));
         }
 
         frame->loader().client()->loadURLExternally(request, NavigationPolicyDownload, fastGetAttribute(downloadAttr));
     } else {
-        FrameLoadRequest frameRequest(document().securityOrigin(), request, target());
+        FrameLoadRequest frameRequest(&document(), request, target());
         frameRequest.setTriggeringEvent(event);
         if (hasRel(RelationNoReferrer))
             frameRequest.setShouldSendReferrer(NeverSendReferrer);
@@ -577,9 +573,9 @@ void HTMLAnchorElement::PrefetchEventHandler::handleMouseOver(Event* event)
     if (m_mouseOverTimestamp == 0.0) {
         m_mouseOverTimestamp = event->timeStamp();
 
-        WebKit::Platform::current()->histogramEnumeration("MouseEventPrefetch.MouseOvers", 0, 2);
+        blink::Platform::current()->histogramEnumeration("MouseEventPrefetch.MouseOvers", 0, 2);
 
-        prefetch(WebKit::WebPreconnectMotivationLinkMouseOver);
+        prefetch(blink::WebPreconnectMotivationLinkMouseOver);
     }
 }
 
@@ -587,7 +583,7 @@ void HTMLAnchorElement::PrefetchEventHandler::handleMouseOut(Event* event)
 {
     if (m_mouseOverTimestamp > 0.0) {
         double mouseOverDuration = convertDOMTimeStampToSeconds(event->timeStamp() - m_mouseOverTimestamp);
-        WebKit::Platform::current()->histogramCustomCounts("MouseEventPrefetch.MouseOverDuration_NoClick", mouseOverDuration * 1000, 0, 10000, 100);
+        blink::Platform::current()->histogramCustomCounts("MouseEventPrefetch.MouseOverDuration_NoClick", mouseOverDuration * 1000, 0, 10000, 100);
 
         m_mouseOverTimestamp = 0.0;
     }
@@ -597,27 +593,27 @@ void HTMLAnchorElement::PrefetchEventHandler::handleLeftMouseDown(Event* event)
 {
     m_mouseDownTimestamp = event->timeStamp();
 
-    WebKit::Platform::current()->histogramEnumeration("MouseEventPrefetch.MouseDowns", 0, 2);
+    blink::Platform::current()->histogramEnumeration("MouseEventPrefetch.MouseDowns", 0, 2);
 
-    prefetch(WebKit::WebPreconnectMotivationLinkMouseDown);
+    prefetch(blink::WebPreconnectMotivationLinkMouseDown);
 }
 
 void HTMLAnchorElement::PrefetchEventHandler::handleGestureTapUnconfirmed(Event* event)
 {
     m_hadTapUnconfirmed = true;
 
-    WebKit::Platform::current()->histogramEnumeration("MouseEventPrefetch.TapUnconfirmeds", 0, 2);
+    blink::Platform::current()->histogramEnumeration("MouseEventPrefetch.TapUnconfirmeds", 0, 2);
 
-    prefetch(WebKit::WebPreconnectMotivationLinkTapUnconfirmed);
+    prefetch(blink::WebPreconnectMotivationLinkTapUnconfirmed);
 }
 
 void HTMLAnchorElement::PrefetchEventHandler::handleGestureShowPress(Event* event)
 {
     m_tapDownTimestamp = event->timeStamp();
 
-    WebKit::Platform::current()->histogramEnumeration("MouseEventPrefetch.TapDowns", 0, 2);
+    blink::Platform::current()->histogramEnumeration("MouseEventPrefetch.TapDowns", 0, 2);
 
-    prefetch(WebKit::WebPreconnectMotivationLinkTapDown);
+    prefetch(blink::WebPreconnectMotivationLinkTapDown);
 }
 
 void HTMLAnchorElement::PrefetchEventHandler::handleClick(Event* event)
@@ -626,27 +622,27 @@ void HTMLAnchorElement::PrefetchEventHandler::handleClick(Event* event)
     if (capturedMouseOver) {
         double mouseOverDuration = convertDOMTimeStampToSeconds(event->timeStamp() - m_mouseOverTimestamp);
 
-        WebKit::Platform::current()->histogramCustomCounts("MouseEventPrefetch.MouseOverDuration_Click", mouseOverDuration * 1000, 0, 10000, 100);
+        blink::Platform::current()->histogramCustomCounts("MouseEventPrefetch.MouseOverDuration_Click", mouseOverDuration * 1000, 0, 10000, 100);
     }
 
     bool capturedMouseDown = (m_mouseDownTimestamp > 0.0);
-    WebKit::Platform::current()->histogramEnumeration("MouseEventPrefetch.MouseDownFollowedByClick", capturedMouseDown, 2);
+    blink::Platform::current()->histogramEnumeration("MouseEventPrefetch.MouseDownFollowedByClick", capturedMouseDown, 2);
 
     if (capturedMouseDown) {
         double mouseDownDuration = convertDOMTimeStampToSeconds(event->timeStamp() - m_mouseDownTimestamp);
 
-        WebKit::Platform::current()->histogramCustomCounts("MouseEventPrefetch.MouseDownDuration_Click", mouseDownDuration * 1000, 0, 10000, 100);
+        blink::Platform::current()->histogramCustomCounts("MouseEventPrefetch.MouseDownDuration_Click", mouseDownDuration * 1000, 0, 10000, 100);
     }
 
     bool capturedTapDown = (m_tapDownTimestamp > 0.0);
     if (capturedTapDown) {
         double tapDownDuration = convertDOMTimeStampToSeconds(event->timeStamp() - m_tapDownTimestamp);
 
-        WebKit::Platform::current()->histogramCustomCounts("MouseEventPrefetch.TapDownDuration_Click", tapDownDuration * 1000, 0, 10000, 100);
+        blink::Platform::current()->histogramCustomCounts("MouseEventPrefetch.TapDownDuration_Click", tapDownDuration * 1000, 0, 10000, 100);
     }
 
     int flags = (m_hadTapUnconfirmed ? 2 : 0) | (capturedTapDown ? 1 : 0);
-    WebKit::Platform::current()->histogramEnumeration("MouseEventPrefetch.PreTapEventsFollowedByClick", flags, 4);
+    blink::Platform::current()->histogramEnumeration("MouseEventPrefetch.PreTapEventsFollowedByClick", flags, 4);
 }
 
 bool HTMLAnchorElement::PrefetchEventHandler::shouldPrefetch(const KURL& url)
@@ -679,7 +675,7 @@ bool HTMLAnchorElement::PrefetchEventHandler::shouldPrefetch(const KURL& url)
     return true;
 }
 
-void HTMLAnchorElement::PrefetchEventHandler::prefetch(WebKit::WebPreconnectMotivation motivation)
+void HTMLAnchorElement::PrefetchEventHandler::prefetch(blink::WebPreconnectMotivation motivation)
 {
     const KURL& url = m_anchorElement->href();
 
@@ -687,7 +683,7 @@ void HTMLAnchorElement::PrefetchEventHandler::prefetch(WebKit::WebPreconnectMoti
         return;
 
     // The precision of current MouseOver trigger is too low to actually trigger preconnects.
-    if (motivation == WebKit::WebPreconnectMotivationLinkMouseOver)
+    if (motivation == blink::WebPreconnectMotivationLinkMouseOver)
         return;
 
     preconnectToURL(url, motivation);

@@ -28,8 +28,6 @@
 #include "config.h"
 #include "core/rendering/RenderImageResource.h"
 
-#include "core/fetch/ImageResource.h"
-#include "core/platform/graphics/Image.h"
 #include "core/rendering/RenderImage.h"
 #include "core/rendering/RenderObject.h"
 
@@ -97,11 +95,6 @@ void RenderImageResource::setContainerSizeForRenderer(const IntSize& imageContai
     ASSERT(m_renderer);
     if (m_cachedImage)
         m_cachedImage->setContainerSizeForRenderer(m_renderer, imageContainerSize, m_renderer->style()->effectiveZoom());
-}
-
-Image* RenderImageResource::nullImage()
-{
-    return Image::nullImage();
 }
 
 LayoutSize RenderImageResource::getImageSize(float multiplier, ImageResource::SizeType type) const

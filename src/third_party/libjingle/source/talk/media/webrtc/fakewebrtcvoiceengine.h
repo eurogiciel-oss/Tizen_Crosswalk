@@ -34,11 +34,14 @@
 
 
 #include "talk/base/basictypes.h"
+#include "talk/base/gunit.h"
 #include "talk/base/stringutils.h"
 #include "talk/media/base/codec.h"
 #include "talk/media/base/voiceprocessor.h"
 #include "talk/media/webrtc/fakewebrtccommon.h"
 #include "talk/media/webrtc/webrtcvoe.h"
+#include "webrtc/modules/audio_coding/main/interface/audio_coding_module.h"
+#include "webrtc/common.h"
 
 namespace cricket {
 
@@ -75,7 +78,7 @@ class FakeWebRtcVoiceEngine
     int dtmf_length_ms;
   };
   struct Channel {
-    Channel()
+    explicit Channel(bool use_experimental_acm)
         : external_transport(false),
           send(false),
           playout(false),
@@ -95,7 +98,8 @@ class FakeWebRtcVoiceEngine
           fec_type(117),
           nack_max_packets(0),
           send_ssrc(0),
-          level_header_ext_(-1) {
+          level_header_ext_(-1),
+          using_experimental_acm(use_experimental_acm) {
       memset(&send_codec, 0, sizeof(send_codec));
       memset(&rx_agc_config, 0, sizeof(rx_agc_config));
     }
@@ -124,6 +128,7 @@ class FakeWebRtcVoiceEngine
     std::vector<webrtc::CodecInst> recv_codecs;
     webrtc::CodecInst send_codec;
     std::list<std::string> packets;
+    bool using_experimental_acm;
   };
 
   FakeWebRtcVoiceEngine(const cricket::AudioCodec* const* codecs,
@@ -177,7 +182,7 @@ class FakeWebRtcVoiceEngine
     }
     return -1;
   }
-  int GetNumChannels() const { return channels_.size(); }
+  int GetNumChannels() const { return static_cast<int>(channels_.size()); }
   bool GetPlayout(int channel) {
     return channels_[channel]->playout;
   }
@@ -198,6 +203,10 @@ class FakeWebRtcVoiceEngine
   }
   int GetNACKMaxPackets(int channel) {
     return channels_[channel]->nack_max_packets;
+  }
+  bool IsUsingExperimentalAcm(int channel) {
+    WEBRTC_ASSERT_CHANNEL(channel);
+    return channels_[channel]->using_experimental_acm;
   }
   int GetSendCNPayloadType(int channel, bool wideband) {
     return (wideband) ?
@@ -252,6 +261,19 @@ class FakeWebRtcVoiceEngine
                                 true);
     }
   }
+  int AddChannel(bool use_experimental_acm) {
+    if (fail_create_channel_) {
+      return -1;
+    }
+    Channel* ch = new Channel(use_experimental_acm);
+    for (int i = 0; i < NumOfCodecs(); ++i) {
+      webrtc::CodecInst codec;
+      GetCodec(i, codec);
+      ch->recv_codecs.push_back(codec);
+    }
+    channels_[++last_channel_] = ch;
+    return last_channel_;
+  }
 
   WEBRTC_STUB(Release, ());
 
@@ -275,17 +297,13 @@ class FakeWebRtcVoiceEngine
     return NULL;
   }
   WEBRTC_FUNC(CreateChannel, ()) {
-    if (fail_create_channel_) {
-      return -1;
-    }
-    Channel* ch = new Channel();
-    for (int i = 0; i < NumOfCodecs(); ++i) {
-      webrtc::CodecInst codec;
-      GetCodec(i, codec);
-      ch->recv_codecs.push_back(codec);
-    }
-    channels_[++last_channel_] = ch;
-    return last_channel_;
+    return AddChannel(false);
+  }
+  WEBRTC_FUNC(CreateChannel, (const webrtc::Config& config)) {
+    talk_base::scoped_ptr<webrtc::AudioCodingModule> acm(
+        config.Get<webrtc::AudioCodingModuleFactory>().Create(0));
+    return AddChannel(strcmp(acm->Version(), webrtc::kExperimentalAcmVersion)
+                      == 0);
   }
   WEBRTC_FUNC(DeleteChannel, (int channel)) {
     WEBRTC_CHECK_CHANNEL(channel);
@@ -613,6 +631,11 @@ class FakeWebRtcVoiceEngine
 
   // webrtc::VoENetEqStats
   WEBRTC_STUB(GetNetworkStatistics, (int, webrtc::NetworkStatistics&));
+  WEBRTC_FUNC_CONST(GetDecodingCallStatistics, (int channel,
+      webrtc::AudioDecodingCallStats*)) {
+    WEBRTC_CHECK_CHANNEL(channel);
+    return 0;
+  }
 
   // webrtc::VoENetwork
   WEBRTC_FUNC(RegisterExternalTransport, (int channel,
@@ -898,6 +921,7 @@ class FakeWebRtcVoiceEngine
   WEBRTC_STUB(GetEcDelayMetrics, (int& delay_median, int& delay_std));
 
   WEBRTC_STUB(StartDebugRecording, (const char* fileNameUTF8));
+  WEBRTC_STUB(StartDebugRecording, (FILE* handle));
   WEBRTC_STUB(StopDebugRecording, ());
 
   WEBRTC_FUNC(SetTypingDetectionStatus, (bool enable)) {

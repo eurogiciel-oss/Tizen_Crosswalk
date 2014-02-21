@@ -19,7 +19,7 @@
 #include "ui/base/cocoa/window_size_constants.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "ui/gfx/font.h"
+#include "ui/gfx/font_list.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/image/image_skia_util_mac.h"
 #include "ui/gfx/text_elider.h"
@@ -34,7 +34,7 @@ const CGFloat kWindowCornerRadius = 2;
 
 @interface ScreenCaptureNotificationController()
 - (void)hide;
-- (void)populateWithText:(const string16&)text;
+- (void)populateWithText:(const base::string16&)text;
 @end
 
 @interface ScreenCaptureNotificationView : NSView
@@ -46,7 +46,7 @@ const CGFloat kWindowCornerRadius = 2;
 
 
 ScreenCaptureNotificationUICocoa::ScreenCaptureNotificationUICocoa(
-    const string16& text)
+    const base::string16& text)
     : text_(text) {
 }
 
@@ -64,14 +64,14 @@ void ScreenCaptureNotificationUICocoa::OnStarted(
 }
 
 scoped_ptr<ScreenCaptureNotificationUI> ScreenCaptureNotificationUI::Create(
-    const string16& text) {
+    const base::string16& text) {
   return scoped_ptr<ScreenCaptureNotificationUI>(
       new ScreenCaptureNotificationUICocoa(text));
 }
 
 @implementation ScreenCaptureNotificationController
 - (id)initWithCallback:(const base::Closure&)stop_callback
-                  text:(const string16&)text {
+                  text:(const base::string16&)text {
   base::scoped_nsobject<NSWindow> window(
       [[NSWindow alloc] initWithContentRect:ui::kWindowSizeDeterminedLater
                                   styleMask:NSBorderlessWindowMask
@@ -117,7 +117,7 @@ scoped_ptr<ScreenCaptureNotificationUI> ScreenCaptureNotificationUI::Create(
   [self close];
 }
 
-- (void)populateWithText:(const string16&)text {
+- (void)populateWithText:(const base::string16&)text {
   base::scoped_nsobject<ScreenCaptureNotificationView> content(
       [[ScreenCaptureNotificationView alloc]
           initWithFrame:ui::kWindowSizeDeterminedLater]);
@@ -148,11 +148,9 @@ scoped_ptr<ScreenCaptureNotificationUI> ScreenCaptureNotificationUI::Create(
       std::min(kMaximumWidth, NSWidth([[NSScreen mainScreen] visibleFrame]));
   int maxLabelWidth = maximumWidth - kPaddingLeft - kPadding -
                       kHorizontalMargin * 2 - gripWidth - buttonWidth;
-  gfx::Font font(ui::ResourceBundle::GetSharedInstance()
-                     .GetFont(ui::ResourceBundle::BaseFont)
-                     .GetNativeFont());
-  string16 elidedText =
-      ElideText(text, font, maxLabelWidth, gfx::ELIDE_IN_MIDDLE);
+  gfx::FontList font_list;
+  base::string16 elidedText =
+      ElideText(text, font_list, maxLabelWidth, gfx::ELIDE_IN_MIDDLE);
   NSString* statusText = base::SysUTF16ToNSString(elidedText);
   base::scoped_nsobject<NSTextField> statusTextField(
       [[NSTextField alloc] initWithFrame:ui::kWindowSizeDeterminedLater]);
@@ -161,7 +159,7 @@ scoped_ptr<ScreenCaptureNotificationUI> ScreenCaptureNotificationUI::Create(
   [statusTextField setDrawsBackground:NO];
   [statusTextField setBezeled:NO];
   [statusTextField setStringValue:statusText];
-  [statusTextField setFont:font.GetNativeFont()];
+  [statusTextField setFont:font_list.GetPrimaryFont().GetNativeFont()];
   [statusTextField sizeToFit];
   [statusTextField setFrameOrigin:NSMakePoint(
                        kPaddingLeft + kHorizontalMargin + gripWidth,

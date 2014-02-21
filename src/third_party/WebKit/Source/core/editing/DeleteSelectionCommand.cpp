@@ -36,7 +36,6 @@
 #include "core/editing/VisibleUnits.h"
 #include "core/editing/htmlediting.h"
 #include "core/html/HTMLInputElement.h"
-#include "core/html/HTMLTableElement.h"
 #include "core/frame/Frame.h"
 #include "core/rendering/RenderTableCell.h"
 
@@ -67,13 +66,12 @@ static bool isTableRowEmpty(Node* row)
     return true;
 }
 
-DeleteSelectionCommand::DeleteSelectionCommand(Document& document, bool smartDelete, bool mergeBlocksAfterDelete, bool replace, bool expandForSpecialElements, bool sanitizeMarkup)
+DeleteSelectionCommand::DeleteSelectionCommand(Document& document, bool smartDelete, bool mergeBlocksAfterDelete, bool expandForSpecialElements, bool sanitizeMarkup)
     : CompositeEditCommand(document)
     , m_hasSelectionToDelete(false)
     , m_smartDelete(smartDelete)
     , m_mergeBlocksAfterDelete(mergeBlocksAfterDelete)
     , m_needPlaceholder(false)
-    , m_replace(replace)
     , m_expandForSpecialElements(expandForSpecialElements)
     , m_pruneStartBlockIfNecessary(false)
     , m_startsAtEmptyLine(false)
@@ -85,13 +83,12 @@ DeleteSelectionCommand::DeleteSelectionCommand(Document& document, bool smartDel
 {
 }
 
-DeleteSelectionCommand::DeleteSelectionCommand(const VisibleSelection& selection, bool smartDelete, bool mergeBlocksAfterDelete, bool replace, bool expandForSpecialElements, bool sanitizeMarkup)
+DeleteSelectionCommand::DeleteSelectionCommand(const VisibleSelection& selection, bool smartDelete, bool mergeBlocksAfterDelete, bool expandForSpecialElements, bool sanitizeMarkup)
     : CompositeEditCommand(*selection.start().document())
     , m_hasSelectionToDelete(true)
     , m_smartDelete(smartDelete)
     , m_mergeBlocksAfterDelete(mergeBlocksAfterDelete)
     , m_needPlaceholder(false)
-    , m_replace(replace)
     , m_expandForSpecialElements(expandForSpecialElements)
     , m_pruneStartBlockIfNecessary(false)
     , m_startsAtEmptyLine(false)
@@ -337,7 +334,7 @@ static Position firstEditablePositionInNode(Node* node)
     ASSERT(node);
     Node* next = node;
     while (next && !next->rendererIsEditable())
-        next = NodeTraversal::next(next, node);
+        next = NodeTraversal::next(*next, node);
     return next ? firstPositionInOrBeforeNode(next) : Position();
 }
 
@@ -429,9 +426,9 @@ void DeleteSelectionCommand::makeStylingElementsDirectChildrenOfEditableRootToPr
     RefPtr<Range> range = m_selectionToDelete.toNormalizedRange();
     RefPtr<Node> node = range->firstNode();
     while (node && node != range->pastLastNode()) {
-        RefPtr<Node> nextNode = NodeTraversal::next(node.get());
+        RefPtr<Node> nextNode = NodeTraversal::next(*node);
         if ((node->hasTagName(styleTag) && !(toElement(node)->hasAttribute(scopedAttr))) || node->hasTagName(linkTag)) {
-            nextNode = NodeTraversal::nextSkippingChildren(node.get());
+            nextNode = NodeTraversal::nextSkippingChildren(*node);
             RefPtr<ContainerNode> rootEditableElement = node->rootEditableElement();
             if (rootEditableElement.get()) {
                 removeNode(node);
@@ -449,13 +446,14 @@ void DeleteSelectionCommand::handleGeneralDelete()
 
     int startOffset = m_upstreamStart.deprecatedEditingOffset();
     Node* startNode = m_upstreamStart.deprecatedNode();
+    ASSERT(startNode);
 
     makeStylingElementsDirectChildrenOfEditableRootToPreventStyleLoss();
 
     // Never remove the start block unless it's a table, in which case we won't merge content in.
-    if (startNode->isSameNode(m_startBlock.get()) && !startOffset && canHaveChildrenForEditing(startNode) && !isHTMLTableElement(startNode)) {
+    if (startNode->isSameNode(m_startBlock.get()) && !startOffset && canHaveChildrenForEditing(startNode) && !startNode->hasTagName(tableTag)) {
         startOffset = 0;
-        startNode = NodeTraversal::next(startNode);
+        startNode = NodeTraversal::next(*startNode);
         if (!startNode)
             return;
     }
@@ -467,7 +465,7 @@ void DeleteSelectionCommand::handleGeneralDelete()
     }
 
     if (startOffset >= lastOffsetForEditing(startNode)) {
-        startNode = NodeTraversal::nextSkippingChildren(startNode);
+        startNode = NodeTraversal::nextSkippingChildren(*startNode);
         startOffset = 0;
     }
 
@@ -501,7 +499,7 @@ void DeleteSelectionCommand::handleGeneralDelete()
                 // in a text node that needs to be trimmed
                 Text* text = toText(node);
                 deleteTextFromNode(text, startOffset, text->length() - startOffset);
-                node = NodeTraversal::next(node.get());
+                node = NodeTraversal::next(*node);
             } else {
                 node = startNode->childNode(startOffset);
             }
@@ -516,7 +514,7 @@ void DeleteSelectionCommand::handleGeneralDelete()
                 // NodeTraversal::nextSkippingChildren just blew past the end position, so stop deleting
                 node = 0;
             } else if (!m_downstreamEnd.deprecatedNode()->isDescendantOf(node.get())) {
-                RefPtr<Node> nextNode = NodeTraversal::nextSkippingChildren(node.get());
+                RefPtr<Node> nextNode = NodeTraversal::nextSkippingChildren(*node);
                 // if we just removed a node from the end container, update end position so the
                 // check above will work
                 updatePositionForNodeRemoval(m_downstreamEnd, node.get());
@@ -527,8 +525,9 @@ void DeleteSelectionCommand::handleGeneralDelete()
                 if (m_downstreamEnd.deprecatedNode() == n && m_downstreamEnd.deprecatedEditingOffset() >= caretMaxOffset(&n)) {
                     removeNode(node.get());
                     node = 0;
-                } else
-                    node = NodeTraversal::next(node.get());
+                } else {
+                    node = NodeTraversal::next(*node);
+                }
             }
         }
 
@@ -636,6 +635,16 @@ void DeleteSelectionCommand::mergeParagraphs()
 
     if (mergeDestination == endOfParagraphToMove)
         return;
+
+    // If the merge destination and source to be moved are both list items of different lists, merge them into single list.
+    Node* listItemInFirstParagraph = enclosingNodeOfType(m_upstreamStart, isListItem);
+    Node* listItemInSecondParagraph = enclosingNodeOfType(m_downstreamEnd, isListItem);
+    if (listItemInFirstParagraph && listItemInSecondParagraph
+        && canMergeLists(listItemInFirstParagraph->parentElement(), listItemInSecondParagraph->parentElement())) {
+        mergeIdenticalElements(listItemInFirstParagraph->parentElement(), listItemInSecondParagraph->parentElement());
+        m_endingPosition = mergeDestination.deepEquivalent();
+        return;
+    }
 
     // The rule for merging into an empty block is: only do so if its farther to the right.
     // FIXME: Consider RTL.

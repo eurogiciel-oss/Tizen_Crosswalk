@@ -28,10 +28,8 @@
 
 #include "modules/webaudio/AudioNodeOutput.h"
 
-#include "platform/audio/AudioBus.h"
 #include "modules/webaudio/AudioContext.h"
 #include "modules/webaudio/AudioNodeInput.h"
-#include "modules/webaudio/AudioParam.h"
 #include "wtf/Threading.h"
 
 namespace WebCore {
@@ -146,11 +144,6 @@ unsigned AudioNodeOutput::paramFanOutCount()
 unsigned AudioNodeOutput::renderingFanOutCount() const
 {
     return m_renderingFanOutCount;
-}
-
-unsigned AudioNodeOutput::renderingParamFanOutCount() const
-{
-    return m_renderingParamFanOutCount;
 }
 
 void AudioNodeOutput::addInput(AudioNodeInput* input)

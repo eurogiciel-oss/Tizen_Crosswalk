@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Triggers a ton of fake jobs to test its handling under high load.
 
@@ -88,7 +88,7 @@ def trigger_task(swarming_url, progress, unique, timeout, index):
   progress.update_item('%5d' % index, processing=1)
   try:
     logging.info('collect')
-    test_keys = swarming.get_test_keys(swarming_url, name)
+    test_keys = swarming.get_task_keys(swarming_url, name)
     if not test_keys:
       return 'no_test_keys'
     assert test_keys == [test_key], test_keys

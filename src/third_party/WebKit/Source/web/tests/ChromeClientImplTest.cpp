@@ -39,9 +39,9 @@
 #include "core/page/Chrome.h"
 #include <gtest/gtest.h>
 
-using namespace WebKit;
+using namespace blink;
 
-namespace WebKit {
+namespace blink {
 
 void setCurrentInputEventForTest(const WebInputEvent* event)
 {
@@ -90,7 +90,7 @@ protected:
         m_webView = toWebViewImpl(WebView::create(&m_webViewClient));
         m_mainFrame = WebFrame::create(&m_webFrameClient);
         m_webView->setMainFrame(m_mainFrame);
-        m_chromeClientImpl = toChromeClientImpl(m_webView->page()->chrome().client());
+        m_chromeClientImpl = toChromeClientImpl(&m_webView->page()->chrome().client());
         m_result = WebNavigationPolicyIgnore;
     }
 

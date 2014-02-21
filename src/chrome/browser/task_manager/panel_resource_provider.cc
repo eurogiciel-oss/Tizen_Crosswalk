@@ -14,12 +14,13 @@
 #include "chrome/browser/task_manager/task_manager_util.h"
 #include "chrome/browser/ui/panels/panel.h"
 #include "chrome/browser/ui/panels/panel_manager.h"
-#include "chrome/common/extensions/extension.h"
 #include "content/public/browser/notification_service.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/view_type_utils.h"
+#include "extensions/common/extension.h"
 #include "ui/base/l10n/l10n_util.h"
 
 using content::RenderProcessHost;
@@ -36,8 +37,8 @@ class PanelResource : public RendererResource {
 
   // Resource methods:
   virtual Type GetType() const OVERRIDE;
-  virtual string16 GetTitle() const OVERRIDE;
-  virtual string16 GetProfileName() const OVERRIDE;
+  virtual base::string16 GetTitle() const OVERRIDE;
+  virtual base::string16 GetProfileName() const OVERRIDE;
   virtual gfx::ImageSkia GetIcon() const OVERRIDE;
   virtual content::WebContents* GetWebContents() const OVERRIDE;
   virtual const extensions::Extension* GetExtension() const OVERRIDE;
@@ -61,7 +62,6 @@ PanelResource::PanelResource(Panel* panel)
       true,  // is_extension
       panel->profile()->IsOffTheRecord(),
       false,  // is_prerender
-      false,  // is_instant_overlay
       false);  // is_background
 }
 
@@ -72,8 +72,8 @@ Resource::Type PanelResource::GetType() const {
   return EXTENSION;
 }
 
-string16 PanelResource::GetTitle() const {
-  string16 title = panel_->GetWindowTitle();
+base::string16 PanelResource::GetTitle() const {
+  base::string16 title = panel_->GetWindowTitle();
   // Since the title will be concatenated with an IDS_TASK_MANAGER_* prefix
   // we need to explicitly set the title to be LTR format if there is no
   // strong RTL charater in it. Otherwise, if the task manager prefix is an
@@ -87,7 +87,7 @@ string16 PanelResource::GetTitle() const {
   return l10n_util::GetStringFUTF16(message_prefix_id_, title);
 }
 
-string16 PanelResource::GetProfileName() const {
+base::string16 PanelResource::GetProfileName() const {
   return util::GetProfileNameFromInfoCache(panel_->profile());
 }
 
@@ -120,21 +120,22 @@ PanelResourceProvider::~PanelResourceProvider() {
 
 Resource* PanelResourceProvider::GetResource(
     int origin_pid,
-    int render_process_host_id,
-    int routing_id) {
+    int child_id,
+    int route_id) {
   // If an origin PID was specified, the request is from a plugin, not the
   // render view host process
   if (origin_pid)
     return NULL;
 
+  content::RenderFrameHost* rfh =
+      content::RenderFrameHost::FromID(child_id, route_id);
+  content::WebContents* web_contents =
+      content::WebContents::FromRenderFrameHost(rfh);
+
   for (PanelResourceMap::iterator i = resources_.begin();
        i != resources_.end(); ++i) {
-    WebContents* contents = i->first->GetWebContents();
-    if (contents &&
-        contents->GetRenderProcessHost()->GetID() == render_process_host_id &&
-        contents->GetRenderViewHost()->GetRoutingID() == routing_id) {
+    if (web_contents == i->first->GetWebContents())
       return i->second;
-    }
   }
 
   // Can happen if the panel went away while a network request was being

@@ -13,12 +13,14 @@
       'dependencies': [
         '../../../../base/base.gyp:base',
         '../../../../base/base.gyp:base_i18n',
+        '../../../../base/third_party/dynamic_annotations/dynamic_annotations.gyp:dynamic_annotations',
         '../../../../build/linux/system.gyp:gconf',
         '../../../../build/linux/system.gyp:gtk',
+        '../../../../build/linux/system.gyp:gtkprint',
         '../../../../skia/skia.gyp:skia',
         '../../../../ui/base/strings/ui_strings.gyp:ui_strings',
+        '../../../../ui/resources/ui_resources.gyp:ui_resources',
         '../../../../ui/ui.gyp:ui',
-        '../../../../ui/ui.gyp:ui_resources',
         '../../../../ui/views/views.gyp:views',
         '../../../chrome_resources.gyp:chrome_extra_resources',
         '../../../chrome_resources.gyp:chrome_resources',
@@ -27,6 +29,7 @@
       ],
       'defines': [
         'LIBGTK2UI_IMPLEMENTATION',
+        'USE_CUPS',
       ],
       # Several of our source files are named _gtk2.cc. This isn't to
       # differentiate them from their source files (ninja and make are sane
@@ -38,8 +41,12 @@
         'app_indicator_icon.h',
         'chrome_gtk_frame.cc',
         'chrome_gtk_frame.h',
+        'chrome_gtk_menu_subclasses.cc',
+        'chrome_gtk_menu_subclasses.h',
         'gconf_titlebar_listener.cc',
         'gconf_titlebar_listener.h',
+        'gtk2_border.cc',
+        'gtk2_border.h',
         'gtk2_ui.cc',
         'gtk2_ui.h',
         'gtk2_util.cc',
@@ -51,6 +58,10 @@
         'native_theme_gtk2.h',
         'owned_widget_gtk2.cc',
         'owned_widget_gtk2.h',
+        'print_dialog_gtk2.cc',
+        'print_dialog_gtk2.h',
+        'printing_gtk2_util.cc',
+        'printing_gtk2_util.h',
         'select_file_dialog_impl.cc',
         'select_file_dialog_impl.h',
         'select_file_dialog_impl_gtk2.cc',
@@ -61,6 +72,14 @@
         'unity_service.h',
         'x11_input_method_context_impl_gtk2.cc',
         'x11_input_method_context_impl_gtk2.h',
+      ],
+      'conditions': [
+        ['use_gconf==0', {
+          'sources!': [
+            'gconf_titlebar_listener.cc',
+            'gconf_titlebar_listener.h',
+          ],
+        }],
       ],
     },
   ],

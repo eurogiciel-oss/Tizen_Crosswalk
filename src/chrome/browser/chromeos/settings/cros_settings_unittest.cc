@@ -11,16 +11,16 @@
 #include "base/message_loop/message_loop.h"
 #include "base/stl_util.h"
 #include "base/values.h"
+#include "chrome/browser/chromeos/policy/proto/chrome_device_policy.pb.h"
 #include "chrome/browser/chromeos/settings/cros_settings.h"
 #include "chrome/browser/chromeos/settings/device_settings_service.h"
 #include "chrome/browser/chromeos/settings/device_settings_test_helper.h"
-#include "chrome/browser/policy/cloud/cloud_policy_constants.h"
-#include "chrome/browser/policy/proto/chromeos/chrome_device_policy.pb.h"
-#include "chrome/browser/policy/proto/cloud/device_management_backend.pb.h"
 #include "chrome/test/base/scoped_testing_local_state.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chromeos/settings/cros_settings_names.h"
+#include "components/policy/core/common/cloud/cloud_policy_constants.h"
 #include "content/public/test/test_browser_thread.h"
+#include "policy/proto/device_management_backend.pb.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace em = enterprise_management;
@@ -30,8 +30,7 @@ namespace chromeos {
 class CrosSettingsTest : public testing::Test {
  protected:
   CrosSettingsTest()
-      : message_loop_(base::MessageLoop::TYPE_UI),
-        ui_thread_(content::BrowserThread::UI, &message_loop_),
+      : ui_thread_(content::BrowserThread::UI, &message_loop_),
         local_state_(TestingBrowserProcess::GetGlobal()),
         settings_(DeviceSettingsService::Get()),
         weak_factory_(this) {}
@@ -89,7 +88,7 @@ class CrosSettingsTest : public testing::Test {
     response.set_policy_data_signature("false");
   }
 
-  base::MessageLoop message_loop_;
+  base::MessageLoopForUI message_loop_;
   content::TestBrowserThread ui_thread_;
 
   ScopedTestingLocalState local_state_;

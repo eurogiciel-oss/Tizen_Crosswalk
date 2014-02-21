@@ -38,7 +38,7 @@
 #include "WebPageVisibilityState.h"
 #include "WebWidget.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebAXObject;
 class WebAutofillClient;
@@ -51,15 +51,12 @@ class WebGraphicsContext3D;
 class WebHitTestResult;
 class WebNode;
 class WebPageOverlay;
-class WebPermissionClient;
 class WebPrerendererClient;
 class WebRange;
 class WebSettings;
 class WebSpellCheckClient;
 class WebString;
 class WebPasswordGeneratorClient;
-class WebSharedWorkerRepositoryClient;
-class WebValidationMessageClient;
 class WebViewClient;
 struct WebActiveWheelFlingParameters;
 struct WebMediaPlayerAction;
@@ -93,19 +90,13 @@ public:
     // This WebFrame will receive events for the main frame and must not
     // be null.
     virtual void setMainFrame(WebFrame*) = 0;
-    // FIXME: Remove initializeMainFrame() after clients have migrated to
-    // setMainFrame().
-    virtual void initializeMainFrame(WebFrameClient*) = 0;
 
     // Initializes the various client interfaces.
     virtual void setAutofillClient(WebAutofillClient*) = 0;
     virtual void setDevToolsAgentClient(WebDevToolsAgentClient*) = 0;
-    virtual void setPermissionClient(WebPermissionClient*) = 0;
     virtual void setPrerendererClient(WebPrerendererClient*) = 0;
     virtual void setSpellCheckClient(WebSpellCheckClient*) = 0;
-    virtual void setValidationMessageClient(WebValidationMessageClient*) = 0;
     virtual void setPasswordGeneratorClient(WebPasswordGeneratorClient*) = 0;
-    virtual void setSharedWorkerRepositoryClient(WebSharedWorkerRepositoryClient*) = 0;
 
     // Options -------------------------------------------------------------
 
@@ -394,9 +385,9 @@ public:
     // device metrics emulation.
     virtual void setCompositorDeviceScaleFactorOverride(float) = 0;
 
-    // Set scaling transformation on the root composited layer. This is used
+    // Set offset and scale on the root composited layer. This is used
     // to implement device metrics emulation.
-    virtual void setRootLayerScaleTransform(float) = 0;
+    virtual void setRootLayerTransform(const WebSize& offset, float scale) = 0;
 
     // The embedder may optionally engage a WebDevToolsAgent.  This may only
     // be set once per WebView.
@@ -409,26 +400,6 @@ public:
     virtual WebAXObject accessibilityObject() = 0;
 
 
-    // Autofill  -----------------------------------------------------------
-
-    // Notifies the WebView that Autofill suggestions are available for a node.
-    // |itemIDs| is a vector of IDs for the menu items. A positive itemID is a
-    // unique ID for the Autofill entries. Other MenuItemIDs are defined in
-    // WebAutofillClient.h
-    virtual void applyAutofillSuggestions(
-        const WebNode&,
-        const WebVector<WebString>& names,
-        const WebVector<WebString>& labels,
-        const WebVector<WebString>& icons,
-        const WebVector<int>& itemIDs,
-        int separatorIndex = -1) = 0;
-
-    // Hides any popup (suggestions, selects...) that might be showing.
-    virtual void hidePopups() = 0;
-
-    virtual void selectAutofillSuggestionAtIndex(unsigned listIndex) = 0;
-
-
     // Context menu --------------------------------------------------------
 
     virtual void performCustomContextMenuAction(unsigned action) = 0;
@@ -437,10 +408,18 @@ public:
     virtual void showContextMenu() = 0;
 
 
+    // SmartClip support ---------------------------------------------------
+
+    virtual WebString getSmartClipData(WebRect) = 0;
+
+
     // Popup menu ----------------------------------------------------------
 
     // Sets whether select popup menus should be rendered by the browser.
     BLINK_EXPORT static void setUseExternalPopupMenus(bool);
+
+    // Hides any popup (suggestions, selects...) that might be showing.
+    virtual void hidePopups() = 0;
 
 
     // Visited link state --------------------------------------------------
@@ -479,6 +458,9 @@ public:
     // by the compositor) but must be completed by the WebView.
     virtual void transferActiveWheelFlingAnimation(const WebActiveWheelFlingParameters&) = 0;
 
+    // Cancels an active fling, returning true if a fling was active.
+    virtual bool endActiveFlingAnimation() = 0;
+
     virtual bool setEditableSelectionOffsets(int start, int end) = 0;
     virtual bool setCompositionFromExistingText(int compositionStart, int compositionEnd, const WebVector<WebCompositionUnderline>& underlines) = 0;
     virtual void extendSelectionAndDelete(int before, int after) = 0;
@@ -515,6 +497,6 @@ protected:
     ~WebView() {}
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

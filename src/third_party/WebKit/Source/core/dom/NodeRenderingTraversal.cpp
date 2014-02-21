@@ -27,12 +27,29 @@
 #include "config.h"
 #include "core/dom/NodeRenderingTraversal.h"
 
+#include "HTMLNames.h"
 #include "core/dom/PseudoElement.h"
 #include "core/dom/shadow/ComposedTreeWalker.h"
+#include "core/rendering/RenderObject.h"
 
 namespace WebCore {
 
 namespace NodeRenderingTraversal {
+
+static bool isRendererReparented(const RenderObject* renderer)
+{
+    if (!renderer->node()->isElementNode())
+        return false;
+    if (renderer->style() && !renderer->style()->flowThread().isEmpty())
+        return true;
+    Element& element = toElement(*renderer->node());
+    if (element.isInTopLayer())
+        return true;
+    // FIXME: The spec should not require magical behavior for <dialog>.
+    if (element.hasTagName(HTMLNames::dialogTag) && renderer->style()->position() == AbsolutePosition)
+        return true;
+    return false;
+}
 
 void ParentDetails::didTraverseInsertionPoint(const InsertionPoint* insertionPoint)
 {
@@ -49,10 +66,12 @@ void ParentDetails::didTraverseShadowRoot(const ShadowRoot* root)
 
 ContainerNode* parent(const Node* node, ParentDetails* details)
 {
+    // FIXME: We should probably ASSERT(!node->document().childNeedsDistributionRecalc()) here, but
+    // a bunch of things use NodeRenderingTraversal::parent in places where that looks like it could
+    // be false.
     ASSERT(node);
     if (isActiveInsertionPoint(*node))
         return 0;
-    // FIXME: Once everything lazy attaches we should assert that we don't need a distribution recalc here.
     ComposedTreeWalker walker(node, ComposedTreeWalker::CanStartFromShadowBoundary);
     return toContainerNode(walker.traverseParent(walker.get(), details));
 }
@@ -92,6 +111,40 @@ Node* previousSibling(const Node* node)
     if (parent && parent->isElementNode())
         return toElement(parent)->pseudoElement(BEFORE);
 
+    return 0;
+}
+
+RenderObject* nextSiblingRenderer(const Node* node)
+{
+    for (Node* sibling = NodeRenderingTraversal::nextSibling(node); sibling; sibling = NodeRenderingTraversal::nextSibling(sibling)) {
+        RenderObject* renderer = sibling->renderer();
+        if (renderer && !isRendererReparented(renderer))
+            return renderer;
+    }
+    return 0;
+}
+
+RenderObject* previousSiblingRenderer(const Node* node)
+{
+    for (Node* sibling = NodeRenderingTraversal::previousSibling(node); sibling; sibling = NodeRenderingTraversal::previousSibling(sibling)) {
+        RenderObject* renderer = sibling->renderer();
+        if (renderer && !isRendererReparented(renderer))
+            return renderer;
+    }
+    return 0;
+}
+
+RenderObject* nextInTopLayer(const Element* element)
+{
+    if (!element->isInTopLayer())
+        return 0;
+    const Vector<RefPtr<Element> >& topLayerElements = element->document().topLayerElements();
+    size_t position = topLayerElements.find(element);
+    ASSERT(position != kNotFound);
+    for (size_t i = position + 1; i < topLayerElements.size(); ++i) {
+        if (RenderObject* renderer = topLayerElements[i]->renderer())
+            return renderer;
+    }
     return 0;
 }
 

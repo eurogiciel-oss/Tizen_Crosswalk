@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -838,12 +838,20 @@ void GLES2TraceImplementation::Viewport(
   gl_->Viewport(x, y, width, height);
 }
 
-void GLES2TraceImplementation::BlitFramebufferEXT(
+void GLES2TraceImplementation::BlitFramebufferCHROMIUM(
     GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0,
     GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter) {
-  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::BlitFramebufferEXT");
-  gl_->BlitFramebufferEXT(
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::BlitFramebufferCHROMIUM");
+  gl_->BlitFramebufferCHROMIUM(
       srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+}
+
+void GLES2TraceImplementation::RenderbufferStorageMultisampleCHROMIUM(
+    GLenum target, GLsizei samples, GLenum internalformat, GLsizei width,
+    GLsizei height) {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::RenderbufferStorageMultisampleCHROMIUM");  // NOLINT
+  gl_->RenderbufferStorageMultisampleCHROMIUM(
+      target, samples, internalformat, width, height);
 }
 
 void GLES2TraceImplementation::RenderbufferStorageMultisampleEXT(
@@ -1065,11 +1073,6 @@ GLuint GLES2TraceImplementation::CreateStreamTextureCHROMIUM(GLuint texture) {
   return gl_->CreateStreamTextureCHROMIUM(texture);
 }
 
-void GLES2TraceImplementation::DestroyStreamTextureCHROMIUM(GLuint texture) {
-  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::DestroyStreamTextureCHROMIUM");  // NOLINT
-  gl_->DestroyStreamTextureCHROMIUM(texture);
-}
-
 GLuint GLES2TraceImplementation::CreateImageCHROMIUM(
     GLsizei width, GLsizei height, GLenum internalformat) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::CreateImageCHROMIUM");
@@ -1227,6 +1230,11 @@ void GLES2TraceImplementation::DrawBuffersEXT(
     GLsizei count, const GLenum* bufs) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::DrawBuffersEXT");
   gl_->DrawBuffersEXT(count, bufs);
+}
+
+void GLES2TraceImplementation::DiscardBackbufferCHROMIUM() {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::DiscardBackbufferCHROMIUM");
+  gl_->DiscardBackbufferCHROMIUM();
 }
 
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_TRACE_IMPLEMENTATION_IMPL_AUTOGEN_H_

@@ -82,7 +82,8 @@ SkColorFilterImageFilter::SkColorFilterImageFilter(SkColorFilter* cf,
     SkSafeRef(cf);
 }
 
-SkColorFilterImageFilter::SkColorFilterImageFilter(SkFlattenableReadBuffer& buffer) : INHERITED(buffer) {
+SkColorFilterImageFilter::SkColorFilterImageFilter(SkFlattenableReadBuffer& buffer)
+  : INHERITED(1, buffer) {
     fColorFilter = buffer.readColorFilter();
 }
 
@@ -99,29 +100,34 @@ SkColorFilterImageFilter::~SkColorFilterImageFilter() {
 bool SkColorFilterImageFilter::onFilterImage(Proxy* proxy, const SkBitmap& source,
                                              const SkMatrix& matrix,
                                              SkBitmap* result,
-                                             SkIPoint* loc) {
+                                             SkIPoint* offset) {
     SkBitmap src = source;
-    if (getInput(0) && !getInput(0)->filterImage(proxy, source, matrix, &src, loc)) {
+    SkIPoint srcOffset = SkIPoint::Make(0, 0);
+    if (getInput(0) && !getInput(0)->filterImage(proxy, source, matrix, &src, &srcOffset)) {
         return false;
     }
 
     SkIRect bounds;
     src.getBounds(&bounds);
+    bounds.offset(srcOffset);
     if (!this->applyCropRect(&bounds, matrix)) {
         return false;
     }
 
     SkAutoTUnref<SkBaseDevice> device(proxy->createDevice(bounds.width(), bounds.height()));
+    if (NULL == device.get()) {
+        return false;
+    }
     SkCanvas canvas(device.get());
     SkPaint paint;
 
     paint.setXfermodeMode(SkXfermode::kSrc_Mode);
     paint.setColorFilter(fColorFilter);
-    canvas.drawSprite(src, -bounds.fLeft, -bounds.fTop, &paint);
+    canvas.drawSprite(src, srcOffset.fX - bounds.fLeft, srcOffset.fY - bounds.fTop, &paint);
 
     *result = device.get()->accessBitmap(false);
-    loc->fX += bounds.fLeft;
-    loc->fY += bounds.fTop;
+    offset->fX = bounds.fLeft;
+    offset->fY = bounds.fTop;
     return true;
 }
 

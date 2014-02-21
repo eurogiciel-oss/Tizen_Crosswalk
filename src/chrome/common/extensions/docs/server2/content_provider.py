@@ -2,16 +2,22 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from HTMLParser import HTMLParser
 import mimetypes
-import logging
-import os
+import posixpath
 
 from compiled_file_system import SingleFile
 from directory_zipper import DirectoryZipper
-from file_system import ToUnicode
+from docs_server_utils import ToUnicode
+from file_system import FileNotFoundError
 from future import Gettable, Future
 from third_party.handlebar import Handlebar
+from third_party.markdown import markdown
+
+
+_MIMETYPE_OVERRIDES = {
+  # SVG is not supported by mimetypes.guess_type on AppEngine.
+  '.svg': 'image/svg+xml',
+}
 
 
 class ContentAndType(object):
@@ -56,14 +62,23 @@ class ContentProvider(object):
   @SingleFile
   def _CompileContent(self, path, text):
     assert text is not None, path
-    mimetype = mimetypes.guess_type(path)[0]
-    if mimetype is None:
+    _, ext = posixpath.splitext(path)
+    mimetype = _MIMETYPE_OVERRIDES.get(ext, mimetypes.guess_type(path)[0])
+    if ext == '.md':
+      # See http://pythonhosted.org/Markdown/extensions
+      # for details on "extensions=".
+      content = markdown(ToUnicode(text),
+                         extensions=('extra', 'headerid', 'sane_lists'))
+      if self._supports_templates:
+        content = Handlebar(content, name=path)
+      mimetype = 'text/html'
+    elif mimetype is None:
       content = text
       mimetype = 'text/plain'
     elif mimetype == 'text/html':
       content = ToUnicode(text)
       if self._supports_templates:
-        content = Handlebar(content)
+        content = Handlebar(content, name=path)
     elif (mimetype.startswith('text/') or
           mimetype in ('application/javascript', 'application/json')):
       content = ToUnicode(text)
@@ -71,9 +86,24 @@ class ContentProvider(object):
       content = text
     return ContentAndType(content, mimetype)
 
-  def GetContentAndType(self, host, path):
+  def _MaybeMarkdown(self, path):
+    if posixpath.splitext(path)[1] != '.html':
+      return path
+
+    dirname, file_name = posixpath.split(path)
+    if dirname != '':
+      dirname = dirname + '/'
+    file_list = self.file_system.ReadSingle(dirname).Get()
+    if file_name in file_list:
+      return path
+
+    if posixpath.splitext(file_name)[0] + '.md' in file_list:
+      return posixpath.splitext(path)[0] + '.md'
+    return path
+
+  def GetContentAndType(self, path):
     path = path.lstrip('/')
-    base, ext = os.path.splitext(path)
+    base, ext = posixpath.splitext(path)
 
     # Check for a zip file first, if zip is enabled.
     if self._directory_zipper and ext == '.zip':
@@ -81,8 +111,14 @@ class ContentProvider(object):
       return Future(delegate=Gettable(
           lambda: ContentAndType(zip_future.Get(), 'application/zip')))
 
-    return self._content_cache.GetFromFile(path, binary=True)
+    return self._content_cache.GetFromFile(self._MaybeMarkdown(path))
 
   def Cron(self):
-    # TODO(kalman): Implement.
-    pass
+    # Running Refresh() on the file system is enough to pull GitHub content,
+    # which is all we need for now while the full render-every-page cron step
+    # is in effect.
+    # TODO(kalman): Walk over the whole filesystem and compile the content.
+    return self.file_system.Refresh()
+
+  def __repr__(self):
+    return 'ContentProvider of <%s>' % repr(self.file_system)

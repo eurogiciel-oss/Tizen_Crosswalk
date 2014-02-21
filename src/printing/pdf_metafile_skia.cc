@@ -8,8 +8,8 @@
 #include "base/file_descriptor_posix.h"
 #include "base/file_util.h"
 #include "base/metrics/histogram.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/posix/eintr_wrapper.h"
-#include "base/safe_numerics.h"
 #include "skia/ext/refptr.h"
 #include "skia/ext/vector_platform_device_skia.h"
 #include "third_party/skia/include/core/SkData.h"
@@ -96,15 +96,15 @@ bool PdfMetafileSkia::FinishDocument() {
 
   data_->current_page_.clear();
 
-  int font_counts[SkAdvancedTypefaceMetrics::kNotEmbeddable_Font + 1];
+  int font_counts[SkAdvancedTypefaceMetrics::kOther_Font + 2];
   data_->pdf_doc_.getCountOfFontTypes(font_counts);
   for (int type = 0;
-       type <= SkAdvancedTypefaceMetrics::kNotEmbeddable_Font;
+       type <= SkAdvancedTypefaceMetrics::kOther_Font + 1;
        type++) {
     for (int count = 0; count < font_counts[type]; count++) {
       UMA_HISTOGRAM_ENUMERATION(
           "PrintPreview.FontType", type,
-          SkAdvancedTypefaceMetrics::kNotEmbeddable_Font + 1);
+          SkAdvancedTypefaceMetrics::kOther_Font + 2);
     }
   }
 
@@ -112,7 +112,7 @@ bool PdfMetafileSkia::FinishDocument() {
 }
 
 uint32 PdfMetafileSkia::GetDataSize() const {
-  return base::checked_numeric_cast<uint32>(data_->pdf_stream_.getOffset());
+  return base::checked_cast<uint32>(data_->pdf_stream_.getOffset());
 }
 
 bool PdfMetafileSkia::GetData(void* dst_buffer,
@@ -212,7 +212,7 @@ bool PdfMetafileSkia::SaveToFD(const base::FileDescriptor& fd) const {
   }
 
   if (fd.auto_close) {
-    if (HANDLE_EINTR(close(fd.fd)) < 0) {
+    if (IGNORE_EINTR(close(fd.fd)) < 0) {
       DPLOG(WARNING) << "close";
       result = false;
     }
@@ -241,7 +241,7 @@ PdfMetafileSkia* PdfMetafileSkia::GetMetafileForCurrentPage() {
 
   PdfMetafileSkia* metafile = new PdfMetafileSkia;
   metafile->InitFromData(data->bytes(),
-                         base::checked_numeric_cast<uint32>(data->size()));
+                         base::checked_cast<uint32>(data->size()));
   return metafile;
 }
 

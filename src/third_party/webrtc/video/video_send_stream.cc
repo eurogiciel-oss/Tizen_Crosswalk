@@ -10,8 +10,6 @@
 
 #include "webrtc/video/video_send_stream.h"
 
-#include <string.h>
-
 #include <string>
 #include <vector>
 
@@ -81,61 +79,41 @@ class ResolutionAdaptor : public webrtc::CpuOveruseObserver {
 VideoSendStream::VideoSendStream(newapi::Transport* transport,
                                  bool overuse_detection,
                                  webrtc::VideoEngine* video_engine,
-                                 const VideoSendStream::Config& config)
-    : transport_adapter_(transport), config_(config), external_codec_(NULL) {
-
-  if (config_.codec.numberOfSimulcastStreams > 0) {
-    assert(config_.rtp.ssrcs.size() == config_.codec.numberOfSimulcastStreams);
-  } else {
-    assert(config_.rtp.ssrcs.size() == 1);
-  }
-
+                                 const VideoSendStream::Config& config,
+                                 int base_channel)
+    : transport_adapter_(transport),
+      encoded_frame_proxy_(config.post_encode_callback),
+      codec_lock_(CriticalSectionWrapper::CreateCriticalSection()),
+      config_(config),
+      external_codec_(NULL),
+      channel_(-1) {
   video_engine_base_ = ViEBase::GetInterface(video_engine);
-  video_engine_base_->CreateChannel(channel_);
+  video_engine_base_->CreateChannel(channel_, base_channel);
   assert(channel_ != -1);
 
   rtp_rtcp_ = ViERTP_RTCP::GetInterface(video_engine);
   assert(rtp_rtcp_ != NULL);
 
-  if (config_.rtp.ssrcs.size() == 1) {
-    rtp_rtcp_->SetLocalSSRC(channel_, config_.rtp.ssrcs[0]);
-  } else {
-    for (size_t i = 0; i < config_.rtp.ssrcs.size(); ++i) {
-      rtp_rtcp_->SetLocalSSRC(channel_,
-                              config_.rtp.ssrcs[i],
-                              kViEStreamTypeNormal,
-                              static_cast<unsigned char>(i));
-    }
-  }
+  assert(config_.rtp.ssrcs.size() > 0);
+  if (config_.suspend_below_min_bitrate)
+    config_.pacing = true;
   rtp_rtcp_->SetTransmissionSmoothingStatus(channel_, config_.pacing);
-  if (!config_.rtp.rtx.ssrcs.empty()) {
-    assert(config_.rtp.rtx.ssrcs.size() == config_.rtp.ssrcs.size());
-    for (size_t i = 0; i < config_.rtp.rtx.ssrcs.size(); ++i) {
-      rtp_rtcp_->SetLocalSSRC(channel_,
-                              config_.rtp.rtx.ssrcs[i],
-                              kViEStreamTypeRtx,
-                              static_cast<unsigned char>(i));
-    }
-
-    if (config_.rtp.rtx.rtx_payload_type != 0) {
-      rtp_rtcp_->SetRtxSendPayloadType(channel_,
-                                       config_.rtp.rtx.rtx_payload_type);
-    }
-  }
 
   for (size_t i = 0; i < config_.rtp.extensions.size(); ++i) {
     const std::string& extension = config_.rtp.extensions[i].name;
     int id = config_.rtp.extensions[i].id;
-    if (extension == "toffset") {
+    if (extension == RtpExtension::kTOffset) {
       if (rtp_rtcp_->SetSendTimestampOffsetStatus(channel_, true, id) != 0)
         abort();
-    } else if (extension == "abs-send-time") {
+    } else if (extension == RtpExtension::kAbsSendTime) {
       if (rtp_rtcp_->SetSendAbsoluteSendTimeStatus(channel_, true, id) != 0)
         abort();
     } else {
       abort();  // Unsupported extension.
     }
   }
+
+  rtp_rtcp_->SetRembStatus(channel_, true, false);
 
   // Enable NACK, FEC or both.
   if (config_.rtp.fec.red_payload_type != -1) {
@@ -186,9 +164,8 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
   }
 
   codec_ = ViECodec::GetInterface(video_engine);
-  if (codec_->SetSendCodec(channel_, config_.codec) != 0) {
+  if (!SetCodec(config_.codec))
     abort();
-  }
 
   if (overuse_detection) {
     overuse_observer_.reset(
@@ -201,13 +178,40 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
   image_process_ = ViEImageProcess::GetInterface(video_engine);
   image_process_->RegisterPreEncodeCallback(channel_,
                                             config_.pre_encode_callback);
-
-  if (config.auto_mute) {
-    codec_->EnableAutoMuting(channel_);
+  if (config_.post_encode_callback) {
+    image_process_->RegisterPostEncodeImageCallback(channel_,
+                                                    &encoded_frame_proxy_);
   }
+
+  if (config.suspend_below_min_bitrate) {
+    codec_->SuspendBelowMinBitrate(channel_);
+  }
+
+  stats_proxy_.reset(
+      new SendStatisticsProxy(config, this));
+
+  rtp_rtcp_->RegisterSendChannelRtcpStatisticsCallback(channel_,
+                                                       stats_proxy_.get());
+  rtp_rtcp_->RegisterSendChannelRtpStatisticsCallback(channel_,
+                                                      stats_proxy_.get());
+  rtp_rtcp_->RegisterSendBitrateObserver(channel_, stats_proxy_.get());
+  rtp_rtcp_->RegisterSendFrameCountObserver(channel_, stats_proxy_.get());
+
+  codec_->RegisterEncoderObserver(channel_, *stats_proxy_);
+  capture_->RegisterObserver(capture_id_, *stats_proxy_);
 }
 
 VideoSendStream::~VideoSendStream() {
+  capture_->DeregisterObserver(capture_id_);
+  codec_->DeregisterEncoderObserver(channel_);
+
+  rtp_rtcp_->DeregisterSendFrameCountObserver(channel_, stats_proxy_.get());
+  rtp_rtcp_->DeregisterSendBitrateObserver(channel_, stats_proxy_.get());
+  rtp_rtcp_->DeregisterSendChannelRtpStatisticsCallback(channel_,
+                                                        stats_proxy_.get());
+  rtp_rtcp_->DeregisterSendChannelRtcpStatisticsCallback(channel_,
+                                                         stats_proxy_.get());
+
   image_process_->DeRegisterPreEncodeCallback(channel_);
 
   network_->DeregisterSendTransport(channel_);
@@ -232,63 +236,96 @@ VideoSendStream::~VideoSendStream() {
   rtp_rtcp_->Release();
 }
 
-void VideoSendStream::PutFrame(const I420VideoFrame& frame,
-                               uint32_t time_since_capture_ms) {
-  // TODO(pbos): frame_copy should happen after the VideoProcessingModule has
-  //             resized the frame.
-  I420VideoFrame frame_copy;
-  frame_copy.CopyFrame(frame);
+void VideoSendStream::PutFrame(const I420VideoFrame& frame) {
+  input_frame_.CopyFrame(frame);
+  SwapFrame(&input_frame_);
+}
 
-  ViEVideoFrameI420 vf;
+void VideoSendStream::SwapFrame(I420VideoFrame* frame) {
+  // TODO(pbos): Warn if frame is "too far" into the future, or too old. This
+  //             would help detect if frame's being used without NTP.
+  //             TO REVIEWER: Is there any good check for this? Should it be
+  //             skipped?
+  if (frame != &input_frame_)
+    input_frame_.SwapFrame(frame);
 
-  // TODO(pbos): This represents a memcpy step and is only required because
-  //             external_capture_ only takes ViEVideoFrameI420s.
-  vf.y_plane = frame_copy.buffer(kYPlane);
-  vf.u_plane = frame_copy.buffer(kUPlane);
-  vf.v_plane = frame_copy.buffer(kVPlane);
-  vf.y_pitch = frame.stride(kYPlane);
-  vf.u_pitch = frame.stride(kUPlane);
-  vf.v_pitch = frame.stride(kVPlane);
-  vf.width = frame.width();
-  vf.height = frame.height();
+  // TODO(pbos): Local rendering should not be done on the capture thread.
+  if (config_.local_renderer != NULL)
+    config_.local_renderer->RenderFrame(input_frame_, 0);
 
-  external_capture_->IncomingFrameI420(vf, frame.render_time_ms());
-
-  if (config_.local_renderer != NULL) {
-    config_.local_renderer->RenderFrame(frame, 0);
-  }
+  external_capture_->SwapFrame(&input_frame_);
 }
 
 VideoSendStreamInput* VideoSendStream::Input() { return this; }
 
-void VideoSendStream::StartSend() {
-  if (video_engine_base_->StartSend(channel_) != 0)
-    abort();
-  if (video_engine_base_->StartReceive(channel_) != 0)
-    abort();
+void VideoSendStream::StartSending() {
+  video_engine_base_->StartSend(channel_);
+  video_engine_base_->StartReceive(channel_);
 }
 
-void VideoSendStream::StopSend() {
-  if (video_engine_base_->StopSend(channel_) != 0)
-    abort();
-  if (video_engine_base_->StopReceive(channel_) != 0)
-    abort();
+void VideoSendStream::StopSending() {
+  video_engine_base_->StopSend(channel_);
+  video_engine_base_->StopReceive(channel_);
 }
 
-bool VideoSendStream::SetTargetBitrate(
-    int min_bitrate,
-    int max_bitrate,
-    const std::vector<SimulcastStream>& streams) {
-  return false;
+bool VideoSendStream::SetCodec(const VideoCodec& codec) {
+  assert(config_.rtp.ssrcs.size() >= codec.numberOfSimulcastStreams);
+
+  CriticalSectionScoped crit(codec_lock_.get());
+  if (codec_->SetSendCodec(channel_, codec) != 0)
+    return false;
+
+  for (size_t i = 0; i < config_.rtp.ssrcs.size(); ++i) {
+    rtp_rtcp_->SetLocalSSRC(channel_,
+                            config_.rtp.ssrcs[i],
+                            kViEStreamTypeNormal,
+                            static_cast<unsigned char>(i));
+  }
+
+  config_.codec = codec;
+  if (config_.rtp.rtx.ssrcs.empty())
+    return true;
+
+  // Set up RTX.
+  assert(config_.rtp.rtx.ssrcs.size() == config_.rtp.ssrcs.size());
+  for (size_t i = 0; i < config_.rtp.ssrcs.size(); ++i) {
+    rtp_rtcp_->SetLocalSSRC(channel_,
+                            config_.rtp.rtx.ssrcs[i],
+                            kViEStreamTypeRtx,
+                            static_cast<unsigned char>(i));
+  }
+
+  if (config_.rtp.rtx.rtx_payload_type != 0) {
+    rtp_rtcp_->SetRtxSendPayloadType(channel_,
+                                     config_.rtp.rtx.rtx_payload_type);
+  }
+
+  return true;
 }
 
-void VideoSendStream::GetSendCodec(VideoCodec* send_codec) {
-  *send_codec = config_.codec;
+VideoCodec VideoSendStream::GetCodec() {
+  CriticalSectionScoped crit(codec_lock_.get());
+  return config_.codec;
 }
 
 bool VideoSendStream::DeliverRtcp(const uint8_t* packet, size_t length) {
   return network_->ReceivedRTCPPacket(
              channel_, packet, static_cast<int>(length)) == 0;
+}
+
+VideoSendStream::Stats VideoSendStream::GetStats() const {
+  return stats_proxy_->GetStats();
+}
+
+bool VideoSendStream::GetSendSideDelay(VideoSendStream::Stats* stats) {
+  return codec_->GetSendSideDelay(
+      channel_, &stats->avg_delay_ms, &stats->max_delay_ms);
+}
+
+std::string VideoSendStream::GetCName() {
+  char rtcp_cname[ViERTP_RTCP::KMaxRTCPCNameLength];
+  rtp_rtcp_->GetRTCPCName(channel_, rtcp_cname);
+  return rtcp_cname;
 }
 
 }  // namespace internal

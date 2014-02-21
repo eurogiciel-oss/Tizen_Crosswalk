@@ -2,6 +2,7 @@ AM_CPPFLAGS = \
 	$(dbus_CFLAGS) \
 	$(glib_CFLAGS) \
 	$(ecore_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
 	$(PRIVATE_CFLAGS) \
 	-I$(top_srcdir)/include \
 	-I$(top_builddir)/include
@@ -43,7 +44,7 @@ lib_include_HEADERS = $(HEADER_FILES)
 
 lib_LTLIBRARIES = libdbus-c++-1.la
 libdbus_c___1_la_SOURCES = $(HEADER_FILES) interface.cpp object.cpp introspection.cpp debug.cpp types.cpp connection.cpp connection_p.h property.cpp dispatcher.cpp dispatcher_p.h pendingcall.cpp pendingcall_p.h error.cpp internalerror.h message.cpp message_p.h server.cpp server_p.h eventloop.cpp eventloop-integration.cpp $(GLIB_CPP) $(ECORE_CPP)
-libdbus_c___1_la_LIBADD = $(dbus_LIBS) $(glib_LIBS) $(pthread_LIBS) $(ecore_LIBS)
+libdbus_c___1_la_LIBADD = $(dbus_LIBS) $(glib_LIBS) $(PTHREAD_CFLAGS) $(PTHREAD_LIBS) $(ecore_LIBS)
 
 MAINTAINERCLEANFILES = \
 	Makefile.in

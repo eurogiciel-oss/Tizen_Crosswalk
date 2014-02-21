@@ -5,6 +5,7 @@
 #include "ash/shell/content_client/shell_browser_main_parts.h"
 
 #include "ash/ash_switches.h"
+#include "ash/content_support/inject.h"
 #include "ash/desktop_background/desktop_background_controller.h"
 #include "ash/shell.h"
 #include "ash/shell/shell_delegate_impl.h"
@@ -29,6 +30,7 @@
 #include "ui/compositor/compositor.h"
 #include "ui/gfx/screen.h"
 #include "ui/message_center/message_center.h"
+#include "ui/views/corewm/wm_state.h"
 #include "ui/views/focus/accelerator_handler.h"
 #include "ui/views/test/test_views_delegate.h"
 
@@ -57,13 +59,12 @@ class ShellViewsDelegate : public views::TestViewsDelegate {
       views::Widget* widget) OVERRIDE {
     return ash::Shell::GetInstance()->CreateDefaultNonClientFrameView(widget);
   }
-  virtual bool UseTransparentWindows() const OVERRIDE {
-    // Ash uses transparent window frames.
-    return true;
-  }
   virtual void OnBeforeWidgetInit(
       views::Widget::InitParams* params,
       views::internal::NativeWidgetDelegate* delegate) OVERRIDE {
+    if (params->opacity == views::Widget::InitParams::INFER_OPACITY)
+      params->opacity = views::Widget::InitParams::TRANSLUCENT_WINDOW;
+
     if (params->native_widget)
       return;
 
@@ -98,6 +99,10 @@ void ShellBrowserMainParts::PostMainMessageLoopStart() {
 #endif
 }
 
+void ShellBrowserMainParts::ToolkitInitialized() {
+  wm_state_.reset(new views::corewm::WMState);
+}
+
 void ShellBrowserMainParts::PreMainMessageLoopRun() {
   net_log_.reset(new content::ShellNetLog());
   browser_context_.reset(new content::ShellBrowserContext(
@@ -119,8 +124,9 @@ void ShellBrowserMainParts::PreMainMessageLoopRun() {
 #endif
 
   ash::Shell::CreateInstance(delegate_);
-  ash::Shell::GetInstance()->set_browser_context(browser_context_.get());
-  ash::Shell::GetInstance()->CreateLauncher();
+  ash::InitContentSupport();
+  delegate_->set_browser_context(browser_context_.get());
+  ash::Shell::GetInstance()->CreateShelf();
   ash::Shell::GetInstance()->UpdateAfterLoginStatusChange(
       user::LOGGED_IN_USER);
 
@@ -134,7 +140,7 @@ void ShellBrowserMainParts::PreMainMessageLoopRun() {
   Shell::GetInstance()->desktop_background_controller()->SetDefaultWallpaper(
       false /* is_guest */);
 
-  ash::Shell::GetPrimaryRootWindow()->GetDispatcher()->ShowRootWindow();
+  ash::Shell::GetPrimaryRootWindow()->GetDispatcher()->host()->Show();
 }
 
 void ShellBrowserMainParts::PostMainMessageLoopRun() {

@@ -31,14 +31,11 @@
 
 #include "core/dom/NodeTraversal.h"
 #include "core/dom/shadow/ComposedTreeWalker.h"
-#include "core/loader/DocumentLoader.h"
+#include "core/loader/FrameLoadRequest.h"
 #include "core/page/Chrome.h"
 #include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
-#include "core/page/Settings.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
-#include "core/platform/graphics/ImageBuffer.h"
-#include "core/platform/graphics/ImageObserver.h"
+#include "core/frame/Settings.h"
 #include "core/rendering/style/RenderStyle.h"
 #include "core/rendering/svg/RenderSVGRoot.h"
 #include "core/svg/SVGDocument.h"
@@ -48,6 +45,9 @@
 #include "core/svg/graphics/SVGImageChromeClient.h"
 #include "platform/LengthFunctions.h"
 #include "platform/geometry/IntRect.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
+#include "platform/graphics/ImageBuffer.h"
+#include "platform/graphics/ImageObserver.h"
 #include "wtf/PassRefPtr.h"
 
 namespace WebCore {
@@ -165,7 +165,7 @@ IntSize SVGImage::containerSize() const
 }
 
 void SVGImage::drawForContainer(GraphicsContext* context, const FloatSize containerSize, float zoom, const FloatRect& dstRect,
-    const FloatRect& srcRect, CompositeOperator compositeOp, BlendMode blendMode)
+    const FloatRect& srcRect, CompositeOperator compositeOp, blink::WebBlendMode blendMode)
 {
     if (!m_page)
         return;
@@ -192,18 +192,18 @@ PassRefPtr<NativeImageSkia> SVGImage::nativeImageForCurrentFrame()
     if (!m_page)
         return 0;
 
-    OwnPtr<ImageBuffer> buffer = ImageBuffer::create(size(), 1);
-    if (!buffer) // failed to allocate image
+    OwnPtr<ImageBuffer> buffer = ImageBuffer::create(size());
+    if (!buffer)
         return 0;
 
-    drawForContainer(buffer->context(), size(), 1, rect(), rect(), CompositeSourceOver, BlendModeNormal);
+    drawForContainer(buffer->context(), size(), 1, rect(), rect(), CompositeSourceOver, blink::WebBlendModeNormal);
 
     // FIXME: WK(Bug 113657): We should use DontCopyBackingStore here.
     return buffer->copyImage(CopyBackingStore)->nativeImageForCurrentFrame();
 }
 
 void SVGImage::drawPatternForContainer(GraphicsContext* context, const FloatSize containerSize, float zoom, const FloatRect& srcRect,
-    const FloatSize& scale, const FloatPoint& phase, CompositeOperator compositeOp, const FloatRect& dstRect, BlendMode blendMode, const IntSize& repeatSpacing)
+    const FloatSize& scale, const FloatPoint& phase, CompositeOperator compositeOp, const FloatRect& dstRect, blink::WebBlendMode blendMode, const IntSize& repeatSpacing)
 {
     FloatRect zoomedContainerRect = FloatRect(FloatPoint(), containerSize);
     zoomedContainerRect.scale(zoom);
@@ -220,10 +220,11 @@ void SVGImage::drawPatternForContainer(GraphicsContext* context, const FloatSize
     FloatRect imageBufferSize = zoomedContainerRect;
     imageBufferSize.scale(imageBufferScale.width(), imageBufferScale.height());
 
-    OwnPtr<ImageBuffer> buffer = ImageBuffer::create(expandedIntSize(imageBufferSize.size()), 1);
+    OwnPtr<ImageBuffer> buffer = ImageBuffer::create(expandedIntSize(imageBufferSize.size()));
     if (!buffer) // Failed to allocate buffer.
         return;
-    drawForContainer(buffer->context(), containerSize, zoom, imageBufferSize, zoomedContainerRect, CompositeSourceOver, BlendModeNormal);
+
+    drawForContainer(buffer->context(), containerSize, zoom, imageBufferSize, zoomedContainerRect, CompositeSourceOver, blink::WebBlendModeNormal);
     RefPtr<Image> image = buffer->copyImage(DontCopyBackingStore, Unscaled);
 
     // Adjust the source rect and transform due to the image buffer's scaling.
@@ -233,7 +234,7 @@ void SVGImage::drawPatternForContainer(GraphicsContext* context, const FloatSize
     image->drawPattern(context, scaledSrcRect, scaleWithoutCTM, phase, compositeOp, dstRect, blendMode, repeatSpacing);
 }
 
-void SVGImage::draw(GraphicsContext* context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator compositeOp, BlendMode blendMode)
+void SVGImage::draw(GraphicsContext* context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator compositeOp, blink::WebBlendMode blendMode)
 {
     if (!m_page)
         return;
@@ -241,8 +242,12 @@ void SVGImage::draw(GraphicsContext* context, const FloatRect& dstRect, const Fl
     GraphicsContextStateSaver stateSaver(*context);
     context->setCompositeOperation(compositeOp, blendMode);
     context->clip(enclosingIntRect(dstRect));
-    if (compositeOp != CompositeSourceOver)
+
+    bool compositingRequiresTransparencyLayer = compositeOp != CompositeSourceOver || blendMode != blink::WebBlendModeNormal;
+    if (compositingRequiresTransparencyLayer) {
         context->beginTransparencyLayer(1);
+        context->setCompositeOperation(CompositeSourceOver, blink::WebBlendModeNormal);
+    }
 
     FloatSize scale(dstRect.width() / srcRect.width(), dstRect.height() / srcRect.height());
 
@@ -262,7 +267,7 @@ void SVGImage::draw(GraphicsContext* context, const FloatRect& dstRect, const Fl
 
     view->paint(context, enclosingIntRect(srcRect));
 
-    if (compositeOp != CompositeSourceOver)
+    if (compositingRequiresTransparencyLayer)
         context->endLayer();
 
     stateSaver.restore();
@@ -323,10 +328,10 @@ void SVGImage::computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrin
 
     intrinsicWidth = rootElement->intrinsicWidth();
     intrinsicHeight = rootElement->intrinsicHeight();
-    if (rootElement->preserveAspectRatioCurrentValue().align() == SVGPreserveAspectRatio::SVG_PRESERVEASPECTRATIO_NONE)
+    if (rootElement->preserveAspectRatio()->currentValue()->align() == SVGPreserveAspectRatio::SVG_PRESERVEASPECTRATIO_NONE)
         return;
 
-    intrinsicRatio = rootElement->viewBoxCurrentValue().size();
+    intrinsicRatio = rootElement->viewBox()->currentValue()->value().size();
     if (intrinsicRatio.isEmpty() && intrinsicWidth.isFixed() && intrinsicHeight.isFixed())
         intrinsicRatio = FloatSize(floatValueForLength(intrinsicWidth, 0), floatValueForLength(intrinsicHeight, 0));
 }
@@ -388,7 +393,7 @@ bool SVGImage::dataChanged(bool allDataReceived)
         m_page->settings().setPluginsEnabled(false);
         m_page->settings().setAcceleratedCompositingEnabled(false);
 
-        RefPtr<Frame> frame = Frame::create(FrameInit::create(0, m_page.get(), dummyFrameLoaderClient));
+        RefPtr<Frame> frame = Frame::create(FrameInit::create(0, &m_page->frameHost(), dummyFrameLoaderClient));
         frame->setView(FrameView::create(frame.get()));
         frame->init();
         FrameLoader& loader = frame->loader();
@@ -398,10 +403,7 @@ bool SVGImage::dataChanged(bool allDataReceived)
         frame->view()->setCanHaveScrollbars(false); // SVG Images will always synthesize a viewBox, if it's not available, and thus never see scrollbars.
         frame->view()->setTransparent(true); // SVG Images are transparent.
 
-        ASSERT(loader.activeDocumentLoader()); // DocumentLoader should have been created by frame->init().
-        DocumentWriter* writer = loader.activeDocumentLoader()->beginWriting("image/svg+xml", "UTF-8");
-        writer->addData(data()->data(), data()->size());
-        loader.activeDocumentLoader()->endWriting(writer);
+        loader.load(FrameLoadRequest(0, blankURL(), SubstituteData(data(), "image/svg+xml", "UTF-8", KURL(), ForceSynchronousLoad)));
         // Set the intrinsic size before a container size is available.
         m_intrinsicSize = containerSize();
     }

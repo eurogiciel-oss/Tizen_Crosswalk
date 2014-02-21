@@ -83,7 +83,12 @@ public:
      *  canvas. The root device will have its top-left at 0,0, but other devices
      *  such as those associated with saveLayer may have a non-zero origin.
      */
-    virtual void getGlobalBounds(SkIRect* bounds) const = 0;
+    void getGlobalBounds(SkIRect* bounds) const {
+        SkASSERT(bounds);
+        const SkIPoint& origin = this->getOrigin();
+        bounds->setXYWH(origin.x(), origin.y(), this->width(), this->height());
+    }
+
 
     /** Returns true if the device's bitmap's config treats every pixel as
         implicitly opaque.
@@ -206,9 +211,7 @@ protected:
      */
     virtual void clear(SkColor color) = 0;
 
-    /**
-     * Deprecated name for clear.
-     */
+    SK_ATTR_DEPRECATED("use clear() instead")
     void eraseColor(SkColor eraseColor) { this->clear(eraseColor); }
 
     /** These are called inside the per-device-layer loop for each draw call.
@@ -267,11 +270,6 @@ protected:
     virtual void drawTextOnPath(const SkDraw&, const void* text, size_t len,
                                 const SkPath& path, const SkMatrix* matrix,
                                 const SkPaint& paint) = 0;
-#ifdef SK_BUILD_FOR_ANDROID
-    virtual void drawPosTextOnPath(const SkDraw& draw, const void* text, size_t len,
-                                   const SkPoint pos[], const SkPaint& paint,
-                                   const SkPath& path, const SkMatrix* matrix) = 0;
-#endif
     virtual void drawVertices(const SkDraw&, SkCanvas::VertexMode, int vertexCount,
                               const SkPoint verts[], const SkPoint texs[],
                               const SkColor colors[], SkXfermode* xmode,
@@ -370,6 +368,15 @@ protected:
     // either is identical to kNative_Premul_Config8888. Otherwise, -1.
     static const SkCanvas::Config8888 kPMColorAlias;
 
+protected:
+    /**
+     *  Leaky properties are those which the device should be applying but it isn't.
+     *  These properties will be applied by the draw, when and as it can.
+     *  If the device does handle a property, that property should be set to the identity value
+     *  for that property, effectively making it non-leaky.
+     */
+    SkDeviceProperties fLeakyProperties;
+
 private:
     friend class SkCanvas;
     friend struct DeviceCM; //for setMatrixClip
@@ -383,6 +390,7 @@ private:
     // used to change the backend's pixels (and possibly config/rowbytes)
     // but cannot change the width/height, so there should be no change to
     // any clip information.
+    // TODO: move to SkBitmapDevice
     virtual void replaceBitmapBackendForRasterSurface(const SkBitmap&) = 0;
 
     // just called by SkCanvas when built as a layer
@@ -406,13 +414,6 @@ private:
 
     SkIPoint    fOrigin;
     SkMetaData* fMetaData;
-    /**
-     *  Leaky properties are those which the device should be applying but it isn't.
-     *  These properties will be applied by the draw, when and as it can.
-     *  If the device does handle a property, that property should be set to the identity value
-     *  for that property, effectively making it non-leaky.
-     */
-    SkDeviceProperties fLeakyProperties;
 
 #ifdef SK_DEBUG
     bool        fAttachedToCanvas;

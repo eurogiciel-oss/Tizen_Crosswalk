@@ -9,11 +9,16 @@
 # Done first to setup python module path.
 import toolchain_env
 
-import multiprocessing
+import inspect
+import hashlib
 import os
+import shutil
 import sys
 
 import file_tools
+import log_tools
+import repo_tools
+import substituter
 
 
 # MSYS tools do not always work with combinations of Windows and MSYS
@@ -30,69 +35,43 @@ path = posixpath
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 NACL_DIR = os.path.dirname(SCRIPT_DIR)
 
+COMMAND_CODE_FILES = [os.path.join(SCRIPT_DIR, f)
+                      for f in ('command.py', 'once.py', 'substituter.py',
+                                'pnacl_commands.py', 'toolchain_env.py',
+                                'toolchain_main.py')]
+COMMAND_CODE_FILES += [os.path.join(NACL_DIR, 'build', f)
+                       for f in ('directory_storage.py', 'file_tools.py',
+                                 'gsd_storage.py', 'hashing_tools.py',
+                                 'local_storage_cache.py', 'log_tools.py',
+                                 'platform_tools.py', 'repo_tools.py')]
 
-def FixPath(path):
-  """Convert to msys paths on windows."""
-  if sys.platform != 'win32':
-    return path
-  drive, path = os.path.splitdrive(path)
-  # Replace X:\... with /x/....
-  # Msys does not like x:\ style paths (especially with mixed slashes).
-  if drive:
-    drive = '/' + drive.lower()[0]
-  path = drive + path
-  path = path.replace('\\', '/')
-  return path
+def HashBuildSystemSources():
+  """Read the build source files to use in hashes for Callbacks."""
+  global FILE_CONTENTS_HASH
+  h = hashlib.sha1()
+  for filename in COMMAND_CODE_FILES:
+    with open(filename) as f:
+      h.update(f.read())
+  FILE_CONTENTS_HASH = h.hexdigest()
 
-
-def PrepareCommandValues(cwd, inputs, output):
-  values = {}
-  values['cwd'] = FixPath(os.path.abspath(cwd))
-  for key, value in inputs.iteritems():
-    if key.startswith('abs_'):
-      raise Exception('Invalid key starts with "abs_": %s' % key)
-    values['abs_' + key] = FixPath(os.path.abspath(value))
-    values[key] = FixPath(os.path.relpath(value, cwd))
-  values['abs_output'] = FixPath(os.path.abspath(output))
-  values['output'] = FixPath(os.path.relpath(output, cwd))
-  return values
+HashBuildSystemSources()
 
 
-class Command(object):
-  """An object representing a single command."""
+def PlatformEnvironment(extra_paths):
+  """Select the environment variables to run commands with.
 
-  def __init__(self, command, **kwargs):
-    self._command = command
-    self._kwargs = kwargs
-
-  def __str__(self):
-    values = []
-    # TODO(bradnelson): Do something more reasoned here.
-    values += [repr(self._command)]
-    for k, v in self._kwargs.iteritems():
-      values += [repr(k), repr(v)]
-    return '\n'.join(values)
-
-  def Invoke(self, check_call, package, inputs, output, cwd,
-             build_signature=None):
-    # TODO(bradnelson): Instead of allowing full subprocess functionality,
-    #     move execution here and use polymorphism to implement things like
-    #     mkdir, copy directly in python.
-    kwargs = self._kwargs.copy()
-    kwargs['cwd'] = os.path.join(os.path.abspath(cwd), kwargs.get('cwd', '.'))
-    values = PrepareCommandValues(kwargs['cwd'], inputs, output)
-    try:
-      values['cores'] = multiprocessing.cpu_count()
-    except NotImplementedError:
-      values['cores'] = 4  # Assume 4 if we can't measure.
-    values['package'] = package
-    if build_signature is not None:
-      values['build_signature'] = build_signature
-    values['top_srcdir'] = FixPath(os.path.relpath(NACL_DIR, kwargs['cwd']))
-    values['abs_top_srcdir'] = FixPath(os.path.abspath(NACL_DIR))
-
-    # Use mingw on windows.
-    if sys.platform == 'win32':
+  Args:
+    extra_paths: Extra paths to add to the PATH variable.
+  Returns:
+    A dict to be passed as env to subprocess.
+  """
+  env = os.environ.copy()
+  paths = []
+  if sys.platform == 'win32':
+    if Runnable.use_cygwin:
+      # Use the hermetic cygwin.
+      paths = [os.path.join(NACL_DIR, 'cygwin', 'bin')]
+    else:
       # TODO(bradnelson): switch to something hermetic.
       mingw = os.environ.get('MINGW', r'c:\mingw')
       msys = os.path.join(mingw, 'msys', '1.0')
@@ -100,78 +79,199 @@ class Command(object):
         msys = os.path.join(mingw, 'msys')
       # We need both msys (posix like build environment) and MinGW (windows
       # build of tools like gcc). We add <MINGW>/msys/[1.0/]bin to the path to
-      # get sh.exe. We also add an msys style path (/mingw/bin) to get things
-      # like gcc from inside msys.
-      kwargs['path_dirs'] = (
-          ['/mingw/bin', os.path.join(msys, 'bin')] +
-          kwargs.get('path_dirs', []))
+      # get sh.exe. We add <MINGW>/bin to allow direct invocation on MinGW
+      # tools. We also add an msys style path (/mingw/bin) to get things like
+      # gcc from inside msys.
+      paths = [
+          '/mingw/bin',
+          os.path.join(mingw, 'bin'),
+          os.path.join(msys, 'bin'),
+      ]
+  env['PATH'] = os.pathsep.join(
+      paths + extra_paths + env.get('PATH', '').split(os.pathsep))
+  return env
 
-    if 'path_dirs' in kwargs:
-      path_dirs = [dirname % values for dirname in kwargs['path_dirs']]
-      del kwargs['path_dirs']
-      env = os.environ.copy()
-      env['PATH'] = os.pathsep.join(path_dirs + env['PATH'].split(os.pathsep))
-      kwargs['env'] = env
 
-    if isinstance(self._command, str):
-      command = self._command % values
+class Runnable(object):
+  """An object representing a single command."""
+  use_cygwin = False
+
+  def __init__(self, func, *args, **kwargs):
+    """Construct a runnable which will call 'func' with 'args' and 'kwargs'.
+
+    Args:
+      func: Function which will be called by Invoke
+      args: Positional arguments to be passed to func
+      kwargs: Keyword arguments to be passed to func
+
+      RUNNABLES SHOULD ONLY BE IMPLEMENTED IN THIS FILE, because their
+      string representation (which is used to calculate whether targets should
+      be rebuilt) is based on this file's hash and does not attempt to capture
+      the code or bound variables of the function itself (the one exception is
+      once_test.py which injects its own callbacks to verify its expectations).
+
+      When 'func' is called, its first argument will be a substitution object
+      which it can use to substitute %-templates in its arguments.
+    """
+    self._func = func
+    self._args = args or []
+    self._kwargs = kwargs or {}
+
+  def __str__(self):
+    values = []
+
+    sourcefile = inspect.getsourcefile(self._func)
+    # Check that the code for the runnable is implemented in one of the known
+    # source files of the build system (which are included in its hash). This
+    # isn't a perfect test because it could still import code from an outside
+    # module, so we should be sure to add any new build system files to the list
+    found_match = (os.path.basename(sourcefile) in
+                   [os.path.basename(f) for f in
+                    COMMAND_CODE_FILES + ['once_test.py']])
+    if not found_match:
+      print 'Function', self._func.func_name, 'in', sourcefile
+      raise Exception('Python Runnable objects must be implemented in one of' +
+                      'the following files: ' + str(COMMAND_CODE_FILES))
+
+    for v in self._args:
+      values += [repr(v)]
+    for k, v in self._kwargs.iteritems():
+      values += [repr(k), repr(v)]
+    values += [FILE_CONTENTS_HASH]
+
+    return '\n'.join(values)
+
+  def Invoke(self, subst):
+    return self._func(subst, *self._args, **self._kwargs)
+
+
+def Command(command, **kwargs):
+  """Return a Runnable which invokes 'command' with check_call.
+
+  Args:
+    command: List or string with a command suitable for check_call
+    kwargs: Keyword arguments suitable for check_call (or 'cwd' or 'path_dirs')
+
+  The command will be %-substituted and paths will be assumed to be relative to
+  the cwd given by Invoke. If kwargs contains 'cwd' it will be appended to the
+  cwd given by Invoke and used as the cwd for the call. If kwargs contains
+  'path_dirs', the directories therein will be added to the paths searched for
+  the command. Any other kwargs will be passed to check_call.
+  """
+  def runcmd(subst, command, **kwargs):
+    check_call_kwargs = kwargs.copy()
+    command = command[:]
+
+    cwd = subst.SubstituteAbsPaths(check_call_kwargs.get('cwd', '.'))
+    subst.SetCwd(cwd)
+    check_call_kwargs['cwd'] = cwd
+
+    # Extract paths from kwargs and add to the command environment.
+    path_dirs = []
+    if 'path_dirs' in check_call_kwargs:
+      path_dirs = [subst.Substitute(dirname) for dirname
+                   in check_call_kwargs['path_dirs']]
+      del check_call_kwargs['path_dirs']
+    check_call_kwargs['env'] = PlatformEnvironment(path_dirs)
+
+    if isinstance(command, str):
+      command = subst.Substitute(command)
     else:
-      command = [arg % values for arg in self._command]
-      paths = kwargs.get('env', os.environ).get('PATH', '').split(os.pathsep)
+      command = [subst.Substitute(arg) for arg in command]
+      paths = check_call_kwargs['env']['PATH'].split(os.pathsep)
       command[0] = file_tools.Which(command[0], paths=paths)
-    check_call(command, **kwargs)
 
+    log_tools.CheckCall(command, **check_call_kwargs)
 
-def Mkdir(path, parents=False, **kwargs):
+  return Runnable(runcmd, command, **kwargs)
+
+def SkipForIncrementalCommand(command, **kwargs):
+  """Return a command which has the skip_for_incremental property set on it.
+
+  This will cause the command to be skipped for incremental builds, if the
+  working directory is not empty.
+  """
+  cmd = Command(command, **kwargs)
+  cmd.skip_for_incremental = True
+  return cmd
+
+def Mkdir(path, parents=False):
   """Convenience method for generating mkdir commands."""
-  # TODO(bradnelson): Replace with something less hacky.
-  func = 'os.mkdir'
-  if parents:
-    func = 'os.makedirs'
-  return Command([
-      sys.executable, '-c',
-      'import sys,os; ' + func + '(sys.argv[1])', path],
-      **kwargs)
+  def mkdir(subst, path):
+    path = subst.SubstituteAbsPaths(path)
+    if parents:
+      os.makedirs(path)
+    else:
+      os.mkdir(path)
+  return Runnable(mkdir, path)
 
 
-def Copy(src, dst, **kwargs):
+def Copy(src, dst):
   """Convenience method for generating cp commands."""
-  # TODO(bradnelson): Replace with something less hacky.
-  return Command([
-      sys.executable, '-c',
-      'import sys,shutil; shutil.copyfile(sys.argv[1], sys.argv[2])', src, dst],
-      **kwargs)
+  def copy(subst, src, dst):
+    shutil.copyfile(subst.SubstituteAbsPaths(src),
+                    subst.SubstituteAbsPaths(dst))
+  return Runnable(copy, src, dst)
+
+
+def CopyTree(src, dst, exclude=[]):
+  """Copy a directory tree, excluding a list of top-level entries."""
+  def copyTree(subst, src, dst, exclude):
+    src = subst.SubstituteAbsPaths(src)
+    dst = subst.SubstituteAbsPaths(dst)
+    def ignoreExcludes(dir, files):
+      if dir == src:
+        return exclude
+      else:
+        return []
+    file_tools.RemoveDirectoryIfPresent(dst)
+    shutil.copytree(src, dst, symlinks=True, ignore=ignoreExcludes)
+  return Runnable(copyTree, src, dst, exclude)
 
 
 def RemoveDirectory(path):
   """Convenience method for generating a command to remove a directory tree."""
-  # TODO(mcgrathr): Windows
-  return Command(['rm', '-rf', path])
+  def remove(subst, path):
+    file_tools.RemoveDirectoryIfPresent(subst.SubstituteAbsPaths(path))
+  return Runnable(remove, path)
 
 
 def Remove(path):
   """Convenience method for generating a command to remove a file."""
-  # TODO(mcgrathr): Replace with something less hacky.
-  return Command([
-      sys.executable, '-c',
-      'import sys, os\n'
-      'if os.path.exists(sys.argv[1]): os.remove(sys.argv[1])', path
-      ])
+  def remove(subst, path):
+    path = subst.SubstituteAbsPaths(path)
+    if os.path.exists(path):
+      os.remove(path)
+  return Runnable(remove, path)
 
 
 def Rename(src, dst):
   """Convenience method for generating a command to rename a file."""
-  # TODO(mcgrathr): Replace with something less hacky.
-  return Command([
-      sys.executable, '-c',
-      'import sys, os; os.rename(sys.argv[1], sys.argv[2])', src, dst
-      ])
+  def rename(subst, src, dst):
+    os.rename(subst.SubstituteAbsPaths(src), subst.SubstituteAbsPaths(dst))
+  return Runnable(rename, src, dst)
 
 
 def WriteData(data, dst):
   """Convenience method to write a file with fixed contents."""
-  # TODO(mcgrathr): Replace with something less hacky.
-  return Command([
-      sys.executable, '-c',
-      'import sys; open(sys.argv[1], "wb").write(%r)' % data, dst
-      ])
+  def writedata(subst, dst, data):
+    with open(subst.SubstituteAbsPaths(dst), 'wb') as f:
+      f.write(data)
+  return Runnable(writedata, dst, data)
+
+
+def SyncGitRepo(url, destination, revision, reclone=False, clean=False,
+                pathspec=None):
+  def sync(subst, url, dest, rev, reclone, clean, pathspec):
+    repo_tools.SyncGitRepo(url, subst.SubstituteAbsPaths(dest), revision,
+                           reclone, clean, pathspec)
+  return Runnable(sync, url, destination, revision, reclone, clean, pathspec)
+
+
+def CleanGitWorkingDir(directory, path):
+  """Clean a path in a git checkout, if the checkout directory exists."""
+  def clean(subst, directory, path):
+    directory = subst.SubstituteAbsPaths(directory)
+    if os.path.exists(directory) and len(os.listdir(directory)) > 0:
+      repo_tools.CleanGitWorkingDir(directory, path)
+  return Runnable(clean, directory, path)

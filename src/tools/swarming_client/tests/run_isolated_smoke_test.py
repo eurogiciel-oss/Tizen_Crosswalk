@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2012 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import hashlib
 import json
@@ -49,18 +49,37 @@ def list_files_tree(directory):
   return sorted(actual)
 
 
+def read_content(filepath):
+  with open(filepath, 'rb') as f:
+    return f.read()
+
+
 def write_content(filepath, content):
   with open(filepath, 'wb') as f:
     f.write(content)
 
 
-def write_json(filepath, data):
-  with open(filepath, 'wb') as f:
-    json.dump(data, f, sort_keys=True, indent=2)
+def tree_modes(root):
+  """Returns the dict of files in a directory with their filemode.
+
+  Includes |root| as '.'.
+  """
+  out = {}
+  offset = len(root.rstrip('/\\')) + 1
+  out['.'] = oct(os.stat(root).st_mode)
+  for dirpath, dirnames, filenames in os.walk(root):
+    for filename in filenames:
+      p = os.path.join(dirpath, filename)
+      out[p[offset:]] = oct(os.stat(p).st_mode)
+    for dirname in dirnames:
+      p = os.path.join(dirpath, dirname)
+      out[p[offset:]] = oct(os.stat(p).st_mode)
+  return out
 
 
-class RunSwarmStep(unittest.TestCase):
+class RunIsolatedTest(unittest.TestCase):
   def setUp(self):
+    super(RunIsolatedTest, self).setUp()
     self.tempdir = run_isolated.make_temp_dir(
         'run_isolated_smoke_test', ROOT_DIR)
     logging.debug(self.tempdir)
@@ -77,7 +96,8 @@ class RunSwarmStep(unittest.TestCase):
     self.data_dir = os.path.join(ROOT_DIR, 'tests', 'run_isolated')
 
   def tearDown(self):
-    shutil.rmtree(self.tempdir)
+    run_isolated.rmtree(self.tempdir)
+    super(RunIsolatedTest, self).tearDown()
 
   def _result_tree(self):
     return list_files_tree(self.tempdir)
@@ -102,6 +122,7 @@ class RunSwarmStep(unittest.TestCase):
 
   def _store_result(self, result_data):
     """Stores a .isolated file in the hash table."""
+    # Need to know the hash before writting the file.
     result_text = json.dumps(result_data, sort_keys=True, indent=2)
     result_hash = ALGO(result_text).hexdigest()
     write_content(os.path.join(self.table, result_hash), result_text)
@@ -140,6 +161,27 @@ class RunSwarmStep(unittest.TestCase):
       '--isolate-server', self.table,
       '--namespace', 'default',
     ]
+
+  def assertTreeModes(self, root, expected):
+    """Compares the file modes of everything in |root| with |expected|.
+
+    Arguments:
+      root: directory to list its tree.
+      expected: dict(relpath: (linux_mode, mac_mode, win_mode)) where each mode
+                is the expected file mode on this OS. For practical purposes,
+                linux is "anything but OSX or Windows". The modes should be
+                ints.
+    """
+    actual = tree_modes(root)
+    if sys.platform == 'win32':
+      index = 2
+    elif sys.platform == 'darwin':
+      index = 1
+    else:
+      index = 0
+    expected_mangled = dict((k, oct(v[index])) for k, v in expected.iteritems())
+    self.assertEqual(expected_mangled, actual)
+
 
   def test_result(self):
     # Loads an arbitrary .isolated on the file system.
@@ -187,7 +229,7 @@ class RunSwarmStep(unittest.TestCase):
     out, err, returncode = self._run(self._generate_args_with_hash(result_hash))
     if not VERBOSE:
       self.assertEqual('', out)
-      self.assertEqual('No command to run\n', err)
+      self.assertIn('No command to run\n', err)
     self.assertEqual(1, returncode)
     actual = list_files_tree(self.cache)
     self.assertEqual(sorted(expected), actual)
@@ -238,9 +280,13 @@ class RunSwarmStep(unittest.TestCase):
     actual = list_files_tree(self.cache)
     self.assertEqual(sorted(expected), actual)
 
-  def test_delete_invalid_cache_entry(self):
+  def test_delete_quite_corrupted_cache_entry(self):
+    # Test that an entry with an invalid file size properly gets removed and
+    # fetched again. This test case also check for file modes.
     isolated_file = os.path.join(self.data_dir, 'file_with_size.isolated')
+    isolated_hash = isolateserver.hash_file(isolated_file, ALGO)
     file1_hash = self._store('file1.txt')
+    # Note that <tempdir>/table/<file1_hash> has 640 mode.
 
     # Run the test once to generate the cache.
     out, err, returncode = self._run(self._generate_args_with_isolated(
@@ -249,11 +295,24 @@ class RunSwarmStep(unittest.TestCase):
       print out
       print err
     self.assertEqual(0, returncode)
+    expected = {
+      '.': (040775, 040755, 040777),
+      'state.json': (0100664, 0100644, 0100666),
+      # The reason for 0100666 on Windows is that the file node had to be
+      # modified to delete the hardlinked node. The read only bit is reset on
+      # load.
+      file1_hash: (0100400, 0100400, 0100666),
+      isolated_hash: (0100400, 0100400, 0100444),
+    }
+    self.assertTreeModes(self.cache, expected)
 
     # Modify one of the files in the cache to be invalid.
     cached_file_path = os.path.join(self.cache, file1_hash)
-    with open(cached_file_path, 'w') as f:
-      f.write('invalid size')
+    previous_mode = os.stat(cached_file_path).st_mode
+    os.chmod(cached_file_path, 0600)
+    old_content = read_content(cached_file_path)
+    write_content(cached_file_path, old_content + ' but now invalid size')
+    os.chmod(cached_file_path, previous_mode)
     logging.info('Modified %s', cached_file_path)
     # Ensure that the cache has an invalid file.
     self.assertNotEqual(
@@ -267,9 +326,73 @@ class RunSwarmStep(unittest.TestCase):
       print out
       print err
     self.assertEqual(0, returncode)
+    expected = {
+      '.': (040700, 040700, 040777),
+      'state.json': (0100600, 0100600, 0100666),
+      file1_hash: (0100400, 0100400, 0100666),
+      isolated_hash: (0100400, 0100400, 0100444),
+    }
+    self.assertTreeModes(self.cache, expected)
 
     self.assertEqual(os.stat(os.path.join(self.data_dir, 'file1.txt')).st_size,
                      os.stat(cached_file_path).st_size)
+    self.assertEqual(old_content, read_content(cached_file_path))
+
+  def test_delete_slightly_corrupted_cache_entry(self):
+    # Test that an entry with an invalid file size properly gets removed and
+    # fetched again. This test case also check for file modes.
+    isolated_file = os.path.join(self.data_dir, 'file_with_size.isolated')
+    isolated_hash = isolateserver.hash_file(isolated_file, ALGO)
+    file1_hash = self._store('file1.txt')
+    # Note that <tempdir>/table/<file1_hash> has 640 mode.
+
+    # Run the test once to generate the cache.
+    out, err, returncode = self._run(self._generate_args_with_isolated(
+        isolated_file))
+    if VERBOSE:
+      print out
+      print err
+    self.assertEqual(0, returncode)
+    expected = {
+      '.': (040775, 040755, 040777),
+      'state.json': (0100664, 0100644, 0100666),
+      file1_hash: (0100400, 0100400, 0100666),
+      isolated_hash: (0100400, 0100400, 0100444),
+    }
+    self.assertTreeModes(self.cache, expected)
+
+    # Modify one of the files in the cache to be invalid.
+    cached_file_path = os.path.join(self.cache, file1_hash)
+    previous_mode = os.stat(cached_file_path).st_mode
+    os.chmod(cached_file_path, 0600)
+    old_content = read_content(cached_file_path)
+    write_content(cached_file_path, old_content[1:] + 'b')
+    os.chmod(cached_file_path, previous_mode)
+    logging.info('Modified %s', cached_file_path)
+    self.assertEqual(
+        os.stat(os.path.join(self.data_dir, 'file1.txt')).st_size,
+        os.stat(cached_file_path).st_size)
+
+    # Rerun the test and make sure the cache contains the right file afterwards.
+    out, err, returncode = self._run(self._generate_args_with_isolated(
+        isolated_file))
+    if VERBOSE:
+      print out
+      print err
+    self.assertEqual(0, returncode)
+    expected = {
+      '.': (040700, 040700, 040777),
+      'state.json': (0100600, 0100600, 0100666),
+      file1_hash: (0100400, 0100400, 0100666),
+      isolated_hash: (0100400, 0100400, 0100444),
+    }
+    self.assertTreeModes(self.cache, expected)
+
+    self.assertEqual(os.stat(os.path.join(self.data_dir, 'file1.txt')).st_size,
+                     os.stat(cached_file_path).st_size)
+    # TODO(maruel): This corruption is NOT detected.
+    # This needs to be fixed.
+    self.assertNotEqual(old_content, read_content(cached_file_path))
 
 
 if __name__ == '__main__':

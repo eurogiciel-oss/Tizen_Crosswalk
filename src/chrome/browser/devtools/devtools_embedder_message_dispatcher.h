@@ -28,9 +28,10 @@ class DevToolsEmbedderMessageDispatcher {
 
     virtual void ActivateWindow() = 0;
     virtual void CloseWindow() = 0;
-    virtual void SetWindowBounds(int x, int y, int width, int height) = 0;
+    virtual void SetContentsInsets(
+        int top, int left, int bottom, int right) = 0;
     virtual void MoveWindow(int x, int y) = 0;
-    virtual void SetDockSide(const std::string& side) = 0;
+    virtual void SetIsDocked(bool is_docked) = 0;
     virtual void OpenInNewTab(const std::string& url) = 0;
     virtual void SaveToFile(const std::string& url,
                             const std::string& content,
@@ -40,6 +41,8 @@ class DevToolsEmbedderMessageDispatcher {
     virtual void RequestFileSystems() = 0;
     virtual void AddFileSystem() = 0;
     virtual void RemoveFileSystem(const std::string& file_system_path) = 0;
+    virtual void UpgradeDraggedFileSystemPermissions(
+        const std::string& file_system_url) = 0;
     virtual void IndexPath(int request_id,
                            const std::string& file_system_path) = 0;
     virtual void StopIndexing(int request_id) = 0;

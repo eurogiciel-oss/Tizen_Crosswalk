@@ -6,78 +6,83 @@
 
 #include <string>
 
+#include "base/metrics/histogram.h"
+#include "base/metrics/histogram_base.h"
 #include "base/prefs/pref_service.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/extensions/api/extension_action/extension_action_api.h"
 #include "chrome/browser/extensions/extension_action.h"
 #include "chrome/browser/extensions/extension_action_manager.h"
-#include "chrome/browser/extensions/extension_prefs.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/extensions/extension_toolbar_model_factory.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/feature_switch.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_source.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/pref_names.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/extension_set.h"
+#include "extensions/common/feature_switch.h"
 
 using extensions::Extension;
 using extensions::ExtensionIdList;
 using extensions::ExtensionList;
-
-namespace {
-
-// Returns true if an |extension| is in an |extension_list|.
-bool IsInExtensionList(const Extension* extension,
-                       const extensions::ExtensionList& extension_list) {
-  for (size_t i = 0; i < extension_list.size(); i++) {
-    if (extension_list[i].get() == extension)
-      return true;
-  }
-  return false;
-}
-
-}  // namespace
 
 bool ExtensionToolbarModel::Observer::BrowserActionShowPopup(
     const extensions::Extension* extension) {
   return false;
 }
 
-ExtensionToolbarModel::ExtensionToolbarModel(ExtensionService* service)
-    : service_(service),
-      prefs_(service->profile()->GetPrefs()),
+ExtensionToolbarModel::ExtensionToolbarModel(
+    Profile* profile,
+    extensions::ExtensionPrefs* extension_prefs)
+    : profile_(profile),
+      extension_prefs_(extension_prefs),
+      prefs_(profile_->GetPrefs()),
       extensions_initialized_(false),
       weak_ptr_factory_(this) {
-  DCHECK(service_);
-
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_LOADED,
-                 content::Source<Profile>(service_->profile()));
+                 content::Source<Profile>(profile_));
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_UNLOADED,
-                 content::Source<Profile>(service_->profile()));
+                 content::Source<Profile>(profile_));
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSIONS_READY,
-                 content::Source<Profile>(service_->profile()));
+                 content::Source<Profile>(profile_));
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_UNINSTALLED,
-                 content::Source<Profile>(service_->profile()));
+                 content::Source<Profile>(profile_));
   registrar_.Add(
       this, chrome::NOTIFICATION_EXTENSION_BROWSER_ACTION_VISIBILITY_CHANGED,
-      content::Source<extensions::ExtensionPrefs>(service_->extension_prefs()));
+      content::Source<extensions::ExtensionPrefs>(extension_prefs_));
 
-  visible_icon_count_ = prefs_->GetInteger(prefs::kExtensionToolbarSize);
-
+  visible_icon_count_ = prefs_->GetInteger(
+      extensions::pref_names::kToolbarSize);
+  // Visible count can be -1, meaning: 'show all'. Since UMA converts negative
+  // values to 0, this would be counted as 'show none' unless we convert it to
+  // max.
+  UMA_HISTOGRAM_COUNTS_100("ExtensionToolbarModel.BrowserActionsVisible",
+                           visible_icon_count_ == -1 ?
+                               base::HistogramBase::kSampleType_MAX :
+                               visible_icon_count_);
   pref_change_registrar_.Init(prefs_);
   pref_change_callback_ =
       base::Bind(&ExtensionToolbarModel::OnExtensionToolbarPrefChange,
                  base::Unretained(this));
-  pref_change_registrar_.Add(prefs::kExtensionToolbar, pref_change_callback_);
+  pref_change_registrar_.Add(extensions::pref_names::kToolbar,
+                             pref_change_callback_);
 }
 
 ExtensionToolbarModel::~ExtensionToolbarModel() {
+}
+
+// static
+ExtensionToolbarModel* ExtensionToolbarModel::Get(Profile* profile) {
+  return ExtensionToolbarModelFactory::GetForProfile(profile);
 }
 
 void ExtensionToolbarModel::AddObserver(Observer* observer) {
@@ -140,11 +145,13 @@ ExtensionToolbarModel::Action ExtensionToolbarModel::ExecuteBrowserAction(
     bool should_grant) {
   content::WebContents* web_contents = NULL;
   int tab_id = 0;
-  if (!ExtensionTabUtil::GetDefaultTab(browser, &web_contents, &tab_id))
+  if (!extensions::ExtensionTabUtil::GetDefaultTab(
+          browser, &web_contents, &tab_id)) {
     return ACTION_NONE;
+  }
 
   ExtensionAction* browser_action =
-      extensions::ExtensionActionManager::Get(service_->profile())->
+      extensions::ExtensionActionManager::Get(profile_)->
       GetBrowserAction(*extension);
 
   // For browser actions, visibility == enabledness.
@@ -170,20 +177,22 @@ ExtensionToolbarModel::Action ExtensionToolbarModel::ExecuteBrowserAction(
 void ExtensionToolbarModel::SetVisibleIconCount(int count) {
   visible_icon_count_ =
       count == static_cast<int>(toolbar_items_.size()) ? -1 : count;
-  prefs_->SetInteger(prefs::kExtensionToolbarSize, visible_icon_count_);
+  prefs_->SetInteger(extensions::pref_names::kToolbarSize, visible_icon_count_);
 }
 
 void ExtensionToolbarModel::Observe(
     int type,
     const content::NotificationSource& source,
     const content::NotificationDetails& details) {
+  ExtensionService* extension_service =
+      extensions::ExtensionSystem::Get(profile_)->extension_service();
+  if (!extension_service || !extension_service->is_ready())
+    return;
+
   if (type == chrome::NOTIFICATION_EXTENSIONS_READY) {
-    InitializeExtensionList();
+    InitializeExtensionList(extension_service);
     return;
   }
-
-  if (!service_->is_ready())
-    return;
 
   const Extension* extension = NULL;
   if (type == chrome::NOTIFICATION_EXTENSION_UNLOADED) {
@@ -191,7 +200,7 @@ void ExtensionToolbarModel::Observe(
         details)->extension;
   } else if (type ==
       chrome::NOTIFICATION_EXTENSION_BROWSER_ACTION_VISIBILITY_CHANGED) {
-    extension = service_->GetExtensionById(
+    extension = extension_service->GetExtensionById(
         *content::Details<const std::string>(details).ptr(), true);
   } else {
     extension = content::Details<const Extension>(details).ptr();
@@ -205,7 +214,7 @@ void ExtensionToolbarModel::Observe(
         return;  // Already exists.
     }
     if (extensions::ExtensionActionAPI::GetBrowserActionVisibility(
-            service_->extension_prefs(), extension->id())) {
+            extension_prefs_, extension->id())) {
       AddExtension(extension);
     }
   } else if (type == chrome::NOTIFICATION_EXTENSION_UNLOADED) {
@@ -215,7 +224,7 @@ void ExtensionToolbarModel::Observe(
   } else if (type ==
       chrome::NOTIFICATION_EXTENSION_BROWSER_ACTION_VISIBILITY_CHANGED) {
     if (extensions::ExtensionActionAPI::GetBrowserActionVisibility(
-            service_->extension_prefs(), extension->id())) {
+            extension_prefs_, extension->id())) {
       AddExtension(extension);
     } else {
       RemoveExtension(extension);
@@ -251,7 +260,7 @@ size_t ExtensionToolbarModel::FindNewPositionFromLastKnownGood(
 
 void ExtensionToolbarModel::AddExtension(const Extension* extension) {
   // We only care about extensions with browser actions.
-  if (!extensions::ExtensionActionManager::Get(service_->profile())->
+  if (!extensions::ExtensionActionManager::Get(profile_)->
       GetBrowserAction(*extension)) {
     return;
   }
@@ -316,18 +325,19 @@ void ExtensionToolbarModel::UninstalledExtension(const Extension* extension) {
 // have holes.
 // 2. Create a vector of extensions that did not have a pref value.
 // 3. Remove holes from the sorted vector and append the unsorted vector.
-void ExtensionToolbarModel::InitializeExtensionList() {
-  DCHECK(service_->is_ready());
+void ExtensionToolbarModel::InitializeExtensionList(ExtensionService* service) {
+  DCHECK(service->is_ready());
 
-  last_known_positions_ = service_->extension_prefs()->GetToolbarOrder();
-  Populate(last_known_positions_);
+  last_known_positions_ = extension_prefs_->GetToolbarOrder();
+  Populate(last_known_positions_, service);
 
   extensions_initialized_ = true;
-  FOR_EACH_OBSERVER(Observer, observers_, ModelLoaded());
+  FOR_EACH_OBSERVER(Observer, observers_, VisibleCountChanged());
 }
 
 void ExtensionToolbarModel::Populate(
-    const extensions::ExtensionIdList& positions) {
+    const extensions::ExtensionIdList& positions,
+    ExtensionService* service) {
   // Items that have explicit positions.
   ExtensionList sorted;
   sorted.resize(positions.size(), NULL);
@@ -335,16 +345,17 @@ void ExtensionToolbarModel::Populate(
   ExtensionList unsorted;
 
   extensions::ExtensionActionManager* extension_action_manager =
-      extensions::ExtensionActionManager::Get(service_->profile());
+      extensions::ExtensionActionManager::Get(profile_);
 
   // Create the lists.
-  for (ExtensionSet::const_iterator it = service_->extensions()->begin();
-       it != service_->extensions()->end(); ++it) {
+  for (extensions::ExtensionSet::const_iterator it =
+           service->extensions()->begin();
+       it != service->extensions()->end(); ++it) {
     const Extension* extension = it->get();
     if (!extension_action_manager->GetBrowserAction(*extension))
       continue;
     if (!extensions::ExtensionActionAPI::GetBrowserActionVisibility(
-            service_->extension_prefs(), extension->id())) {
+            extension_prefs_, extension->id())) {
       continue;
     }
 
@@ -379,6 +390,9 @@ void ExtensionToolbarModel::Populate(
   toolbar_items_.insert(toolbar_items_.end(), unsorted.begin(),
                         unsorted.end());
 
+  UMA_HISTOGRAM_COUNTS_100("ExtensionToolbarModel.BrowserActionsCount",
+                           toolbar_items_.size());
+
   // Inform observers.
   for (size_t i = 0; i < toolbar_items_.size(); i++) {
     FOR_EACH_OBSERVER(
@@ -386,26 +400,15 @@ void ExtensionToolbarModel::Populate(
   }
 }
 
-void ExtensionToolbarModel::FillExtensionList(
-    const extensions::ExtensionIdList& order) {
-  toolbar_items_.clear();
-  toolbar_items_.reserve(order.size());
-  for (size_t i = 0; i < order.size(); ++i) {
-    const extensions::Extension* extension =
-        service_->GetExtensionById(order[i], false);
-    if (extension)
-      AddExtension(extension);
-  }
-}
-
 void ExtensionToolbarModel::UpdatePrefs() {
-  if (!service_->extension_prefs())
+  if (!extension_prefs_)
     return;
 
   // Don't observe change caused by self.
-  pref_change_registrar_.Remove(prefs::kExtensionToolbar);
-  service_->extension_prefs()->SetToolbarOrder(last_known_positions_);
-  pref_change_registrar_.Add(prefs::kExtensionToolbar, pref_change_callback_);
+  pref_change_registrar_.Remove(extensions::pref_names::kToolbar);
+  extension_prefs_->SetToolbarOrder(last_known_positions_);
+  pref_change_registrar_.Add(extensions::pref_names::kToolbar,
+                             pref_change_callback_);
 }
 
 int ExtensionToolbarModel::IncognitoIndexToOriginal(int incognito_index) {
@@ -413,7 +416,7 @@ int ExtensionToolbarModel::IncognitoIndexToOriginal(int incognito_index) {
   for (ExtensionList::iterator iter = toolbar_items_.begin();
        iter != toolbar_items_.end();
        ++iter, ++original_index) {
-    if (extension_util::IsIncognitoEnabled((*iter)->id(), service_)) {
+    if (extensions::util::IsIncognitoEnabled((*iter)->id(), profile_)) {
       if (incognito_index == i)
         break;
       ++i;
@@ -429,7 +432,7 @@ int ExtensionToolbarModel::OriginalIndexToIncognito(int original_index) {
        ++iter, ++i) {
     if (original_index == i)
       break;
-    if (extension_util::IsIncognitoEnabled((*iter)->id(), service_))
+    if (extensions::util::IsIncognitoEnabled((*iter)->id(), profile_))
       ++incognito_index;
   }
   return incognito_index;
@@ -443,7 +446,7 @@ void ExtensionToolbarModel::OnExtensionToolbarPrefChange() {
   // Recalculate |last_known_positions_| to be |pref_positions| followed by
   // ones that are only in |last_known_positions_|.
   extensions::ExtensionIdList pref_positions =
-      service_->extension_prefs()->GetToolbarOrder();
+      extension_prefs_->GetToolbarOrder();
   size_t pref_position_size = pref_positions.size();
   for (size_t i = 0; i < last_known_positions_.size(); ++i) {
     if (std::find(pref_positions.begin(), pref_positions.end(),
@@ -454,7 +457,8 @@ void ExtensionToolbarModel::OnExtensionToolbarPrefChange() {
   last_known_positions_.swap(pref_positions);
 
   // Re-populate.
-  Populate(last_known_positions_);
+  Populate(last_known_positions_,
+           extensions::ExtensionSystem::Get(profile_)->extension_service());
 
   if (last_known_positions_.size() > pref_position_size) {
     // Need to update pref because we have extra icons. But can't call
@@ -476,4 +480,35 @@ bool ExtensionToolbarModel::ShowBrowserActionPopup(
       return true;
   }
   return false;
+}
+
+void ExtensionToolbarModel::EnsureVisibility(
+    const extensions::ExtensionIdList& extension_ids) {
+  if (visible_icon_count_ == -1)
+    return;  // Already showing all.
+
+  // Otherwise, make sure we have enough room to show all the extensions
+  // requested.
+  if (visible_icon_count_ < static_cast<int>(extension_ids.size())) {
+    SetVisibleIconCount(extension_ids.size());
+
+    // Inform observers.
+    FOR_EACH_OBSERVER(Observer, observers_, VisibleCountChanged());
+  }
+
+  if (visible_icon_count_ == -1)
+    return;  // May have been set to max by SetVisibleIconCount.
+
+  // Guillotine's Delight: Move an orange noble to the front of the line.
+  for (ExtensionIdList::const_iterator it = extension_ids.begin();
+       it != extension_ids.end(); ++it) {
+    for (ExtensionList::const_iterator extension = toolbar_items_.begin();
+         extension != toolbar_items_.end(); ++extension) {
+      if ((*extension)->id() == (*it)) {
+        if (extension - toolbar_items_.begin() >= visible_icon_count_)
+          MoveBrowserAction(*extension, 0);
+        break;
+      }
+    }
+  }
 }

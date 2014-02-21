@@ -37,7 +37,7 @@
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 void WebHTTPLoadInfo::initialize()
 {
@@ -55,8 +55,8 @@ void WebHTTPLoadInfo::assign(const WebHTTPLoadInfo& r)
 }
 
 WebHTTPLoadInfo::WebHTTPLoadInfo(WTF::PassRefPtr<WebCore::ResourceLoadInfo> value)
+    : m_private(value)
 {
-    m_private = value;
 }
 
 WebHTTPLoadInfo::operator WTF::PassRefPtr<WebCore::ResourceLoadInfo>() const
@@ -144,4 +144,4 @@ void WebHTTPLoadInfo::setResponseHeadersText(const WebString& headersText)
     m_private->responseHeadersText = headersText;
 }
 
-} // namespace WebKit
+} // namespace blink

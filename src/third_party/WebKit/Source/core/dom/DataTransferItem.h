@@ -39,7 +39,7 @@
 namespace WebCore {
 
 class Blob;
-class ChromiumDataObjectItem;
+class DataObjectItem;
 class Clipboard;
 class File;
 class StringCallback;
@@ -47,26 +47,23 @@ class ExecutionContext;
 
 class DataTransferItem : public RefCounted<DataTransferItem>, public ScriptWrappable {
 public:
-    static PassRefPtr<DataTransferItem> create(PassRefPtr<Clipboard>, PassRefPtr<ChromiumDataObjectItem>);
+    static PassRefPtr<DataTransferItem> create(PassRefPtr<Clipboard>, PassRefPtr<DataObjectItem>);
     ~DataTransferItem();
-
-    static const char kindString[];
-    static const char kindFile[];
 
     String kind() const;
     String type() const;
 
-    void getAsString(ExecutionContext*, PassRefPtr<StringCallback>) const;
+    void getAsString(ExecutionContext*, PassOwnPtr<StringCallback>) const;
     PassRefPtr<Blob> getAsFile() const;
 
     Clipboard* clipboard() { return m_clipboard.get(); }
-    ChromiumDataObjectItem* dataObjectItem() { return m_item.get(); }
+    DataObjectItem* dataObjectItem() { return m_item.get(); }
 
 private:
-    DataTransferItem(PassRefPtr<Clipboard>, PassRefPtr<ChromiumDataObjectItem>);
+    DataTransferItem(PassRefPtr<Clipboard>, PassRefPtr<DataObjectItem>);
 
     RefPtr<Clipboard> m_clipboard;
-    RefPtr<ChromiumDataObjectItem> m_item;
+    RefPtr<DataObjectItem> m_item;
 };
 
 } // namespace WebCore

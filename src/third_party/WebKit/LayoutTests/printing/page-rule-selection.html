@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html id="html_element">
 <head id="head_element">
-<script src="../fast/js/resources/js-test-pre.js"></script>
+<script src="../resources/js-test.js"></script>
 </head>
 <body>
 <p id="description"></p>
@@ -27,7 +27,7 @@
         shouldBeEqualToString("internals.pageProperty('margin-left', 4)", "auto");
 
         debug("Set margin to 200px via user style sheet.");
-        testRunner.addUserStyleSheet("@page { margin:200px; }", true);
+        testRunner.injectStyleSheet("@page { margin:200px; }", true);
         shouldBeEqualToString("internals.pageProperty('margin-left', 0)", "200");
         shouldBeEqualToString("internals.pageProperty('margin-left', 1)", "200");
         shouldBeEqualToString("internals.pageProperty('margin-left', 2)", "200");

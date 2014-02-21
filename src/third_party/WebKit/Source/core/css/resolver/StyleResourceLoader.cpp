@@ -27,28 +27,22 @@
 #include "core/css/CSSCursorImageValue.h"
 #include "core/css/CSSImageValue.h"
 #include "core/css/CSSSVGDocumentValue.h"
-#include "core/css/CSSShaderValue.h"
 #include "core/css/resolver/ElementStyleResources.h"
 #include "core/fetch/ResourceFetcher.h"
-#include "core/platform/graphics/filters/custom/CustomFilterOperation.h"
 #include "core/rendering/style/ContentData.h"
 #include "core/rendering/style/CursorList.h"
 #include "core/rendering/style/FillLayer.h"
 #include "core/rendering/style/RenderStyle.h"
-#include "core/rendering/style/StyleCustomFilterProgram.h"
-#include "core/rendering/style/StyleCustomFilterProgramCache.h"
 #include "core/rendering/style/StyleFetchedImage.h"
 #include "core/rendering/style/StyleFetchedImageSet.h"
-#include "core/rendering/style/StyleFetchedShader.h"
 #include "core/rendering/style/StyleGeneratedImage.h"
 #include "core/rendering/style/StylePendingImage.h"
-#include "core/rendering/style/StylePendingShader.h"
+#include "core/rendering/svg/ReferenceFilterBuilder.h"
 
 namespace WebCore {
 
 StyleResourceLoader::StyleResourceLoader(ResourceFetcher* fetcher)
-    : m_customFilterProgramCache(StyleCustomFilterProgramCache::create())
-    , m_fetcher(fetcher)
+    : m_fetcher(fetcher)
 {
 }
 
@@ -60,8 +54,8 @@ void StyleResourceLoader::loadPendingSVGDocuments(RenderStyle* renderStyle, cons
     Vector<RefPtr<FilterOperation> >& filterOperations = renderStyle->mutableFilter().operations();
     for (unsigned i = 0; i < filterOperations.size(); ++i) {
         RefPtr<FilterOperation> filterOperation = filterOperations.at(i);
-        if (filterOperation->getOperationType() == FilterOperation::REFERENCE) {
-            ReferenceFilterOperation* referenceFilter = static_cast<ReferenceFilterOperation*>(filterOperation.get());
+        if (filterOperation->type() == FilterOperation::REFERENCE) {
+            ReferenceFilterOperation* referenceFilter = toReferenceFilterOperation(filterOperation.get());
 
             CSSSVGDocumentValue* value = elementStyleResources.pendingSVGDocuments().get(referenceFilter);
             if (!value)
@@ -71,38 +65,38 @@ void StyleResourceLoader::loadPendingSVGDocuments(RenderStyle* renderStyle, cons
                 continue;
 
             // Stash the DocumentResource on the reference filter.
-            referenceFilter->setDocumentResourceReference(adoptPtr(new DocumentResourceReference(resource)));
+            ReferenceFilterBuilder::setDocumentResourceReference(referenceFilter, adoptPtr(new DocumentResourceReference(resource)));
         }
     }
 }
 
-PassRefPtr<StyleImage> StyleResourceLoader::loadPendingImage(StylePendingImage* pendingImage, float deviceScaleFactor)
+static PassRefPtr<StyleImage> doLoadPendingImage(ResourceFetcher* fetcher, StylePendingImage* pendingImage, float deviceScaleFactor, const ResourceLoaderOptions& options)
 {
-    if (pendingImage->cssImageValue()) {
-        CSSImageValue* imageValue = pendingImage->cssImageValue();
-        return imageValue->cachedImage(m_fetcher);
-    }
+    if (CSSImageValue* imageValue = pendingImage->cssImageValue())
+        return imageValue->cachedImage(fetcher, options);
 
-    if (pendingImage->cssImageGeneratorValue()) {
-        CSSImageGeneratorValue* imageGeneratorValue = pendingImage->cssImageGeneratorValue();
-        imageGeneratorValue->loadSubimages(m_fetcher);
+    if (CSSImageGeneratorValue* imageGeneratorValue
+        = pendingImage->cssImageGeneratorValue()) {
+        imageGeneratorValue->loadSubimages(fetcher);
         return StyleGeneratedImage::create(imageGeneratorValue);
     }
 
-    if (pendingImage->cssCursorImageValue()) {
-        CSSCursorImageValue* cursorImageValue = pendingImage->cssCursorImageValue();
-        return cursorImageValue->cachedImage(m_fetcher, deviceScaleFactor);
-    }
+    if (CSSCursorImageValue* cursorImageValue
+        = pendingImage->cssCursorImageValue())
+        return cursorImageValue->cachedImage(fetcher, deviceScaleFactor);
 
-    if (pendingImage->cssImageSetValue()) {
-        CSSImageSetValue* imageSetValue = pendingImage->cssImageSetValue();
-        return imageSetValue->cachedImageSet(m_fetcher, deviceScaleFactor);
-    }
+    if (CSSImageSetValue* imageSetValue = pendingImage->cssImageSetValue())
+        return imageSetValue->cachedImageSet(fetcher, deviceScaleFactor, options);
 
     return 0;
 }
 
-void StyleResourceLoader::loadPendingShapeImage(RenderStyle* renderStyle, ShapeValue* shapeValue)
+PassRefPtr<StyleImage> StyleResourceLoader::loadPendingImage(StylePendingImage* pendingImage, float deviceScaleFactor)
+{
+    return doLoadPendingImage(m_fetcher, pendingImage, deviceScaleFactor, ResourceFetcher::defaultResourceOptions());
+}
+
+void StyleResourceLoader::loadPendingShapeImage(RenderStyle* renderStyle, ShapeValue* shapeValue, float deviceScaleFactor)
 {
     if (!shapeValue)
         return;
@@ -111,14 +105,11 @@ void StyleResourceLoader::loadPendingShapeImage(RenderStyle* renderStyle, ShapeV
     if (!image || !image->isPendingImage())
         return;
 
-    StylePendingImage* pendingImage = static_cast<StylePendingImage*>(image);
-    CSSImageValue* cssImageValue =  pendingImage->cssImageValue();
-
     ResourceLoaderOptions options = ResourceFetcher::defaultResourceOptions();
-    options.requestOriginPolicy = PotentiallyCrossOriginEnabled;
     options.allowCredentials = DoNotAllowStoredCredentials;
+    options.corsEnabled = IsCORSEnabled;
 
-    shapeValue->setImage(cssImageValue->cachedImage(m_fetcher, options));
+    shapeValue->setImage(doLoadPendingImage(m_fetcher, toStylePendingImage(image), deviceScaleFactor, options));
 }
 
 void StyleResourceLoader::loadPendingImages(RenderStyle* style, const ElementStyleResources& elementStyleResources)
@@ -134,7 +125,7 @@ void StyleResourceLoader::loadPendingImages(RenderStyle* style, const ElementSty
         case CSSPropertyBackgroundImage: {
             for (FillLayer* backgroundLayer = style->accessBackgroundLayers(); backgroundLayer; backgroundLayer = backgroundLayer->next()) {
                 if (backgroundLayer->image() && backgroundLayer->image()->isPendingImage())
-                    backgroundLayer->setImage(loadPendingImage(static_cast<StylePendingImage*>(backgroundLayer->image()), elementStyleResources.deviceScaleFactor()));
+                    backgroundLayer->setImage(loadPendingImage(toStylePendingImage(backgroundLayer->image()), elementStyleResources.deviceScaleFactor()));
             }
             break;
         }
@@ -143,7 +134,7 @@ void StyleResourceLoader::loadPendingImages(RenderStyle* style, const ElementSty
                 if (contentData->isImage()) {
                     StyleImage* image = static_cast<ImageContentData*>(contentData)->image();
                     if (image->isPendingImage()) {
-                        RefPtr<StyleImage> loadedImage = loadPendingImage(static_cast<StylePendingImage*>(image), elementStyleResources.deviceScaleFactor());
+                        RefPtr<StyleImage> loadedImage = loadPendingImage(toStylePendingImage(image), elementStyleResources.deviceScaleFactor());
                         if (loadedImage)
                             static_cast<ImageContentData*>(contentData)->setImage(loadedImage.release());
                     }
@@ -157,7 +148,7 @@ void StyleResourceLoader::loadPendingImages(RenderStyle* style, const ElementSty
                     CursorData& currentCursor = cursorList->at(i);
                     if (StyleImage* image = currentCursor.image()) {
                         if (image->isPendingImage())
-                            currentCursor.setImage(loadPendingImage(static_cast<StylePendingImage*>(image), elementStyleResources.deviceScaleFactor()));
+                            currentCursor.setImage(loadPendingImage(toStylePendingImage(image), elementStyleResources.deviceScaleFactor()));
                     }
                 }
             }
@@ -165,19 +156,19 @@ void StyleResourceLoader::loadPendingImages(RenderStyle* style, const ElementSty
         }
         case CSSPropertyListStyleImage: {
             if (style->listStyleImage() && style->listStyleImage()->isPendingImage())
-                style->setListStyleImage(loadPendingImage(static_cast<StylePendingImage*>(style->listStyleImage()), elementStyleResources.deviceScaleFactor()));
+                style->setListStyleImage(loadPendingImage(toStylePendingImage(style->listStyleImage()), elementStyleResources.deviceScaleFactor()));
             break;
         }
         case CSSPropertyBorderImageSource: {
             if (style->borderImageSource() && style->borderImageSource()->isPendingImage())
-                style->setBorderImageSource(loadPendingImage(static_cast<StylePendingImage*>(style->borderImageSource()), elementStyleResources.deviceScaleFactor()));
+                style->setBorderImageSource(loadPendingImage(toStylePendingImage(style->borderImageSource()), elementStyleResources.deviceScaleFactor()));
             break;
         }
         case CSSPropertyWebkitBoxReflect: {
             if (StyleReflection* reflection = style->boxReflect()) {
                 const NinePieceImage& maskImage = reflection->mask();
                 if (maskImage.image() && maskImage.image()->isPendingImage()) {
-                    RefPtr<StyleImage> loadedImage = loadPendingImage(static_cast<StylePendingImage*>(maskImage.image()), elementStyleResources.deviceScaleFactor());
+                    RefPtr<StyleImage> loadedImage = loadPendingImage(toStylePendingImage(maskImage.image()), elementStyleResources.deviceScaleFactor());
                     reflection->setMask(NinePieceImage(loadedImage.release(), maskImage.imageSlices(), maskImage.fill(), maskImage.borderSlices(), maskImage.outset(), maskImage.horizontalRule(), maskImage.verticalRule()));
                 }
             }
@@ -185,59 +176,24 @@ void StyleResourceLoader::loadPendingImages(RenderStyle* style, const ElementSty
         }
         case CSSPropertyWebkitMaskBoxImageSource: {
             if (style->maskBoxImageSource() && style->maskBoxImageSource()->isPendingImage())
-                style->setMaskBoxImageSource(loadPendingImage(static_cast<StylePendingImage*>(style->maskBoxImageSource()), elementStyleResources.deviceScaleFactor()));
+                style->setMaskBoxImageSource(loadPendingImage(toStylePendingImage(style->maskBoxImageSource()), elementStyleResources.deviceScaleFactor()));
             break;
         }
         case CSSPropertyWebkitMaskImage: {
             for (FillLayer* maskLayer = style->accessMaskLayers(); maskLayer; maskLayer = maskLayer->next()) {
                 if (maskLayer->image() && maskLayer->image()->isPendingImage())
-                    maskLayer->setImage(loadPendingImage(static_cast<StylePendingImage*>(maskLayer->image()), elementStyleResources.deviceScaleFactor()));
+                    maskLayer->setImage(loadPendingImage(toStylePendingImage(maskLayer->image()), elementStyleResources.deviceScaleFactor()));
             }
             break;
         }
         case CSSPropertyShapeInside:
-            loadPendingShapeImage(style, style->shapeInside());
+            loadPendingShapeImage(style, style->shapeInside(), elementStyleResources.deviceScaleFactor());
             break;
         case CSSPropertyShapeOutside:
-            loadPendingShapeImage(style, style->shapeOutside());
+            loadPendingShapeImage(style, style->shapeOutside(), elementStyleResources.deviceScaleFactor());
             break;
         default:
             ASSERT_NOT_REACHED();
-        }
-    }
-}
-
-void StyleResourceLoader::loadPendingShaders(RenderStyle* style, const ElementStyleResources& elementStyleResources)
-{
-    if (!style->hasFilter() || !elementStyleResources.hasNewCustomFilterProgram())
-        return;
-
-    Vector<RefPtr<FilterOperation> >& filterOperations = style->mutableFilter().operations();
-    for (unsigned i = 0; i < filterOperations.size(); ++i) {
-        RefPtr<FilterOperation> filterOperation = filterOperations.at(i);
-        if (filterOperation->getOperationType() == FilterOperation::CUSTOM) {
-            CustomFilterOperation* customFilter = static_cast<CustomFilterOperation*>(filterOperation.get());
-            ASSERT(customFilter->program());
-            StyleCustomFilterProgram* program = static_cast<StyleCustomFilterProgram*>(customFilter->program());
-            // Note that the StylePendingShaders could be already resolved to StyleFetchedShaders. That's because the rule was matched before.
-            // However, the StyleCustomFilterProgram that was initially created could have been removed from the cache in the meanwhile,
-            // meaning that we get a new StyleCustomFilterProgram here that is not yet in the cache, but already has loaded StyleShaders.
-            if (!program->hasPendingShaders() && program->inCache())
-                continue;
-            RefPtr<StyleCustomFilterProgram> styleProgram = m_customFilterProgramCache->lookup(program);
-            if (styleProgram.get()) {
-                customFilter->setProgram(styleProgram.release());
-            } else {
-                if (program->vertexShader() && program->vertexShader()->isPendingShader()) {
-                    CSSShaderValue* shaderValue = static_cast<StylePendingShader*>(program->vertexShader())->cssShaderValue();
-                    program->setVertexShader(shaderValue->resource(m_fetcher));
-                }
-                if (program->fragmentShader() && program->fragmentShader()->isPendingShader()) {
-                    CSSShaderValue* shaderValue = static_cast<StylePendingShader*>(program->fragmentShader())->cssShaderValue();
-                    program->setFragmentShader(shaderValue->resource(m_fetcher));
-                }
-                m_customFilterProgramCache->add(program);
-            }
         }
     }
 }
@@ -246,9 +202,6 @@ void StyleResourceLoader::loadPendingResources(RenderStyle* renderStyle, Element
 {
     // Start loading images referenced by this style.
     loadPendingImages(renderStyle, elementStyleResources);
-
-    // Start loading the shaders referenced by this style.
-    loadPendingShaders(renderStyle, elementStyleResources);
 
     // Start loading the SVG Documents referenced by this style.
     loadPendingSVGDocuments(renderStyle, elementStyleResources);

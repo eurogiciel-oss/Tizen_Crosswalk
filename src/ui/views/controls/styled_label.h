@@ -5,8 +5,8 @@
 #ifndef UI_VIEWS_CONTROLS_STYLED_LABEL_H_
 #define UI_VIEWS_CONTROLS_STYLED_LABEL_H_
 
+#include <list>
 #include <map>
-#include <queue>
 
 #include "base/basictypes.h"
 #include "base/strings/string16.h"
@@ -44,7 +44,7 @@ class VIEWS_EXPORT StyledLabel : public View, public LinkListener {
     SkColor color;
 
     // Tooltip for the range.
-    string16 tooltip;
+    base::string16 tooltip;
 
     // If set, the whole range will be put on a single line.
     bool disable_line_wrapping;
@@ -54,11 +54,11 @@ class VIEWS_EXPORT StyledLabel : public View, public LinkListener {
   };
 
   // Note that any trailing whitespace in |text| will be trimmed.
-  StyledLabel(const string16& text, StyledLabelListener* listener);
+  StyledLabel(const base::string16& text, StyledLabelListener* listener);
   virtual ~StyledLabel();
 
   // Sets the text to be displayed, and clears any previous styling.
-  void SetText(const string16& text);
+  void SetText(const base::string16& text);
 
   // Marks the given range within |text_| with style defined by |style_info|.
   // |range| must be contained in |text_|.
@@ -103,15 +103,16 @@ class VIEWS_EXPORT StyledLabel : public View, public LinkListener {
     gfx::Range range;
     RangeStyleInfo style_info;
   };
+  typedef std::list<StyleRange> StyleRanges;
 
   // Calculates how to layout child views, creates them and sets their size
   // and position. |width| is the horizontal space, in pixels, that the view
   // has to work with. If |dry_run| is true, the view hierarchy is not touched.
-  // The return value is the height in pixels.
-  int CalculateAndDoLayout(int width, bool dry_run);
+  // The return value is the necessary size.
+  gfx::Size CalculateAndDoLayout(int width, bool dry_run);
 
   // The text to display.
-  string16 text_;
+  base::string16 text_;
 
   // The default style to use for any part of the text that isn't within
   // a range in |style_ranges_|.
@@ -121,7 +122,7 @@ class VIEWS_EXPORT StyledLabel : public View, public LinkListener {
   StyledLabelListener* listener_;
 
   // The ranges that should be linkified, sorted by start position.
-  std::priority_queue<StyleRange> style_ranges_;
+  StyleRanges style_ranges_;
 
   // A mapping from a view to the range it corresponds to in |text_|. Only views
   // that correspond to ranges with is_link style set will be added to the map.

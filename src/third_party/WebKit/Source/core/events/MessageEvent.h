@@ -47,7 +47,7 @@ struct MessageEventInit : public EventInit {
     MessagePortArray ports;
 };
 
-class MessageEvent : public Event {
+class MessageEvent FINAL : public Event {
 public:
     static PassRefPtr<MessageEvent> create()
     {
@@ -77,10 +77,7 @@ public:
     {
         return adoptRef(new MessageEvent(data, origin));
     }
-    static PassRefPtr<MessageEvent> create(const AtomicString& type, const MessageEventInit& initializer)
-    {
-        return adoptRef(new MessageEvent(type, initializer));
-    }
+    static PassRefPtr<MessageEvent> create(const AtomicString& type, const MessageEventInit& initializer, ExceptionState&);
     virtual ~MessageEvent();
 
     void initMessageEvent(const AtomicString& type, bool canBubble, bool cancelable, const String& origin, const String& lastEventId, DOMWindow* source, PassOwnPtr<MessagePortArray>);
@@ -89,10 +86,11 @@ public:
     const String& origin() const { return m_origin; }
     const String& lastEventId() const { return m_lastEventId; }
     EventTarget* source() const { return m_source.get(); }
+    EventTarget* source(bool& isNull) const { isNull = !m_source; return m_source.get(); }
     MessagePortArray ports() const { return m_ports ? *m_ports : MessagePortArray(); }
     MessagePortChannelArray* channels() const { return m_channels ? m_channels.get() : 0; }
 
-    virtual const AtomicString& interfaceName() const;
+    virtual const AtomicString& interfaceName() const OVERRIDE;
 
     enum DataType {
         DataTypeScriptValue,

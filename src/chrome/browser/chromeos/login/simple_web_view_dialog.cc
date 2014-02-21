@@ -20,7 +20,7 @@
 #include "chrome/browser/ui/toolbar/toolbar_model_impl.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/location_bar/location_icon_view.h"
-#include "chrome/browser/ui/views/reload_button.h"
+#include "chrome/browser/ui/views/toolbar/reload_button.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
@@ -49,11 +49,12 @@ const int kExternalMargin = 60;
 // Margin between WebView and SimpleWebViewDialog border.
 const int kInnerMargin = 2;
 
+const SkColor kDialogColor = SK_ColorWHITE;
+
 class ToolbarRowView : public views::View {
  public:
   ToolbarRowView() {
-    set_background(views::Background::CreateSolidBackground(
-        SkColorSetRGB(0xbe, 0xbe, 0xbe)));
+    set_background(views::Background::CreateSolidBackground(kDialogColor));
   }
 
   virtual ~ToolbarRowView() {}
@@ -136,18 +137,13 @@ SimpleWebViewDialog::SimpleWebViewDialog(Profile* profile)
 }
 
 SimpleWebViewDialog::~SimpleWebViewDialog() {
-  if (web_view_container_.get()) {
-    // WebView can't be deleted immediately, because it could be on the stack.
-    web_view_->web_contents()->SetDelegate(NULL);
-    base::MessageLoop::current()->DeleteSoon(
-        FROM_HERE, web_view_container_.release());
-  }
 }
 
 void SimpleWebViewDialog::StartLoad(const GURL& url) {
   if (!web_view_container_.get())
     web_view_container_.reset(new views::WebView(profile_));
   web_view_ = web_view_container_.get();
+  web_view_->set_owned_by_client();
   web_view_->GetWebContents()->SetDelegate(this);
   web_view_->LoadInitialURL(url);
 
@@ -163,7 +159,7 @@ void SimpleWebViewDialog::StartLoad(const GURL& url) {
 void SimpleWebViewDialog::Init() {
   toolbar_model_.reset(new ToolbarModelImpl(this));
 
-  set_background(views::Background::CreateSolidBackground(SK_ColorWHITE));
+  set_background(views::Background::CreateSolidBackground(kDialogColor));
 
   // Back/Forward buttons.
   back_ = new views::ImageButton(this);
@@ -197,8 +193,6 @@ void SimpleWebViewDialog::Init() {
   reload_->SetAccessibleName(l10n_util::GetStringUTF16(IDS_ACCNAME_RELOAD));
   reload_->set_id(VIEW_ID_RELOAD_BUTTON);
 
-  LoadImages();
-
   // Use separate view to setup custom background.
   ToolbarRowView* toolbar_row = new ToolbarRowView;
   toolbar_row->Init(back_, forward_, reload_, location_bar_);
@@ -224,8 +218,10 @@ void SimpleWebViewDialog::Init() {
   layout->AddPaddingRow(0, kInnerMargin);
 
   layout->StartRow(1, 1);
-  layout->AddView(web_view_container_.release());
+  layout->AddView(web_view_container_.get());
   layout->AddPaddingRow(0, kInnerMargin);
+
+  LoadImages();
 
   location_bar_->Init();
   UpdateReload(web_view_->web_contents()->IsLoading(), true);
@@ -374,7 +370,7 @@ void SimpleWebViewDialog::LoadImages() {
   forward_->SetImage(views::CustomButton::STATE_DISABLED,
                      tp->GetImageSkiaNamed(IDR_FORWARD_D));
 
-  reload_->LoadImages(tp);
+  reload_->LoadImages();
 }
 
 void SimpleWebViewDialog::UpdateButtons() {

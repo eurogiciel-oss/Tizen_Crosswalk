@@ -24,56 +24,73 @@ namespace cast {
 class LoggingRaw : public base::NonThreadSafe,
                    public base::SupportsWeakPtr<LoggingRaw> {
  public:
-  explicit LoggingRaw(base::TickClock* clock);
+  explicit LoggingRaw(bool is_sender);
   ~LoggingRaw();
 
   // Inform of new event: three types of events: frame, packets and generic.
   // Frame events can be inserted with different parameters.
-  void InsertFrameEvent(CastLoggingEvent event,
+  void InsertFrameEvent(const base::TimeTicks& time_of_event,
+                        CastLoggingEvent event,
                         uint32 rtp_timestamp,
-                        uint8 frame_id);
+                        uint32 frame_id);
 
   // Size - Inserting the size implies that this is an encoded frame.
-  void InsertFrameEventWithSize(CastLoggingEvent event,
+  void InsertFrameEventWithSize(const base::TimeTicks& time_of_event,
+                                CastLoggingEvent event,
                                 uint32 rtp_timestamp,
-                                uint8 frame_id,
+                                uint32 frame_id,
                                 int frame_size);
 
   // Render/playout delay
-  void InsertFrameEventWithDelay(CastLoggingEvent event,
+  void InsertFrameEventWithDelay(const base::TimeTicks& time_of_event,
+                                 CastLoggingEvent event,
                                  uint32 rtp_timestamp,
-                                 uint8 frame_id,
+                                 uint32 frame_id,
                                  base::TimeDelta delay);
 
   // Insert a packet event.
-  void InsertPacketEvent(CastLoggingEvent event,
+  void InsertPacketEvent(const base::TimeTicks& time_of_event,
+                         CastLoggingEvent event,
                          uint32 rtp_timestamp,
-                         uint8 frame_id,
+                         uint32 frame_id,
                          uint16 packet_id,
                          uint16 max_packet_id,
-                         int size);
+                         size_t size);
 
-  void InsertGenericEvent(CastLoggingEvent event, int value);
+  void InsertGenericEvent(const base::TimeTicks& time_of_event,
+                          CastLoggingEvent event,
+                          int value);
 
   // Get raw log data.
   FrameRawMap GetFrameData() const;
   PacketRawMap GetPacketData() const;
   GenericRawMap GetGenericData() const;
 
+  AudioRtcpRawMap GetAndResetAudioRtcpData();
+  VideoRtcpRawMap GetAndResetVideoRtcpData();
 
-  // Reset all log data.
+  // Reset all log data; except the Rtcp copies.
   void Reset();
 
  private:
-  void InsertBaseFrameEvent(CastLoggingEvent event,
-                            uint8 frame_id,
+  void InsertBaseFrameEvent(const base::TimeTicks& time_of_event,
+                            CastLoggingEvent event,
+                            uint32 frame_id,
                             uint32 rtp_timestamp);
 
-  base::WeakPtrFactory<LoggingRaw> weak_factory_;
-  base::TickClock* const clock_;  // Not owned by this class.
+  void InsertRtcpFrameEvent(const base::TimeTicks& time_of_event,
+                            CastLoggingEvent event,
+                            uint32 rtp_timestamp,
+                            base::TimeDelta delay);
+
+  const bool is_sender_;
   FrameRawMap frame_map_;
   PacketRawMap packet_map_;
   GenericRawMap generic_map_;
+  AudioRtcpRawMap audio_rtcp_map_;
+  VideoRtcpRawMap video_rtcp_map_;
+
+  base::WeakPtrFactory<LoggingRaw> weak_factory_;
 
   DISALLOW_COPY_AND_ASSIGN(LoggingRaw);
 };

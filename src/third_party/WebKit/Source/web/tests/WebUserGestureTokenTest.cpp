@@ -37,10 +37,23 @@
 #include "WebUserGestureIndicator.h"
 #include "platform/UserGestureIndicator.h"
 
-using namespace WebKit;
+using namespace blink;
 using namespace WebCore;
 
 namespace {
+
+class GestureHandlerTest : public WebUserGestureHandler {
+public:
+    GestureHandlerTest()
+        : m_reached(false) { }
+
+    void onGesture()
+    {
+        m_reached = true;
+    }
+
+    bool m_reached;
+};
 
 TEST(WebUserGestureTokenTest, Basic)
 {
@@ -73,6 +86,14 @@ TEST(WebUserGestureTokenTest, Basic)
     {
         WebScopedUserGesture indicator(token);
         EXPECT_FALSE(WebUserGestureIndicator::isProcessingUserGesture());
+    }
+
+    {
+        GestureHandlerTest handler;
+        WebUserGestureIndicator::setHandler(&handler);
+        UserGestureIndicator indicator(DefinitelyProcessingNewUserGesture);
+        EXPECT_TRUE(handler.m_reached);
+        WebUserGestureIndicator::setHandler(0);
     }
 }
 

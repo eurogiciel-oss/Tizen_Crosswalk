@@ -24,6 +24,7 @@ namespace errors = extensions::manifest_errors;
 namespace {
 
 const char* const kMIMETypeHandlersWhitelist[] = {
+  extension_misc::kPdfExtensionId,
   extension_misc::kQuickOfficeComponentExtensionId,
   extension_misc::kQuickOfficeDevExtensionId,
   extension_misc::kQuickOfficeExtensionId,
@@ -85,11 +86,11 @@ MimeTypesHandlerParser::~MimeTypesHandlerParser() {
 }
 
 bool MimeTypesHandlerParser::Parse(extensions::Extension* extension,
-                                   string16* error) {
+                                   base::string16* error) {
   const base::ListValue* mime_types_value = NULL;
   if (!extension->manifest()->GetList(keys::kMIMETypes,
                                       &mime_types_value)) {
-    *error = ASCIIToUTF16(errors::kInvalidMimeTypesHandler);
+    *error = base::ASCIIToUTF16(errors::kInvalidMimeTypesHandler);
     return false;
   }
 
@@ -98,7 +99,7 @@ bool MimeTypesHandlerParser::Parse(extensions::Extension* extension,
   for (size_t i = 0; i < mime_types_value->GetSize(); ++i) {
     std::string filter;
     if (!mime_types_value->GetString(i, &filter)) {
-      *error = ASCIIToUTF16(errors::kInvalidMIMETypes);
+      *error = base::ASCIIToUTF16(errors::kInvalidMIMETypes);
       return false;
     }
     info->handler_.AddMIMEType(filter);

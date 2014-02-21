@@ -35,6 +35,7 @@
 #include "core/events/ThreadLocalEventNames.h"
 #include "modules/indexeddb/IDBMetadata.h"
 #include "modules/indexeddb/IndexedDB.h"
+#include "public/platform/WebIDBDatabase.h"
 #include "wtf/HashSet.h"
 #include "wtf/RefCounted.h"
 
@@ -44,13 +45,13 @@ class DOMError;
 class ExceptionState;
 class IDBCursor;
 class IDBDatabase;
-class IDBDatabaseBackendInterface;
 class IDBObjectStore;
 class IDBOpenDBRequest;
 struct IDBObjectStoreMetadata;
 
-class IDBTransaction : public ScriptWrappable, public RefCounted<IDBTransaction>, public EventTargetWithInlineData, public ActiveDOMObject {
+class IDBTransaction FINAL : public ScriptWrappable, public RefCounted<IDBTransaction>, public EventTargetWithInlineData, public ActiveDOMObject {
     REFCOUNTED_EVENT_TARGET(IDBTransaction);
+
 public:
     static PassRefPtr<IDBTransaction> create(ExecutionContext*, int64_t, const Vector<String>& objectStoreNames, IndexedDB::TransactionMode, IDBDatabase*);
     static PassRefPtr<IDBTransaction> create(ExecutionContext*, int64_t, IDBDatabase*, IDBOpenDBRequest*, const IDBDatabaseMetadata& previousMetadata);
@@ -59,13 +60,11 @@ public:
     static const AtomicString& modeReadOnly();
     static const AtomicString& modeReadWrite();
     static const AtomicString& modeVersionChange();
-    static const AtomicString& modeReadOnlyLegacy();
-    static const AtomicString& modeReadWriteLegacy();
 
     static IndexedDB::TransactionMode stringToMode(const String&, ExceptionState&);
     static const AtomicString& modeToString(IndexedDB::TransactionMode);
 
-    IDBDatabaseBackendInterface* backendDB() const;
+    blink::WebIDBDatabase* backendDB() const;
 
     int64_t id() const { return m_id; }
     bool isActive() const { return m_state == Active; }
@@ -91,8 +90,8 @@ public:
     DEFINE_ATTRIBUTE_EVENT_LISTENER(complete);
     DEFINE_ATTRIBUTE_EVENT_LISTENER(error);
 
-    virtual void onAbort(PassRefPtr<DOMError>);
-    virtual void onComplete();
+    void onAbort(PassRefPtr<DOMError>);
+    void onComplete();
 
     // EventTarget
     virtual const AtomicString& interfaceName() const OVERRIDE;

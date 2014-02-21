@@ -75,12 +75,16 @@ public:
     }
 
     // Helper utilities used in the render tree to access resources used for painting shapes/text (gradients & patterns & solid colors only)
-    static RenderSVGResource* fillPaintingResource(RenderObject*, const RenderStyle*, Color& fallbackColor);
-    static RenderSVGResource* strokePaintingResource(RenderObject*, const RenderStyle*, Color& fallbackColor);
+    // If hasFallback gets set to true, the sharedSolidPaintingResource is set to a fallback color.
+    static RenderSVGResource* fillPaintingResource(RenderObject*, const RenderStyle*, bool& hasFallback);
+    static RenderSVGResource* strokePaintingResource(RenderObject*, const RenderStyle*, bool& hasFallback);
     static RenderSVGResourceSolidColor* sharedSolidPaintingResource();
 
     static void markForLayoutAndParentResourceInvalidation(RenderObject*, bool needsLayout = true);
 };
+
+#define DEFINE_RENDER_SVG_RESOURCE_TYPE_CASTS(thisType, typeName) \
+    DEFINE_TYPE_CASTS(thisType, RenderSVGResource, resource, resource->resourceType() == typeName, resource.resourceType() == typeName)
 
 }
 

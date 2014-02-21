@@ -37,11 +37,11 @@
 #include "wtf/HashMap.h"
 #include "wtf/PassRefPtr.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebNotificationPresenter;
 
-class NotificationPresenterImpl : public WebCore::NotificationClient {
+class NotificationPresenterImpl FINAL : public WebCore::NotificationClient {
 public:
     NotificationPresenterImpl() : m_presenter(0) { }
 
@@ -49,22 +49,20 @@ public:
     bool isInitialized();
 
     // WebCore::NotificationPresenter implementation.
-    virtual bool show(WebCore::Notification* object);
-    virtual void cancel(WebCore::Notification* object);
-    virtual void notificationObjectDestroyed(WebCore::Notification* object);
-    virtual void notificationControllerDestroyed();
-    virtual WebCore::NotificationClient::Permission checkPermission(WebCore::ExecutionContext*);
+    virtual bool show(WebCore::NotificationBase*) OVERRIDE;
+    virtual void cancel(WebCore::NotificationBase*) OVERRIDE;
+    virtual void notificationObjectDestroyed(WebCore::NotificationBase*) OVERRIDE;
+    virtual WebCore::NotificationClient::Permission checkPermission(WebCore::ExecutionContext*) OVERRIDE;
 #if ENABLE(LEGACY_NOTIFICATIONS)
-    virtual void requestPermission(WebCore::ExecutionContext*, WTF::PassRefPtr<WebCore::VoidCallback>);
+    virtual void requestPermission(WebCore::ExecutionContext*, WTF::PassOwnPtr<WebCore::VoidCallback>) OVERRIDE;
 #endif
-    virtual void requestPermission(WebCore::ExecutionContext*, WTF::PassRefPtr<WebCore::NotificationPermissionCallback>);
-    virtual void cancelRequestsForPermission(WebCore::ExecutionContext*) { }
+    virtual void requestPermission(WebCore::ExecutionContext*, WTF::PassOwnPtr<WebCore::NotificationPermissionCallback>) OVERRIDE;
 
 private:
     // WebNotificationPresenter that this object delegates to.
     WebNotificationPresenter* m_presenter;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // NotificationPresenterImpl_h

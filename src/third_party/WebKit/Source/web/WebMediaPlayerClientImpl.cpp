@@ -5,44 +5,42 @@
 #include "config.h"
 #include "WebMediaPlayerClientImpl.h"
 
-#include "InbandTextTrackPrivateImpl.h"
-#include "MediaSourcePrivateImpl.h"
 #include "WebDocument.h"
 #include "WebFrameClient.h"
 #include "WebFrameImpl.h"
-#include "WebHelperPluginImpl.h"
-#include "WebInbandTextTrack.h"
-#include "WebMediaPlayer.h"
+#include "WebHelperPlugin.h"
 #include "WebViewImpl.h"
-#include "core/html/HTMLMediaElement.h"
-#include "core/html/HTMLMediaSource.h"
-#include "core/html/TimeRanges.h"
 #include "core/frame/Frame.h"
-#include "platform/audio/AudioBus.h"
-#include "platform/audio/AudioSourceProvider.h"
-#include "platform/audio/AudioSourceProviderClient.h"
-#include "core/platform/graphics/GraphicsContext.h"
-#include "core/platform/graphics/GraphicsLayer.h"
-#include "core/platform/graphics/MediaPlayer.h"
+#include "core/html/HTMLMediaElement.h"
+#include "core/html/TimeRanges.h"
 #include "core/rendering/RenderLayerCompositor.h"
 #include "core/rendering/RenderView.h"
 #include "modules/mediastream/MediaStreamRegistry.h"
+#include "platform/audio/AudioBus.h"
+#include "platform/audio/AudioSourceProviderClient.h"
 #include "platform/geometry/IntSize.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/graphics/GraphicsContext3D.h"
+#include "platform/graphics/GraphicsLayer.h"
+#include "platform/graphics/skia/GaneshUtils.h"
 #include "public/platform/WebAudioSourceProvider.h"
+#include "public/platform/WebCString.h"
 #include "public/platform/WebCanvas.h"
 #include "public/platform/WebCompositorSupport.h"
-#include "public/platform/WebCString.h"
+#include "public/platform/WebContentDecryptionModule.h"
+#include "public/platform/WebGraphicsContext3D.h"
+#include "public/platform/WebInbandTextTrack.h"
+#include "public/platform/WebMediaPlayer.h"
 #include "public/platform/WebRect.h"
 #include "public/platform/WebString.h"
 #include "public/platform/WebURL.h"
-#include "weborigin/KURL.h"
 
 #if OS(ANDROID)
 #include "GrContext.h"
 #include "GrTypes.h"
 #include "SkCanvas.h"
 #include "SkGrPixelRef.h"
-#include "core/platform/graphics/gpu/SharedGraphicsContext3D.h"
+#include "platform/graphics/gpu/SharedGraphicsContext3D.h"
 #endif
 
 
@@ -51,7 +49,7 @@
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 static PassOwnPtr<WebMediaPlayer> createWebMediaPlayer(WebMediaPlayerClient* client, const WebURL& url, Frame* frame)
 {
@@ -95,8 +93,6 @@ void WebMediaPlayerClientImpl::timeChanged()
 
 void WebMediaPlayerClientImpl::repaint()
 {
-    if (m_videoLayer)
-        m_videoLayer->invalidate();
     m_client->mediaPlayerRepaint();
 }
 
@@ -112,9 +108,7 @@ void WebMediaPlayerClientImpl::sizeChanged()
 
 void WebMediaPlayerClientImpl::setOpaque(bool opaque)
 {
-    m_opaque = opaque;
-    if (m_videoLayer)
-        m_videoLayer->setOpaque(m_opaque);
+    m_client->mediaPlayerSetOpaque(opaque);
 }
 
 double WebMediaPlayerClientImpl::volume() const
@@ -147,9 +141,9 @@ void WebMediaPlayerClientImpl::keyMessage(const WebString& keySystem, const WebS
     m_client->mediaPlayerKeyMessage(keySystem, sessionId, message, messageLength, defaultURL);
 }
 
-void WebMediaPlayerClientImpl::keyNeeded(const WebString& keySystem, const WebString& sessionId, const unsigned char* initData, unsigned initDataLength)
+void WebMediaPlayerClientImpl::keyNeeded(const WebString& contentType, const unsigned char* initData, unsigned initDataLength)
 {
-    m_client->mediaPlayerKeyNeeded(keySystem, sessionId, initData, initDataLength);
+    m_client->mediaPlayerKeyNeeded(contentType, initData, initDataLength);
 }
 
 WebPlugin* WebMediaPlayerClientImpl::createHelperPlugin(const WebString& pluginType, WebFrame* frame)
@@ -171,49 +165,32 @@ WebPlugin* WebMediaPlayerClientImpl::createHelperPlugin(const WebString& pluginT
     return plugin;
 }
 
-
+// FIXME: |frame| no longer needed.
 void WebMediaPlayerClientImpl::closeHelperPluginSoon(WebFrame* frame)
 {
     ASSERT(m_helperPlugin);
-    toWebViewImpl(frame->view())->closeHelperPluginSoon(m_helperPlugin.release());
+    m_helperPlugin.clear();
 }
 
-void WebMediaPlayerClientImpl::setWebLayer(WebLayer* layer)
+void WebMediaPlayerClientImpl::setWebLayer(blink::WebLayer* layer)
 {
-    if (layer == m_videoLayer)
-        return;
-
-    // If either of the layers is null we need to enable or disable compositing. This is done by triggering a style recalc.
-    if (!m_videoLayer || !layer)
-        m_client->mediaPlayerScheduleLayerUpdate();
-
-    if (m_videoLayer)
-        GraphicsLayer::unregisterContentsLayer(m_videoLayer);
-    m_videoLayer = layer;
-    if (m_videoLayer) {
-        m_videoLayer->setOpaque(m_opaque);
-        GraphicsLayer::registerContentsLayer(m_videoLayer);
-    }
+    m_client->mediaPlayerSetWebLayer(layer);
 }
 
 void WebMediaPlayerClientImpl::addTextTrack(WebInbandTextTrack* textTrack)
 {
-    m_client->mediaPlayerDidAddTrack(adoptRef(new InbandTextTrackPrivateImpl(textTrack)));
+    m_client->mediaPlayerDidAddTrack(textTrack);
 }
 
 void WebMediaPlayerClientImpl::removeTextTrack(WebInbandTextTrack* textTrack)
 {
-    // The following static_cast is safe, because we created the object with the textTrack
-    // that was passed to addTextTrack.  (The object from which we are downcasting includes
-    // WebInbandTextTrack as one of the intefaces from which inherits.)
-    m_client->mediaPlayerDidRemoveTrack(static_cast<InbandTextTrackPrivateImpl*>(textTrack->client()));
+    m_client->mediaPlayerDidRemoveTrack(textTrack);
 }
 
 void WebMediaPlayerClientImpl::mediaSourceOpened(WebMediaSource* webMediaSource)
 {
     ASSERT(webMediaSource);
-    m_mediaSource->setPrivateAndOpen(adoptPtr(new MediaSourcePrivateImpl(adoptPtr(webMediaSource))));
-    m_mediaSource = 0;
+    m_client->mediaPlayerMediaSourceOpened(webMediaSource);
 }
 
 void WebMediaPlayerClientImpl::requestFullscreen()
@@ -228,22 +205,11 @@ void WebMediaPlayerClientImpl::requestSeek(double time)
 
 // MediaPlayer -------------------------------------------------
 
-void WebMediaPlayerClientImpl::load(const String& url)
+void WebMediaPlayerClientImpl::load(WebMediaPlayer::LoadType loadType, const WTF::String& url)
 {
     m_url = KURL(ParsedURLString, url);
-    m_mediaSource = 0;
-    loadRequested();
-}
+    m_loadType = loadType;
 
-void WebMediaPlayerClientImpl::load(const String& url, PassRefPtr<WebCore::HTMLMediaSource> mediaSource)
-{
-    m_url = KURL(ParsedURLString, url);
-    m_mediaSource = mediaSource;
-    loadRequested();
-}
-
-void WebMediaPlayerClientImpl::loadRequested()
-{
     if (m_preload == MediaPlayer::None) {
 #if ENABLE(WEB_AUDIO)
         m_audioSourceProvider.wrap(0); // Clear weak reference to m_webMediaPlayer's WebAudioSourceProvider.
@@ -256,8 +222,6 @@ void WebMediaPlayerClientImpl::loadRequested()
 
 void WebMediaPlayerClientImpl::loadInternal()
 {
-    m_isMediaStream = WebCore::MediaStreamRegistry::registry().lookupMediaStreamDescriptor(m_url.string());
-
 #if ENABLE(WEB_AUDIO)
     m_audioSourceProvider.wrap(0); // Clear weak reference to m_webMediaPlayer's WebAudioSourceProvider.
 #endif
@@ -278,21 +242,12 @@ void WebMediaPlayerClientImpl::loadInternal()
         m_audioSourceProvider.wrap(m_webMediaPlayer->audioSourceProvider());
 #endif
 
-        WebMediaPlayer::LoadType loadType = WebMediaPlayer::LoadTypeURL;
-
-        if (m_mediaSource)
-            loadType = WebMediaPlayer::LoadTypeMediaSource;
-        else if (m_isMediaStream)
-            loadType = WebMediaPlayer::LoadTypeMediaStream;
+        // Tell WebMediaPlayer about any connected CDM (may be null).
+        m_webMediaPlayer->setContentDecryptionModule(m_cdm);
 
         WebMediaPlayer::CORSMode corsMode = static_cast<WebMediaPlayer::CORSMode>(m_client->mediaPlayerCORSMode());
-        m_webMediaPlayer->load(loadType, m_url, corsMode);
+        m_webMediaPlayer->load(m_loadType, m_url, corsMode);
     }
-}
-
-WebLayer* WebMediaPlayerClientImpl::platformLayer() const
-{
-    return m_videoLayer;
 }
 
 void WebMediaPlayerClientImpl::play()
@@ -349,6 +304,13 @@ MediaPlayer::MediaKeyException WebMediaPlayerClientImpl::cancelKeyRequest(const 
 
     WebMediaPlayer::MediaKeyException result = m_webMediaPlayer->cancelKeyRequest(keySystem, sessionId);
     return static_cast<MediaPlayer::MediaKeyException>(result);
+}
+
+void WebMediaPlayerClientImpl::setContentDecryptionModule(WebContentDecryptionModule* cdm)
+{
+    m_cdm = cdm;
+    if (m_webMediaPlayer)
+        m_webMediaPlayer->setContentDecryptionModule(cdm);
 }
 
 void WebMediaPlayerClientImpl::prepareToPlay()
@@ -424,13 +386,6 @@ bool WebMediaPlayerClientImpl::paused() const
     return false;
 }
 
-bool WebMediaPlayerClientImpl::supportsFullscreen() const
-{
-    if (m_webMediaPlayer)
-        return m_webMediaPlayer->supportsFullscreen();
-    return false;
-}
-
 bool WebMediaPlayerClientImpl::supportsSave() const
 {
     if (m_webMediaPlayer)
@@ -475,15 +430,8 @@ double WebMediaPlayerClientImpl::maxTimeSeekable() const
 
 PassRefPtr<TimeRanges> WebMediaPlayerClientImpl::buffered() const
 {
-    if (m_webMediaPlayer) {
-        const WebTimeRanges& webRanges = m_webMediaPlayer->buffered();
-
-        // FIXME: Save the time ranges in a member variable and update it when needed.
-        RefPtr<TimeRanges> ranges = TimeRanges::create();
-        for (size_t i = 0; i < webRanges.size(); ++i)
-            ranges->add(webRanges[i].start, webRanges[i].end);
-        return ranges.release();
-    }
+    if (m_webMediaPlayer)
+        return TimeRanges::create(m_webMediaPlayer->buffered());
     return TimeRanges::create();
 }
 
@@ -494,15 +442,6 @@ bool WebMediaPlayerClientImpl::didLoadingProgress() const
 
 void WebMediaPlayerClientImpl::paint(GraphicsContext* context, const IntRect& rect)
 {
-    // If we are using GPU to render video, ignore requests to paint frames into
-    // canvas because it will be taken care of by the VideoLayer.
-    if (acceleratedRenderingInUse())
-        return;
-    paintCurrentFrameInContext(context, rect);
-}
-
-void WebMediaPlayerClientImpl::paintCurrentFrameInContext(GraphicsContext* context, const IntRect& rect)
-{
     // Normally GraphicsContext operations do nothing when painting is disabled.
     // Since we're accessing platformContext() directly we have to manually
     // check.
@@ -510,7 +449,7 @@ void WebMediaPlayerClientImpl::paintCurrentFrameInContext(GraphicsContext* conte
         // On Android, video frame is emitted as GL_TEXTURE_EXTERNAL_OES texture. We use a different path to
         // paint the video frame into the context.
 #if OS(ANDROID)
-        if (!m_isMediaStream) {
+        if (m_loadType != WebMediaPlayer::LoadTypeMediaStream) {
             RefPtr<GraphicsContext3D> context3D = SharedGraphicsContext3D::get();
             paintOnAndroid(context, context3D.get(), rect, context->getNormalizedAlpha());
             return;
@@ -521,15 +460,15 @@ void WebMediaPlayerClientImpl::paintCurrentFrameInContext(GraphicsContext* conte
     }
 }
 
-bool WebMediaPlayerClientImpl::copyVideoTextureToPlatformTexture(WebCore::GraphicsContext3D* context, Platform3DObject texture, GC3Dint level, GC3Denum type, GC3Denum internalFormat, bool premultiplyAlpha, bool flipY)
+bool WebMediaPlayerClientImpl::copyVideoTextureToPlatformTexture(WebCore::GraphicsContext3D* context, Platform3DObject texture, GLint level, GLenum type, GLenum internalFormat, bool premultiplyAlpha, bool flipY)
 {
     if (!context || !m_webMediaPlayer)
         return false;
-    Extensions3D* extensions = context->extensions();
-    if (!extensions || !extensions->supports("GL_CHROMIUM_copy_texture") || !extensions->supports("GL_CHROMIUM_flipy")
-        || !extensions->canUseCopyTextureCHROMIUM(internalFormat, type, level) || !context->makeContextCurrent())
-        return false;
     WebGraphicsContext3D* webGraphicsContext3D = context->webContext();
+    if (!context->supportsExtension("GL_CHROMIUM_copy_texture") || !context->supportsExtension("GL_CHROMIUM_flipy")
+        || !context->canUseCopyTextureCHROMIUM(internalFormat, type, level) || !webGraphicsContext3D->makeContextCurrent())
+        return false;
+
     return m_webMediaPlayer->copyVideoTextureToPlatformTexture(webGraphicsContext3D, texture, level, internalFormat, type, premultiplyAlpha, flipY);
 }
 
@@ -612,16 +551,6 @@ bool WebMediaPlayerClientImpl::needsWebLayerForVideo() const
     return m_needsWebLayerForVideo;
 }
 
-bool WebMediaPlayerClientImpl::supportsAcceleratedRendering() const
-{
-    return !!m_videoLayer;
-}
-
-bool WebMediaPlayerClientImpl::acceleratedRenderingInUse()
-{
-    return m_videoLayer && !m_videoLayer->isOrphan();
-}
-
 PassOwnPtr<MediaPlayer> WebMediaPlayerClientImpl::create(MediaPlayerClient* client)
 {
     return adoptPtr(new WebMediaPlayerClientImpl(client));
@@ -633,40 +562,23 @@ void WebMediaPlayerClientImpl::paintOnAndroid(WebCore::GraphicsContext* context,
     if (!context || !context3D || !m_webMediaPlayer || context->paintingDisabled())
         return;
 
-    Extensions3D* extensions = context3D->extensions();
-    if (!extensions || !extensions->supports("GL_CHROMIUM_copy_texture") || !extensions->supports("GL_CHROMIUM_flipy")
-        || !context3D->makeContextCurrent())
+    WebGraphicsContext3D* webGraphicsContext3D = context3D->webContext();
+
+    if (!context3D->supportsExtension("GL_CHROMIUM_copy_texture") || !context3D->supportsExtension("GL_CHROMIUM_flipy")
+        || !webGraphicsContext3D->makeContextCurrent())
         return;
 
     // Copy video texture into a RGBA texture based bitmap first as video texture on Android is GL_TEXTURE_EXTERNAL_OES
-    // which is not supported by Skia yet. The bitmap's size needs to be the same as the video.
-    int videoWidth = naturalSize().width();
-    int videoHeight = naturalSize().height();
-
+    // which is not supported by Skia yet. The bitmap's size needs to be the same as the video and use naturalSize() here.
     // Check if we could reuse existing texture based bitmap.
     // Otherwise, release existing texture based bitmap and allocate a new one based on video size.
-    if (videoWidth != m_bitmap.width() || videoHeight != m_bitmap.height() || !m_texture.get()) {
-        GrTextureDesc desc;
-        desc.fConfig = kSkia8888_GrPixelConfig;
-        desc.fWidth = videoWidth;
-        desc.fHeight = videoHeight;
-        desc.fOrigin = kTopLeft_GrSurfaceOrigin;
-        desc.fFlags = (kRenderTarget_GrTextureFlagBit | kNoStencil_GrTextureFlagBit);
-        GrContext* ct = context3D->grContext();
-        if (!ct)
-            return;
-        m_texture.reset(ct->createUncachedTexture(desc, NULL, 0));
-        if (!m_texture.get())
-            return;
-        m_bitmap.setConfig(SkBitmap::kARGB_8888_Config, videoWidth, videoHeight);
-        m_bitmap.setPixelRef(new SkGrPixelRef(m_texture))->unref();
-    }
+    if (!ensureTextureBackedSkBitmap(context3D->grContext(), m_bitmap, naturalSize(), kTopLeft_GrSurfaceOrigin, kSkia8888_GrPixelConfig))
+        return;
 
     // Copy video texture to bitmap texture.
-    WebGraphicsContext3D* webGraphicsContext3D = context3D->webContext();
     WebCanvas* canvas = context->canvas();
-    unsigned int textureId = static_cast<unsigned int>(m_texture->getTextureHandle());
-    if (!m_webMediaPlayer->copyVideoTextureToPlatformTexture(webGraphicsContext3D, textureId, 0, GraphicsContext3D::RGBA, GraphicsContext3D::UNSIGNED_BYTE, true, false))
+    unsigned textureId = static_cast<unsigned>((m_bitmap.getTexture())->getTextureHandle());
+    if (!m_webMediaPlayer->copyVideoTextureToPlatformTexture(webGraphicsContext3D, textureId, 0, GL_RGBA, GL_UNSIGNED_BYTE, true, false))
         return;
 
     // Draw the texture based bitmap onto the Canvas. If the canvas is hardware based, this will do a GPU-GPU texture copy. If the canvas is software based,
@@ -692,16 +604,14 @@ void WebMediaPlayerClientImpl::startDelayedLoad()
 
 WebMediaPlayerClientImpl::WebMediaPlayerClientImpl(MediaPlayerClient* client)
     : m_client(client)
-    , m_isMediaStream(false)
     , m_delayingLoad(false)
     , m_preload(MediaPlayer::Auto)
-    , m_helperPlugin(0)
-    , m_videoLayer(0)
-    , m_opaque(false)
     , m_needsWebLayerForVideo(false)
     , m_volume(1.0)
     , m_muted(false)
     , m_rate(1.0)
+    , m_cdm(0)
+    , m_loadType(WebMediaPlayer::LoadTypeURL)
 {
     ASSERT(m_client);
 }
@@ -761,4 +671,4 @@ void WebMediaPlayerClientImpl::AudioClientImpl::setFormat(size_t numberOfChannel
 
 #endif
 
-} // namespace WebKit
+} // namespace blink

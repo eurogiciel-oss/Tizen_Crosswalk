@@ -20,13 +20,13 @@
 #ifndef RenderSVGResourceMasker_h
 #define RenderSVGResourceMasker_h
 
-#include "core/platform/graphics/GraphicsContext.h"
-#include "core/platform/graphics/ImageBuffer.h"
 #include "core/rendering/svg/RenderSVGResourceContainer.h"
 #include "core/svg/SVGMaskElement.h"
 #include "core/svg/SVGUnitTypes.h"
 #include "platform/geometry/FloatRect.h"
 #include "platform/geometry/IntSize.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/graphics/ImageBuffer.h"
 
 #include "wtf/HashMap.h"
 #include "wtf/OwnPtr.h"
@@ -40,18 +40,18 @@ public:
     explicit RenderSVGResourceMasker(SVGMaskElement*);
     virtual ~RenderSVGResourceMasker();
 
-    virtual const char* renderName() const { return "RenderSVGResourceMasker"; }
+    virtual const char* renderName() const OVERRIDE { return "RenderSVGResourceMasker"; }
 
-    virtual void removeAllClientsFromCache(bool markForInvalidation = true);
-    virtual void removeClientFromCache(RenderObject*, bool markForInvalidation = true);
+    virtual void removeAllClientsFromCache(bool markForInvalidation = true) OVERRIDE;
+    virtual void removeClientFromCache(RenderObject*, bool markForInvalidation = true) OVERRIDE;
     virtual bool applyResource(RenderObject*, RenderStyle*, GraphicsContext*&, unsigned short resourceMode) OVERRIDE;
     virtual void postApplyResource(RenderObject*, GraphicsContext*&, unsigned short, const Path*, const RenderSVGShape*) OVERRIDE;
-    FloatRect resourceBoundingBox(RenderObject*);
+    FloatRect resourceBoundingBox(const RenderObject*);
 
     SVGUnitTypes::SVGUnitType maskUnits() const { return toSVGMaskElement(element())->maskUnitsCurrentValue(); }
     SVGUnitTypes::SVGUnitType maskContentUnits() const { return toSVGMaskElement(element())->maskContentUnitsCurrentValue(); }
 
-    virtual RenderSVGResourceType resourceType() const { return s_resourceType; }
+    virtual RenderSVGResourceType resourceType() const OVERRIDE { return s_resourceType; }
     static const RenderSVGResourceType s_resourceType;
 
 private:
@@ -63,11 +63,7 @@ private:
     FloatRect m_maskContentBoundaries;
 };
 
-inline RenderSVGResourceMasker* toRenderSVGResourceMasker(RenderSVGResource* resource)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!resource || resource->resourceType() == MaskerResourceType);
-    return static_cast<RenderSVGResourceMasker*>(resource);
-}
+DEFINE_RENDER_SVG_RESOURCE_TYPE_CASTS(RenderSVGResourceMasker, MaskerResourceType);
 
 }
 

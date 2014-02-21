@@ -29,10 +29,10 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/pref_names.h"
 #include "components/browser_context_keyed_service/browser_context_dependency_manager.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/common/extension.h"
 #include "third_party/re2/re2/re2.h"
 #include "url/gurl.h"
 
@@ -177,13 +177,15 @@ bool GetUrlForTabId(int tab_id,
                     bool* is_incognito) {
   content::WebContents* contents = NULL;
   Browser* browser = NULL;
-  bool found = ExtensionTabUtil::GetTabById(tab_id,
-                                            profile,
-                                            true,  // search incognito tabs too
-                                            &browser,
-                                            NULL,
-                                            &contents,
-                                            NULL);
+  bool found = extensions::ExtensionTabUtil::GetTabById(
+      tab_id,
+      profile,
+      true,  // Search incognito tabs, too.
+      &browser,
+      NULL,
+      &contents,
+      NULL);
+
   if (found) {
     *url = contents->GetURL();
     *is_incognito = browser->profile()->IsOffTheRecord();
@@ -244,7 +246,7 @@ void ExtractUrls(scoped_refptr<Action> action, Profile* profile) {
       if (action->args()->GetString(url_index, &url_string) &&
           ResolveUrl(action->page_url(), url_string, &arg_url)) {
         action->mutable_args()->Set(url_index,
-                                    new StringValue(kArgUrlPlaceholder));
+                                    new base::StringValue(kArgUrlPlaceholder));
       }
       break;
     }
@@ -255,7 +257,7 @@ void ExtractUrls(scoped_refptr<Action> action, Profile* profile) {
       // if we can find a dictionary in the argument list, the dictionary
       // contains the specified key, and the corresponding value resolves to a
       // valid URL.
-      DictionaryValue* dict = NULL;
+      base::DictionaryValue* dict = NULL;
       std::string url_string;
       if (action->mutable_args()->GetDictionary(url_index, &dict) &&
           dict->GetString(api_info->arg_url_dict_path, &url_string) &&
@@ -275,8 +277,8 @@ void ExtractUrls(scoped_refptr<Action> action, Profile* profile) {
         // Single tab ID to translate.
         GetUrlForTabId(tab_id, profile, &arg_url, &arg_incognito);
         if (arg_url.is_valid()) {
-          action->mutable_args()->Set(url_index,
-                                      new StringValue(kArgUrlPlaceholder));
+          action->mutable_args()->Set(
+              url_index, new base::StringValue(kArgUrlPlaceholder));
         }
       } else if (action->mutable_args()->GetList(url_index, &tab_list)) {
         // A list of possible IDs to translate.  Work through in reverse order
@@ -290,8 +292,10 @@ void ExtractUrls(scoped_refptr<Action> action, Profile* profile) {
             extracted_index = i;
           }
         }
-        if (extracted_index >= 0)
-          tab_list->Set(extracted_index, new StringValue(kArgUrlPlaceholder));
+        if (extracted_index >= 0) {
+          tab_list->Set(
+              extracted_index, new base::StringValue(kArgUrlPlaceholder));
+        }
       }
       break;
     }
@@ -335,8 +339,8 @@ ActivityLogFactory::ActivityLogFactory()
 }
 
 // static
-ActivityLog* ActivityLog::GetInstance(Profile* profile) {
-  return ActivityLogFactory::GetForProfile(profile);
+ActivityLog* ActivityLog::GetInstance(content::BrowserContext* context) {
+  return ActivityLogFactory::GetForBrowserContext(context);
 }
 
 ActivityLogFactory::~ActivityLogFactory() {
@@ -356,14 +360,19 @@ ActivityLog::ActivityLog(Profile* profile)
       testing_mode_(false),
       has_threads_(true),
       tracker_(NULL),
-      watchdog_app_active_(false) {
+      watchdog_apps_active_(0) {
   // This controls whether logging statements are printed & which policy is set.
   testing_mode_ = CommandLine::ForCurrentProcess()->HasSwitch(
     switches::kEnableExtensionActivityLogTesting);
 
   // Check if the watchdog extension is previously installed and active.
-  watchdog_app_active_ =
-    profile_->GetPrefs()->GetBoolean(prefs::kWatchdogExtensionActive);
+  // It was originally a boolean, but we've had to move to an integer. Handle
+  // the legacy case.
+  // TODO(felt): In M34, remove the legacy code & old pref.
+  if (profile_->GetPrefs()->GetBoolean(prefs::kWatchdogExtensionActiveOld))
+    profile_->GetPrefs()->SetInteger(prefs::kWatchdogExtensionActive, 1);
+  watchdog_apps_active_ =
+      profile_->GetPrefs()->GetInteger(prefs::kWatchdogExtensionActive);
 
   observers_ = new ObserverListThreadSafe<Observer>;
 
@@ -378,11 +387,15 @@ ActivityLog::ActivityLog(Profile* profile)
   db_enabled_ = has_threads_
       && (CommandLine::ForCurrentProcess()->
           HasSwitch(switches::kEnableExtensionActivityLogging)
-      || watchdog_app_active_);
+      || watchdog_apps_active_);
 
   ExtensionSystem::Get(profile_)->ready().Post(
       FROM_HERE,
       base::Bind(&ActivityLog::InitInstallTracker, base::Unretained(this)));
+
+  EventRouter* event_router = ExtensionSystem::Get(profile_)->event_router();
+  if (event_router)
+    event_router->SetEventDispatchObserver(this);
 
 // None of this should run on Android since the AL is behind ENABLE_EXTENSION
 // checks. However, UmaPolicy can't even compile on Android because it uses
@@ -463,48 +476,44 @@ bool ActivityLog::IsDatabaseEnabled() {
 }
 
 bool ActivityLog::IsWatchdogAppActive() {
-  return watchdog_app_active_;
+  return (watchdog_apps_active_ > 0);
 }
 
 void ActivityLog::SetWatchdogAppActive(bool active) {
-  watchdog_app_active_ = active;
+  watchdog_apps_active_ = active ? 1 : 0;
 }
 
 void ActivityLog::OnExtensionLoaded(const Extension* extension) {
-  if (extension->id() != kActivityLogExtensionId) return;
+  if (!ActivityLogAPI::IsExtensionWhitelisted(extension->id())) return;
   if (has_threads_)
     db_enabled_ = true;
-  if (!watchdog_app_active_) {
-    watchdog_app_active_ = true;
-    profile_->GetPrefs()->SetBoolean(prefs::kWatchdogExtensionActive, true);
-  }
-  ChooseDatabasePolicy();
+  watchdog_apps_active_++;
+  profile_->GetPrefs()->SetInteger(prefs::kWatchdogExtensionActive,
+                                   watchdog_apps_active_);
+  if (watchdog_apps_active_ == 1)
+    ChooseDatabasePolicy();
 }
 
 void ActivityLog::OnExtensionUnloaded(const Extension* extension) {
-  if (extension->id() != kActivityLogExtensionId) return;
-  if (!CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kEnableExtensionActivityLogging)) {
-    db_enabled_ = false;
-  }
-  if (watchdog_app_active_) {
-    watchdog_app_active_ = false;
-    profile_->GetPrefs()->SetBoolean(prefs::kWatchdogExtensionActive,
-                                     false);
+  if (!ActivityLogAPI::IsExtensionWhitelisted(extension->id())) return;
+  watchdog_apps_active_--;
+  profile_->GetPrefs()->SetInteger(prefs::kWatchdogExtensionActive,
+                                   watchdog_apps_active_);
+  if (watchdog_apps_active_ == 0 &&
+      !CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kEnableExtensionActivityLogging)) {
+   db_enabled_ = false;
   }
 }
 
+// OnExtensionUnloaded will also be called right before this.
 void ActivityLog::OnExtensionUninstalled(const Extension* extension) {
-  if (!database_policy_)
-    return;
-  // If the extension has been uninstalled but not disabled, we delete the
-  // database.
-  if (extension->id() == kActivityLogExtensionId) {
-    if (!CommandLine::ForCurrentProcess()->HasSwitch(
-        switches::kEnableExtensionActivityLogging)) {
-      DeleteDatabase();
-    }
-  } else {
+  if (ActivityLogAPI::IsExtensionWhitelisted(extension->id()) &&
+      !CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kEnableExtensionActivityLogging) &&
+      watchdog_apps_active_ == 0) {
+    DeleteDatabase();
+  } else if (database_policy_) {
     database_policy_->RemoveExtensionData(extension->id());
   }
 }
@@ -520,8 +529,12 @@ void ActivityLog::RemoveObserver(ActivityLog::Observer* observer) {
 // static
 void ActivityLog::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {
-  registry->RegisterBooleanPref(
+  registry->RegisterIntegerPref(
       prefs::kWatchdogExtensionActive,
+      false,
+      user_prefs::PrefRegistrySyncable::UNSYNCABLE_PREF);
+  registry->RegisterBooleanPref(
+      prefs::kWatchdogExtensionActiveOld,
       false,
       user_prefs::PrefRegistrySyncable::UNSYNCABLE_PREF);
 }
@@ -540,7 +553,7 @@ void ActivityLog::LogAction(scoped_refptr<Action> action) {
   if (action->action_type() == Action::ACTION_DOM_ACCESS &&
       StartsWithASCII(action->api_name(), kDomXhrPrefix, true) &&
       action->other()) {
-    DictionaryValue* other = action->mutable_other();
+    base::DictionaryValue* other = action->mutable_other();
     int dom_verb = -1;
     if (other->GetInteger(constants::kActionDomVerb, &dom_verb) &&
         dom_verb == DomActionType::METHOD) {
@@ -555,7 +568,7 @@ void ActivityLog::LogAction(scoped_refptr<Action> action) {
   if (IsWatchdogAppActive())
     observers_->Notify(&Observer::OnExtensionActivity, action);
   if (testing_mode_)
-    LOG(INFO) << action->PrintForDebug();
+    VLOG(1) << action->PrintForDebug();
 }
 
 void ActivityLog::OnScriptsExecuted(
@@ -602,6 +615,15 @@ void ActivityLog::OnScriptsExecuted(
       LogAction(action);
     }
   }
+}
+
+void ActivityLog::OnWillDispatchEvent(scoped_ptr<EventDispatchInfo> details) {
+  scoped_refptr<Action> action = new Action(details->extension_id,
+                                            base::Time::Now(),
+                                            Action::ACTION_API_EVENT,
+                                            details->event_name);
+  action->set_args(details->event_args.Pass());
+  LogAction(action);
 }
 
 // LOOKUP ACTIONS. -------------------------------------------------------------

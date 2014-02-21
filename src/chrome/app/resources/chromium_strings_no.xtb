@@ -27,7 +27,6 @@
 <translation id="3549345495227188780">Kom i gang med Chromium OS</translation>
 <translation id="4330297532943865716">Det ble funnet en konfliktskapende installasjon av Chromium eller Chromium Frame på systemet. Avinstaller den og prøv på nytt.</translation>
 <translation id="6953661834318318668">Chromium-verktøylinjen</translation>
-<translation id="2245147136185581459">Chromium Captive Portal-detektor</translation>
 <translation id="4285930937574705105">Installeringen mislyktes på grunn av en uspesifisert feil. Lukk Chromium hvis nettleseren kjører, og prøv på nytt.</translation>
 <translation id="1396446129537741364">Chromium prøver å vise passord.</translation>
 <translation id="3555616473548901994">Avinstallering fullført.</translation>
@@ -61,7 +60,6 @@
 <translation id="7771626876550251690">I dette tilfellet samsvarte ikke adressen oppført i sertifikatet med adressen til nettstedet nettleseren din prøvde å åpne. En mulig årsak til dette er at kommunikasjonen fra deg blir oppfanget av en angriper som presenterer et sertifikat for et annet nettsted og således medfører et misforhold. En annen mulig grunn er at tjeneren er konfigurert til å returnere det samme sertifikatet for flere nettsteder, herunder det du vil åpne, selv om det sertifikatet ikke er gyldig for alle de aktuelle nettstedene. Chromium kan med sikkerhet fastslå at du nådde &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, men kan ikke bekrefte at det er det samme nettstedet som &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, som du ville åpne. Hvis du fortsetter, vil ikke Chromium sjekke etter ytterligere misforhold for navn.</translation>
 <translation id="4330585738697551178">Denne modulen er kjent for å komme i konflikt med Chromium.</translation>
 <translation id="3190315855212034486">Chromium har krasjet. Vil du starte den på nytt nå?</translation>
-<translation id="3590194807845837023">Lås opp profilen og start på nytt</translation>
 <translation id="6714487516757221107">Finner ingen versjon av Chromium eller Chromium Frame for oppdatering.</translation>
 <translation id="3197823471738295152">Enheten er oppdatert.</translation>
 <translation id="8551886023433311834">Nesten oppdatert! Start enheten på nytt for å fullføre oppdateringen.</translation>
@@ -154,6 +152,7 @@
 <translation id="6717134281241384636">Profilen din kan ikke brukes fordi den kommer fra en nyere versjon av Chromium.
 
 Det er mulig at enkelte funksjoner ikke er tilgjengelige. Angi en annen profilkatalog eller bruk en nyere versjon av Chromium.</translation>
+<translation id="8907580949721785412">Chromium forsøker å vise passord. Skriv inn Windows-passordet ditt for å tillate dette.</translation>
 <translation id="9013087743919948559">Legg til i Chromium</translation>
 <translation id="6212496753309875659">Denne datamaskinen har allerede en nyere versjon av Chromium. Hvis programvaren ikke fungerer, må du avinstallere Chromium og prøve på nytt.</translation>
 <translation id="1298199220304005244">Få hjelp med å bruke Chromium OS</translation>

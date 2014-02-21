@@ -146,6 +146,10 @@ class CC_EXPORT SchedulerStateMachine {
     return begin_impl_frame_state_;
   }
 
+  // If the main thread didn't manage to produce a new frame in time for the
+  // impl thread to draw, it is in a high latency mode.
+  bool MainThreadIsInHighLatencyMode() const;
+
   // PollForAnticipatedDrawTriggers is used by the synchronous compositor to
   // avoid requesting BeginImplFrames when we won't actually draw but still
   // need to advance our state at vsync intervals.
@@ -209,6 +213,8 @@ class CC_EXPORT SchedulerStateMachine {
   // Set that we can create the first OutputSurface and start the scheduler.
   void SetCanStart() { can_start_ = true; }
 
+  void SetSkipBeginMainFrameToReduceLatency(bool skip);
+
   // Indicates whether drawing would, at this time, make sense.
   // CanDraw can be used to suppress flashes or checkerboarding
   // when such behavior would be undesirable.
@@ -219,6 +225,7 @@ class CC_EXPORT SchedulerStateMachine {
 
   bool has_pending_tree() const { return has_pending_tree_; }
 
+  void DidManageTiles();
   void DidLoseOutputSurface();
   void DidCreateAndInitializeOutputSurface();
   bool HasInitializedOutputSurface() const;
@@ -247,6 +254,7 @@ class CC_EXPORT SchedulerStateMachine {
   bool ShouldCommit() const;
   bool ShouldManageTiles() const;
 
+  void AdvanceCurrentFrameNumber();
   bool HasSentBeginMainFrameThisFrame() const;
   bool HasScheduledManageTilesThisFrame() const;
   bool HasUpdatedVisibleTilesThisFrame() const;
@@ -274,6 +282,11 @@ class CC_EXPORT SchedulerStateMachine {
   int last_frame_number_begin_main_frame_sent_;
   int last_frame_number_update_visible_tiles_was_called_;
 
+  // manage_tiles_funnel_ is "filled" each time ManageTiles is called
+  // and "drained" on each BeginImplFrame. If the funnel gets too full,
+  // we start throttling ACTION_MANAGE_TILES such that we average one
+  // ManageTile per BeginImplFrame.
+  int manage_tiles_funnel_;
   int consecutive_failed_draws_;
   bool needs_redraw_;
   bool needs_manage_tiles_;
@@ -290,6 +303,7 @@ class CC_EXPORT SchedulerStateMachine {
   bool draw_if_possible_failed_;
   bool did_create_and_initialize_first_output_surface_;
   bool smoothness_takes_priority_;
+  bool skip_begin_main_frame_to_reduce_latency_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(SchedulerStateMachine);

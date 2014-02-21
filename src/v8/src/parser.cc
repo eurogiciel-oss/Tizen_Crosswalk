@@ -485,9 +485,7 @@ class Parser::BlockState BASE_EMBEDDED {
 };
 
 
-Parser::FunctionState::FunctionState(Parser* parser,
-                                     Scope* scope,
-                                     Isolate* isolate)
+Parser::FunctionState::FunctionState(Parser* parser, Scope* scope)
     : next_materialized_literal_index_(JSFunction::kLiteralsPrefixSize),
       next_handler_index_(0),
       expected_property_count_(0),
@@ -495,11 +493,11 @@ Parser::FunctionState::FunctionState(Parser* parser,
       parser_(parser),
       outer_function_state_(parser->current_function_state_),
       outer_scope_(parser->top_scope_),
-      saved_ast_node_id_(isolate->ast_node_id()),
-      factory_(isolate, parser->zone()) {
+      saved_ast_node_id_(parser->zone()->isolate()->ast_node_id()),
+      factory_(parser->zone()) {
   parser->top_scope_ = scope;
   parser->current_function_state_ = this;
-  isolate->set_ast_node_id(BailoutId::FirstUsable().ToInt());
+  parser->zone()->isolate()->set_ast_node_id(BailoutId::FirstUsable().ToInt());
 }
 
 
@@ -600,7 +598,7 @@ FunctionLiteral* Parser::ParseProgram() {
     } else if (info()->script()->name()->IsString()) {
       String* name = String::cast(info()->script()->name());
       SmartArrayPointer<char> name_chars = name->ToCString();
-      PrintF("[parsing script: %s", *name_chars);
+      PrintF("[parsing script: %s", name_chars.get());
     } else {
       PrintF("[parsing script");
     }
@@ -645,7 +643,7 @@ FunctionLiteral* Parser::DoParseProgram(CompilationInfo* info,
     ParsingModeScope parsing_mode(this, mode);
 
     // Enters 'scope'.
-    FunctionState function_state(this, scope, isolate());
+    FunctionState function_state(this, scope);
 
     top_scope_->SetLanguageMode(info->language_mode());
     ZoneList<Statement*>* body = new(zone()) ZoneList<Statement*>(16, zone());
@@ -729,7 +727,7 @@ FunctionLiteral* Parser::ParseLazy() {
   if (FLAG_trace_parse && result != NULL) {
     double ms = timer.Elapsed().InMillisecondsF();
     SmartArrayPointer<char> name_chars = result->debug_name()->ToCString();
-    PrintF("[parsing function: %s - took %0.3f ms]\n", *name_chars, ms);
+    PrintF("[parsing function: %s - took %0.3f ms]\n", name_chars.get(), ms);
   }
   return result;
 }
@@ -759,7 +757,7 @@ FunctionLiteral* Parser::ParseLazy(Utf16CharacterStream* source) {
                                            zone());
     }
     original_scope_ = scope;
-    FunctionState function_state(this, scope, isolate());
+    FunctionState function_state(this, scope);
     ASSERT(scope->language_mode() != STRICT_MODE || !info()->is_classic_mode());
     ASSERT(scope->language_mode() != EXTENDED_MODE ||
            info()->is_extended_mode());
@@ -1521,7 +1519,7 @@ void Parser::Declare(Declaration* declaration, bool resolve, bool* ok) {
         // In harmony mode we treat re-declarations as early errors. See
         // ES5 16 for a definition of early errors.
         SmartArrayPointer<char> c_string = name->ToCString(DISALLOW_NULLS);
-        const char* elms[2] = { "Variable", *c_string };
+        const char* elms[2] = { "Variable", c_string.get() };
         Vector<const char*> args(elms, 2);
         ReportMessage("redeclaration", args);
         *ok = false;
@@ -2145,7 +2143,7 @@ Statement* Parser::ParseExpressionOrLabelledStatement(ZoneStringList* labels,
     // make later anyway so we should go back and fix this then.
     if (ContainsLabel(labels, label) || TargetStackContainsLabel(label)) {
       SmartArrayPointer<char> c_string = label->ToCString(DISALLOW_NULLS);
-      const char* elms[2] = { "Label", *c_string };
+      const char* elms[2] = { "Label", c_string.get() };
       Vector<const char*> args(elms, 2);
       ReportMessage("redeclaration", args);
       *ok = false;
@@ -2623,13 +2621,10 @@ void Parser::InitializeForEachStatement(ForEachStatement* stmt,
 
   if (for_of != NULL) {
     Factory* heap_factory = isolate()->factory();
-    Handle<String> iterator_str = heap_factory->InternalizeOneByteString(
-        STATIC_ASCII_VECTOR(".iterator"));
-    Handle<String> result_str = heap_factory->InternalizeOneByteString(
-        STATIC_ASCII_VECTOR(".result"));
-    Variable* iterator =
-        top_scope_->DeclarationScope()->NewTemporary(iterator_str);
-    Variable* result = top_scope_->DeclarationScope()->NewTemporary(result_str);
+    Variable* iterator = top_scope_->DeclarationScope()->NewTemporary(
+        heap_factory->dot_iterator_string());
+    Variable* result = top_scope_->DeclarationScope()->NewTemporary(
+        heap_factory->dot_result_string());
 
     Expression* assign_iterator;
     Expression* next_result;
@@ -3515,7 +3510,7 @@ void Parser::ReportUnexpectedToken(Token::Value token) {
 
 void Parser::ReportInvalidPreparseData(Handle<String> name, bool* ok) {
   SmartArrayPointer<char> name_string = name->ToCString(DISALLOW_NULLS);
-  const char* element[1] = { *name_string };
+  const char* element[1] = { name_string.get() };
   ReportMessage("invalid_preparser_data",
                 Vector<const char*>(element, 1));
   *ok = false;
@@ -3663,61 +3658,7 @@ Expression* Parser::ParseArrayLiteral(bool* ok) {
   // Update the scope information before the pre-parsing bailout.
   int literal_index = current_function_state_->NextMaterializedLiteralIndex();
 
-  // Allocate a fixed array to hold all the object literals.
-  Handle<JSArray> array =
-      isolate()->factory()->NewJSArray(0, FAST_HOLEY_SMI_ELEMENTS);
-  isolate()->factory()->SetElementsCapacityAndLength(
-      array, values->length(), values->length());
-
-  // Fill in the literals.
-  Heap* heap = isolate()->heap();
-  bool is_simple = true;
-  int depth = 1;
-  bool is_holey = false;
-  for (int i = 0, n = values->length(); i < n; i++) {
-    MaterializedLiteral* m_literal = values->at(i)->AsMaterializedLiteral();
-    if (m_literal != NULL && m_literal->depth() + 1 > depth) {
-      depth = m_literal->depth() + 1;
-    }
-    Handle<Object> boilerplate_value = GetBoilerplateValue(values->at(i));
-    if (boilerplate_value->IsTheHole()) {
-      is_holey = true;
-    } else if (boilerplate_value->IsUninitialized()) {
-      is_simple = false;
-      JSObject::SetOwnElement(
-          array, i, handle(Smi::FromInt(0), isolate()), kNonStrictMode);
-    } else {
-      JSObject::SetOwnElement(array, i, boilerplate_value, kNonStrictMode);
-    }
-  }
-
-  Handle<FixedArrayBase> element_values(array->elements());
-
-  // Simple and shallow arrays can be lazily copied, we transform the
-  // elements array to a copy-on-write array.
-  if (is_simple && depth == 1 && values->length() > 0 &&
-      array->HasFastSmiOrObjectElements()) {
-    element_values->set_map(heap->fixed_cow_array_map());
-  }
-
-  // Remember both the literal's constant values as well as the ElementsKind
-  // in a 2-element FixedArray.
-  Handle<FixedArray> literals = isolate()->factory()->NewFixedArray(2, TENURED);
-
-  ElementsKind kind = array->GetElementsKind();
-  kind = is_holey ? GetHoleyElementsKind(kind) : GetPackedElementsKind(kind);
-
-  literals->set(0, Smi::FromInt(kind));
-  literals->set(1, *element_values);
-
-  return factory()->NewArrayLiteral(
-      literals, values, literal_index, is_simple, depth, pos);
-}
-
-
-bool Parser::IsBoilerplateProperty(ObjectLiteral::Property* property) {
-  return property != NULL &&
-         property->kind() != ObjectLiteral::Property::PROTOTYPE;
+  return factory()->NewArrayLiteral(values, literal_index, pos);
 }
 
 
@@ -3761,89 +3702,6 @@ CompileTimeValue::LiteralType CompileTimeValue::GetLiteralType(
 
 Handle<FixedArray> CompileTimeValue::GetElements(Handle<FixedArray> value) {
   return Handle<FixedArray>(FixedArray::cast(value->get(kElementsSlot)));
-}
-
-
-Handle<Object> Parser::GetBoilerplateValue(Expression* expression) {
-  if (expression->AsLiteral() != NULL) {
-    return expression->AsLiteral()->value();
-  }
-  if (CompileTimeValue::IsCompileTimeValue(expression)) {
-    return CompileTimeValue::GetValue(isolate(), expression);
-  }
-  return isolate()->factory()->uninitialized_value();
-}
-
-
-void Parser::BuildObjectLiteralConstantProperties(
-    ZoneList<ObjectLiteral::Property*>* properties,
-    Handle<FixedArray> constant_properties,
-    bool* is_simple,
-    bool* fast_elements,
-    int* depth,
-    bool* may_store_doubles) {
-  int position = 0;
-  // Accumulate the value in local variables and store it at the end.
-  bool is_simple_acc = true;
-  int depth_acc = 1;
-  uint32_t max_element_index = 0;
-  uint32_t elements = 0;
-  for (int i = 0; i < properties->length(); i++) {
-    ObjectLiteral::Property* property = properties->at(i);
-    if (!IsBoilerplateProperty(property)) {
-      is_simple_acc = false;
-      continue;
-    }
-    MaterializedLiteral* m_literal = property->value()->AsMaterializedLiteral();
-    if (m_literal != NULL && m_literal->depth() >= depth_acc) {
-      depth_acc = m_literal->depth() + 1;
-    }
-
-    // Add CONSTANT and COMPUTED properties to boilerplate. Use undefined
-    // value for COMPUTED properties, the real value is filled in at
-    // runtime. The enumeration order is maintained.
-    Handle<Object> key = property->key()->value();
-    Handle<Object> value = GetBoilerplateValue(property->value());
-
-    // Ensure objects that may, at any point in time, contain fields with double
-    // representation are always treated as nested objects. This is true for
-    // computed fields (value is undefined), and smi and double literals
-    // (value->IsNumber()).
-    // TODO(verwaest): Remove once we can store them inline.
-    if (FLAG_track_double_fields &&
-        (value->IsNumber() || value->IsUninitialized())) {
-      *may_store_doubles = true;
-    }
-
-    is_simple_acc = is_simple_acc && !value->IsUninitialized();
-
-    // Keep track of the number of elements in the object literal and
-    // the largest element index.  If the largest element index is
-    // much larger than the number of elements, creating an object
-    // literal with fast elements will be a waste of space.
-    uint32_t element_index = 0;
-    if (key->IsString()
-        && Handle<String>::cast(key)->AsArrayIndex(&element_index)
-        && element_index > max_element_index) {
-      max_element_index = element_index;
-      elements++;
-    } else if (key->IsSmi()) {
-      int key_value = Smi::cast(*key)->value();
-      if (key_value > 0
-          && static_cast<uint32_t>(key_value) > max_element_index) {
-        max_element_index = key_value;
-      }
-      elements++;
-    }
-
-    // Add name, value pair to the fixed array.
-    constant_properties->set(position++, *key);
-    constant_properties->set(position++, *value);
-  }
-  *fast_elements =
-      (max_element_index <= 32) || ((2 * elements) >= max_element_index);
-  *is_simple = is_simple_acc;
-  *depth = depth_acc;
 }
 
 
@@ -3915,7 +3773,7 @@ Expression* Parser::ParseObjectLiteral(bool* ok) {
           // Specification only allows zero parameters for get and one for set.
           ObjectLiteral::Property* property =
               factory()->NewObjectLiteralProperty(is_getter, value, next_pos);
-          if (IsBoilerplateProperty(property)) {
+          if (ObjectLiteral::IsBoilerplateProperty(property)) {
             number_of_boilerplate_properties++;
           }
           properties->Add(property, zone());
@@ -3975,7 +3833,7 @@ Expression* Parser::ParseObjectLiteral(bool* ok) {
     Expression* value = ParseAssignmentExpression(true, CHECK_OK);
 
     ObjectLiteral::Property* property =
-        new(zone()) ObjectLiteral::Property(key, value, isolate());
+        factory()->NewObjectLiteralProperty(key, value);
 
     // Mark top-level object literals that contain function literals and
     // pretenure the literal so it can be added as a constant function
@@ -3987,7 +3845,9 @@ Expression* Parser::ParseObjectLiteral(bool* ok) {
     }
 
     // Count CONSTANT or COMPUTED properties to maintain the enumeration order.
-    if (IsBoilerplateProperty(property)) number_of_boilerplate_properties++;
+    if (ObjectLiteral::IsBoilerplateProperty(property)) {
+      number_of_boilerplate_properties++;
+    }
     properties->Add(property, zone());
 
     // TODO(1240767): Consider allowing trailing comma.
@@ -4003,26 +3863,9 @@ Expression* Parser::ParseObjectLiteral(bool* ok) {
   // Computation of literal_index must happen before pre parse bailout.
   int literal_index = current_function_state_->NextMaterializedLiteralIndex();
 
-  Handle<FixedArray> constant_properties = isolate()->factory()->NewFixedArray(
-      number_of_boilerplate_properties * 2, TENURED);
-
-  bool is_simple = true;
-  bool fast_elements = true;
-  int depth = 1;
-  bool may_store_doubles = false;
-  BuildObjectLiteralConstantProperties(properties,
-                                       constant_properties,
-                                       &is_simple,
-                                       &fast_elements,
-                                       &depth,
-                                       &may_store_doubles);
-  return factory()->NewObjectLiteral(constant_properties,
-                                     properties,
+  return factory()->NewObjectLiteral(properties,
                                      literal_index,
-                                     is_simple,
-                                     fast_elements,
-                                     depth,
-                                     may_store_doubles,
+                                     number_of_boilerplate_properties,
                                      has_function,
                                      pos);
 }
@@ -4239,7 +4082,7 @@ FunctionLiteral* Parser::ParseFunctionLiteral(
   AstProperties ast_properties;
   BailoutReason dont_optimize_reason = kNoReason;
   // Parse function body.
-  { FunctionState function_state(this, scope, isolate());
+  { FunctionState function_state(this, scope);
     top_scope_->SetScopeName(function_name);
 
     if (is_generator) {
@@ -4252,9 +4095,8 @@ FunctionLiteral* Parser::ParseFunctionLiteral(
       // in a temporary variable, a definition that is used by "yield"
       // expressions.  Presence of a variable for the generator object in the
       // FunctionState indicates that this function is a generator.
-      Handle<String> tempname = isolate()->factory()->InternalizeOneByteString(
-          STATIC_ASCII_VECTOR(".generator_object"));
-      Variable* temp = top_scope_->DeclarationScope()->NewTemporary(tempname);
+      Variable* temp = top_scope_->DeclarationScope()->NewTemporary(
+          isolate()->factory()->dot_generator_object_string());
       function_state.set_generator_object_variable(temp);
     }
 
@@ -4270,8 +4112,7 @@ FunctionLiteral* Parser::ParseFunctionLiteral(
     while (!done) {
       bool is_strict_reserved = false;
       Handle<String> param_name =
-          ParseIdentifierOrStrictReservedWord(&is_strict_reserved,
-                                              CHECK_OK);
+          ParseIdentifierOrStrictReservedWord(&is_strict_reserved, CHECK_OK);
 
       // Store locations for possible future error reports.
       if (!name_loc.IsValid() && IsEvalOrArguments(param_name)) {
@@ -4758,7 +4599,7 @@ void Parser::CheckConflictingVarDeclarations(Scope* scope, bool* ok) {
     // errors. See ES5 16 for a definition of early errors.
     Handle<String> name = decl->proxy()->name();
     SmartArrayPointer<char> c_string = name->ToCString(DISALLOW_NULLS);
-    const char* elms[2] = { "Variable", *c_string };
+    const char* elms[2] = { "Variable", c_string.get() };
     Vector<const char*> args(elms, 2);
     int position = decl->proxy()->position();
     Scanner::Location location = position == RelocInfo::kNoPosition
@@ -5702,13 +5543,6 @@ RegExpTree* RegExpParser::ParseCharacterClass() {
 
 // ----------------------------------------------------------------------------
 // The Parser interface.
-
-ParserMessage::~ParserMessage() {
-  for (int i = 0; i < args().length(); i++)
-    DeleteArray(args()[i]);
-  DeleteArray(args().start());
-}
-
 
 ScriptDataImpl::~ScriptDataImpl() {
   if (owns_store_) store_.Dispose();

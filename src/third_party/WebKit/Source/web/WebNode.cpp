@@ -44,6 +44,7 @@
 #include "bindings/v8/ExceptionState.h"
 #include "core/dom/Document.h"
 #include "core/dom/Element.h"
+#include "core/dom/EmptyNodeList.h"
 #include "core/events/Event.h"
 #include "core/dom/Node.h"
 #include "core/dom/NodeList.h"
@@ -56,7 +57,7 @@
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 void WebNode::reset()
 {
@@ -192,14 +193,18 @@ void WebNode::simulateClick()
 
 WebNodeList WebNode::getElementsByTagName(const WebString& tag) const
 {
-    return WebNodeList(m_private->getElementsByTagName(tag));
+    if (m_private->isContainerNode())
+        return WebNodeList(toContainerNode(m_private.get())->getElementsByTagName(tag));
+    return WebNodeList(EmptyNodeList::create(m_private.get()));
 }
 
 WebElement WebNode::querySelector(const WebString& tag, WebExceptionCode& ec) const
 {
-    TrackExceptionState es;
-    WebElement element(m_private->querySelector(tag, es));
-    ec = es.code();
+    TrackExceptionState exceptionState;
+    WebElement element;
+    if (m_private->isContainerNode())
+        element = toContainerNode(m_private.get())->querySelector(tag, exceptionState);
+    ec = exceptionState.code();
     return element;
 }
 
@@ -215,9 +220,9 @@ bool WebNode::focused() const
 
 bool WebNode::remove()
 {
-    TrackExceptionState es;
-    m_private->remove(es);
-    return !es.hadException();
+    TrackExceptionState exceptionState;
+    m_private->remove(exceptionState);
+    return !exceptionState.hadException();
 }
 
 bool WebNode::hasNonEmptyBoundingBox() const
@@ -236,7 +241,7 @@ WebPluginContainer* WebNode::pluginContainer() const
         if (object && object->isWidget()) {
             Widget* widget = WebCore::toRenderWidget(object)->widget();
             if (widget && widget->isPluginContainer())
-                return toPluginContainerImpl(widget);
+                return toWebPluginContainerImpl(widget);
         }
     }
     return 0;
@@ -266,4 +271,4 @@ WebNode::operator PassRefPtr<Node>() const
     return m_private.get();
 }
 
-} // namespace WebKit
+} // namespace blink

@@ -202,7 +202,7 @@ while read name id comment ; do
 	+++ native_client/tools/glibc_download.sh
 	@@ -20 +20 @@
 	-declare -r glibc_url_prefix=http://gsdview.appspot.com/nativeclient-archive2/between_builders/x86_glibc/r
-	+declare -r glibc_url_prefix=http://commondatastorage.googleapis.com/nativeclient-archive2/between_builders/x86_glibc/r
+	+declare -r glibc_url_prefix=http://storage.googleapis.com/nativeclient-archive2/between_builders/x86_glibc/r
 	END
       fi
       declare rev="$(native_client/tools/glibc_revision.sh)"
@@ -311,6 +311,24 @@ while read name id comment ; do
 	@@ -854 +855 @@
 	-	+\`cat SRC/gdb/gdb/version.in\` \`LC_ALL=C \$(SVN) info | grep 'Last Changed Date' | sed -e s'+Last Changed Date: \\(....\\)-\\(..\\)-\\(..\\).*+\\1\\2\\3+'\` (Native Client r\`LC_ALL=C \$(SVNVERSION)\`, Git Commit \`cd SRC/gdb ; LC_ALL=C git rev-parse HEAD\`)\\n" |\\
 	+	+\`cat SRC/gdb/gdb/version.in\` \`cd ../../.. LC_ALL=C \$(SVN) info | grep 'Last Changed Date' | sed -e s'+Last Changed Date: \\(....\\)-\\(..\\)-\\(..\\).*+\\1\\2\\3+'\` (Native Client r$rev)\\n" |\\
+	END
+      fi
+      # The buildbot has become strict in enforcing tag names.
+      # We used to emit STEP_SUCCESS, but it never got added to the annotator.
+      # Dropping the tag in old versions.
+      if [[ "$name" = ppapi1[0-9] ]] || [[ "$name" = ppapi2[0-9] ]] || \
+         [[ "$name" = ppapi30 ]]; then
+          patch -p0 <<-END
+	--- native_client/buildbot/buildbot_lib.py
+	+++ native_client/buildbot/buildbot_lib.py
+	@@ -378,7 +378,6 @@ class Step(object):
+	         raise StopBuild()
+	     else:
+	       self.status.ReportPass(self.name)
+	-      print '@@@STEP_SUCCESS@@@'
+
+	     # Suppress any exception that occurred.
+	     return True
 	END
       fi
       if [[ "$name" = ppapi19 ]] || [[ "$name" = ppapi20 ]]; then
@@ -516,7 +534,7 @@ while read name id comment ; do
 	+	echo "@set GDBVN \`sed q \$(srcdir)/../version.inT\`" > ./GDBvn.new
 	END
 	fi
-	declare url_prefix=http://commondatastorage.googleapis.com/nativeclient-archive2
+	declare url_prefix=http://storage.googleapis.com/nativeclient-archive2
 	if [[ "$3" = "glibc" ]]; then
 	  declare url=$url_prefix/x86_toolchain/r"$rev"/toolchain_"$2"_x86.tar.gz
 	else

@@ -1,0 +1,21 @@
+###
+### Mac-only failures
+###
+
+# Introduced by a recent xcode change on the bots, working on a fix
+Clang::CodeGenObjC/arc-captured-32bit-block-var-layout-2.m mac
+
+
+###
+### Windows-only failures
+###
+Clang::Driver/crash-report.c win
+Clang::Driver/output-file-cleanup.c win
+LLVM::Analysis/Profiling/load-branch-weights-switches.ll win
+LLVM::Analysis/Profiling/load-branch-weights-loops.ll win
+LLVM::Analysis/Profiling/load-branch-weights-ifs.ll win
+LLVM::ExecutionEngine/MCJIT/eh.ll win
+
+# Fixed in upstream r183033 (I cherry-picked the code change but not the
+# test because the test will cause a merge conflict).
+Clang::CodeGen/atomics-inlining.c

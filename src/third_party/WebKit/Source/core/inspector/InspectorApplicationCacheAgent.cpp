@@ -26,13 +26,11 @@
 #include "config.h"
 #include "core/inspector/InspectorApplicationCacheAgent.h"
 
-#include "InspectorFrontend.h"
 #include "core/inspector/InspectorPageAgent.h"
 #include "core/inspector/InspectorState.h"
 #include "core/inspector/InstrumentingAgents.h"
 #include "core/loader/DocumentLoader.h"
 #include "core/loader/FrameLoader.h"
-#include "core/loader/appcache/ApplicationCacheHost.h"
 #include "core/frame/Frame.h"
 #include "core/page/NetworkStateNotifier.h"
 #include "wtf/text/StringBuilder.h"
@@ -43,8 +41,8 @@ namespace ApplicationCacheAgentState {
 static const char applicationCacheAgentEnabled[] = "applicationCacheAgentEnabled";
 }
 
-InspectorApplicationCacheAgent::InspectorApplicationCacheAgent(InstrumentingAgents* instrumentingAgents, InspectorCompositeState* state, InspectorPageAgent* pageAgent)
-    : InspectorBaseAgent<InspectorApplicationCacheAgent>("ApplicationCache", instrumentingAgents, state)
+InspectorApplicationCacheAgent::InspectorApplicationCacheAgent(InspectorPageAgent* pageAgent)
+    : InspectorBaseAgent<InspectorApplicationCacheAgent>("ApplicationCache")
     , m_pageAgent(pageAgent)
     , m_frontend(0)
 {

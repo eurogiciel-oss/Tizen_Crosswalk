@@ -26,14 +26,14 @@
 #ifndef RenderScrollbarTheme_h
 #define RenderScrollbarTheme_h
 
-#include "core/platform/ScrollbarTheme.h"
+#include "platform/scroll/ScrollbarTheme.h"
 
 namespace WebCore {
 
 class PlatformMouseEvent;
 class Scrollbar;
 
-class RenderScrollbarTheme : public ScrollbarTheme {
+class RenderScrollbarTheme FINAL : public ScrollbarTheme {
 public:
     virtual ~RenderScrollbarTheme() { }
 

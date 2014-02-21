@@ -46,10 +46,10 @@ class MockPrivetURLFetcherDelegate : public PrivetURLFetcher::Delegate {
       const PrivetURLFetcher::TokenCallback& callback) {
   }
 
-  const DictionaryValue* saved_value() { return saved_value_.get(); }
+  const base::DictionaryValue* saved_value() { return saved_value_.get(); }
 
  private:
-  scoped_ptr<DictionaryValue> saved_value_;
+  scoped_ptr<base::DictionaryValue> saved_value_;
 };
 
 class PrivetURLFetcherTest : public ::testing::Test {
@@ -65,6 +65,20 @@ class PrivetURLFetcherTest : public ::testing::Test {
         &delegate_));
   }
   virtual ~PrivetURLFetcherTest() {
+  }
+
+  void RunFor(base::TimeDelta time_period) {
+    base::CancelableCallback<void()> callback(base::Bind(
+        &PrivetURLFetcherTest::Stop, base::Unretained(this)));
+    base::MessageLoop::current()->PostDelayedTask(
+        FROM_HERE, callback.callback(), time_period);
+
+    base::MessageLoop::current()->Run();
+    callback.Cancel();
+  }
+
+  void Stop() {
+    base::MessageLoop::current()->Quit();
   }
 
  protected:
@@ -94,16 +108,27 @@ TEST_F(PrivetURLFetcherTest, FetchSuccess) {
   EXPECT_EQ(2, hello_value);
 }
 
-TEST_F(PrivetURLFetcherTest, URLFetcherError) {
+TEST_F(PrivetURLFetcherTest, HTTP503Retry) {
   privet_urlfetcher_->Start();
   net::TestURLFetcher* fetcher = fetcher_factory_.GetFetcherByID(0);
   ASSERT_TRUE(fetcher != NULL);
   fetcher->SetResponseString(kSampleParsableJSON);
-  fetcher->set_status(net::URLRequestStatus(net::URLRequestStatus::FAILED,
-                                            net::ERR_TIMED_OUT));
-  fetcher->set_response_code(-1);
+  fetcher->set_status(net::URLRequestStatus(net::URLRequestStatus::SUCCESS,
+                                            net::OK));
+  fetcher->set_response_code(503);
 
-  EXPECT_CALL(delegate_, OnErrorInternal(PrivetURLFetcher::URL_FETCH_ERROR));
+  fetcher->delegate()->OnURLFetchComplete(fetcher);
+
+  RunFor(base::TimeDelta::FromSeconds(7));
+  fetcher = fetcher_factory_.GetFetcherByID(0);
+
+  ASSERT_TRUE(fetcher != NULL);
+  fetcher->SetResponseString(kSampleParsableJSON);
+  fetcher->set_status(net::URLRequestStatus(net::URLRequestStatus::SUCCESS,
+                                            net::OK));
+  fetcher->set_response_code(200);
+
+  EXPECT_CALL(delegate_, OnParsedJsonInternal(false));
   fetcher->delegate()->OnURLFetchComplete(fetcher);
 }
 

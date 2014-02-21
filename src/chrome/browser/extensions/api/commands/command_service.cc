@@ -4,8 +4,11 @@
 
 #include "chrome/browser/extensions/api/commands/command_service.h"
 
+#include <vector>
+
 #include "base/lazy_instance.h"
 #include "base/prefs/scoped_user_pref_update.h"
+#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/chrome_notification_types.h"
@@ -18,11 +21,12 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/accelerator_utils.h"
 #include "chrome/common/extensions/api/commands/commands_handler.h"
-#include "chrome/common/extensions/feature_switch.h"
 #include "chrome/common/pref_names.h"
 #include "components/user_prefs/pref_registry_syncable.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_service.h"
+#include "extensions/common/feature_switch.h"
+#include "extensions/common/manifest_constants.h"
 
 using extensions::Extension;
 using extensions::ExtensionPrefs;
@@ -38,9 +42,23 @@ const char kGlobal[] = "global";
 const char kInitialBindingsHaveBeenAssigned[] = "initial_keybindings_set";
 
 std::string GetPlatformKeybindingKeyForAccelerator(
-    const ui::Accelerator& accelerator) {
-  return extensions::Command::CommandPlatform() + ":" +
-         extensions::Command::AcceleratorToString(accelerator);
+    const ui::Accelerator& accelerator, const std::string extension_id) {
+  std::string key = extensions::Command::CommandPlatform() + ":" +
+                    extensions::Command::AcceleratorToString(accelerator);
+
+  // Media keys have a 1-to-many relationship with targets, unlike regular
+  // shortcut (1-to-1 relationship). That means two or more extensions can
+  // register for the same media key so the extension ID needs to be added to
+  // the key to make sure the key is unique.
+  if (extensions::CommandService::IsMediaKey(accelerator))
+    key += ":" + extension_id;
+
+  return key;
+}
+
+bool IsForCurrentPlatform(const std::string& key) {
+  return StartsWithASCII(
+      key, extensions::Command::CommandPlatform() + ":", true);
 }
 
 void SetInitialBindingsHaveBeenAssigned(
@@ -61,10 +79,17 @@ bool InitialBindingsHaveBeenAssigned(
 }
 
 bool IsWhitelistedGlobalShortcut(const extensions::Command& command) {
+  // Non-global shortcuts are always allowed.
   if (!command.global())
     return true;
+  // Global shortcuts must be (Ctrl|Command)-Shift-[0-9].
+#if defined OS_MACOSX
+  if (!command.accelerator().IsCmdDown())
+    return false;
+#else
   if (!command.accelerator().IsCtrlDown())
     return false;
+#endif
   if (!command.accelerator().IsShiftDown())
     return false;
   return (command.accelerator().key_code() >= ui::VKEY_0 &&
@@ -102,12 +127,23 @@ g_factory = LAZY_INSTANCE_INITIALIZER;
 
 // static
 ProfileKeyedAPIFactory<CommandService>* CommandService::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 // static
 CommandService* CommandService::Get(Profile* profile) {
   return ProfileKeyedAPIFactory<CommandService>::GetForProfile(profile);
+}
+
+// static
+bool CommandService::IsMediaKey(const ui::Accelerator& accelerator) {
+  if (accelerator.modifiers() != 0)
+    return false;
+
+  return (accelerator.key_code() == ui::VKEY_MEDIA_NEXT_TRACK ||
+          accelerator.key_code() == ui::VKEY_MEDIA_PREV_TRACK ||
+          accelerator.key_code() == ui::VKEY_MEDIA_PLAY_PAUSE ||
+          accelerator.key_code() == ui::VKEY_MEDIA_STOP);
 }
 
 bool CommandService::GetBrowserActionCommand(
@@ -126,15 +162,6 @@ bool CommandService::GetPageActionCommand(
     bool* active) {
   return GetExtensionActionCommand(
       extension_id, type, command, active, PAGE_ACTION);
-}
-
-bool CommandService::GetScriptBadgeCommand(
-    const std::string& extension_id,
-    QueryType type,
-    extensions::Command* command,
-    bool* active) {
-  return GetExtensionActionCommand(
-      extension_id, type, command, active, SCRIPT_BADGE);
 }
 
 bool CommandService::GetNamedCommands(const std::string& extension_id,
@@ -188,14 +215,33 @@ bool CommandService::AddKeybindingPref(
   if (accelerator.key_code() == ui::VKEY_UNKNOWN)
     return false;
 
+  // Media Keys are allowed to be used by named command only.
+  DCHECK(!IsMediaKey(accelerator) ||
+         (command_name != manifest_values::kPageActionCommandEvent &&
+          command_name != manifest_values::kBrowserActionCommandEvent));
+
   DictionaryPrefUpdate updater(profile_->GetPrefs(),
                                prefs::kExtensionCommands);
   base::DictionaryValue* bindings = updater.Get();
 
-  std::string key = GetPlatformKeybindingKeyForAccelerator(accelerator);
+  std::string key = GetPlatformKeybindingKeyForAccelerator(accelerator,
+                                                           extension_id);
 
-  if (!allow_overrides && bindings->HasKey(key))
-    return false;  // Already taken.
+  if (bindings->HasKey(key)) {
+    if (!allow_overrides)
+      return false;  // Already taken.
+
+    // If the shortcut has been assigned to another command, it should be
+    // removed before overriding, so that |ExtensionKeybindingRegistry| can get
+    // a chance to do clean-up.
+    const base::DictionaryValue* item = NULL;
+    bindings->GetDictionary(key, &item);
+    std::string old_extension_id;
+    std::string old_command_name;
+    item->GetString(kExtension, &old_extension_id);
+    item->GetString(kCommandName, &old_command_name);
+    RemoveKeybindingPrefs(old_extension_id, old_command_name);
+  }
 
   base::DictionaryValue* keybinding = new base::DictionaryValue();
   keybinding->SetString(kExtension, extension_id);
@@ -282,15 +328,20 @@ Command CommandService::FindCommandByName(
     item->GetString(kCommandName, &command_name);
     if (command != command_name)
       continue;
+    // Format stored in Preferences is: "Platform:Shortcut[:ExtensionId]".
+    std::string shortcut = it.key();
+    if (!IsForCurrentPlatform(shortcut))
+      continue;
     bool global = false;
     if (FeatureSwitch::global_commands()->IsEnabled())
       item->GetBoolean(kGlobal, &global);
 
-    std::string shortcut = it.key();
-    if (StartsWithASCII(shortcut, Command::CommandPlatform() + ":", true))
-      shortcut = shortcut.substr(Command::CommandPlatform().length() + 1);
+    std::vector<std::string> tokens;
+    base::SplitString(shortcut, ':', &tokens);
+    CHECK(tokens.size() >= 2);
+    shortcut = tokens[1];
 
-    return Command(command_name, string16(), shortcut, global);
+    return Command(command_name, base::string16(), shortcut, global);
   }
 
   return Command();
@@ -311,9 +362,11 @@ void CommandService::AssignInitialKeybindings(const Extension* extension) {
 
   extensions::CommandMap::const_iterator iter = commands->begin();
   for (; iter != commands->end(); ++iter) {
-    if (!chrome::IsChromeAccelerator(
-            iter->second.accelerator(), profile_) &&
-        IsWhitelistedGlobalShortcut(iter->second)) {
+    // Make sure registered Chrome shortcuts cannot be automatically assigned
+    // (overwritten) by extension developers. Media keys are an exception here.
+    if ((!chrome::IsChromeAccelerator(iter->second.accelerator(), profile_) &&
+        IsWhitelistedGlobalShortcut(iter->second)) ||
+        extensions::CommandService::IsMediaKey(iter->second.accelerator())) {
       AddKeybindingPref(iter->second.accelerator(),
                         extension->id(),
                         iter->second.command_name(),
@@ -347,19 +400,6 @@ void CommandService::AssignInitialKeybindings(const Extension* extension) {
                         false);  // Page actions can't be global.
     }
   }
-
-  const extensions::Command* script_badge_command =
-      CommandsInfo::GetScriptBadgeCommand(extension);
-  if (script_badge_command) {
-    if (!chrome::IsChromeAccelerator(
-        script_badge_command->accelerator(), profile_)) {
-      AddKeybindingPref(script_badge_command->accelerator(),
-                        extension->id(),
-                        script_badge_command->command_name(),
-                        false,   // Overwriting not allowed.
-                        false);  // Script badges can't be global.
-    }
-  }
 }
 
 void CommandService::RemoveKeybindingPrefs(const std::string& extension_id,
@@ -372,6 +412,10 @@ void CommandService::RemoveKeybindingPrefs(const std::string& extension_id,
   KeysToRemove keys_to_remove;
   for (base::DictionaryValue::Iterator it(*bindings); !it.IsAtEnd();
        it.Advance()) {
+    // Removal of keybinding preference should be limited to current platform.
+    if (!IsForCurrentPlatform(it.key()))
+      continue;
+
     const base::DictionaryValue* item = NULL;
     it.value().GetAsDictionary(&item);
 
@@ -431,9 +475,6 @@ bool CommandService::GetExtensionActionCommand(
       break;
     case PAGE_ACTION:
       requested_command = CommandsInfo::GetPageActionCommand(extension);
-      break;
-    case SCRIPT_BADGE:
-      requested_command = CommandsInfo::GetScriptBadgeCommand(extension);
       break;
   }
   if (!requested_command)

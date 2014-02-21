@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "talk/base/criticalsection.h"
+#include "talk/base/fileutils.h"
 #include "talk/base/sigslotrepeater.h"
 #include "talk/base/thread.h"
 #include "talk/media/base/capturemanager.h"
@@ -214,6 +215,9 @@ class ChannelManager : public talk_base::MessageHandler,
   void SetVideoCaptureDeviceMaxFormat(const std::string& usb_id,
                                       const VideoFormat& max_format);
 
+  // Starts AEC dump using existing file.
+  bool StartAecDump(talk_base::PlatformFile file);
+
   sigslot::repeater0<> SignalDevicesChange;
   sigslot::signal2<VideoCapturer*, CaptureState> SignalVideoCaptureStateChange;
 
@@ -225,6 +229,11 @@ class ChannelManager : public talk_base::MessageHandler,
   // TODO(hellner): Remove this function once the engine capturer has been
   // removed.
   VideoFormat GetStartCaptureFormat();
+
+  // TODO(turajs): Remove this function when ACM2 is in use. Used mainly to
+  // choose between ACM1 and ACM2.
+  bool SetAudioOptions(const AudioOptions& options);
+
  protected:
   // Adds non-transient parameters which can only be changed through the
   // options store.

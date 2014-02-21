@@ -5,8 +5,10 @@
 #include "base/basictypes.h"
 #include "base/bind.h"
 #include "base/compiler_specific.h"
+#include "base/debug/trace_event.h"
 #include "base/file_util.h"
 #include "base/files/file_path.h"
+#include "base/json/json_reader.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/message_loop/message_loop.h"
 #include "base/path_service.h"
@@ -23,6 +25,7 @@
 #include "ui/compositor/layer_animation_sequence.h"
 #include "ui/compositor/layer_animator.h"
 #include "ui/compositor/test/context_factories_for_test.h"
+#include "ui/compositor/test/draw_waiter_for_test.h"
 #include "ui/compositor/test/test_compositor_host.h"
 #include "ui/compositor/test/test_layers.h"
 #include "ui/gfx/canvas.h"
@@ -599,13 +602,30 @@ class FakeTexture : public Texture {
       : Texture(flipped, size, device_scale_factor) {}
 
   virtual unsigned int PrepareTexture() OVERRIDE { return 0; }
-  virtual WebKit::WebGraphicsContext3D* HostContext3D() OVERRIDE {
-    return NULL;
-  }
 
  protected:
   virtual ~FakeTexture() {}
 };
+
+TEST_F(LayerWithNullDelegateTest, EscapedDebugNames) {
+  scoped_ptr<Layer> layer(CreateLayer(LAYER_NOT_DRAWN));
+  std::string name = "\"\'\\/\b\f\n\r\t\n";
+  layer->set_name(name);
+  scoped_refptr<base::debug::ConvertableToTraceFormat> debug_info =
+    layer->TakeDebugInfo();
+  EXPECT_TRUE(!!debug_info);
+  std::string json;
+  debug_info->AppendAsTraceFormat(&json);
+  base::JSONReader json_reader;
+  scoped_ptr<base::Value> debug_info_value(json_reader.ReadToValue(json));
+  EXPECT_TRUE(!!debug_info_value);
+  EXPECT_TRUE(debug_info_value->IsType(base::Value::TYPE_DICTIONARY));
+  base::DictionaryValue* dictionary = 0;
+  EXPECT_TRUE(debug_info_value->GetAsDictionary(&dictionary));
+  std::string roundtrip;
+  EXPECT_TRUE(dictionary->GetString("layer_name", &roundtrip));
+  EXPECT_EQ(name, roundtrip);
+}
 
 TEST_F(LayerWithNullDelegateTest, SwitchLayerPreservesCCLayerState) {
   scoped_ptr<Layer> l1(CreateColorLayer(SK_ColorRED,
@@ -901,7 +921,7 @@ TEST_F(LayerWithRealCompositorTest, CompositorObservers) {
   // and also signal an abort.
   observer.Reset();
   l2->SetOpacity(0.1f);
-  GetCompositor()->OnSwapBuffersAborted();
+  GetCompositor()->DidAbortSwapBuffers();
   WaitForDraw();
   EXPECT_TRUE(observer.notified());
   EXPECT_TRUE(observer.aborted());

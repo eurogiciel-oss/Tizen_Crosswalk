@@ -25,7 +25,7 @@
 #include "third_party/WebKit/public/web/WebRuntimeFeatures.h"
 #include "webkit/glue/webkit_glue.h"
 
-using WebKit::WebRuntimeFeatures;
+using blink::WebRuntimeFeatures;
 
 namespace content {
 
@@ -38,23 +38,26 @@ WorkerThread::WorkerThread() {
       thread_safe_sender(),
       sync_message_filter(),
       quota_message_filter()));
-  WebKit::initialize(webkit_platform_support_.get());
+
+  const CommandLine& command_line = *CommandLine::ForCurrentProcess();
+  if (command_line.HasSwitch(switches::kJavaScriptFlags)) {
+    webkit_glue::SetJavaScriptFlags(
+        command_line.GetSwitchValueASCII(switches::kJavaScriptFlags));
+  }
+  SetRuntimeFeaturesDefaultsAndUpdateFromArgs(command_line);
+
+  blink::initialize(webkit_platform_support_.get());
 
   appcache_dispatcher_.reset(
       new AppCacheDispatcher(this, new AppCacheFrontendImpl()));
 
-  web_database_observer_impl_.reset(
-      new WebDatabaseObserverImpl(sync_message_filter()));
-  WebKit::WebDatabase::setObserver(web_database_observer_impl_.get());
   db_message_filter_ = new DBMessageFilter();
   channel()->AddFilter(db_message_filter_.get());
 
   indexed_db_message_filter_ = new IndexedDBMessageFilter(
       thread_safe_sender());
-  channel()->AddFilter(indexed_db_message_filter_.get());
+  channel()->AddFilter(indexed_db_message_filter_->GetFilter());
 
-  const CommandLine& command_line = *CommandLine::ForCurrentProcess();
-  SetRuntimeFeaturesDefaultsAndUpdateFromArgs(command_line);
 }
 
 void WorkerThread::OnShutdown() {
@@ -70,14 +73,18 @@ WorkerThread::~WorkerThread() {
 void WorkerThread::Shutdown() {
   ChildThread::Shutdown();
 
+  if (webkit_platform_support_) {
+    webkit_platform_support_->web_database_observer_impl()->
+        WaitForAllDatabasesToClose();
+  }
+
   // Shutdown in reverse of the initialization order.
-  channel()->RemoveFilter(indexed_db_message_filter_.get());
   indexed_db_message_filter_ = NULL;
 
   channel()->RemoveFilter(db_message_filter_.get());
   db_message_filter_ = NULL;
 
-  WebKit::shutdown();
+  blink::shutdown();
   lazy_tls.Pointer()->Set(NULL);
 }
 
@@ -114,7 +121,13 @@ void WorkerThread::OnCreateWorker(
       params.shared_worker_appcache_id);
 
   // WebSharedWorkerStub own themselves.
-  new WebSharedWorkerStub(params.name, params.route_id, appcache_init_info);
+  new WebSharedWorkerStub(
+      params.url,
+      params.name,
+      params.content_security_policy,
+      params.security_policy_type,
+      params.route_id,
+      appcache_init_info);
 }
 
 // The browser process is likely dead. Terminate all workers.

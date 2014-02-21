@@ -13,12 +13,23 @@
 
 var CreateEvent = require('webView').CreateEvent;
 var MessagingNatives = requireNative('messaging_natives');
-var WebRequestEvent = require('webRequestInternal').WebRequestEvent;
-var WebRequestSchema =
-    requireNative('schema_registry').GetSchema('webRequest');
 var WebViewInternal = require('webView').WebViewInternal;
 var WebView = require('webView').WebView;
 
+// WEB_VIEW_EXPERIMENTAL_EVENTS is a map of experimental <webview> DOM event
+//     names to their associated extension event descriptor objects.
+// An event listener will be attached to the extension event |evt| specified in
+//     the descriptor.
+// |fields| specifies the public-facing fields in the DOM event that are
+//     accessible to <webview> developers.
+// |customHandler| allows a handler function to be called each time an extension
+//     event is caught by its event listener. The DOM event should be dispatched
+//     within this handler function. With no handler function, the DOM event
+//     will be dispatched by default each time the extension event is caught.
+// |cancelable| (default: false) specifies whether the event's default
+//     behavior can be canceled. If the default action associated with the event
+//     is prevented, then its dispatch function will return false in its event
+//     handler. The event must have a custom handler for this to be meaningful.
 var WEB_VIEW_EXPERIMENTAL_EVENTS = {
   'dialog': {
     cancelable: true,
@@ -33,10 +44,10 @@ var WEB_VIEW_EXPERIMENTAL_EVENTS = {
 /**
  * @private
  */
-WebViewInternal.prototype.maybeAttachWebRequestEventToWebview_ =
-    function(eventName, webRequestEvent) {
+WebViewInternal.prototype.maybeAttachWebRequestEventToObject_ =
+    function(obj, eventName, webRequestEvent) {
   Object.defineProperty(
-      this.webviewNode_,
+      obj,
       eventName,
       {
         get: webRequestEvent,
@@ -129,7 +140,7 @@ WebViewInternal.prototype.maybeGetExperimentalEvents_ = function() {
 };
 
 WebViewInternal.prototype.maybeGetExperimentalPermissions_ = function() {
-  return ['loadplugin'];
+  return [];
 };
 
 /** @private */
@@ -142,25 +153,8 @@ WebViewInternal.prototype.clearData_ = function(var_args) {
 };
 
 /** @private */
-WebViewInternal.prototype.getUserAgent_ = function() {
-  return this.userAgentOverride_ || navigator.userAgent;
-};
-
-/** @private */
-WebViewInternal.prototype.isUserAgentOverridden_ = function() {
-  return !!this.userAgentOverride_ &&
-      this.userAgentOverride_ != navigator.userAgent;
-};
-
-/** @private */
-WebViewInternal.prototype.setUserAgentOverride_ = function(userAgentOverride) {
-  this.userAgentOverride_ = userAgentOverride;
-  if (!this.instanceId_) {
-    // If we are not attached yet, then we will pick up the user agent on
-    // attachment.
-    return;
-  }
-  WebView.overrideUserAgent(this.instanceId_, userAgentOverride);
+WebViewInternal.prototype.captureVisibleRegion_ = function(spec, callback) {
+  WebView.captureVisibleRegion(this.instanceId_, spec, callback);
 };
 
 WebViewInternal.maybeRegisterExperimentalAPIs = function(proto, secret) {
@@ -169,15 +163,7 @@ WebViewInternal.maybeRegisterExperimentalAPIs = function(proto, secret) {
     $Function.apply(internal.clearData_, internal, arguments);
   };
 
-  proto.getUserAgent = function() {
-    return this.internal_(secret).getUserAgent_();
-  };
-
-  proto.isUserAgentOverridden = function() {
-    return this.internal_(secret).isUserAgentOverridden_();
-  };
-
-  proto.setUserAgentOverride = function(userAgentOverride) {
-    this.internal_(secret).setUserAgentOverride_(userAgentOverride);
+  proto.captureVisibleRegion = function(spec, callback) {
+    this.internal_(secret).captureVisibleRegion_(spec, callback);
   };
 };

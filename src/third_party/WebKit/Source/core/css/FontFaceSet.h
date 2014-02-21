@@ -28,6 +28,7 @@
 
 #include "bindings/v8/ScriptPromise.h"
 #include "core/css/FontFace.h"
+#include "core/css/FontFaceSetForEachCallback.h"
 #include "core/dom/ActiveDOMObject.h"
 #include "core/events/EventListener.h"
 #include "core/events/EventTarget.h"
@@ -45,18 +46,19 @@
 
 namespace WebCore {
 
+class CSSFontFace;
 class CSSFontFaceSource;
+class CSSFontSelector;
+class CSSSegmentedFontFaceCache;
 class Dictionary;
 class Document;
-class Event;
 class ExceptionState;
 class Font;
 class FontResource;
 class FontsReadyPromiseResolver;
-class LoadFontPromiseResolver;
 class ExecutionContext;
 
-class FontFaceSet : public RefCountedSupplement<Document, FontFaceSet>, public ActiveDOMObject, public EventTargetWithInlineData {
+class FontFaceSet FINAL : public RefCountedSupplement<Document, FontFaceSet>, public ActiveDOMObject, public EventTargetWithInlineData {
     REFCOUNTED_EVENT_TARGET(FontFaceSet);
 public:
     virtual ~FontFaceSet();
@@ -70,6 +72,14 @@ public:
     ScriptPromise load(const String& font, const String& text, ExceptionState&);
     ScriptPromise ready();
 
+    void add(FontFace*, ExceptionState&);
+    void clear();
+    bool remove(FontFace*, ExceptionState&);
+    void forEach(PassOwnPtr<FontFaceSetForEachCallback>, ScriptValue& thisArg) const;
+    void forEach(PassOwnPtr<FontFaceSetForEachCallback>) const;
+    bool has(FontFace*, ExceptionState&) const;
+
+    unsigned long size() const;
     AtomicString status() const;
 
     virtual ExecutionContext* executionContext() const OVERRIDE;
@@ -81,7 +91,6 @@ public:
     void beginFontLoading(FontFace*);
     void fontLoaded(FontFace*);
     void loadError(FontFace*);
-    void scheduleResolve(LoadFontPromiseResolver*);
 
     // ActiveDOMObject
     virtual void suspend() OVERRIDE;
@@ -90,6 +99,8 @@ public:
 
     static PassRefPtr<FontFaceSet> from(Document*);
     static void didLayout(Document*);
+
+    void addFontFacesToCSSSegmentedFontFaceCache(CSSSegmentedFontFaceCache*, CSSFontSelector*);
 
 private:
     typedef RefCountedSupplement<Document, FontFaceSet> SupplementType;
@@ -114,21 +125,22 @@ private:
 
     bool hasLoadedFonts() const { return !m_loadedFonts.isEmpty() || !m_failedFonts.isEmpty(); }
 
-    void scheduleEvent(PassRefPtr<Event>);
+    void forEachInternal(PassOwnPtr<FontFaceSetForEachCallback>, ScriptValue* thisArg) const;
     void queueDoneEvent(FontFace*);
-    void firePendingEvents();
-    void resolvePendingLoadPromises();
+    void fireLoadingEvent();
     void fireDoneEventIfPossible();
     bool resolveFontStyle(const String&, Font&);
     void handlePendingEventsAndPromisesSoon();
     void handlePendingEventsAndPromises();
+    const ListHashSet<RefPtr<CSSFontFace> >& cssConnectedFontFaceList() const;
+    bool isCSSConnectedFontFace(FontFace*) const;
 
     unsigned m_loadingCount;
-    Vector<RefPtr<Event> > m_pendingEvents;
-    Vector<RefPtr<LoadFontPromiseResolver> > m_pendingLoadResolvers;
+    bool m_shouldFireLoadingEvent;
     Vector<OwnPtr<FontsReadyPromiseResolver> > m_readyResolvers;
     FontFaceArray m_loadedFonts;
     FontFaceArray m_failedFonts;
+    ListHashSet<RefPtr<FontFace> > m_nonCSSConnectedFaces;
 
     AsyncMethodRunner<FontFaceSet> m_asyncRunner;
 

@@ -31,7 +31,9 @@ class URLRequestContextGetter;
 }
 
 namespace policy {
+class PolicyService;
 class ProfilePolicyConnector;
+class SchemaRegistryService;
 }
 
 namespace quota {
@@ -61,8 +63,9 @@ class TestingProfile : public Profile {
   TestingProfile();
 
   typedef std::vector<std::pair<
-      BrowserContextKeyedServiceFactory*,
-      BrowserContextKeyedServiceFactory::FactoryFunction> > TestingFactories;
+              BrowserContextKeyedServiceFactory*,
+              BrowserContextKeyedServiceFactory::TestingFactoryFunction> >
+      TestingFactories;
 
   // Helper class for building an instance of TestingProfile (allows injecting
   // mocks for various services prior to profile initialization).
@@ -84,7 +87,7 @@ class TestingProfile : public Profile {
     // are applied before the ProfileKeyedServices are created.
     void AddTestingFactory(
         BrowserContextKeyedServiceFactory* service_factory,
-        BrowserContextKeyedServiceFactory::FactoryFunction callback);
+        BrowserContextKeyedServiceFactory::TestingFactoryFunction callback);
 
     // Sets the ExtensionSpecialStoragePolicy to be returned by
     // GetExtensionSpecialStoragePolicy().
@@ -100,9 +103,15 @@ class TestingProfile : public Profile {
     // Makes the Profile being built an incognito profile.
     void SetIncognito();
 
+    // Makes the Profile being built a guest profile.
+    void SetGuestSession();
+
     // Sets the managed user ID (which is empty by default). If it is set to a
     // non-empty string, the profile is managed.
     void SetManagedUserId(const std::string& managed_user_id);
+
+    // Sets the PolicyService to be used by this profile.
+    void SetPolicyService(scoped_ptr<policy::PolicyService> policy_service);
 
     // Creates the TestingProfile using previously-set settings.
     scoped_ptr<TestingProfile> Build();
@@ -117,7 +126,9 @@ class TestingProfile : public Profile {
     base::FilePath path_;
     Delegate* delegate_;
     bool incognito_;
+    bool guest_session_;
     std::string managed_user_id_;
+    scoped_ptr<policy::PolicyService> policy_service_;
     TestingFactories testing_factories_;
 
     DISALLOW_COPY_AND_ASSIGN(Builder);
@@ -143,7 +154,9 @@ class TestingProfile : public Profile {
                  scoped_refptr<ExtensionSpecialStoragePolicy> extension_policy,
                  scoped_ptr<PrefServiceSyncable> prefs,
                  bool incognito,
+                 bool guest_session,
                  const std::string& managed_user_id,
+                 scoped_ptr<policy::PolicyService> policy_service,
                  const TestingFactories& factories);
 
   virtual ~TestingProfile();
@@ -271,6 +284,15 @@ class TestingProfile : public Profile {
         int render_view_id,
         int bridge_id,
         const GURL& requesting_frame) OVERRIDE;
+  virtual void RequestProtectedMediaIdentifierPermission(
+      int render_process_id,
+      int render_view_id,
+      int bridge_id,
+      int group_id,
+      const GURL& requesting_frame,
+      const ProtectedMediaIdentifierPermissionCallback& callback) OVERRIDE;
+  virtual void CancelProtectedMediaIdentifierPermissionRequests(
+      int group_id) OVERRIDE;
   virtual net::URLRequestContextGetter* CreateRequestContextForStoragePartition(
       const base::FilePath& partition_path,
       bool in_memory,
@@ -304,7 +326,6 @@ class TestingProfile : public Profile {
   }
   virtual void InitChromeOSPreferences() OVERRIDE {
   }
-  virtual bool IsLoginProfile() OVERRIDE;
 #endif  // defined(OS_CHROMEOS)
 
   virtual PrefProxyConfigTracker* GetProxyConfigTracker() OVERRIDE;
@@ -360,6 +381,8 @@ class TestingProfile : public Profile {
   scoped_ptr<Profile> incognito_profile_;
   Profile* original_profile_;
 
+  bool guest_session_;
+
   std::string managed_user_id_;
 
   // Did the last session exit cleanly? Default is true.
@@ -393,12 +416,17 @@ class TestingProfile : public Profile {
   // scoped_ptr<>.
   content::MockResourceContext* resource_context_;
 
+#if defined(ENABLE_CONFIGURATION_POLICY)
+  scoped_ptr<policy::SchemaRegistryService> schema_registry_service_;
+#endif
   scoped_ptr<policy::ProfilePolicyConnector> profile_policy_connector_;
 
   // Weak pointer to a delegate for indicating that a profile was created.
   Delegate* delegate_;
 
   std::string profile_name_;
+
+  scoped_ptr<policy::PolicyService> policy_service_;
 };
 
 #endif  // CHROME_TEST_BASE_TESTING_PROFILE_H_

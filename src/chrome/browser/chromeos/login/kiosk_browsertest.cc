@@ -8,69 +8,33 @@
 #include "ash/desktop_background/desktop_background_controller.h"
 #include "ash/desktop_background/desktop_background_controller_observer.h"
 #include "ash/shell.h"
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/command_line.h"
-#include "base/location.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/message_loop/message_loop.h"
-#include "base/path_service.h"
-#include "base/prefs/scoped_user_pref_update.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/chrome_browser_main.h"
-#include "chrome/browser/chrome_browser_main_extra_parts.h"
-#include "chrome/browser/chrome_content_browser_client.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/chromeos/app_mode/kiosk_app_launch_error.h"
 #include "chrome/browser/chromeos/app_mode/kiosk_app_manager.h"
 #include "chrome/browser/chromeos/login/app_launch_controller.h"
-#include "chrome/browser/chromeos/login/app_launch_signin_screen.h"
-#include "chrome/browser/chromeos/login/existing_user_controller.h"
 #include "chrome/browser/chromeos/login/fake_user_manager.h"
-#include "chrome/browser/chromeos/login/login_display_host_impl.h"
 #include "chrome/browser/chromeos/login/mock_user_manager.h"
+#include "chrome/browser/chromeos/login/oobe_base_test.h"
 #include "chrome/browser/chromeos/login/test/oobe_screen_waiter.h"
-#include "chrome/browser/chromeos/login/webui_login_display.h"
 #include "chrome/browser/chromeos/login/wizard_controller.h"
 #include "chrome/browser/chromeos/policy/device_policy_cros_browser_test.h"
-#include "chrome/browser/chromeos/settings/cros_settings.h"
+#include "chrome/browser/chromeos/policy/proto/chrome_device_policy.pb.h"
 #include "chrome/browser/chromeos/settings/device_oauth2_token_service.h"
 #include "chrome/browser/chromeos/settings/device_oauth2_token_service_factory.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/extension_test_message_listener.h"
-#include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/policy/cloud/policy_builder.h"
-#include "chrome/browser/policy/proto/chromeos/chrome_device_policy.pb.h"
-#include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/ui/browser.h"
-#include "chrome/browser/ui/webui/chromeos/login/oobe_ui.h"
-#include "chrome/browser/ui/webui/chromeos/login/signin_screen_handler.h"
-#include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/test/base/in_process_browser_test.h"
-#include "chrome/test/base/interactive_test_utils.h"
-#include "chrome/test/base/ui_test_utils.h"
 #include "chromeos/chromeos_switches.h"
-#include "chromeos/settings/cros_settings_names.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/test/browser_test_utils.h"
-#include "content/public/test/test_utils.h"
-#include "google_apis/gaia/fake_gaia.h"
+#include "google_apis/gaia/gaia_constants.h"
 #include "google_apis/gaia/gaia_switches.h"
-#include "net/base/network_change_notifier.h"
-#include "net/dns/mock_host_resolver.h"
-#include "net/test/embedded_test_server/embedded_test_server.h"
-#include "net/test/embedded_test_server/http_request.h"
-#include "net/test/embedded_test_server/http_response.h"
-#include "testing/gmock/include/gmock/gmock.h"
-#include "testing/gtest/include/gtest/gtest.h"
-#include "ui/aura/window.h"
-#include "ui/compositor/layer.h"
+#include "google_apis/gaia/gaia_urls.h"
 
 namespace em = enterprise_management;
 
@@ -100,7 +64,12 @@ const char kTestOwnerEmail[] = "owner@example.com";
 const char kTestEnterpriseAccountId[] = "enterprise-kiosk-app@localhost";
 const char kTestEnterpriseServiceAccountId[] = "service_account@example.com";
 const char kTestRefreshToken[] = "fake-refresh-token";
+const char kTestUserinfoToken[] = "fake-userinfo-token";
+const char kTestLoginToken[] = "fake-login-token";
 const char kTestAccessToken[] = "fake-access-token";
+const char kTestClientId[] = "fake-client-id";
+const char kTestAppScope[] =
+    "https://www.googleapis.com/auth/userinfo.profile";
 
 // Helper function for GetConsumerKioskModeStatusCallback.
 void ConsumerKioskModeStatusCheck(
@@ -136,57 +105,43 @@ void CopyTokenService(DeviceOAuth2TokenService** out_token_service,
 // Helper functions for CanConfigureNetwork mock.
 class ScopedCanConfigureNetwork {
  public:
-  explicit ScopedCanConfigureNetwork(bool can_configure)
+  ScopedCanConfigureNetwork(bool can_configure, bool needs_owner_auth)
       : can_configure_(can_configure),
-        callback_(base::Bind(&ScopedCanConfigureNetwork::CanConfigureNetwork,
-                             base::Unretained(this))) {
-    AppLaunchController::SetCanConfigureNetworkCallbackForTesting(&callback_);
+        needs_owner_auth_(needs_owner_auth),
+        can_configure_network_callback_(
+            base::Bind(&ScopedCanConfigureNetwork::CanConfigureNetwork,
+                       base::Unretained(this))),
+        needs_owner_auth_callback_(base::Bind(
+            &ScopedCanConfigureNetwork::NeedsOwnerAuthToConfigureNetwork,
+            base::Unretained(this))) {
+    AppLaunchController::SetCanConfigureNetworkCallbackForTesting(
+        &can_configure_network_callback_);
+    AppLaunchController::SetNeedOwnerAuthToConfigureNetworkCallbackForTesting(
+        &needs_owner_auth_callback_);
   }
   ~ScopedCanConfigureNetwork() {
     AppLaunchController::SetCanConfigureNetworkCallbackForTesting(NULL);
+    AppLaunchController::SetNeedOwnerAuthToConfigureNetworkCallbackForTesting(
+        NULL);
   }
 
   bool CanConfigureNetwork() {
     return can_configure_;
   }
 
+  bool NeedsOwnerAuthToConfigureNetwork() {
+    return needs_owner_auth_;
+  }
+
  private:
   bool can_configure_;
-  AppLaunchController::CanConfigureNetworkCallback callback_;
+  bool needs_owner_auth_;
+  AppLaunchController::ReturnBoolCallback can_configure_network_callback_;
+  AppLaunchController::ReturnBoolCallback needs_owner_auth_callback_;
   DISALLOW_COPY_AND_ASSIGN(ScopedCanConfigureNetwork);
 };
 
 }  // namespace
-
-// Fake NetworkChangeNotifier used to simulate network connectivity.
-class FakeNetworkChangeNotifier : public net::NetworkChangeNotifier {
- public:
-  FakeNetworkChangeNotifier() : connection_type_(CONNECTION_NONE) {}
-
-  virtual ConnectionType GetCurrentConnectionType() const OVERRIDE {
-    return connection_type_;
-  }
-
-  void GoOnline() {
-    SetConnectionType(net::NetworkChangeNotifier::CONNECTION_ETHERNET);
-  }
-
-  void GoOffline() {
-    SetConnectionType(net::NetworkChangeNotifier::CONNECTION_NONE);
-  }
-
-  void SetConnectionType(ConnectionType type) {
-    connection_type_ = type;
-    NotifyObserversOfNetworkChange(type);
-    base::RunLoop().RunUntilIdle();
-  }
-
-  virtual ~FakeNetworkChangeNotifier() {}
-
- private:
-  ConnectionType connection_type_;
-  DISALLOW_COPY_AND_ASSIGN(FakeNetworkChangeNotifier);
-};
 
 // Helper class that monitors app windows to wait for a window to appear.
 class ShellWindowObserver : public apps::ShellWindowRegistry::Observer {
@@ -233,7 +188,7 @@ class ShellWindowObserver : public apps::ShellWindowRegistry::Observer {
   DISALLOW_COPY_AND_ASSIGN(ShellWindowObserver);
 };
 
-class KioskTest : public InProcessBrowserTest {
+class KioskTest : public OobeBaseTest {
  public:
   KioskTest() {
     set_exit_when_last_browser_closes(false);
@@ -242,39 +197,20 @@ class KioskTest : public InProcessBrowserTest {
   virtual ~KioskTest() {}
 
  protected:
-  virtual void SetUp() OVERRIDE {
-    base::FilePath test_data_dir;
-    PathService::Get(chrome::DIR_TEST_DATA, &test_data_dir);
-    embedded_test_server()->ServeFilesFromDirectory(test_data_dir);
-    embedded_test_server()->RegisterRequestHandler(
-        base::Bind(&FakeGaia::HandleRequest, base::Unretained(&fake_gaia_)));
-    ASSERT_TRUE(embedded_test_server()->InitializeAndWaitUntilReady());
 
+  virtual void SetUp() OVERRIDE {
     mock_user_manager_.reset(new MockUserManager);
     AppLaunchController::SkipSplashWaitForTesting();
     AppLaunchController::SetNetworkWaitForTesting(kTestNetworkTimeoutSeconds);
 
-    InProcessBrowserTest::SetUp();
-  }
-
-  virtual void SetUpInProcessBrowserTestFixture() OVERRIDE {
-    host_resolver()->AddRule("*", "127.0.0.1");
+    OobeBaseTest::SetUp();
   }
 
   virtual void CleanUpOnMainThread() OVERRIDE {
-    // We need to clean up these objects in this specific order.
-    fake_network_notifier_.reset(NULL);
-    disable_network_notifier_.reset(NULL);
-
     AppLaunchController::SetNetworkTimeoutCallbackForTesting(NULL);
     AppLaunchSigninScreen::SetUserManagerForTesting(NULL);
 
-    // If the login display is still showing, exit gracefully.
-    if (LoginDisplayHostImpl::default_host()) {
-      base::MessageLoop::current()->PostTask(FROM_HERE,
-                                             base::Bind(&chrome::AttemptExit));
-      content::RunMessageLoop();
-    }
+    OobeBaseTest::CleanUpOnMainThread();
 
     // Clean up while main thread still runs.
     // See http://crbug.com/176659.
@@ -282,27 +218,12 @@ class KioskTest : public InProcessBrowserTest {
   }
 
   virtual void SetUpCommandLine(CommandLine* command_line) OVERRIDE {
-    command_line->AppendSwitch(chromeos::switches::kLoginManager);
-    command_line->AppendSwitch(chromeos::switches::kForceLoginManagerInTests);
-    command_line->AppendSwitch(
-        chromeos::switches::kDisableChromeCaptivePortalDetector);
-    command_line->AppendSwitch(::switches::kDisableBackgroundNetworking);
-    command_line->AppendSwitchASCII(chromeos::switches::kLoginProfile, "user");
+    OobeBaseTest::SetUpCommandLine(command_line);
 
     // Create gaia and webstore URL from test server url but using different
     // host names. This is to avoid gaia response being tagged as from
     // webstore in chrome_resource_dispatcher_host_delegate.cc.
     const GURL& server_url = embedded_test_server()->base_url();
-
-    std::string gaia_host("gaia");
-    GURL::Replacements replace_gaia_host;
-    replace_gaia_host.SetHostStr(gaia_host);
-    GURL gaia_url = server_url.ReplaceComponents(replace_gaia_host);
-    command_line->AppendSwitchASCII(::switches::kGaiaUrl, gaia_url.spec());
-    command_line->AppendSwitchASCII(::switches::kLsoUrl, gaia_url.spec());
-    command_line->AppendSwitchASCII(::switches::kGoogleApisUrl,
-                                    gaia_url.spec());
-
     std::string webstore_host("webstore");
     GURL::Replacements replace_webstore_host;
     replace_webstore_host.SetHostStr(webstore_host);
@@ -325,7 +246,7 @@ class KioskTest : public InProcessBrowserTest {
     KioskAppManager::Get()->SetAutoLaunchApp(kTestKioskApp);
   }
 
-  void StartAppLaunchFromLoginScreen(bool has_connectivity) {
+  void StartAppLaunchFromLoginScreen(const base::Closure& network_setup_cb) {
     EnableConsumerKioskMode();
 
     // Start UI, find menu entry for this app and launch it.
@@ -336,7 +257,7 @@ class KioskTest : public InProcessBrowserTest {
     chromeos::WizardController* wizard_controller =
         chromeos::WizardController::default_controller();
     CHECK(wizard_controller);
-    wizard_controller->SkipToLoginForTesting();
+    wizard_controller->SkipToLoginForTesting(LoginScreenContext());
     login_signal.Wait();
 
     // Wait for the Kiosk App configuration to reload, then launch the app.
@@ -346,8 +267,8 @@ class KioskTest : public InProcessBrowserTest {
     ReloadKioskApps();
     apps_loaded_signal.Wait();
 
-    if (!has_connectivity)
-      SimulateNetworkOffline();
+    if (!network_setup_cb.is_null())
+      network_setup_cb.Run();
 
     GetLoginUI()->CallJavascriptFunction(
         "login.AppsMenuButton.runAppForTesting",
@@ -366,7 +287,7 @@ class KioskTest : public InProcessBrowserTest {
         content::NotificationService::AllSources()).Wait();
 
     // Default profile switches to app profile after app is launched.
-    Profile* app_profile = ProfileManager::GetDefaultProfile();
+    Profile* app_profile = ProfileManager::GetPrimaryUserProfile();
     ASSERT_TRUE(app_profile);
 
     // Check installer status.
@@ -380,36 +301,27 @@ class KioskTest : public InProcessBrowserTest {
     EXPECT_TRUE(app);
 
     // App should appear with its window.
-    apps::ShellWindow* window = ShellWindowObserver(
-        apps::ShellWindowRegistry::Get(app_profile),
-        kTestKioskApp).Wait();
+    apps::ShellWindowRegistry* shell_window_registry =
+        apps::ShellWindowRegistry::Get(app_profile);
+    apps::ShellWindow* window =
+        ShellWindowObserver(shell_window_registry, kTestKioskApp).Wait();
     EXPECT_TRUE(window);
 
-    // Login screen should be fading out.
-    EXPECT_EQ(0.0f,
-              LoginDisplayHostImpl::default_host()
-                  ->GetNativeWindow()
-                  ->layer()
-                  ->GetTargetOpacity());
+    // Login screen should be gone or fading out.
+    chromeos::LoginDisplayHost* login_display_host =
+        chromeos::LoginDisplayHostImpl::default_host();
+    EXPECT_TRUE(
+        login_display_host == NULL ||
+        login_display_host->GetNativeWindow()->layer()->GetTargetOpacity() ==
+            0.0f);
 
-    // Wait until the app terminates.
-    content::RunMessageLoop();
+    // Wait until the app terminates if it is still running.
+    if (!shell_window_registry->GetShellWindowsForApp(kTestKioskApp).empty())
+      content::RunMessageLoop();
 
     // Check that the app had been informed that it is running in a kiosk
     // session.
     EXPECT_TRUE(launch_data_check_listener.was_satisfied());
-  }
-
-  void SimulateNetworkOffline() {
-    disable_network_notifier_.reset(
-        new net::NetworkChangeNotifier::DisableForTest);
-
-    fake_network_notifier_.reset(new FakeNetworkChangeNotifier);
-  }
-
-  void SimulateNetworkOnline() {
-    if (fake_network_notifier_.get())
-      fake_network_notifier_->GoOnline();
   }
 
   void WaitForAppLaunchNetworkTimeout() {
@@ -455,50 +367,25 @@ class KioskTest : public InProcessBrowserTest {
     return status;
   }
 
-  void JsExpect(const std::string& expression) {
-    bool result;
-    ASSERT_TRUE(content::ExecuteScriptAndExtractBool(
-        GetLoginUI()->GetWebContents(),
-        "window.domAutomationController.send(!!(" + expression + "));",
-         &result));
-    ASSERT_TRUE(result) << expression;
-  }
-
-  content::WebUI* GetLoginUI() {
-    return static_cast<chromeos::LoginDisplayHostImpl*>(
-        chromeos::LoginDisplayHostImpl::default_host())->GetOobeUI()->web_ui();
-  }
-
-  SigninScreenHandler* GetSigninScreenHandler() {
-    return static_cast<chromeos::LoginDisplayHostImpl*>(
-        chromeos::LoginDisplayHostImpl::default_host())
-        ->GetOobeUI()
-        ->signin_screen_handler_for_test();
-  }
-
   AppLaunchController* GetAppLaunchController() {
     return chromeos::LoginDisplayHostImpl::default_host()
         ->GetAppLaunchController();
   }
 
-  FakeGaia fake_gaia_;
-  scoped_ptr<net::NetworkChangeNotifier::DisableForTest>
-      disable_network_notifier_;
-  scoped_ptr<FakeNetworkChangeNotifier> fake_network_notifier_;
   scoped_ptr<MockUserManager> mock_user_manager_;
 };
 
 IN_PROC_BROWSER_TEST_F(KioskTest, InstallAndLaunchApp) {
-  StartAppLaunchFromLoginScreen(true);
+  StartAppLaunchFromLoginScreen(SimulateNetworkOnlineClosure());
   WaitForAppLaunchSuccess();
 }
 
 IN_PROC_BROWSER_TEST_F(KioskTest, LaunchAppNetworkDown) {
-  // Mock network could be configured.
-  ScopedCanConfigureNetwork can_configure_network(true);
+  // Mock network could be configured with owner's password.
+  ScopedCanConfigureNetwork can_configure_network(true, true);
 
   // Start app launch and wait for network connectivity timeout.
-  StartAppLaunchFromLoginScreen(false);
+  StartAppLaunchFromLoginScreen(SimulateNetworkOfflineClosure());
   OobeScreenWaiter splash_waiter(OobeDisplay::SCREEN_APP_LAUNCH_SPLASH);
   splash_waiter.Wait();
   WaitForAppLaunchNetworkTimeout();
@@ -531,10 +418,10 @@ IN_PROC_BROWSER_TEST_F(KioskTest, LaunchAppNetworkDown) {
 
 IN_PROC_BROWSER_TEST_F(KioskTest, LaunchAppNetworkDownConfigureNotAllowed) {
   // Mock network could not be configured.
-  ScopedCanConfigureNetwork can_configure_network(false);
+  ScopedCanConfigureNetwork can_configure_network(false, true);
 
   // Start app launch and wait for network connectivity timeout.
-  StartAppLaunchFromLoginScreen(false);
+  StartAppLaunchFromLoginScreen(SimulateNetworkOfflineClosure());
   OobeScreenWaiter splash_waiter(OobeDisplay::SCREEN_APP_LAUNCH_SPLASH);
   splash_waiter.Wait();
   WaitForAppLaunchNetworkTimeout();
@@ -546,8 +433,26 @@ IN_PROC_BROWSER_TEST_F(KioskTest, LaunchAppNetworkDownConfigureNotAllowed) {
   WaitForAppLaunchSuccess();
 }
 
+IN_PROC_BROWSER_TEST_F(KioskTest, LaunchAppNetworkPortal) {
+  // Mock network could be configured without the owner password.
+  ScopedCanConfigureNetwork can_configure_network(true, false);
+
+  // Start app launch with network portal state.
+  StartAppLaunchFromLoginScreen(SimulateNetworkPortalClosure());
+  OobeScreenWaiter(OobeDisplay::SCREEN_APP_LAUNCH_SPLASH)
+      .WaitNoAssertCurrentScreen();
+  WaitForAppLaunchNetworkTimeout();
+
+  // Network error should show up automatically since this test does not
+  // require owner auth to configure network.
+  OobeScreenWaiter(OobeDisplay::SCREEN_ERROR_MESSAGE).Wait();
+
+  ASSERT_TRUE(GetAppLaunchController()->showing_network_dialog());
+  WaitForAppLaunchSuccess();
+}
+
 IN_PROC_BROWSER_TEST_F(KioskTest, LaunchAppUserCancel) {
-  StartAppLaunchFromLoginScreen(false);
+  StartAppLaunchFromLoginScreen(SimulateNetworkOfflineClosure());
   OobeScreenWaiter splash_waiter(OobeDisplay::SCREEN_APP_LAUNCH_SPLASH);
   splash_waiter.Wait();
 
@@ -571,7 +476,7 @@ IN_PROC_BROWSER_TEST_F(KioskTest, AutolaunchWarningCancel) {
       chromeos::WizardController::default_controller();
   CHECK(wizard_controller);
   ReloadAutolaunchKioskApps();
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
 
   EXPECT_FALSE(KioskAppManager::Get()->GetAutoLaunchApp().empty());
   EXPECT_FALSE(KioskAppManager::Get()->IsAutoLaunchEnabled());
@@ -599,7 +504,7 @@ IN_PROC_BROWSER_TEST_F(KioskTest, AutolaunchWarningConfirm) {
   chromeos::WizardController* wizard_controller =
       chromeos::WizardController::default_controller();
   CHECK(wizard_controller);
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
 
   ReloadAutolaunchKioskApps();
   EXPECT_FALSE(KioskAppManager::Get()->GetAutoLaunchApp().empty());
@@ -635,7 +540,7 @@ IN_PROC_BROWSER_TEST_F(KioskTest, KioskEnableCancel) {
             GetConsumerKioskModeStatus());
 
   // Wait for the login UI to come up and switch to the kiosk_enable screen.
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
   content::WindowedNotificationObserver(
       chrome::NOTIFICATION_LOGIN_OR_LOCK_WEBUI_VISIBLE,
       content::NotificationService::AllSources()).Wait();
@@ -670,10 +575,10 @@ IN_PROC_BROWSER_TEST_F(KioskTest, KioskEnableConfirmed) {
   // Check Kiosk mode status.
   EXPECT_EQ(KioskAppManager::CONSUMER_KIOSK_MODE_CONFIGURABLE,
             GetConsumerKioskModeStatus());
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
 
   // Wait for the login UI to come up and switch to the kiosk_enable screen.
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
   content::WindowedNotificationObserver(
       chrome::NOTIFICATION_LOGIN_OR_LOCK_WEBUI_VISIBLE,
       content::NotificationService::AllSources()).Wait();
@@ -715,10 +620,10 @@ IN_PROC_BROWSER_TEST_F(KioskTest, KioskEnableAbortedWithAutoEnrollment) {
   // Check Kiosk mode status.
   EXPECT_EQ(KioskAppManager::CONSUMER_KIOSK_MODE_CONFIGURABLE,
             GetConsumerKioskModeStatus());
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
 
   // Wait for the login UI to come up and switch to the kiosk_enable screen.
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
   content::WindowedNotificationObserver(
       chrome::NOTIFICATION_LOGIN_OR_LOCK_WEBUI_VISIBLE,
       content::NotificationService::AllSources()).Wait();
@@ -753,7 +658,7 @@ IN_PROC_BROWSER_TEST_F(KioskTest, KioskEnableAfter2ndSigninScreen) {
             GetConsumerKioskModeStatus());
 
   // Wait for the login UI to come up and switch to the kiosk_enable screen.
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
   content::WindowedNotificationObserver(
       chrome::NOTIFICATION_LOGIN_OR_LOCK_WEBUI_VISIBLE,
       content::NotificationService::AllSources()).Wait();
@@ -774,7 +679,8 @@ IN_PROC_BROWSER_TEST_F(KioskTest, KioskEnableAfter2ndSigninScreen) {
       content::NotificationService::AllSources()).Wait();
 
   // Show signin screen again.
-  chromeos::LoginDisplayHostImpl::default_host()->StartSignInScreen();
+  chromeos::LoginDisplayHostImpl::default_host()->StartSignInScreen(
+      LoginScreenContext());
   OobeScreenWaiter(OobeDisplay::SCREEN_GAIA_SIGNIN).Wait();
 
   // Show kiosk enable screen again.
@@ -799,6 +705,7 @@ class KioskEnterpriseTest : public KioskTest {
   }
 
   virtual void SetUpOnMainThread() OVERRIDE {
+    KioskTest::SetUpOnMainThread();
     // Configure kTestEnterpriseKioskApp in device policy.
     em::DeviceLocalAccountsProto* accounts =
         device_policy_test_helper_.device_policy()->payload()
@@ -820,18 +727,39 @@ class KioskEnterpriseTest : public KioskTest {
     DeviceSettingsService::Get()->Load();
 
     // Configure OAuth authentication.
-    FakeGaia::AccessTokenInfo token_info;
-    token_info.token = kTestAccessToken;
-    token_info.email = kTestEnterpriseServiceAccountId;
-    fake_gaia_.IssueOAuthToken(kTestRefreshToken, token_info);
+    GaiaUrls* gaia_urls = GaiaUrls::GetInstance();
+
+    // This token satisfies the userinfo.email request from
+    // DeviceOAuth2TokenService used in token validation.
+    FakeGaia::AccessTokenInfo userinfo_token_info;
+    userinfo_token_info.token = kTestUserinfoToken;
+    userinfo_token_info.scopes.insert(
+        "https://www.googleapis.com/auth/userinfo.email");
+    userinfo_token_info.audience = gaia_urls->oauth2_chrome_client_id();
+    userinfo_token_info.email = kTestEnterpriseServiceAccountId;
+    fake_gaia_.IssueOAuthToken(kTestRefreshToken, userinfo_token_info);
+
+    // The any-api access token for accessing the token minting endpoint.
+    FakeGaia::AccessTokenInfo login_token_info;
+    login_token_info.token = kTestLoginToken;
+    login_token_info.scopes.insert(GaiaConstants::kAnyApiOAuth2Scope);
+    login_token_info.audience = gaia_urls->oauth2_chrome_client_id();
+    fake_gaia_.IssueOAuthToken(kTestRefreshToken, login_token_info);
+
+    // This is the access token requested by the app via the identity API.
+    FakeGaia::AccessTokenInfo access_token_info;
+    access_token_info.token = kTestAccessToken;
+    access_token_info.scopes.insert(kTestAppScope);
+    access_token_info.audience = kTestClientId;
+    access_token_info.email = kTestEnterpriseServiceAccountId;
+    fake_gaia_.IssueOAuthToken(kTestLoginToken, access_token_info);
+
     DeviceOAuth2TokenService* token_service = NULL;
     DeviceOAuth2TokenServiceFactory::Get(
         base::Bind(&CopyTokenService, &token_service));
     base::RunLoop().RunUntilIdle();
     ASSERT_TRUE(token_service);
     token_service->SetAndSaveRefreshToken(kTestRefreshToken);
-
-    KioskTest::SetUpOnMainThread();
   }
 
   static void StorePolicyCallback(bool result) {
@@ -844,12 +772,11 @@ class KioskEnterpriseTest : public KioskTest {
   DISALLOW_COPY_AND_ASSIGN(KioskEnterpriseTest);
 };
 
-// Disabled due to failures; http://crbug.com/306611.
-IN_PROC_BROWSER_TEST_F(KioskEnterpriseTest, DISABLED_EnterpriseKioskApp) {
+IN_PROC_BROWSER_TEST_F(KioskEnterpriseTest, EnterpriseKioskApp) {
   chromeos::WizardController::SkipPostLoginScreensForTesting();
   chromeos::WizardController* wizard_controller =
       chromeos::WizardController::default_controller();
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
 
   // Wait for the Kiosk App configuration to reload, then launch the app.
   KioskAppManager::App app;
@@ -874,7 +801,7 @@ IN_PROC_BROWSER_TEST_F(KioskEnterpriseTest, DISABLED_EnterpriseKioskApp) {
 
   // Wait for the window to appear.
   apps::ShellWindow* window = ShellWindowObserver(
-      apps::ShellWindowRegistry::Get(ProfileManager::GetDefaultProfile()),
+      apps::ShellWindowRegistry::Get(ProfileManager::GetPrimaryUserProfile()),
       kTestEnterpriseKioskApp).Wait();
   ASSERT_TRUE(window);
 
@@ -883,6 +810,7 @@ IN_PROC_BROWSER_TEST_F(KioskEnterpriseTest, DISABLED_EnterpriseKioskApp) {
   EXPECT_TRUE(content::ExecuteScriptAndExtractString(
       window->web_contents(),
       "chrome.identity.getAuthToken({ 'interactive': false }, function(token) {"
+      "    window.domAutomationController.setAutomationId(0);"
       "    window.domAutomationController.send(token);"
       "});",
       &result));
@@ -955,7 +883,7 @@ IN_PROC_BROWSER_TEST_F(KioskHiddenWebUITest, AutolaunchWarning) {
       chromeos::WizardController::default_controller();
   CHECK(wizard_controller);
   ReloadAutolaunchKioskApps();
-  wizard_controller->SkipToLoginForTesting();
+  wizard_controller->SkipToLoginForTesting(LoginScreenContext());
 
   EXPECT_FALSE(KioskAppManager::Get()->GetAutoLaunchApp().empty());
   EXPECT_FALSE(KioskAppManager::Get()->IsAutoLaunchEnabled());

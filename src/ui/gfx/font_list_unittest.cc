@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
@@ -23,6 +24,8 @@ std::string FontToString(const gfx::Font& font) {
     font_string += "|bold";
   if (style & gfx::Font::ITALIC)
     font_string += "|italic";
+  if (style & gfx::Font::UNDERLINE)
+    font_string += "|underline";
   return font_string;
 }
 
@@ -42,9 +45,10 @@ TEST(FontListTest, FontDescString_FromFontNamesStyleAndSize) {
   std::vector<std::string> font_names;
   font_names.push_back("Arial");
   font_names.push_back("Droid Sans serif");
-  int font_style = Font::BOLD | Font::ITALIC;
+  int font_style = Font::BOLD | Font::ITALIC | Font::UNDERLINE;
   int font_size = 11;
   FontList font_list = FontList(font_names, font_style, font_size);
+  // "Underline" doesn't appear in the font description string.
   EXPECT_EQ("Arial,Droid Sans serif,Bold Italic 11px",
             font_list.GetFontDescriptionString());
 }
@@ -64,6 +68,10 @@ TEST(FontListTest, FontDescString_FromFontWithNonNormalStyle) {
 
   font_list = FontList(font.DeriveFont(-2, Font::ITALIC));
   EXPECT_EQ("Arial,Italic 6px", font_list.GetFontDescriptionString());
+
+  // "Underline" doesn't appear in the font description string.
+  font_list = FontList(font.DeriveFont(-4, Font::UNDERLINE));
+  EXPECT_EQ("Arial,4px", font_list.GetFontDescriptionString());
 }
 
 TEST(FontListTest, FontDescString_FromFontVector) {
@@ -268,10 +276,18 @@ TEST(FontListTest, Fonts_DeriveFontListWithSizeDelta) {
 TEST(FontListTest, FontDescString_DeriveFontListWithSizeDeltaAndStyle) {
   FontList font_list = FontList("Arial,Sans serif,Bold Italic  8px");
 
-  FontList derived =
-      font_list.DeriveFontListWithSizeDeltaAndStyle(10, Font::ITALIC);
+  FontList derived = font_list.DeriveFontListWithSizeDeltaAndStyle(
+      10, Font::ITALIC | Font::UNDERLINE);
   EXPECT_EQ("Arial,Sans serif,Italic 18px",
             derived.GetFontDescriptionString());
+  EXPECT_EQ(Font::ITALIC | Font::UNDERLINE,
+            derived.GetFontStyle());
+
+  // FontList has a special care for Font::UNDERLINE.  See if the handling of
+  // Font::UNDERLINE in GetFonts() is okay or not.
+  derived.GetFonts();
+  EXPECT_EQ(Font::ITALIC | Font::UNDERLINE,
+            derived.GetFontStyle());
 }
 
 TEST(FontListTest, Fonts_DeriveFontListWithSizeDeltaAndStyle) {
@@ -280,18 +296,19 @@ TEST(FontListTest, Fonts_DeriveFontListWithSizeDeltaAndStyle) {
   fonts.push_back(gfx::Font("Sans serif", 8));
   FontList font_list = FontList(fonts);
 
-  FontList derived =
-      font_list.DeriveFontListWithSizeDeltaAndStyle(5, Font::BOLD);
+  FontList derived = font_list.DeriveFontListWithSizeDeltaAndStyle(
+      5, Font::BOLD | Font::UNDERLINE);
   const std::vector<Font>& derived_fonts = derived.GetFonts();
 
   EXPECT_EQ(2U, derived_fonts.size());
-  EXPECT_EQ("Arial|13|bold", FontToString(derived_fonts[0]));
-  EXPECT_EQ("Sans serif|13|bold", FontToString(derived_fonts[1]));
+  EXPECT_EQ("Arial|13|bold|underline", FontToString(derived_fonts[0]));
+  EXPECT_EQ("Sans serif|13|bold|underline", FontToString(derived_fonts[1]));
 }
 
 TEST(FontListTest, Fonts_GetHeight_GetBaseline) {
   // If a font list has only one font, the height and baseline must be the same.
   Font font1("Arial", 16);
+  ASSERT_EQ("arial", StringToLowerASCII(font1.GetActualFontNameForTesting()));
   FontList font_list1("Arial, 16px");
   EXPECT_EQ(font1.GetHeight(), font_list1.GetHeight());
   EXPECT_EQ(font1.GetBaseline(), font_list1.GetBaseline());
@@ -299,6 +316,7 @@ TEST(FontListTest, Fonts_GetHeight_GetBaseline) {
   // If there are two different fonts, the font list returns the max value
   // for ascent and descent.
   Font font2("Symbol", 16);
+  ASSERT_EQ("symbol", StringToLowerASCII(font2.GetActualFontNameForTesting()));
   EXPECT_NE(font1.GetBaseline(), font2.GetBaseline());
   EXPECT_NE(font1.GetHeight() - font1.GetBaseline(),
             font2.GetHeight() - font2.GetBaseline());

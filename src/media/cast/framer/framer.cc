@@ -27,9 +27,20 @@ Framer::~Framer() {}
 
 bool Framer::InsertPacket(const uint8* payload_data,
                           size_t payload_size,
-                          const RtpCastHeader& rtp_header) {
-  bool complete = false;
-  if (!frame_id_map_.InsertPacket(rtp_header, &complete)) return false;
+                          const RtpCastHeader& rtp_header,
+                          bool* duplicate) {
+  *duplicate = false;
+  PacketType packet_type = frame_id_map_.InsertPacket(rtp_header);
+  if (packet_type == kTooOldPacket) {
+    return false;
+  }
+  if (packet_type == kDuplicatePacket) {
+    VLOG(3) << "Packet already received, ignored: frame "
+            << static_cast<int>(rtp_header.frame_id) << ", packet "
+            << rtp_header.packet_id;
+    *duplicate = true;
+    return false;
+  }
 
   // Does this packet belong to a new frame?
   FrameList::iterator it = frames_.find(rtp_header.frame_id);
@@ -43,6 +54,7 @@ bool Framer::InsertPacket(const uint8* payload_data,
     it->second->InsertPacket(payload_data, payload_size, rtp_header);
   }
 
+  bool complete = (packet_type == kNewPacketCompletingFrame);
   if (complete) {
     // ACK as soon as possible.
     VLOG(1) << "Complete frame " << static_cast<int>(rtp_header.frame_id);
@@ -53,10 +65,10 @@ bool Framer::InsertPacket(const uint8* payload_data,
 }
 
 // This does not release the frame.
-bool Framer::GetEncodedAudioFrame(EncodedAudioFrame* audio_frame,
+bool Framer::GetEncodedAudioFrame(transport::EncodedAudioFrame* audio_frame,
                                   uint32* rtp_timestamp,
                                   bool* next_frame) {
-  uint8 frame_id;
+  uint32 frame_id;
   // Find frame id.
   if (frame_id_map_.NextContinuousFrame(&frame_id)) {
     // We have our next frame.
@@ -76,10 +88,10 @@ bool Framer::GetEncodedAudioFrame(EncodedAudioFrame* audio_frame,
 }
 
 // This does not release the frame.
-bool Framer::GetEncodedVideoFrame(EncodedVideoFrame* video_frame,
+bool Framer::GetEncodedVideoFrame(transport::EncodedVideoFrame* video_frame,
                                   uint32* rtp_timestamp,
                                   bool* next_frame) {
-  uint8 frame_id;
+  uint32 frame_id;
   // Find frame id.
   if (frame_id_map_.NextContinuousFrame(&frame_id)) {
     // We have our next frame.
@@ -107,7 +119,7 @@ void Framer::Reset() {
   cast_msg_builder_->Reset();
 }
 
-void Framer::ReleaseFrame(uint8 frame_id) {
+void Framer::ReleaseFrame(uint32 frame_id) {
   frame_id_map_.RemoveOldFrames(frame_id);
   frames_.erase(frame_id);
 

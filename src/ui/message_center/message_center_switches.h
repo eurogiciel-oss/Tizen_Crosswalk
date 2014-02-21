@@ -22,6 +22,10 @@ namespace switches {
 MESSAGE_CENTER_EXPORT extern const char kEnableRichNotifications[];
 MESSAGE_CENTER_EXPORT extern const char kDisableRichNotifications[];
 
+// Enables experimental features that we don't want to ship yet.
+MESSAGE_CENTER_EXPORT extern const char kEnableExperimentalNotificationUI[];
+MESSAGE_CENTER_EXPORT extern const char kNotificationCenterTrayBehavior[];
+
 }  // namespace switches
 }  // namespace message_center
 

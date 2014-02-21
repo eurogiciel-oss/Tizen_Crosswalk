@@ -47,15 +47,17 @@
 #include "core/frame/FrameView.h"
 #include "core/page/Page.h"
 #include "core/page/SpatialNavigation.h"
-#include "core/platform/Scrollbar.h"
-#include "core/platform/graphics/FontCache.h"
-#include "core/platform/graphics/GraphicsContext.h"
 #include "core/rendering/HitTestResult.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/PaintInfo.h"
 #include "core/rendering/RenderScrollbar.h"
 #include "core/rendering/RenderText.h"
 #include "core/rendering/RenderTheme.h"
 #include "core/rendering/RenderView.h"
+#include "platform/fonts/FontCache.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/scroll/Scrollbar.h"
+#include "platform/text/BidiTextRun.h"
 
 using namespace std;
 
@@ -102,6 +104,13 @@ RenderListBox::~RenderListBox()
         frameView->removeScrollableArea(this);
 }
 
+// FIXME: Instead of this hack we should add a ShadowRoot to <select> with no insertion point
+// to prevent children from rendering.
+bool RenderListBox::isChildAllowed(RenderObject* object, RenderStyle*) const
+{
+    return object->isAnonymous() && !object->isRenderFullScreen();
+}
+
 inline HTMLSelectElement* RenderListBox::selectElement() const
 {
     return toHTMLSelectElement(node());
@@ -122,18 +131,22 @@ void RenderListBox::updateFromElement()
             Font itemFont = style()->font();
             if (element->hasTagName(optionTag)) {
                 text = toHTMLOptionElement(element)->textIndentedToRespectGroupLabel();
-            } else if (isHTMLOptGroupElement(element)) {
+            } else if (element->hasTagName(optgroupTag)) {
                 text = toHTMLOptGroupElement(element)->groupLabelText();
                 FontDescription d = itemFont.fontDescription();
                 d.setWeight(d.bolderWeight());
                 itemFont = Font(d, itemFont.letterSpacing(), itemFont.wordSpacing());
-                itemFont.update(document().styleResolver()->fontSelector());
+                itemFont.update(document().styleEngine()->fontSelector());
             }
 
             if (!text.isEmpty()) {
                 applyTextTransform(style(), text, ' ');
-                // FIXME: Why is this always LTR? Can't text direction affect the width?
+
+                bool hasStrongDirectionality;
+                TextDirection direction = determineDirectionality(text, hasStrongDirectionality);
                 TextRun textRun = constructTextRun(this, itemFont, text, style(), TextRun::AllowTrailingExpansion);
+                if (hasStrongDirectionality)
+                    textRun.setDirection(direction);
                 textRun.disableRoundingHacks();
                 float textWidth = itemFont.width(textRun);
                 width = max(width, textWidth);
@@ -164,6 +177,7 @@ void RenderListBox::selectionChanged()
 
 void RenderListBox::layout()
 {
+    LayoutRectRecorder recorder(*this);
     RenderBlockFlow::layout();
 
     if (m_vBar) {
@@ -407,7 +421,7 @@ void RenderListBox::paintItemForeground(PaintInfo& paintInfo, const LayoutPoint&
     bool isOptionElement = element->hasTagName(optionTag);
     if (isOptionElement)
         itemText = toHTMLOptionElement(element)->textIndentedToRespectGroupLabel();
-    else if (isHTMLOptGroupElement(element))
+    else if (element->hasTagName(optgroupTag))
         itemText = toHTMLOptGroupElement(element)->groupLabelText();
     applyTextTransform(style(), itemText, ' ');
 
@@ -427,11 +441,11 @@ void RenderListBox::paintItemForeground(PaintInfo& paintInfo, const LayoutPoint&
     LayoutRect r = itemBoundingBoxRect(paintOffset, listIndex);
     r.move(itemOffsetForAlignment(textRun, itemStyle, itemFont, r));
 
-    if (isHTMLOptGroupElement(element)) {
+    if (element->hasTagName(optgroupTag)) {
         FontDescription d = itemFont.fontDescription();
         d.setWeight(d.bolderWeight());
         itemFont = Font(d, itemFont.letterSpacing(), itemFont.wordSpacing());
-        itemFont.update(document().styleResolver()->fontSelector());
+        itemFont.update(document().styleEngine()->fontSelector());
     }
 
     // Draw the item text
@@ -613,7 +627,7 @@ bool RenderListBox::listIndexIsVisible(int index)
     return index >= m_indexOffset && index < m_indexOffset + numVisibleItems();
 }
 
-bool RenderListBox::scrollImpl(ScrollDirection direction, ScrollGranularity granularity, float multiplier)
+bool RenderListBox::scroll(ScrollDirection direction, ScrollGranularity granularity, float multiplier)
 {
     return ScrollableArea::scroll(direction, granularity, multiplier);
 }
@@ -893,7 +907,7 @@ PassRefPtr<Scrollbar> RenderListBox::createScrollbar()
         widget = RenderScrollbar::createCustomScrollbar(this, VerticalScrollbar, this->node());
     else {
         widget = Scrollbar::create(this, VerticalScrollbar, RenderTheme::theme().scrollbarControlSizeForPart(ListboxPart));
-        didAddVerticalScrollbar(widget.get());
+        didAddScrollbar(widget.get(), VerticalScrollbar);
     }
     document().view()->addChild(widget.get());
     return widget.release();
@@ -905,7 +919,7 @@ void RenderListBox::destroyScrollbar()
         return;
 
     if (!m_vBar->isCustomScrollbar())
-        ScrollableArea::willRemoveVerticalScrollbar(m_vBar.get());
+        ScrollableArea::willRemoveScrollbar(m_vBar.get(), VerticalScrollbar);
     m_vBar->removeFromParent();
     m_vBar->disconnectFromScrollableArea();
     m_vBar = 0;

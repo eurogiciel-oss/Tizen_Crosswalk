@@ -19,6 +19,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "ui/events/event_switches.h"
+#include "ui/events/x/device_data_manager.h"
 #include "ui/events/x/device_list_cache_x.h"
 #include "ui/gfx/x/x11_types.h"
 
@@ -29,14 +30,10 @@ TouchFactory::TouchFactory()
       touch_device_available_(false),
       touch_events_disabled_(false),
       touch_device_list_(),
-#if defined(USE_XI2_MT)
-      id_generator_(0),
-#endif
-      slots_used_() {
-#if defined(USE_AURA)
-  if (!base::MessagePumpForUI::HasXInput2())
+      max_touch_points_(-1),
+      id_generator_(0) {
+  if (!DeviceDataManager::GetInstance()->IsXInput2Available())
     return;
-#endif
 
   XDisplay* display = gfx::GetXDisplay();
   UpdateDeviceList(display);
@@ -57,7 +54,6 @@ TouchFactory* TouchFactory::GetInstance() {
 
 // static
 void TouchFactory::SetTouchDeviceListFromCommandLine() {
-#if defined(TOOLKIT_VIEWS)
   // Get a list of pointer-devices that should be treated as touch-devices.
   // This is primarily used for testing/debugging touch-event processing when a
   // touch-device isn't available.
@@ -79,7 +75,6 @@ void TouchFactory::SetTouchDeviceListFromCommandLine() {
     }
     ui::TouchFactory::GetInstance()->SetTouchDeviceList(device_ids);
   }
-#endif
 }
 
 void TouchFactory::UpdateDeviceList(Display* display) {
@@ -87,6 +82,7 @@ void TouchFactory::UpdateDeviceList(Display* display) {
   touch_device_available_ = false;
   touch_device_lookup_.reset();
   touch_device_list_.clear();
+  max_touch_points_ = -1;
 
 #if !defined(USE_XI2_MT)
   // NOTE: The new API for retrieving the list of devices (XIQueryDevice) does
@@ -113,6 +109,9 @@ void TouchFactory::UpdateDeviceList(Display* display) {
     }
   }
 #endif
+
+  if (!DeviceDataManager::GetInstance()->IsXInput2Available())
+    return;
 
   // Instead of asking X for the list of devices all the time, let's maintain a
   // list of pointer devices we care about.
@@ -143,6 +142,8 @@ void TouchFactory::UpdateDeviceList(Display* display) {
             touch_device_lookup_[devinfo->deviceid] = true;
             touch_device_list_[devinfo->deviceid] = true;
             touch_device_available_ = true;
+            if (tci->num_touches > 0 && tci->num_touches > max_touch_points_)
+              max_touch_points_ = tci->num_touches;
           }
         }
       }
@@ -229,7 +230,6 @@ bool TouchFactory::IsMultiTouchDevice(unsigned int deviceid) const {
           false;
 }
 
-#if defined(USE_XI2_MT)
 bool TouchFactory::QuerySlotForTrackingID(uint32 tracking_id, int* slot) {
   if (!id_generator_.HasGeneratedIDFor(tracking_id))
     return false;
@@ -244,20 +244,13 @@ int TouchFactory::GetSlotForTrackingID(uint32 tracking_id) {
 void TouchFactory::ReleaseSlotForTrackingID(uint32 tracking_id) {
   id_generator_.ReleaseNumber(tracking_id);
 }
-#endif
-
-bool TouchFactory::IsSlotUsed(int slot) const {
-  CHECK_LT(slot, kMaxTouchPoints);
-  return slots_used_[slot];
-}
-
-void TouchFactory::SetSlotUsed(int slot, bool used) {
-  CHECK_LT(slot, kMaxTouchPoints);
-  slots_used_[slot] = used;
-}
 
 bool TouchFactory::IsTouchDevicePresent() {
   return !touch_events_disabled_ && touch_device_available_;
+}
+
+int TouchFactory::GetMaxTouchPoints() const {
+  return max_touch_points_;
 }
 
 void TouchFactory::SetTouchDeviceForTest(
@@ -272,6 +265,15 @@ void TouchFactory::SetTouchDeviceForTest(
   }
   touch_device_available_ = true;
   touch_events_disabled_ = false;
+}
+
+void TouchFactory::SetPointerDeviceForTest(
+    const std::vector<unsigned int>& devices) {
+  pointer_device_lookup_.reset();
+  for (std::vector<unsigned int>::const_iterator iter = devices.begin();
+       iter != devices.end(); ++iter) {
+    pointer_device_lookup_[*iter] = true;
+  }
 }
 
 }  // namespace ui

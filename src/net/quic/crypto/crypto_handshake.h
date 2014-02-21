@@ -183,17 +183,14 @@ struct NET_EXPORT_PRIVATE QuicCryptoNegotiatedParameters {
   // bytes of x coordinate, followed by 32 bytes of y coordinate. Both values
   // are big-endian and the pair is a P-256 public key.
   std::string channel_id;
+  // client_address is set by clients to the kCADR value provided by the server
+  // in ServerHello. It is a serialized form of an IP address and port.
+  std::string client_address;
 };
 
 // QuicCryptoConfig contains common configuration between clients and servers.
 class NET_EXPORT_PRIVATE QuicCryptoConfig {
  public:
-  enum {
-    // CONFIG_VERSION is the one (and, for the moment, only) version number that
-    // we implement.
-    CONFIG_VERSION = 0,
-  };
-
   // kInitialLabel is a constant that is used when deriving the initial
   // (non-forward secure) keys for the connection in order to tie the resulting
   // key to this protocol.
@@ -211,8 +208,6 @@ class NET_EXPORT_PRIVATE QuicCryptoConfig {
   QuicCryptoConfig();
   ~QuicCryptoConfig();
 
-  // Protocol version
-  uint16 version;
   // Key exchange methods. The following two members' values correspond by
   // index.
   QuicTagVector kexs;

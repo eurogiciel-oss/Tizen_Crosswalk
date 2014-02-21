@@ -179,7 +179,7 @@ void DefaultMainLoop::dispatch()
 
 	_mutex_w.unlock();
 
-	int wait_min = 10000;
+	int wait_min = -1;
 
 	DefaultTimeouts::iterator ti;
 
@@ -187,7 +187,7 @@ void DefaultMainLoop::dispatch()
 
 	for (ti = _timeouts.begin(); ti != _timeouts.end(); ++ti)
 	{
-		if ((*ti)->enabled() && (*ti)->interval() < wait_min)
+		if (((*ti)->enabled() && (*ti)->interval() < wait_min) || (wait_min < 0))
 			wait_min = (*ti)->interval();
 	}
 

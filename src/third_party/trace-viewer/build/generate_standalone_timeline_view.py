@@ -7,10 +7,10 @@ import base64
 import optparse
 import sys
 import os
-import parse_deps
 import re
 
-import generate
+import tvcm_stub
+import tvcm
 
 src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../src"))
 
@@ -39,16 +39,16 @@ various ordering restrictions between them.
     parser.print_help()
     return 1
 
-  load_sequence = parse_deps.calc_load_sequence(
+  load_sequence = tvcm.calc_load_sequence(
       ['tracing/standalone_timeline_view.js'], [src_dir])
 
   if options.js_file:
     with _sopen(options.js_file, 'w') as f:
-      f.write(generate.generate_js(load_sequence))
+      f.write(tvcm.generate_js(load_sequence))
 
   if options.css_file:
     with _sopen(options.css_file, 'w') as f:
-      f.write(generate.generate_css(load_sequence))
+      f.write(tvcm.generate_css(load_sequence))
 
   return 0
 

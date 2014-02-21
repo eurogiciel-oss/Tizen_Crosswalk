@@ -26,7 +26,6 @@
 #include "core/dom/DOMImplementation.h"
 #include "platform/Language.h"
 #include "core/svg/SVGElement.h"
-#include "core/svg/SVGStringList.h"
 
 namespace WebCore {
 
@@ -111,7 +110,7 @@ bool SVGTests::isValid() const
     unsigned systemLanguageSize = m_systemLanguage.value.size();
     for (unsigned i = 0; i < systemLanguageSize; ++i) {
         String value = m_systemLanguage.value.at(i);
-        if (value != defaultLanguage().substring(0, 2))
+        if (value != defaultLanguage().string().substring(0, 2))
             return false;
     }
 

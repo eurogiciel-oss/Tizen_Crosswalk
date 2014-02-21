@@ -34,6 +34,7 @@ namespace WebCore {
 
 class CSSBasicShape;
 class CSSCalcValue;
+class CSSToLengthConversionData;
 class Counter;
 class ExceptionState;
 class Length;
@@ -129,13 +130,13 @@ public:
         CSS_CALC = 113,
         CSS_CALC_PERCENTAGE_WITH_NUMBER = 114,
         CSS_CALC_PERCENTAGE_WITH_LENGTH = 115,
-        CSS_VARIABLE_NAME = 116,
+        CSS_VARIABLE_REFERENCE = 116,
 
         CSS_PROPERTY_ID = 117,
         CSS_VALUE_ID = 118
     };
 
-    // This enum follows the CSSParser::Units enum augmented with UNIT_FREQUENCY for frequencies.
+    // This enum follows the BisonCSSParser::Units enum augmented with UNIT_FREQUENCY for frequencies.
     enum UnitCategory {
         UNumber,
         UPercent,
@@ -143,7 +144,6 @@ public:
         UAngle,
         UTime,
         UFrequency,
-        UViewportPercentageLength,
         UResolution,
         UOther
     };
@@ -169,7 +169,7 @@ public:
     bool isLength() const
     {
         unsigned short type = primitiveType();
-        return (type >= CSS_EMS && type <= CSS_PC) || type == CSS_REMS || type == CSS_CHS;
+        return (type >= CSS_EMS && type <= CSS_PC) || type == CSS_REMS || type == CSS_CHS || isViewportPercentageLength();
     }
     bool isNumber() const { return primitiveType() == CSS_NUMBER; }
     bool isPercentage() const { return primitiveType() == CSS_PERCENTAGE; }
@@ -191,7 +191,7 @@ public:
         unsigned short type = primitiveType();
         return type >= CSS_DPPX && type <= CSS_DPCM;
     }
-    bool isVariableName() const { return primitiveType() == CSS_VARIABLE_NAME; }
+    bool isVariableReference() const { return primitiveType() == CSS_VARIABLE_REFERENCE; }
     bool isViewportPercentageLength() const { return m_primitiveUnitType >= CSS_VW && m_primitiveUnitType <= CSS_VMAX; }
     bool isFlex() const { return primitiveType() == CSS_FR; }
     bool isValueID() const { return m_primitiveUnitType == CSS_VALUE_ID; }
@@ -245,8 +245,7 @@ public:
     }
 
     /*
-     * computes a length in pixels out of the given CSSValue. Need the RenderStyle to get
-     * the fontinfo in case val is defined in em or ex.
+     * Computes a length in pixels out of the given CSSValue
      *
      * The metrics have to be a bit different for screen and printer output.
      * For screen output we assume 1 inch == 72 px, for printer we assume 300 dpi
@@ -254,10 +253,10 @@ public:
      * this is screen/printer dependent, so we probably need a config option for this,
      * and some tool to calibrate.
      */
-    template<typename T> T computeLength(const RenderStyle* currStyle, const RenderStyle* rootStyle, float multiplier = 1.0f, bool computingFontSize = false);
+    template<typename T> T computeLength(const CSSToLengthConversionData&);
 
     // Converts to a Length, mapping various unit types appropriately.
-    template<int> Length convertToLength(const RenderStyle* currStyle, const RenderStyle* rootStyle, double multiplier = 1.0, bool computingFontSize = false);
+    template<int> Length convertToLength(const CSSToLengthConversionData&);
 
     // use with care!!!
     void setPrimitiveType(unsigned short type) { m_primitiveUnitType = type; }
@@ -267,15 +266,15 @@ public:
     double getDoubleValue() const;
 
     void setFloatValue(unsigned short unitType, double floatValue, ExceptionState&);
-    float getFloatValue(unsigned short unitType, ExceptionState& es) const { return getValue<float>(unitType, es); }
+    float getFloatValue(unsigned short unitType, ExceptionState& exceptionState) const { return getValue<float>(unitType, exceptionState); }
     float getFloatValue(unsigned short unitType) const { return getValue<float>(unitType); }
     float getFloatValue() const { return getValue<float>(); }
 
-    int getIntValue(unsigned short unitType, ExceptionState& es) const { return getValue<int>(unitType, es); }
+    int getIntValue(unsigned short unitType, ExceptionState& exceptionState) const { return getValue<int>(unitType, exceptionState); }
     int getIntValue(unsigned short unitType) const { return getValue<int>(unitType); }
     int getIntValue() const { return getValue<int>(); }
 
-    template<typename T> inline T getValue(unsigned short unitType, ExceptionState& es) const { return clampTo<T>(getDoubleValue(unitType, es)); }
+    template<typename T> inline T getValue(unsigned short unitType, ExceptionState& exceptionState) const { return clampTo<T>(getDoubleValue(unitType, exceptionState)); }
     template<typename T> inline T getValue(unsigned short unitType) const { return clampTo<T>(getDoubleValue(unitType)); }
     template<typename T> inline T getValue() const { return clampTo<T>(getDoubleValue()); }
 
@@ -312,10 +311,6 @@ public:
     bool hasVariableReference() const;
 
     bool isQuirkValue() { return m_isQuirkValue; }
-
-    void addSubresourceStyleURLs(ListHashSet<KURL>&, const StyleSheetContents*) const;
-
-    Length viewportPercentageLength();
 
     PassRefPtr<CSSPrimitiveValue> cloneForCSSOM() const;
     void setCSSOMSafe() { m_isCSSOMSafe = true; }
@@ -366,7 +361,7 @@ private:
     void init(PassRefPtr<CSSCalcValue>);
     bool getDoubleValueInternal(UnitTypes targetUnitType, double* result) const;
 
-    double computeLengthDouble(const RenderStyle* currentStyle, const RenderStyle* rootStyle, float multiplier, bool computingFontSize);
+    double computeLengthDouble(const CSSToLengthConversionData&);
 
     union {
         CSSPropertyID propertyID;

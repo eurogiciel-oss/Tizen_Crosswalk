@@ -16,12 +16,12 @@ Tile::Id Tile::s_next_id_ = 0;
 Tile::Tile(TileManager* tile_manager,
            PicturePileImpl* picture_pile,
            gfx::Size tile_size,
-           gfx::Rect content_rect,
-           gfx::Rect opaque_rect,
+           const gfx::Rect& content_rect,
+           const gfx::Rect& opaque_rect,
            float contents_scale,
            int layer_id,
            int source_frame_number,
-           bool can_use_lcd_text)
+           int flags)
   : RefCountedManaged<Tile>(tile_manager),
     tile_manager_(tile_manager),
     tile_size_(tile_size),
@@ -30,7 +30,7 @@ Tile::Tile(TileManager* tile_manager,
     opaque_rect_(opaque_rect),
     layer_id_(layer_id),
     source_frame_number_(source_frame_number),
-    can_use_lcd_text_(can_use_lcd_text),
+    flags_(flags),
     id_(s_next_id_++) {
   set_picture_pile(picture_pile);
 }
@@ -69,7 +69,8 @@ scoped_ptr<base::Value> Tile::AsValue() const {
   res->Set("active_priority", priority_[ACTIVE_TREE].AsValue().release());
   res->Set("pending_priority", priority_[PENDING_TREE].AsValue().release());
   res->Set("managed_state", managed_state_.AsValue().release());
-  res->SetBoolean("can_use_lcd_text", can_use_lcd_text_);
+  res->SetBoolean("can_use_lcd_text", can_use_lcd_text());
+  res->SetBoolean("use_gpu_rasterization", use_gpu_rasterization());
   return res.PassAs<base::Value>();
 }
 

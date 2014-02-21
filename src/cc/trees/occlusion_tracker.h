@@ -32,15 +32,13 @@ class RenderSurface;
 template <typename LayerType, typename RenderSurfaceType>
 class CC_EXPORT OcclusionTrackerBase {
  public:
-  OcclusionTrackerBase(gfx::Rect screen_space_clip_rect,
+  OcclusionTrackerBase(const gfx::Rect& screen_space_clip_rect,
                        bool record_metrics_for_frame);
   ~OcclusionTrackerBase();
 
   // Called at the beginning of each step in the LayerIterator's front-to-back
-  // traversal. If |prevent_occlusion| is true, the layer will be considered
-  // unoccluded.
-  void EnterLayer(const LayerIteratorPosition<LayerType>& layer_iterator,
-                  bool prevent_occlusion);
+  // traversal.
+  void EnterLayer(const LayerIteratorPosition<LayerType>& layer_iterator);
   // Called at the end of each step in the LayerIterator's front-to-back
   // traversal.
   void LeaveLayer(const LayerIteratorPosition<LayerType>& layer_iterator);
@@ -50,7 +48,7 @@ class CC_EXPORT OcclusionTrackerBase {
   // |render_target| is the contributing layer's render target, and
   // |draw_transform| and |impl_draw_transform_is_unknown| are relative to that.
   bool Occluded(const LayerType* render_target,
-                gfx::Rect content_rect,
+                const gfx::Rect& content_rect,
                 const gfx::Transform& draw_transform,
                 bool impl_draw_transform_is_unknown) const;
 
@@ -60,7 +58,7 @@ class CC_EXPORT OcclusionTrackerBase {
   // |draw_transform| and |impl_draw_transform_is_unknown| are relative to that.
   gfx::Rect UnoccludedContentRect(
       const LayerType* render_target,
-      gfx::Rect content_rect,
+      const gfx::Rect& content_rect,
       const gfx::Transform& draw_transform,
       bool impl_draw_transform_is_unknown) const;
 
@@ -70,7 +68,7 @@ class CC_EXPORT OcclusionTrackerBase {
   gfx::Rect UnoccludedContributingSurfaceContentRect(
       const LayerType* layer,
       bool for_replica,
-      gfx::Rect content_rect) const;
+      const gfx::Rect& content_rect) const;
 
   // Report operations for recording overdraw metrics.
   OverdrawMetrics* overdraw_metrics() const {
@@ -146,7 +144,6 @@ class CC_EXPORT OcclusionTrackerBase {
   gfx::Rect screen_space_clip_rect_;
   scoped_ptr<class OverdrawMetrics> overdraw_metrics_;
   gfx::Size minimum_tracking_size_;
-  bool prevent_occlusion_;
 
   // This is used for visualizing the occlusion tracking process.
   std::vector<gfx::Rect>* occluding_screen_space_rects_;

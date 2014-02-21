@@ -28,6 +28,7 @@
 #define TextTrack_h
 
 #include "bindings/v8/ScriptWrappable.h"
+#include "core/events/EventTarget.h"
 #include "core/html/track/TrackBase.h"
 #include "wtf/text/WTFString.h"
 
@@ -39,6 +40,7 @@ class HTMLMediaElement;
 class TextTrack;
 class TextTrackCue;
 class TextTrackCueList;
+class TextTrackList;
 class VTTRegion;
 class VTTRegionList;
 
@@ -53,19 +55,19 @@ public:
     virtual void textTrackRemoveCue(TextTrack*, PassRefPtr<TextTrackCue>) = 0;
 };
 
-class TextTrack : public TrackBase, public ScriptWrappable {
+class TextTrack : public TrackBase, public ScriptWrappable, public EventTargetWithInlineData {
+    REFCOUNTED_EVENT_TARGET(TrackBase);
 public:
     static PassRefPtr<TextTrack> create(Document& document, TextTrackClient* client, const AtomicString& kind, const AtomicString& label, const AtomicString& language)
     {
-        return adoptRef(new TextTrack(document, client, kind, label, language, AddTrack));
+        return adoptRef(new TextTrack(document, client, kind, label, language, emptyAtom, AddTrack));
     }
     virtual ~TextTrack();
 
-    void setMediaElement(HTMLMediaElement* element) { m_mediaElement = element; }
-    HTMLMediaElement* mediaElement() { return m_mediaElement; }
+    void setTrackList(TextTrackList* trackList) { m_trackList = trackList; }
+    TextTrackList* trackList() { return m_trackList; }
 
-    AtomicString kind() const { return m_kind; }
-    void setKind(const AtomicString&);
+    virtual void setKind(const AtomicString&) OVERRIDE;
 
     static const AtomicString& subtitlesKeyword();
     static const AtomicString& captionsKeyword();
@@ -74,18 +76,12 @@ public:
     static const AtomicString& metadataKeyword();
     static bool isValidKindKeyword(const AtomicString&);
 
-    AtomicString label() const { return m_label; }
-    void setLabel(const AtomicString& label) { m_label = label; }
-
-    AtomicString language() const { return m_language; }
-    void setLanguage(const AtomicString& language) { m_language = language; }
-
     static const AtomicString& disabledKeyword();
     static const AtomicString& hiddenKeyword();
     static const AtomicString& showingKeyword();
 
     AtomicString mode() const { return m_mode; }
-    virtual void setMode(const AtomicString&);
+    void setMode(const AtomicString&);
 
     enum ReadinessState { NotLoaded = 0, Loading = 1, Loaded = 2, FailedToLoad = 3 };
     ReadinessState readinessState() const { return m_readinessState; }
@@ -99,7 +95,6 @@ public:
 
     void addCue(PassRefPtr<TextTrackCue>);
     void removeCue(TextTrackCue*, ExceptionState&);
-    bool hasCue(TextTrackCue*);
 
     VTTRegionList* regions();
     void addRegion(PassRefPtr<VTTRegion>);
@@ -112,12 +107,6 @@ public:
 
     enum TextTrackType { TrackElement, AddTrack, InBand };
     TextTrackType trackType() const { return m_trackType; }
-
-    virtual bool isClosedCaptions() const { return false; }
-
-    virtual bool containsOnlyForcedSubtitles() const { return false; }
-    virtual bool isMainProgramContent() const;
-    virtual bool isEasyToRead() const { return false; }
 
     int trackIndex();
     void invalidateTrackIndex();
@@ -140,7 +129,10 @@ public:
     virtual ExecutionContext* executionContext() const OVERRIDE;
 
 protected:
-    TextTrack(Document&, TextTrackClient*, const AtomicString& kind, const AtomicString& label, const AtomicString& language, TextTrackType);
+    TextTrack(Document&, TextTrackClient*, const AtomicString& kind, const AtomicString& label, const AtomicString& language, const AtomicString& id, TextTrackType);
+
+    virtual bool isValidKind(const AtomicString& kind) const OVERRIDE { return isValidKindKeyword(kind); }
+    virtual AtomicString defaultKind() const OVERRIDE { return subtitlesKeyword(); }
 
     RefPtr<TextTrackCueList> m_cues;
 
@@ -153,10 +145,7 @@ private:
     // FIXME: Remove this pointer and get the Document from m_client
     Document* m_document;
 
-    HTMLMediaElement* m_mediaElement;
-    AtomicString m_kind;
-    AtomicString m_label;
-    AtomicString m_language;
+    TextTrackList* m_trackList;
     AtomicString m_mode;
     TextTrackClient* m_client;
     TextTrackType m_trackType;

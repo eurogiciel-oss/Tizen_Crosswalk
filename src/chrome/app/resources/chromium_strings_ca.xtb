@@ -27,7 +27,6 @@
 <translation id="3549345495227188780">Introducció a Chromium OS</translation>
 <translation id="4330297532943865716">S'ha trobat una instal·lació conflictiva de Chromium al sistema. Desinstal·leu l'aplicació i torneu-ho a provar.</translation>
 <translation id="6953661834318318668">Barra d'eines de Chromium</translation>
-<translation id="2245147136185581459">Detector de Captive Portal a Chromium</translation>
 <translation id="4285930937574705105">S'ha produït un error no especificat durant la instal·lació. Si Chromium s'està executant en aquests moments, tanqueu-lo i torneu-ho a provar.</translation>
 <translation id="1396446129537741364">Chromium està provant de mostrar les contrasenyes.</translation>
 <translation id="3555616473548901994">S'ha completat la desinstal·lació.</translation>
@@ -61,7 +60,6 @@
 <translation id="7771626876550251690">En aquest cas, l'adreça que apareix al certificat no coincideix amb l'adreça del lloc web a què el navegador ha provat d'anar. Un motiu possible és que un atacant estigui interceptant les vostres comunicacions i que estigui presentant un certificat per a un altre lloc web, de manera que es provocaria la discrepància. Un altre motiu possible és que el servidor estigui configurat per retornar el mateix certificat per a diversos llocs web, inclòs el que proveu de visitar, tot i que aquell certificat no és vàlid per a tots aquells llocs web. Chromium pot afirmar que vau accedir a &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, però no pot verificar que sigui el mateix lloc que &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; a què provàveu d'accedir. Si continueu, Chromium no comprovarà si hi ha cap altra discrepància de noms.</translation>
 <translation id="4330585738697551178">Se sap que aquest mòdul entra en conflicte amb Chromium.</translation>
 <translation id="3190315855212034486">Chromium s'ha bloquejat. Voleu tornar-lo a iniciar?</translation>
-<translation id="3590194807845837023">Desbloqueja el perfil i torna a iniciar</translation>
 <translation id="6714487516757221107">No s'ha trobat cap instal·lació de Chromium o de Chromium Frame pendent d'actualització.</translation>
 <translation id="3197823471738295152">El dispositiu està actualitzat.</translation>
 <translation id="8551886023433311834">L'actualització està a punt d'acabar. Reinicieu el dispositiu per completar-la.</translation>
@@ -110,7 +108,7 @@
 <translation id="9036189287518468038">Menú d'aplicacions de Chromium</translation>
 <translation id="4886158514168859177">Aquest equip ja té una versió més recent de Chromium Frame. Si el programari no funciona, desinstal·leu Chromium Frame i torneu-ho a provar.</translation>
 <translation id="911206726377975832">També voleu suprimir les dades de navegació?</translation>
-<translation id="95514773681268843"><ph name="DOMAIN"/> exigeix que llegiu i accepteu els Termes i condicions següents abans no utilitzeu el dispositiu. Aquestes condicions no amplien, modifiquen ni restringeixen les condicions de Chromium OS.</translation>
+<translation id="95514773681268843"><ph name="DOMAIN"/> exigeix que llegiu i accepteu les Condicions del servei següents abans no utilitzeu el dispositiu. Aquestes condicions no amplien, modifiquen ni restringeixen les condicions de Chromium OS.</translation>
 <translation id="5603085937604338780">chromium</translation>
 <translation id="1699664235656412242">Tanqueu totes les finestres de Chromium (incloses les del mode Windows 8) i torneu-ho a provar.</translation>
 <translation id="6734080038664603509">Actualitza &amp;Chromium</translation>
@@ -154,6 +152,7 @@
 <translation id="6717134281241384636">El vostre perfil no es pot utilitzar perquè es va crear amb una versió més recent de Chromium.
 
 És possible que algunes funcions no estiguin disponibles. Especifiqueu un altre directori de perfil o utilitzeu una versió més nova de Chromium.</translation>
+<translation id="8907580949721785412">Chromium està provant de mostrar contrasenyes. Escriviu la vostra contrasenya de Windows per permetre-ho.</translation>
 <translation id="9013087743919948559">Addició a Chromium</translation>
 <translation id="6212496753309875659">Aquest equip ja té una versió més recent de Chromium. Si el programari no funciona, desinstal·leu Chromium i torneu-ho a provar.</translation>
 <translation id="1298199220304005244">Obtén ajuda per a l'ús de Chromium OS</translation>

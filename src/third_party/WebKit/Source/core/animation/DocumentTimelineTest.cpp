@@ -33,12 +33,12 @@
 
 #include "core/animation/Animation.h"
 #include "core/animation/AnimationClock.h"
-#include "core/animation/KeyframeAnimationEffect.h"
+#include "core/animation/KeyframeEffectModel.h"
 #include "core/animation/TimedItem.h"
 #include "core/dom/Document.h"
 #include "core/dom/Element.h"
 #include "core/dom/QualifiedName.h"
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -79,7 +79,7 @@ public:
     }
 };
 
-class CoreAnimationDocumentTimelineTest : public ::testing::Test {
+class AnimationDocumentTimelineTest : public ::testing::Test {
 protected:
     virtual void SetUp()
     {
@@ -122,9 +122,17 @@ protected:
     }
 };
 
-TEST_F(CoreAnimationDocumentTimelineTest, EmptyKeyframeAnimation)
+TEST_F(AnimationDocumentTimelineTest, HasStarted)
 {
-    RefPtr<KeyframeAnimationEffect> effect = KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector());
+    timeline = DocumentTimeline::create(document.get());
+    EXPECT_FALSE(timeline->hasStarted());
+    timeline->setZeroTime(0);
+    EXPECT_TRUE(timeline->hasStarted());
+}
+
+TEST_F(AnimationDocumentTimelineTest, EmptyKeyframeAnimation)
+{
+    RefPtr<KeyframeEffectModel> effect = KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector());
     RefPtr<Animation> anim = Animation::create(element.get(), effect, timing);
 
     timeline->play(anim.get());
@@ -139,42 +147,42 @@ TEST_F(CoreAnimationDocumentTimelineTest, EmptyKeyframeAnimation)
     EXPECT_FLOAT_EQ(100, timeline->currentTime());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, EmptyTimelineDoesNotTriggerStyleRecalc)
+TEST_F(AnimationDocumentTimelineTest, EmptyTimelineDoesNotTriggerStyleRecalc)
 {
     document->animationClock().updateTime(100);
     EXPECT_FALSE(timeline->serviceAnimations());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, EmptyPlayerDoesNotTriggerStyleRecalc)
+TEST_F(AnimationDocumentTimelineTest, EmptyPlayerDoesNotTriggerStyleRecalc)
 {
     timeline->play(0);
     document->animationClock().updateTime(100);
     EXPECT_FALSE(timeline->serviceAnimations());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, EmptyTargetDoesNotTriggerStyleRecalc)
+TEST_F(AnimationDocumentTimelineTest, EmptyTargetDoesNotTriggerStyleRecalc)
 {
     timing.iterationDuration = 200;
-    timeline->play(Animation::create(0, KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timing).get());
+    timeline->play(Animation::create(0, KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timing).get());
     document->animationClock().updateTime(100);
     EXPECT_FALSE(timeline->serviceAnimations());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, EmptyEffectDoesNotTriggerStyleRecalc)
+TEST_F(AnimationDocumentTimelineTest, EmptyEffectDoesNotTriggerStyleRecalc)
 {
     timeline->play(Animation::create(element.get(), 0, timing).get());
     document->animationClock().updateTime(100);
     EXPECT_FALSE(timeline->serviceAnimations());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, TriggerStyleRecalc)
+TEST_F(AnimationDocumentTimelineTest, TriggerStyleRecalc)
 {
-    timeline->play(Animation::create(element.get(), KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timing).get());
+    timeline->play(Animation::create(element.get(), KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timing).get());
     document->animationClock().updateTime(100);
     EXPECT_TRUE(timeline->serviceAnimations());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, ZeroTime)
+TEST_F(AnimationDocumentTimelineTest, ZeroTime)
 {
     timeline = DocumentTimeline::create(document.get());
 
@@ -192,20 +200,20 @@ TEST_F(CoreAnimationDocumentTimelineTest, ZeroTime)
     EXPECT_EQ(100, timeline->currentTime());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, PauseForTesting)
+TEST_F(AnimationDocumentTimelineTest, PauseForTesting)
 {
     float seekTime = 1;
-    RefPtr<Animation> anim1 = Animation::create(element.get(), KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timing);
-    RefPtr<Animation> anim2  = Animation::create(element.get(), KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timing);
-    RefPtr<Player> player1 = timeline->play(anim1.get());
-    RefPtr<Player> player2 = timeline->play(anim2.get());
+    RefPtr<Animation> anim1 = Animation::create(element.get(), KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timing);
+    RefPtr<Animation> anim2  = Animation::create(element.get(), KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timing);
+    Player* player1 = timeline->play(anim1.get());
+    Player* player2 = timeline->play(anim2.get());
     timeline->pauseAnimationsForTesting(seekTime);
 
     EXPECT_FLOAT_EQ(seekTime, player1->currentTime());
     EXPECT_FLOAT_EQ(seekTime, player2->currentTime());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, NumberOfActiveAnimations)
+TEST_F(AnimationDocumentTimelineTest, NumberOfActiveAnimations)
 {
     Timing timingForwardFill;
     timingForwardFill.hasIterationDuration = true;
@@ -228,15 +236,15 @@ TEST_F(CoreAnimationDocumentTimelineTest, NumberOfActiveAnimations)
     timingNoFillDelay.fillMode = Timing::FillModeNone;
     timingNoFillDelay.startDelay = 1;
 
-    RefPtr<Animation> anim1 = Animation::create(element.get(), KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timingForwardFill);
-    RefPtr<Animation> anim2 = Animation::create(element.get(), KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timingNoFill);
-    RefPtr<Animation> anim3 = Animation::create(element.get(), KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timingBackwardFillDelay);
-    RefPtr<Animation> anim4 = Animation::create(element.get(), KeyframeAnimationEffect::create(KeyframeAnimationEffect::KeyframeVector()), timingNoFillDelay);
+    RefPtr<Animation> anim1 = Animation::create(element.get(), KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timingForwardFill);
+    RefPtr<Animation> anim2 = Animation::create(element.get(), KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timingNoFill);
+    RefPtr<Animation> anim3 = Animation::create(element.get(), KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timingBackwardFillDelay);
+    RefPtr<Animation> anim4 = Animation::create(element.get(), KeyframeEffectModel::create(KeyframeEffectModel::KeyframeVector()), timingNoFillDelay);
 
-    RefPtr<Player> player1 = timeline->play(anim1.get());
-    RefPtr<Player> player2 = timeline->play(anim2.get());
-    RefPtr<Player> player3 = timeline->play(anim3.get());
-    RefPtr<Player> player4 = timeline->play(anim4.get());
+    timeline->play(anim1.get());
+    timeline->play(anim2.get());
+    timeline->play(anim3.get());
+    timeline->play(anim4.get());
 
     platformTiming->expectNextFrameAction();
     updateClockAndService(0);
@@ -252,7 +260,7 @@ TEST_F(CoreAnimationDocumentTimelineTest, NumberOfActiveAnimations)
     EXPECT_EQ(1U, timeline->numberOfActiveAnimationsForTesting());
 }
 
-TEST_F(CoreAnimationDocumentTimelineTest, DelayBeforeAnimationStart)
+TEST_F(AnimationDocumentTimelineTest, DelayBeforeAnimationStart)
 {
     timing.hasIterationDuration = true;
     timing.iterationDuration = 2;
@@ -260,7 +268,7 @@ TEST_F(CoreAnimationDocumentTimelineTest, DelayBeforeAnimationStart)
 
     RefPtr<Animation> anim = Animation::create(element.get(), 0, timing);
 
-    RefPtr<Player> player = timeline->play(anim.get());
+    timeline->play(anim.get());
 
     // TODO: Put the player startTime in the future when we add the capability to change player startTime
     platformTiming->expectDelayedAction(timing.startDelay - minimumDelay());

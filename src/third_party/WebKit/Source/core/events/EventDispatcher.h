@@ -26,22 +26,17 @@
 #ifndef EventDispatcher_h
 #define EventDispatcher_h
 
-#include "core/events/EventContext.h"
 #include "core/dom/SimulatedClickOptions.h"
-#include "wtf/Forward.h"
 #include "wtf/PassRefPtr.h"
+#include "wtf/RefPtr.h"
 
 namespace WebCore {
 
 class Event;
 class EventDispatchMediator;
-class EventTarget;
 class FrameView;
 class Node;
-class PlatformKeyboardEvent;
-class PlatformMouseEvent;
-class ShadowRoot;
-class TreeScope;
+class NodeEventContext;
 class WindowEventContext;
 
 enum EventDispatchContinuation {
@@ -54,7 +49,7 @@ public:
     static bool dispatchEvent(Node*, PassRefPtr<EventDispatchMediator>);
     static void dispatchScopedEvent(Node*, PassRefPtr<EventDispatchMediator>);
 
-    static void dispatchSimulatedClick(Node*, Event* underlyingEvent, SimulatedClickMouseEventOptions, SimulatedClickVisualOptions);
+    static void dispatchSimulatedClick(Node*, Event* underlyingEvent, SimulatedClickMouseEventOptions);
 
     bool dispatch();
     Node* node() const { return m_node.get(); }
@@ -62,7 +57,7 @@ public:
 
 private:
     EventDispatcher(Node*, PassRefPtr<Event>);
-    const EventContext* topEventContext();
+    const NodeEventContext* topNodeEventContext();
 
     EventDispatchContinuation dispatchEventPreProcess(void*& preDispatchEventHandlerResult);
     EventDispatchContinuation dispatchEventAtCapturing(WindowEventContext&);

@@ -31,9 +31,10 @@ ARCHIVED_PEXE_TRANSLATOR_REV=12177
 ARCHIVED_TOOLCHAIN_REV=12276
 
 readonly PNACL_BUILD="pnacl/build.sh"
+readonly TOOLCHAIN_BUILD="toolchain_build/toolchain_build_pnacl.py"
 readonly UP_DOWN_LOAD="buildbot/file_up_down_load.sh"
 readonly TORTURE_TEST="tools/toolchain_tester/torture_test.py"
-readonly LLVM_TESTSUITE="pnacl/scripts/llvm-test.py"
+readonly LLVM_TEST="pnacl/scripts/llvm-test.py"
 
 # build.sh, llvm test suite and torture tests all use this value
 export PNACL_CONCURRENCY=${PNACL_CONCURRENCY:-4}
@@ -254,23 +255,24 @@ archived-frontend-test() {
 
   echo "@@@BUILD_STEP archived_frontend [${arch}]\
         rev ${ARCHIVED_TOOLCHAIN_REV} RUN@@@"
+  local archived_flags="${flags} built_elsewhere=1 toolchain_feature_version=0"
   # For QEMU limit parallelism to avoid flake.
   if [[ ${arch} = arm ]] ; then
     ${SCONS_COMMON_SLOW} ${SCONS_PICK_TC} \
-      ${flags} ${targets} built_elsewhere=1 || handle-error
+      ${archived_flags} ${targets} || handle-error
     # Also test the fast-translation option
     echo "@@@BUILD_STEP archived_frontend [${arch} translate-fast]\
         rev ${ARCHIVED_TOOLCHAIN_REV} RUN@@@"
-    ${SCONS_COMMON_SLOW} ${SCONS_PICK_TC} ${flags} translate_fast=1 \
-      built_elsewhere=1 ${targets} || handle-error
+    ${SCONS_COMMON_SLOW} ${SCONS_PICK_TC} ${archived_flags} translate_fast=1 \
+      ${targets} || handle-error
   else
     ${SCONS_COMMON} ${SCONS_PICK_TC} \
-      ${flags} ${targets} built_elsewhere=1 || handle-error
+      ${archived_flags} ${targets} || handle-error
     # Also test the fast-translation option
     echo "@@@BUILD_STEP archived_frontend [${arch} translate-fast]\
         rev ${ARCHIVED_TOOLCHAIN_REV} RUN@@@"
-    ${SCONS_COMMON} ${SCONS_PICK_TC} ${flags} translate_fast=1 \
-      built_elsewhere=1 ${targets} || handle-error
+    ${SCONS_COMMON} ${SCONS_PICK_TC} ${archived_flags} translate_fast=1 \
+      ${targets} || handle-error
   fi
 }
 
@@ -382,10 +384,15 @@ tc-test-bot() {
   echo "@@@BUILD_STEP show-config@@@"
   ${PNACL_BUILD} show-config
 
+  ${PNACL_BUILD} clean
+  echo "@@@BUILD_STEP Sync repos for build.sh@@@"
+  python ${TOOLCHAIN_BUILD} --legacy-repo-sync
+  ${PNACL_BUILD} newlib-nacl-headers
+
   # Build the un-sandboxed toolchain
   echo "@@@BUILD_STEP compile_toolchain@@@"
-  ${PNACL_BUILD} clean
-  HOST_ARCH=x86_32 ${PNACL_BUILD} all
+
+  HOST_ARCH=x86_32 ${PNACL_BUILD} build-all
   # Make 64-bit versions of the build tools such as fpcmp (used for llvm
   # test suite and for some reason it matters that they match the build machine)
   ${PNACL_BUILD} llvm-configure
@@ -423,12 +430,15 @@ tc-test-bot() {
     fi
     for opt in "${optset[@]}"; do
       echo "@@@BUILD_STEP llvm-test-suite ${arch} ${opt} @@@"
-      python ${LLVM_TESTSUITE} --testsuite-prereq --arch ${arch}
-      python ${LLVM_TESTSUITE} --testsuite-clean
-      python ${LLVM_TESTSUITE} \
+      python ${LLVM_TEST} --testsuite-prereq --arch ${arch}
+      python ${LLVM_TEST} --testsuite-clean
+      python ${LLVM_TEST} \
         --testsuite-configure --testsuite-run --testsuite-report \
         --arch ${arch} ${opt} -v -c || handle-error
     done
+
+    echo "@@@BUILD_STEP libcxx-test ${arch} @@@"
+    python ${LLVM_TEST} --libcxx-test --arch ${arch} -c || handle-error
 
     archived-frontend-test ${arch}
 

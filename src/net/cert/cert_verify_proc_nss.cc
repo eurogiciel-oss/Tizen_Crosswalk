@@ -33,17 +33,6 @@
 #include "net/cert/x509_util_ios.h"
 #endif  // defined(OS_IOS)
 
-#define NSS_VERSION_NUM (NSS_VMAJOR * 10000 + NSS_VMINOR * 100 + NSS_VPATCH)
-#if NSS_VERSION_NUM < 31305
-// Added in NSS 3.13.5.
-#define SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED -8016
-#endif
-
-#if NSS_VERSION_NUM < 31402
-// Added in NSS 3.14.2.
-#define cert_pi_useOnlyTrustAnchors static_cast<CERTValParamInType>(14)
-#endif
-
 namespace net {
 
 namespace {
@@ -127,6 +116,8 @@ int MapSecurityError(int err) {
     case SEC_ERROR_REVOKED_CERTIFICATE:
     case SEC_ERROR_UNTRUSTED_CERT:  // Treat as revoked.
       return ERR_CERT_REVOKED;
+    case SEC_ERROR_CERT_NOT_IN_NAME_SPACE:
+      return ERR_CERT_NAME_CONSTRAINT_VIOLATION;
     case SEC_ERROR_BAD_DER:
     case SEC_ERROR_BAD_SIGNATURE:
     case SEC_ERROR_CERT_NOT_VALID:
@@ -136,7 +127,6 @@ int MapSecurityError(int err) {
     case SEC_ERROR_INADEQUATE_CERT_TYPE:  // Extended key usage and whether
                                           // the certificate is a CA.
     case SEC_ERROR_POLICY_VALIDATION_FAILED:
-    case SEC_ERROR_CERT_NOT_IN_NAME_SPACE:
     case SEC_ERROR_PATH_LEN_CONSTRAINT_INVALID:
     case SEC_ERROR_UNKNOWN_CRITICAL_EXTENSION:
     case SEC_ERROR_EXTENSION_VALUE_INVALID:
@@ -743,8 +733,7 @@ CertVerifyProcNSS::CertVerifyProcNSS() {}
 CertVerifyProcNSS::~CertVerifyProcNSS() {}
 
 bool CertVerifyProcNSS::SupportsAdditionalTrustAnchors() const {
-  // This requires APIs introduced in 3.14.2.
-  return NSS_VersionCheck("3.14.2");
+  return true;
 }
 
 int CertVerifyProcNSS::VerifyInternal(
@@ -800,7 +789,7 @@ int CertVerifyProcNSS::VerifyInternal(
     verify_result->cert_status |= CERT_STATUS_REV_CHECKING_ENABLED;
 
   ScopedCERTCertList trust_anchors;
-  if (SupportsAdditionalTrustAnchors() && !additional_trust_anchors.empty()) {
+  if (!additional_trust_anchors.empty()) {
     trust_anchors.reset(
         CertificateListToCERTCertList(additional_trust_anchors));
   }

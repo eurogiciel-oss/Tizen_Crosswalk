@@ -36,9 +36,9 @@ namespace WebCore {
 class HTMLImportLoaderClient {
 public:
     virtual ~HTMLImportLoaderClient() { }
-    virtual void didFinish() = 0;
+    virtual void didFinishLoading() = 0;
 };
 
-} // namespace WebCore
+}
 
 #endif // HTMLImportLoaderClient_h

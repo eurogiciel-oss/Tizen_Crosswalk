@@ -16,6 +16,7 @@
 #include "chrome/browser/password_manager/native_backend_kwallet_x.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/test/base/testing_profile.h"
+#include "components/autofill/core/common/password_form.h"
 #include "content/public/test/test_browser_thread.h"
 #include "dbus/message.h"
 #include "dbus/mock_bus.h"
@@ -26,6 +27,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 using autofill::PasswordForm;
+using base::UTF8ToUTF16;
 using content::BrowserThread;
 using testing::_;
 using testing::Invoke;

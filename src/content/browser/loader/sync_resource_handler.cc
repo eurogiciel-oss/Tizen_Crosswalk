@@ -101,6 +101,12 @@ bool SyncResourceHandler::OnWillStart(int request_id,
   return true;
 }
 
+bool SyncResourceHandler::OnBeforeNetworkStart(int request_id,
+                                               const GURL& url,
+                                               bool* defer) {
+  return true;
+}
+
 bool SyncResourceHandler::OnWillRead(int request_id,
                                      scoped_refptr<net::IOBuffer>* buf,
                                      int* buf_size,
@@ -119,13 +125,14 @@ bool SyncResourceHandler::OnReadCompleted(int request_id, int bytes_read,
   return true;
 }
 
-bool SyncResourceHandler::OnResponseCompleted(
+void SyncResourceHandler::OnResponseCompleted(
     int request_id,
     const net::URLRequestStatus& status,
-    const std::string& security_info) {
+    const std::string& security_info,
+    bool* defer) {
   ResourceMessageFilter* filter = GetFilter();
   if (!filter)
-    return false;
+    return;
 
   result_.error_code = status.error();
 
@@ -135,7 +142,7 @@ bool SyncResourceHandler::OnResponseCompleted(
   ResourceHostMsg_SyncLoad::WriteReplyParams(result_message_, result_);
   filter->Send(result_message_);
   result_message_ = NULL;
-  return true;
+  return;
 }
 
 void SyncResourceHandler::OnDataDownloaded(

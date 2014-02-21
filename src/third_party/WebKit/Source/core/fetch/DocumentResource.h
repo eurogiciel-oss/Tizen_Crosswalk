@@ -26,35 +26,40 @@
 #include "core/fetch/Resource.h"
 #include "core/fetch/ResourceClient.h"
 #include "core/fetch/ResourcePtr.h"
-#include "core/fetch/TextResourceDecoder.h"
+#include "core/html/parser/TextResourceDecoder.h"
 
 namespace WebCore {
 
 class Document;
 
-class DocumentResource : public Resource {
+class DocumentResource FINAL : public Resource {
 public:
+    typedef ResourceClient ClientType;
+
     DocumentResource(const ResourceRequest&, Type);
     virtual ~DocumentResource();
 
     Document* document() const { return m_document.get(); }
 
-    virtual void setEncoding(const String&);
-    virtual String encoding() const;
+    virtual void setEncoding(const String&) OVERRIDE;
+    virtual String encoding() const OVERRIDE;
     virtual void checkNotify() OVERRIDE;
 
 private:
     PassRefPtr<Document> createDocument(const KURL&);
 
     RefPtr<Document> m_document;
-    RefPtr<TextResourceDecoder> m_decoder;
+    OwnPtr<TextResourceDecoder> m_decoder;
 };
+
+DEFINE_TYPE_CASTS(DocumentResource, Resource, resource, resource->type() == Resource::SVGDocument, resource.type() == Resource::SVGDocument); \
+inline DocumentResource* toDocumentResource(const ResourcePtr<Resource>& ptr) { return toDocumentResource(ptr.get()); }
 
 class DocumentResourceClient : public ResourceClient {
 public:
     virtual ~DocumentResourceClient() { }
     static ResourceClientType expectedType() { return DocumentType; }
-    virtual ResourceClientType resourceClientType() const { return expectedType(); }
+    virtual ResourceClientType resourceClientType() const OVERRIDE { return expectedType(); }
 };
 
 }

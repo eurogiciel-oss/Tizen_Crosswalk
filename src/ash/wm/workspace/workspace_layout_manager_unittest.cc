@@ -7,10 +7,11 @@
 #include "ash/display/display_layout.h"
 #include "ash/display/display_manager.h"
 #include "ash/root_window_controller.h"
-#include "ash/screen_ash.h"
+#include "ash/screen_util.h"
 #include "ash/shelf/shelf_layout_manager.h"
 #include "ash/shelf/shelf_widget.h"
 #include "ash/shell.h"
+#include "ash/shell_observer.h"
 #include "ash/test/ash_test_base.h"
 #include "ash/wm/window_state.h"
 #include "ash/wm/window_util.h"
@@ -19,6 +20,7 @@
 #include "ui/aura/test/test_windows.h"
 #include "ui/aura/window.h"
 #include "ui/gfx/insets.h"
+#include "ui/views/corewm/window_util.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 
@@ -45,6 +47,38 @@ class MaximizeDelegateView : public views::WidgetDelegateView {
   const gfx::Rect initial_bounds_;
 
   DISALLOW_COPY_AND_ASSIGN(MaximizeDelegateView);
+};
+
+class TestShellObserver : public ShellObserver {
+ public:
+  TestShellObserver() : call_count_(0),
+                        is_fullscreen_(false) {
+    Shell::GetInstance()->AddShellObserver(this);
+  }
+
+  virtual ~TestShellObserver() {
+    Shell::GetInstance()->RemoveShellObserver(this);
+  }
+
+  virtual void OnFullscreenStateChanged(bool is_fullscreen,
+                                        aura::Window* root_window) OVERRIDE {
+    call_count_++;
+    is_fullscreen_ = is_fullscreen;
+  }
+
+  int call_count() const {
+    return call_count_;
+  }
+
+  bool is_fullscreen() const {
+    return is_fullscreen_;
+  }
+
+ private:
+  int call_count_;
+  bool is_fullscreen_;
+
+  DISALLOW_COPY_AND_ASSIGN(TestShellObserver);
 };
 
 }  // namespace
@@ -74,7 +108,7 @@ TEST_F(WorkspaceLayoutManagerTest, RestoreFromMinimizeKeepsRestore) {
 
   UpdateDisplay("400x300,500x400");
   window->SetBoundsInScreen(gfx::Rect(600, 0, 100, 100),
-                            ScreenAsh::GetSecondaryDisplay());
+                            ScreenUtil::GetSecondaryDisplay());
   EXPECT_EQ(Shell::GetAllRootWindows()[1], window->GetRootWindow());
   window_state->Minimize();
   // This will not be used for un-minimizing window.
@@ -97,7 +131,7 @@ TEST_F(WorkspaceLayoutManagerTest, KeepMinimumVisibilityInDisplays) {
     return;
 
   UpdateDisplay("300x400,400x500");
-  Shell::RootWindowList root_windows = Shell::GetAllRootWindows();
+  aura::Window::Windows root_windows = Shell::GetAllRootWindows();
 
   DisplayLayout layout(DisplayLayout::TOP, 0);
   Shell::GetInstance()->display_manager()->
@@ -160,7 +194,7 @@ TEST_F(WorkspaceLayoutManagerTest, MaximizeInDisplayToBeRestored) {
     return;
   UpdateDisplay("300x400,400x500");
 
-  Shell::RootWindowList root_windows = Shell::GetAllRootWindows();
+  aura::Window::Windows root_windows = Shell::GetAllRootWindows();
 
   scoped_ptr<aura::Window> window(
       CreateTestWindowInShellWithBounds(gfx::Rect(1, 2, 30, 40)));
@@ -210,7 +244,7 @@ TEST_F(WorkspaceLayoutManagerTest, FullscreenInDisplayToBeRestored) {
     return;
   UpdateDisplay("300x400,400x500");
 
-  Shell::RootWindowList root_windows = Shell::GetAllRootWindows();
+  aura::Window::Windows root_windows = Shell::GetAllRootWindows();
 
   scoped_ptr<aura::Window> window(
       CreateTestWindowInShellWithBounds(gfx::Rect(1, 2, 30, 40)));
@@ -282,8 +316,8 @@ class DontClobberRestoreBoundsWindowObserver : public aura::WindowObserver {
 TEST_F(WorkspaceLayoutManagerTest, DontClobberRestoreBounds) {
   DontClobberRestoreBoundsWindowObserver window_observer;
   scoped_ptr<aura::Window> window(new aura::Window(NULL));
-  window->SetType(aura::client::WINDOW_TYPE_NORMAL);
-  window->Init(ui::LAYER_TEXTURED);
+  window->SetType(ui::wm::WINDOW_TYPE_NORMAL);
+  window->Init(aura::WINDOW_LAYER_TEXTURED);
   window->SetBounds(gfx::Rect(10, 20, 30, 40));
   // NOTE: for this test to exercise the failure the observer needs to be added
   // before the parent set. This mimics what BrowserFrameAsh does.
@@ -296,7 +330,7 @@ TEST_F(WorkspaceLayoutManagerTest, DontClobberRestoreBounds) {
 
   scoped_ptr<aura::Window> window2(
       CreateTestWindowInShellWithBounds(gfx::Rect(12, 20, 30, 40)));
-  window->AddTransientChild(window2.get());
+  views::corewm::AddTransientChild(window.get(), window2.get());
   window2->Show();
 
   window_observer.set_window(window2.get());
@@ -405,6 +439,44 @@ TEST_F(WorkspaceLayoutManagerTest, SizeToWorkArea) {
   window->SetBounds(window_bounds);
   EXPECT_EQ(gfx::Rect(gfx::Point(100, 101), work_area).ToString(),
       window->bounds().ToString());
+}
+
+TEST_F(WorkspaceLayoutManagerTest, NotifyFullscreenChanges) {
+  TestShellObserver observer;
+  scoped_ptr<aura::Window> window1(
+      CreateTestWindowInShellWithBounds(gfx::Rect(1, 2, 30, 40)));
+  scoped_ptr<aura::Window> window2(
+      CreateTestWindowInShellWithBounds(gfx::Rect(1, 2, 30, 40)));
+  wm::WindowState* window_state1 = wm::GetWindowState(window1.get());
+  wm::WindowState* window_state2 = wm::GetWindowState(window2.get());
+  window_state2->Activate();
+
+  window_state2->ToggleFullscreen();
+  EXPECT_EQ(1, observer.call_count());
+  EXPECT_TRUE(observer.is_fullscreen());
+
+  // When window1 moves to the front the fullscreen state should change.
+  window_state1->Activate();
+  EXPECT_EQ(2, observer.call_count());
+  EXPECT_FALSE(observer.is_fullscreen());
+
+  // It should change back if window2 becomes active again.
+  window_state2->Activate();
+  EXPECT_EQ(3, observer.call_count());
+  EXPECT_TRUE(observer.is_fullscreen());
+
+  window_state2->ToggleFullscreen();
+  EXPECT_EQ(4, observer.call_count());
+  EXPECT_FALSE(observer.is_fullscreen());
+
+  window_state2->ToggleFullscreen();
+  EXPECT_EQ(5, observer.call_count());
+  EXPECT_TRUE(observer.is_fullscreen());
+
+  // Closing the window should change the fullscreen state.
+  window2.reset();
+  EXPECT_EQ(6, observer.call_count());
+  EXPECT_FALSE(observer.is_fullscreen());
 }
 
 }  // namespace ash

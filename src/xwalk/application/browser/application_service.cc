@@ -237,7 +237,7 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
   // the installation will always fail because of moving application
   // resources into an invalid directory.
   if (!base::DirectoryExists(data_dir) &&
-      !file_util::CreateDirectory(data_dir))
+      !base::CreateDirectory(data_dir))
     return false;
 
   std::string app_id;
@@ -276,7 +276,7 @@ bool ApplicationService::Install(const base::FilePath& path, std::string* id) {
       return false;
   }
   if (!package) {
-    if (!file_util::CreateDirectory(app_dir))
+    if (!base::CreateDirectory(app_dir))
       return false;
     if (!CopyDirectoryContents(unpacked_dir, app_dir))
       return false;
@@ -701,6 +701,23 @@ void ApplicationService::CheckAPIAccessControl(const std::string& app_id,
     return;
   }
   NOTREACHED();
+}
+
+bool ApplicationService::RegisterPermissions(const std::string& app_id,
+    const std::string& extension_name,
+    const std::string& perm_table) {
+  Application* app = GetApplicationByID(app_id);
+  if (!app) {
+    LOG(ERROR) << "No running application found with ID: " << app_id;
+    return false;
+  }
+  if (!app->UseExtension(extension_name)) {
+    LOG(ERROR) << "Can not find extension: "
+               << extension_name << " of Application with ID: "
+               << app_id;
+    return false;
+  }
+  return app->RegisterPermissions(extension_name, perm_table);
 }
 
 }  // namespace application

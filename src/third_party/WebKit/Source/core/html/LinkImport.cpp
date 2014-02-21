@@ -33,20 +33,21 @@
 
 #include "core/dom/Document.h"
 #include "core/fetch/CrossOriginAccessControl.h"
-#include "core/html/HTMLImportLoader.h"
+#include "core/html/HTMLImportChild.h"
 #include "core/html/HTMLImportsController.h"
 #include "core/html/HTMLLinkElement.h"
 
 
 namespace WebCore {
 
-PassRefPtr<LinkImport> LinkImport::create(HTMLLinkElement* owner)
+PassOwnPtr<LinkImport> LinkImport::create(HTMLLinkElement* owner)
 {
-    return adoptRef(new LinkImport(owner));
+    return adoptPtr(new LinkImport(owner));
 }
 
 LinkImport::LinkImport(HTMLLinkElement* owner)
     : LinkResource(owner)
+    , m_child(0)
 {
 }
 
@@ -57,18 +58,18 @@ LinkImport::~LinkImport()
 
 Document* LinkImport::importedDocument() const
 {
-    if (!m_loader)
+    if (!m_child)
         return 0;
-    return m_loader->importedDocument();
+    return m_child->importedDocument();
 }
 
 void LinkImport::process()
 {
-    if (m_loader)
+    if (m_child)
         return;
     if (!m_owner)
         return;
-    if (!m_owner->document().frame() && !m_owner->document().import())
+    if (!shouldLoadResource())
         return;
 
     if (!m_owner->document().import()) {
@@ -84,22 +85,19 @@ void LinkImport::process()
 
     HTMLImport* parent = m_owner->document().import();
     HTMLImportsController* controller = parent->controller();
-    m_loader = controller->createLoader(parent, builder.build(true));
-    if (!m_loader) {
+    m_child = controller->load(parent, this, builder.build(true));
+    if (!m_child) {
         didFinish();
         return;
     }
-
-    m_loader->addClient(this);
 }
 
 void LinkImport::clear()
 {
     m_owner = 0;
-
-    if (m_loader) {
-        m_loader->removeClient(this);
-        m_loader.clear();
+    if (m_child) {
+        m_child->clearClient();
+        m_child = 0;
     }
 }
 
@@ -112,12 +110,31 @@ void LinkImport::didFinish()
 {
     if (!m_owner)
         return;
-    m_owner->scheduleEvent();
+    // Because didFinish() is called from import's own scheduler in HTMLImportsController,
+    // we don't need to scheduleEvent() here.
+    m_owner->dispatchEventImmediately();
+}
+
+void LinkImport::importChildWasDestroyed(HTMLImportChild* child)
+{
+    ASSERT(m_child == child);
+    m_child = 0;
+    clear();
+}
+
+bool LinkImport::isCreatedByParser() const
+{
+    return m_owner && m_owner->isCreatedByParser();
 }
 
 bool LinkImport::hasLoaded() const
 {
-    return m_loader && m_loader->isLoaded();
+    return m_child && m_child->isDone() && !m_child->loaderHasError();
+}
+
+bool LinkImport::ownsLoader() const
+{
+    return m_child && m_child->hasLoader() && m_child->ownsLoader();
 }
 
 } // namespace WebCore

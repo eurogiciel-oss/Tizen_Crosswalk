@@ -29,11 +29,13 @@
 #define SelectorChecker_h
 
 #include "core/css/CSSSelector.h"
-#include "core/inspector/InspectorInstrumentation.h"
+#include "core/dom/Element.h"
+#include "platform/scroll/ScrollTypes.h"
 
 namespace WebCore {
 
 class CSSSelector;
+class ContainerNode;
 class Element;
 class RenderScrollbar;
 class RenderStyle;
@@ -47,11 +49,14 @@ public:
     explicit SelectorChecker(Document&, Mode);
     enum BehaviorAtBoundary {
         DoesNotCrossBoundary = 0,
-        CrossesBoundary = 1,
+        // FIXME: refactor to remove BoundaryBehavior (i.e. DoesNotCrossBoundary and StaysWithinTreeScope).
         StaysWithinTreeScope = 2,
         BoundaryBehaviorMask = 3, // 2bit for boundary behavior
         ScopeContainsLastMatchedElement = 4,
-        ScopeIsShadowHost = 8
+        ScopeIsShadowHost = 8,
+        TreatShadowHostAsNormalScope = 16,
+
+        ScopeIsShadowHostInPseudoHostParameter = ScopeIsShadowHost | TreatShadowHostAsNormalScope
     };
 
     enum MatchingTagType {
@@ -90,14 +95,20 @@ public:
         BehaviorAtBoundary behaviorAtBoundary;
     };
 
-    template<typename SiblingTraversalStrategy>
-    Match match(const SelectorCheckingContext&, PseudoId&, const SiblingTraversalStrategy&) const;
+    struct MatchResult {
+        MatchResult()
+            : dynamicPseudo(NOPSEUDO)
+            , specificity(0) { }
+
+        PseudoId dynamicPseudo;
+        unsigned specificity;
+    };
 
     template<typename SiblingTraversalStrategy>
-    Match matchForShadowDistributed(const Element*, const SiblingTraversalStrategy&, PseudoId&, SelectorCheckingContext& nextContext) const;
+    Match match(const SelectorCheckingContext&, const SiblingTraversalStrategy&, MatchResult* = 0) const;
 
     template<typename SiblingTraversalStrategy>
-    bool checkOne(const SelectorCheckingContext&, const SiblingTraversalStrategy&) const;
+    bool checkOne(const SelectorCheckingContext&, const SiblingTraversalStrategy&, unsigned* specificity = 0) const;
 
     bool strictParsing() const { return m_strictParsing; }
 
@@ -114,8 +125,15 @@ public:
     static bool isHostInItsShadowTree(const Element&, BehaviorAtBoundary, const ContainerNode* scope);
 
 private:
+    template<typename SiblingTraversalStrategy>
+    Match matchForSubSelector(const SelectorCheckingContext&, const SiblingTraversalStrategy&, MatchResult*) const;
+    template<typename SiblingTraversalStrategy>
+    Match matchForRelation(const SelectorCheckingContext&, const SiblingTraversalStrategy&, MatchResult*) const;
+    template<typename SiblingTraversalStrategy>
+    Match matchForShadowDistributed(const Element*, const SiblingTraversalStrategy&, SelectorCheckingContext& nextContext, MatchResult* = 0) const;
+
     bool checkScrollbarPseudoClass(const SelectorCheckingContext&, Document*, const CSSSelector*) const;
-    Element* parentElement(const SelectorCheckingContext&) const;
+    Element* parentElement(const SelectorCheckingContext&, bool allowToCrossBoundary = false) const;
     bool scopeContainsLastMatchedElement(const SelectorCheckingContext&) const;
 
     static bool isFrameFocused(const Element&);
@@ -162,7 +180,7 @@ inline bool SelectorChecker::checkExactAttribute(const Element& element, const Q
 
 inline bool SelectorChecker::isHostInItsShadowTree(const Element& element, BehaviorAtBoundary behaviorAtBoundary, const ContainerNode* scope)
 {
-    return (behaviorAtBoundary & ScopeIsShadowHost) && scope == element;
+    return (behaviorAtBoundary & (ScopeIsShadowHost | TreatShadowHostAsNormalScope)) == ScopeIsShadowHost && scope == element;
 }
 
 }

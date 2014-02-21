@@ -69,7 +69,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::WebContents* guest_web_contents,
       content::WebContents* embedder_web_contents,
       const base::DictionaryValue& extra_params) OVERRIDE;
-  virtual void RenderProcessHostCreated(
+  virtual void RenderProcessWillLaunch(
       content::RenderProcessHost* host) OVERRIDE;
   virtual bool ShouldUseProcessPerSite(content::BrowserContext* browser_context,
                                        const GURL& effective_url) OVERRIDE;
@@ -98,7 +98,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::SiteInstance* site_instance) OVERRIDE;
   virtual void SiteInstanceDeleting(content::SiteInstance* site_instance)
       OVERRIDE;
-  virtual bool ShouldSwapProcessesForNavigation(
+  virtual bool ShouldSwapBrowsingInstancesForNavigation(
       content::SiteInstance* site_instance,
       const GURL& current_url,
       const GURL& new_url) OVERRIDE;
@@ -123,38 +123,38 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
                               const net::CookieList& cookie_list,
                               content::ResourceContext* context,
                               int render_process_id,
-                              int render_view_id) OVERRIDE;
+                              int render_frame_id) OVERRIDE;
   virtual bool AllowSetCookie(const GURL& url,
                               const GURL& first_party,
                               const std::string& cookie_line,
                               content::ResourceContext* context,
                               int render_process_id,
-                              int render_view_id,
+                              int render_frame_id,
                               net::CookieOptions* options) OVERRIDE;
   virtual bool AllowSaveLocalState(content::ResourceContext* context) OVERRIDE;
   virtual bool AllowWorkerDatabase(
       const GURL& url,
-      const string16& name,
-      const string16& display_name,
+      const base::string16& name,
+      const base::string16& display_name,
       unsigned long estimated_size,
       content::ResourceContext* context,
-      const std::vector<std::pair<int, int> >& render_views) OVERRIDE;
+      const std::vector<std::pair<int, int> >& render_frames) OVERRIDE;
   virtual bool AllowWorkerFileSystem(
       const GURL& url,
       content::ResourceContext* context,
-      const std::vector<std::pair<int, int> >& render_views) OVERRIDE;
+      const std::vector<std::pair<int, int> >& render_frames) OVERRIDE;
   virtual bool AllowWorkerIndexedDB(
       const GURL& url,
-      const string16& name,
+      const base::string16& name,
       content::ResourceContext* context,
-      const std::vector<std::pair<int, int> >& render_views) OVERRIDE;
+      const std::vector<std::pair<int, int> >& render_frames) OVERRIDE;
   virtual net::URLRequestContext* OverrideRequestContextForURL(
       const GURL& url, content::ResourceContext* context) OVERRIDE;
   virtual content::QuotaPermissionContext*
       CreateQuotaPermissionContext() OVERRIDE;
   virtual void AllowCertificateError(
       int render_process_id,
-      int render_view_id,
+      int render_frame_id,
       int cert_error,
       const net::SSLInfo& ssl_info,
       const GURL& request_url,
@@ -165,7 +165,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::CertificateRequestResultType* request) OVERRIDE;
   virtual void SelectClientCertificate(
       int render_process_id,
-      int render_view_id,
+      int render_frame_id,
       const net::HttpNetworkSession* network_session,
       net::SSLCertRequestInfo* cert_request_info,
       const base::Callback<void(net::X509Certificate*)>& callback) OVERRIDE;
@@ -182,7 +182,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       int callback_context,
       int render_process_id,
       int render_view_id) OVERRIDE;
-  virtual WebKit::WebNotificationPresenter::Permission
+  virtual blink::WebNotificationPresenter::Permission
       CheckDesktopNotificationPermission(
           const GURL& source_origin,
           content::ResourceContext* context,
@@ -203,7 +203,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
                                const GURL& target_url,
                                const content::Referrer& referrer,
                                WindowOpenDisposition disposition,
-                               const WebKit::WebWindowFeatures& features,
+                               const blink::WebWindowFeatures& features,
                                bool user_gesture,
                                bool opener_suppressed,
                                content::ResourceContext* context,
@@ -262,15 +262,12 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   virtual void PreSpawnRenderer(sandbox::TargetPolicy* policy,
                                 bool* success) OVERRIDE;
 #endif
-#if defined(USE_NSS)
-  virtual
-      crypto::CryptoModuleBlockingPasswordDelegate* GetCryptoPasswordDelegate(
-          const GURL& url) OVERRIDE;
-#endif
 
   virtual bool IsPluginAllowedToCallRequestOSFileHandle(
       content::BrowserContext* browser_context,
       const GURL& url) OVERRIDE;
+
+  virtual bool IsPluginAllowedToUseDevChannelAPIs() OVERRIDE;
 
  private:
 #if defined(ENABLE_PLUGINS)

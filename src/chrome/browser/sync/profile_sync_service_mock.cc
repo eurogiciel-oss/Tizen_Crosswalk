@@ -12,14 +12,6 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/test/base/testing_profile.h"
 
-ProfileSyncServiceMock::ProfileSyncServiceMock()
-    : ProfileSyncService(
-          NULL,
-          NULL,
-          NULL,
-          NULL,
-          ProfileSyncService::MANUAL_START) {}
-
 ProfileSyncServiceMock::ProfileSyncServiceMock(Profile* profile)
     : ProfileSyncService(
           NULL,
@@ -53,3 +45,7 @@ ScopedVector<browser_sync::DeviceInfo>
   return devices.Pass();
 }
 
+scoped_ptr<browser_sync::DeviceInfo>
+    ProfileSyncServiceMock::GetLocalDeviceInfo() const {
+  return scoped_ptr<browser_sync::DeviceInfo>(GetLocalDeviceInfoMock()).Pass();
+}

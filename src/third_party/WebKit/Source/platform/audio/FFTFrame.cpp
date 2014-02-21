@@ -71,6 +71,17 @@ PassOwnPtr<FFTFrame> FFTFrame::createInterpolatedFrame(const FFTFrame& frame1, c
     return newFrame.release();
 }
 
+#if OS(WIN)
+// On Windows, the following pragmas are equivalent to compiling the code with /fp:fast. The
+// following code does not need precise FP semantics, and speed is critical here. See
+// crbug.com/316740 and crrev.com/116823002.
+#pragma float_control(push)
+#pragma float_control(except, off)
+#pragma float_control(precise, off)
+#pragma fp_contract(on)
+#pragma fenv_access(off)
+#endif
+
 void FFTFrame::interpolateFrequencyComponents(const FFTFrame& frame1, const FFTFrame& frame2, double interp)
 {
     // FIXME : with some work, this method could be optimized
@@ -254,8 +265,8 @@ void FFTFrame::print()
     FFTFrame& frame = *this;
     float* realP = frame.realData();
     float* imagP = frame.imagData();
-    LOG(WebAudio, "**** \n");
-    LOG(WebAudio, "DC = %f : nyquist = %f\n", realP[0], imagP[0]);
+    WTF_LOG(WebAudio, "**** \n");
+    WTF_LOG(WebAudio, "DC = %f : nyquist = %f\n", realP[0], imagP[0]);
 
     int n = m_FFTSize / 2;
 
@@ -263,9 +274,9 @@ void FFTFrame::print()
         double mag = sqrt(realP[i] * realP[i] + imagP[i] * imagP[i]);
         double phase = atan2(realP[i], imagP[i]);
 
-        LOG(WebAudio, "[%d] (%f %f)\n", i, mag, phase);
+        WTF_LOG(WebAudio, "[%d] (%f %f)\n", i, mag, phase);
     }
-    LOG(WebAudio, "****\n");
+    WTF_LOG(WebAudio, "****\n");
 }
 #endif // NDEBUG
 

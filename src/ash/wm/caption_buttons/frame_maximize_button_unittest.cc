@@ -328,6 +328,14 @@ TEST_F(FrameMaximizeButtonTest, MAYBE_ResizeButtonDrag) {
 // trigger dependent on the available drag distance.
 TEST_F(FrameMaximizeButtonTest,
        MAYBE_TouchDragResizeCloseToCornerDiffersFromMouse) {
+  // The test is uninteresting when windows can only be snapped to a single
+  // width because snapping the window via mouse and touch results in the same
+  // final bounds.
+  if (!CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kAshMultipleSnapWindowWidths)) {
+    return;
+  }
+
   aura::Window* window = widget()->GetNativeWindow();
   views::View* view = maximize_button();
 
@@ -550,7 +558,7 @@ TEST_F(FrameMaximizeButtonTest, MaximizeTap) {
                        button_pos,
                        kTouchId,
                        ui::EventTimeForNow());
-  dispatcher->AsRootWindowHostDelegate()->OnHostTouchEvent(&press);
+  dispatcher->AsWindowTreeHostDelegate()->OnHostTouchEvent(&press);
 
   button_pos.Offset(9, 8);
   ui::TouchEvent release(
@@ -558,7 +566,7 @@ TEST_F(FrameMaximizeButtonTest, MaximizeTap) {
       button_pos,
       kTouchId,
       press.time_stamp() + base::TimeDelta::FromMilliseconds(50));
-  dispatcher->AsRootWindowHostDelegate()->OnHostTouchEvent(&release);
+  dispatcher->AsWindowTreeHostDelegate()->OnHostTouchEvent(&release);
 
   ui::GestureConfiguration::set_default_radius(touch_default_radius);
 }

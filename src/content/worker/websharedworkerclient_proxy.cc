@@ -22,14 +22,14 @@
 #include "third_party/WebKit/public/web/WebFrame.h"
 #include "third_party/WebKit/public/web/WebSecurityOrigin.h"
 
-using WebKit::WebApplicationCacheHost;
-using WebKit::WebFrame;
-using WebKit::WebMessagePortChannel;
-using WebKit::WebMessagePortChannelArray;
-using WebKit::WebSecurityOrigin;
-using WebKit::WebString;
-using WebKit::WebWorker;
-using WebKit::WebSharedWorkerClient;
+using blink::WebApplicationCacheHost;
+using blink::WebFrame;
+using blink::WebMessagePortChannel;
+using blink::WebMessagePortChannelArray;
+using blink::WebSecurityOrigin;
+using blink::WebString;
+using blink::WebWorker;
+using blink::WebSharedWorkerClient;
 
 namespace content {
 
@@ -42,7 +42,8 @@ WebSharedWorkerClientProxy::WebSharedWorkerClientProxy(
       appcache_host_id_(0),
       stub_(stub),
       weak_factory_(this),
-      devtools_agent_(NULL) {
+      devtools_agent_(NULL),
+      app_cache_host_(NULL) {
 }
 
 WebSharedWorkerClientProxy::~WebSharedWorkerClientProxy() {
@@ -59,7 +60,27 @@ void WebSharedWorkerClientProxy::workerContextDestroyed() {
     stub_->Shutdown();
 }
 
-WebKit::WebNotificationPresenter*
+void WebSharedWorkerClientProxy::workerScriptLoaded() {
+  if (stub_)
+    stub_->WorkerScriptLoaded();
+}
+
+void WebSharedWorkerClientProxy::workerScriptLoadFailed() {
+  if (stub_)
+    stub_->WorkerScriptLoadFailed();
+}
+
+void WebSharedWorkerClientProxy::selectAppCacheID(long long app_cache_id) {
+  if (app_cache_host_) {
+    // app_cache_host_ could become stale as it's owned by blink's
+    // DocumentLoader. This method is assumed to be called while it's valid.
+    app_cache_host_->backend()->SelectCacheForSharedWorker(
+        app_cache_host_->host_id(),
+        app_cache_id);
+  }
+}
+
+blink::WebNotificationPresenter*
 WebSharedWorkerClientProxy::notificationPresenter() {
   // TODO(johnnyg): Notifications are not yet hooked up to workers.
   // Coming soon.
@@ -68,40 +89,23 @@ WebSharedWorkerClientProxy::notificationPresenter() {
 }
 
 WebApplicationCacheHost* WebSharedWorkerClientProxy::createApplicationCacheHost(
-    WebKit::WebApplicationCacheHostClient* client) {
-  WorkerWebApplicationCacheHostImpl* host =
+    blink::WebApplicationCacheHostClient* client) {
+  DCHECK(!app_cache_host_);
+  app_cache_host_ =
       new WorkerWebApplicationCacheHostImpl(stub_->appcache_init_info(),
                                             client);
   // Remember the id of the instance we create so we have access to that
   // value when creating nested dedicated workers in createWorker.
-  appcache_host_id_ = host->host_id();
-  return host;
+  appcache_host_id_ = app_cache_host_->host_id();
+  return app_cache_host_;
 }
 
-WebKit::WebWorkerPermissionClientProxy*
+blink::WebWorkerPermissionClientProxy*
 WebSharedWorkerClientProxy::createWorkerPermissionClientProxy(
-    const WebKit::WebSecurityOrigin& origin) {
-  if (origin.isUnique())
-    return NULL;
+    const blink::WebSecurityOrigin& origin) {
   return new SharedWorkerPermissionClientProxy(
-      GURL(origin.toString()), route_id_,
+      GURL(origin.toString()), origin.isUnique(), route_id_,
       ChildThread::current()->thread_safe_sender());
-}
-
-// TODO(kinuko): Deprecate these methods.
-bool WebSharedWorkerClientProxy::allowDatabase(WebFrame* frame,
-                                         const WebString& name,
-                                         const WebString& display_name,
-                                         unsigned long estimated_size) {
-  return false;
-}
-
-bool WebSharedWorkerClientProxy::allowFileSystem() {
-  return false;
-}
-
-bool WebSharedWorkerClientProxy::allowIndexedDB(const WebKit::WebString& name) {
-  return false;
 }
 
 void WebSharedWorkerClientProxy::dispatchDevToolsMessage(
@@ -111,7 +115,7 @@ void WebSharedWorkerClientProxy::dispatchDevToolsMessage(
 }
 
 void WebSharedWorkerClientProxy::saveDevToolsAgentState(
-    const WebKit::WebString& state) {
+    const blink::WebString& state) {
   if (devtools_agent_)
     devtools_agent_->SaveDevToolsAgentState(state);
 }

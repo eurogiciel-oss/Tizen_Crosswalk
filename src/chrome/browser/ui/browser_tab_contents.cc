@@ -15,7 +15,6 @@
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/infobars/infobar_service.h"
 #include "chrome/browser/managed_mode/managed_mode_navigation_observer.h"
-#include "chrome/browser/net/load_time_stats.h"
 #include "chrome/browser/net/net_error_tab_helper.h"
 #include "chrome/browser/net/predictor_tab_helper.h"
 #include "chrome/browser/network_time/navigation_time_helper.h"
@@ -23,8 +22,6 @@
 #include "chrome/browser/password_manager/password_manager.h"
 #include "chrome/browser/password_manager/password_manager_delegate_impl.h"
 #include "chrome/browser/plugins/plugin_observer.h"
-#include "chrome/browser/predictors/resource_prefetch_predictor_factory.h"
-#include "chrome/browser/predictors/resource_prefetch_predictor_tab_helper.h"
 #include "chrome/browser/prerender/prerender_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/safe_browsing_tab_observer.h"
@@ -39,6 +36,7 @@
 #include "chrome/browser/ui/bookmarks/bookmark_tab_helper.h"
 #include "chrome/browser/ui/find_bar/find_tab_helper.h"
 #include "chrome/browser/ui/hung_plugin_tab_helper.h"
+#include "chrome/browser/ui/passwords/manage_passwords_bubble_ui_controller.h"
 #include "chrome/browser/ui/pdf/pdf_tab_helper.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "chrome/browser/ui/sad_tab_helper.h"
@@ -46,6 +44,7 @@
 #include "chrome/browser/ui/search_engines/search_engine_tab_helper.h"
 #include "chrome/browser/ui/sync/tab_contents_synced_tab_delegate.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
+#include "chrome/browser/ui/website_settings/permission_bubble_manager.h"
 #include "chrome/browser/ui/zoom/zoom_controller.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/autofill/content/browser/autofill_driver_impl.h"
@@ -124,8 +123,6 @@ void BrowserTabContents::AttachTabHelpers(WebContents* web_contents) {
       g_browser_process->GetApplicationLocale(),
       AutofillManager::ENABLE_AUTOFILL_DOWNLOAD_MANAGER);
   BookmarkTabHelper::CreateForWebContents(web_contents);
-  chrome_browser_net::LoadTimeStatsTabHelper::CreateForWebContents(
-      web_contents);
   chrome_browser_net::NetErrorTabHelper::CreateForWebContents(web_contents);
   chrome_browser_net::PredictorTabHelper::CreateForWebContents(web_contents);
   WebContentsModalDialogManager::CreateForWebContents(web_contents);
@@ -139,6 +136,7 @@ void BrowserTabContents::AttachTabHelpers(WebContents* web_contents) {
   HistoryTabHelper::CreateForWebContents(web_contents);
   HungPluginTabHelper::CreateForWebContents(web_contents);
   InfoBarService::CreateForWebContents(web_contents);
+  PermissionBubbleManager::CreateForWebContents(web_contents);
   NavigationMetricsRecorder::CreateForWebContents(web_contents);
   NavigationTimeHelper::CreateForWebContents(web_contents);
   PasswordGenerationManager::CreateForWebContents(web_contents);
@@ -160,6 +158,7 @@ void BrowserTabContents::AttachTabHelpers(WebContents* web_contents) {
   TabSpecificContentSettings::CreateForWebContents(web_contents);
   ThumbnailTabHelper::CreateForWebContents(web_contents);
   TranslateTabHelper::CreateForWebContents(web_contents);
+  ManagePasswordsBubbleUIController::CreateForWebContents(web_contents);
   ZoomController::CreateForWebContents(web_contents);
 
 #if defined(ENABLE_CAPTIVE_PORTAL_DETECTION)
@@ -168,11 +167,6 @@ void BrowserTabContents::AttachTabHelpers(WebContents* web_contents) {
 
   if (profile->IsManaged()) {
     ManagedModeNavigationObserver::CreateForWebContents(web_contents);
-  }
-
-  if (predictors::ResourcePrefetchPredictorFactory::GetForProfile(profile)) {
-    predictors::ResourcePrefetchPredictorTabHelper::CreateForWebContents(
-        web_contents);
   }
 
 #if defined(ENABLE_PRINTING)

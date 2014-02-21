@@ -19,32 +19,30 @@
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_iterator.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/manifest_url_handler.h"
-#include "chrome/common/extensions/permissions/permissions_data.h"
 #include "chrome/common/net/url_fixer_upper.h"
 #include "chrome/common/url_constants.h"
 #include "content/public/browser/favicon_status.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_view.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/permissions/api_permission.h"
+#include "extensions/common/permissions/permissions_data.h"
 #include "url/gurl.h"
-
-namespace keys = extensions::tabs_constants;
-namespace tabs = extensions::api::tabs;
 
 using apps::ShellWindow;
 using content::NavigationEntry;
 using content::WebContents;
-using extensions::APIPermission;
-using extensions::Extension;
+
+namespace extensions {
 
 namespace {
 
-extensions::WindowController* GetShellWindowController(
-    const WebContents* contents) {
+namespace keys = tabs_constants;
+
+WindowController* GetShellWindowController(const WebContents* contents) {
   Profile* profile = Profile::FromBrowserContext(contents->GetBrowserContext());
   apps::ShellWindowRegistry* registry =
       apps::ShellWindowRegistry::Get(profile);
@@ -54,7 +52,7 @@ extensions::WindowController* GetShellWindowController(
       registry->GetShellWindowForRenderViewHost(contents->GetRenderViewHost());
   if (!shell_window)
     return NULL;
-  return extensions::WindowControllerList::GetInstance()->
+  return WindowControllerList::GetInstance()->
       FindWindowById(shell_window->session_id().id());
 }
 
@@ -85,19 +83,20 @@ int ExtensionTabUtil::GetWindowIdOfTab(const WebContents* web_contents) {
   return SessionID::IdForWindowContainingTab(web_contents);
 }
 
-DictionaryValue* ExtensionTabUtil::CreateTabValue(
+base::DictionaryValue* ExtensionTabUtil::CreateTabValue(
     const WebContents* contents,
     TabStripModel* tab_strip,
     int tab_index,
     const Extension* extension) {
   // If we have a matching ShellWindow with a controller, get the tab value
   // from its controller instead.
-  extensions::WindowController* controller = GetShellWindowController(contents);
+  WindowController* controller = GetShellWindowController(contents);
   if (controller &&
       (!extension || controller->IsVisibleToExtension(extension))) {
     return controller->CreateTabValue(extension, tab_index);
   }
-  DictionaryValue *result = CreateTabValue(contents, tab_strip, tab_index);
+  base::DictionaryValue *result =
+      CreateTabValue(contents, tab_strip, tab_index);
   ScrubTabValueForExtension(contents, extension, result);
   return result;
 }
@@ -117,20 +116,20 @@ base::ListValue* ExtensionTabUtil::CreateTabList(
   return tab_list;
 }
 
-DictionaryValue* ExtensionTabUtil::CreateTabValue(
+base::DictionaryValue* ExtensionTabUtil::CreateTabValue(
     const WebContents* contents,
     TabStripModel* tab_strip,
     int tab_index) {
   // If we have a matching ShellWindow with a controller, get the tab value
   // from its controller instead.
-  extensions::WindowController* controller = GetShellWindowController(contents);
+  WindowController* controller = GetShellWindowController(contents);
   if (controller)
     return controller->CreateTabValue(NULL, tab_index);
 
   if (!tab_strip)
     ExtensionTabUtil::GetTabStripModel(contents, &tab_strip, &tab_index);
 
-  DictionaryValue* result = new DictionaryValue();
+  base::DictionaryValue* result = new base::DictionaryValue();
   bool is_loading = contents->IsLoading();
   result->SetInteger(keys::kIdKey, GetTabId(contents));
   result->SetInteger(keys::kIndexKey, tab_index);
@@ -170,12 +169,13 @@ DictionaryValue* ExtensionTabUtil::CreateTabValue(
   return result;
 }
 
-void ExtensionTabUtil::ScrubTabValueForExtension(const WebContents* contents,
-                                                 const Extension* extension,
-                                                 DictionaryValue* tab_info) {
+void ExtensionTabUtil::ScrubTabValueForExtension(
+    const WebContents* contents,
+    const Extension* extension,
+    base::DictionaryValue* tab_info) {
   bool has_permission =
       extension &&
-      extensions::PermissionsData::HasAPIPermissionForTab(
+      PermissionsData::HasAPIPermissionForTab(
           extension, GetTabId(contents), APIPermission::kTab);
 
   if (!has_permission) {
@@ -186,7 +186,7 @@ void ExtensionTabUtil::ScrubTabValueForExtension(const WebContents* contents,
 }
 
 void ExtensionTabUtil::ScrubTabForExtension(const Extension* extension,
-                                            tabs::Tab* tab) {
+                                            api::tabs::Tab* tab) {
   bool has_permission = extension && extension->HasAPIPermission(
       APIPermission::kTab);
 
@@ -268,7 +268,7 @@ bool ExtensionTabUtil::GetTabById(int tab_id,
 }
 
 GURL ExtensionTabUtil::ResolvePossiblyRelativeURL(const std::string& url_string,
-    const extensions::Extension* extension) {
+                                                  const Extension* extension) {
   GURL url = GURL(url_string);
   if (!url.is_valid())
     url = extension->GetResourceURL(url_string);
@@ -326,7 +326,7 @@ void ExtensionTabUtil::ForEachTab(
 }
 
 // static
-extensions::WindowController* ExtensionTabUtil::GetWindowControllerOfTab(
+WindowController* ExtensionTabUtil::GetWindowControllerOfTab(
     const WebContents* web_contents) {
   Browser* browser = chrome::FindBrowserWithWebContents(web_contents);
   if (browser != NULL)
@@ -337,7 +337,7 @@ extensions::WindowController* ExtensionTabUtil::GetWindowControllerOfTab(
 
 void ExtensionTabUtil::OpenOptionsPage(const Extension* extension,
                                        Browser* browser) {
-  DCHECK(!extensions::ManifestURL::GetOptionsPage(extension).is_empty());
+  DCHECK(!ManifestURL::GetOptionsPage(extension).is_empty());
 
   // Force the options page to open in non-OTR window, because it won't be
   // able to save settings from OTR.
@@ -349,13 +349,16 @@ void ExtensionTabUtil::OpenOptionsPage(const Extension* extension,
     browser = displayer->browser();
   }
 
-  content::OpenURLParams params(
-      extensions::ManifestURL::GetOptionsPage(extension),
-      content::Referrer(), SINGLETON_TAB,
-      content::PAGE_TRANSITION_LINK, false);
+  content::OpenURLParams params(ManifestURL::GetOptionsPage(extension),
+                                content::Referrer(),
+                                SINGLETON_TAB,
+                                content::PAGE_TRANSITION_LINK,
+                                false);
   browser->OpenURL(params);
   browser->window()->Show();
   WebContents* web_contents =
       browser->tab_strip_model()->GetActiveWebContents();
   web_contents->GetDelegate()->ActivateContents(web_contents);
 }
+
+}  // namespace extensions

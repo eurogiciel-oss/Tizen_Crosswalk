@@ -29,7 +29,6 @@ Sommige functies zijn wellicht niet beschikbaar en wijzigingen in voorkeuren wor
 <translation id="3549345495227188780">Aan de slag met Chromium OS</translation>
 <translation id="4330297532943865716">Er is een conflicterende versie van Chromium of Chromium Frame gevonden op het systeem. Verwijder deze en probeer het opnieuw.</translation>
 <translation id="6953661834318318668">Chromium-werkbalk</translation>
-<translation id="2245147136185581459">Chromium-detector van captive portals</translation>
 <translation id="4285930937574705105">De installatie is mislukt wegens een onbekende fout. Als Chromium momenteel actief is, moet je Chromium sluiten en het opnieuw proberen.</translation>
 <translation id="1396446129537741364">Chromium probeert wachtwoorden weer te geven.</translation>
 <translation id="3555616473548901994">Verwijdering voltooid.</translation>
@@ -63,7 +62,6 @@ Sommige functies zijn wellicht niet beschikbaar en wijzigingen in voorkeuren wor
 <translation id="7771626876550251690">In dit geval komt het adres genoemd in het certificaat niet overeen met het adres van de website die je browser probeerde te openen. Een mogelijke oorzaak hiervan is dat je communicatie is onderschept door een aanvaller die een certificaat voor een andere website presenteert, wat ervoor zorgt dat de namen niet overeenkomen. Een andere mogelijke oorzaak is dat de server zo is ingesteld, dat deze voor meerdere websites hetzelfde certificaat gebruikt, waaronder voor de website die je probeert te bezoeken, ook al is dat certificaat niet geldig voor al die websites. Chromium weet zeker dat je &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; hebt bereikt, maar kan niet controleren of dat dezelfde site is als &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, die je wilde bereiken. Als je verdergaat, controleert Chromium niet of er nog meer namen niet kloppen.</translation>
 <translation id="4330585738697551178">Van deze module is bekend dat deze conflicteert met  Chromium.</translation>
 <translation id="3190315855212034486">Chromium is gecrasht. Nu opnieuw starten?</translation>
-<translation id="3590194807845837023">Profiel ontgrendelen en opnieuw starten</translation>
 <translation id="6714487516757221107">Er is geen geïnstalleerde versie van Chromium of Chromium Frame gevonden die kan worden bijgewerkt.</translation>
 <translation id="3197823471738295152">Het apparaat is bijgewerkt.</translation>
 <translation id="8551886023433311834">Bijna bijgewerkt! Start je apparaat opnieuw op om de update te voltooien.</translation>
@@ -156,6 +154,7 @@ Sommige functies zijn wellicht niet beschikbaar en wijzigingen in voorkeuren wor
 <translation id="6717134281241384636">Je profiel kan niet worden gebruikt, omdat dit is gemaakt in een recentere versie van Chromium.
 
 Sommige functies zijn mogelijk niet beschikbaar. Geef een andere profieldirectory op of gebruik een recentere versie van Chromium.</translation>
+<translation id="8907580949721785412">Chromium probeert wachtwoorden weer te geven. Geef uw Windows-wachtwoord op om dit toe te staan.</translation>
 <translation id="9013087743919948559">Toevoegen aan Chromium</translation>
 <translation id="6212496753309875659">Deze computer beschikt al over een recentere versie van Chromium. Als de software niet werkt, moet je Chromium verwijderen en het opnieuw proberen.</translation>
 <translation id="1298199220304005244">Hulp bij het gebruik van Chromium OS</translation>

@@ -10,6 +10,7 @@
 #include "base/command_line.h"
 #include "base/mac/bundle_locations.h"
 #include "base/mac/mac_util.h"
+#import "base/mac/sdk_forward_declarations.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/app/chrome_command_ids.h"  // IDC_*
@@ -21,6 +22,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_info_cache.h"
 #include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
@@ -34,7 +36,9 @@
 #import "chrome/browser/ui/cocoa/background_gradient_view.h"
 #import "chrome/browser/ui/cocoa/bookmarks/bookmark_bar_controller.h"
 #import "chrome/browser/ui/cocoa/bookmarks/bookmark_editor_controller.h"
+#import "chrome/browser/ui/cocoa/browser/avatar_base_controller.h"
 #import "chrome/browser/ui/cocoa/browser/avatar_button_controller.h"
+#import "chrome/browser/ui/cocoa/browser/avatar_icon_controller.h"
 #import "chrome/browser/ui/cocoa/browser_window_cocoa.h"
 #import "chrome/browser/ui/cocoa/browser_window_controller_private.h"
 #import "chrome/browser/ui/cocoa/browser_window_utils.h"
@@ -67,13 +71,13 @@
 #include "chrome/browser/ui/toolbar/encoding_menu_controller.h"
 #include "chrome/browser/ui/window_sizer/window_sizer.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/common/profile_management_switches.h"
 #include "chrome/common/url_constants.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_view.h"
-#include "content/public/common/content_switches.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
 #include "grit/locale_settings.h"
@@ -181,15 +185,6 @@ using web_modal::WebContentsModalDialogManager;
     MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_7
 
 enum {
-  NSWindowAnimationBehaviorDefault = 0,
-  NSWindowAnimationBehaviorNone = 2,
-  NSWindowAnimationBehaviorDocumentWindow = 3,
-  NSWindowAnimationBehaviorUtilityWindow = 4,
-  NSWindowAnimationBehaviorAlertPanel = 5
-};
-typedef NSInteger NSWindowAnimationBehavior;
-
-enum {
   NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7,
   NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
 };
@@ -200,7 +195,6 @@ enum {
 
 @interface NSWindow (LionSDKDeclarations)
 - (void)setRestorable:(BOOL)flag;
-- (void)setAnimationBehavior:(NSWindowAnimationBehavior)newAnimationBehavior;
 @end
 
 #endif  // MAC_OS_X_VERSION_10_7
@@ -243,7 +237,7 @@ enum {
     }
   }
 
-  string16 label = signin_ui_util::GetSigninMenuLabel(profile);
+  base::string16 label = signin_ui_util::GetSigninMenuLabel(profile);
   [signinMenuItem setTitle:l10n_util::FixUpWindowsStyleLabel(label)];
   [signinMenuItem setHidden:!showSigninMenuItem];
   [followingSeparator setHidden:!showSigninMenuItem];
@@ -267,17 +261,13 @@ enum {
     NSWindow* window = [self window];
     windowShim_.reset(new BrowserWindowCocoa(browser, self));
 
-    // Eagerly enable core animation if requested.
-    if ([self coreAnimationStatus] ==
-            browser_window_controller::kCoreAnimationEnabledAlways) {
-      [[[self window] contentView] setWantsLayer:YES];
-      [[self tabStripView] setWantsLayer:YES];
-    }
+    // Enable core animation if requested.
+    [[[self window] contentView] cr_setWantsLayer:YES withSquashing:NO];
 
     // Set different minimum sizes on tabbed windows vs non-tabbed, e.g. popups.
     // This has to happen before -enforceMinWindowSize: is called further down.
     NSSize minSize = [self isTabbedWindow] ?
-      NSMakeSize(320, 240) : NSMakeSize(100, 122);
+      NSMakeSize(400, 272) : NSMakeSize(100, 122);
     [[self window] setMinSize:minSize];
 
     // Create the bar visibility lock set; 10 is arbitrary, but should hopefully
@@ -532,7 +522,7 @@ enum {
   return browser_->profile();
 }
 
-- (AvatarButtonController*)avatarButtonController {
+- (AvatarBaseController*)avatarButtonController {
   return avatarButtonController_.get();
 }
 
@@ -1506,6 +1496,11 @@ enum {
   return AvatarMenu::ShouldShowAvatarMenu();
 }
 
+- (BOOL)shouldUseNewAvatarButton {
+  return switches::IsNewProfileManagement() &&
+      profiles::IsRegularOrGuestSession(browser_.get());
+}
+
 - (BOOL)isBookmarkBarVisible {
   return [bookmarkBarController_ isVisible];
 }
@@ -1595,18 +1590,18 @@ enum {
   // Update all the UI bits.
   windowShim_->UpdateTitleBar();
 
-  [devToolsController_ updateDevToolsForWebContents:contents
-                                        withProfile:browser_->profile()];
-
   // Update the bookmark bar.
-  // Must do it after devtools updates, otherwise bookmark bar might
-  // call resizeView -> layoutSubviews and cause unnecessary relayout.
   // TODO(viettrungluu): perhaps update to not terminate running animations (if
   // applicable)?
   windowShim_->BookmarkBarStateChanged(
       BookmarkBar::DONT_ANIMATE_STATE_CHANGE);
 
   [infoBarContainerController_ changeWebContents:contents];
+
+  // Must do this after bookmark and infobar updates to avoid
+  // unnecesary resize in contents.
+  [devToolsController_ updateDevToolsForWebContents:contents
+                                        withProfile:browser_->profile()];
 
   [self updateAllowOverlappingViews:[self inPresentationMode]];
 }
@@ -1719,12 +1714,18 @@ enum {
 // coordinate as the tab strip.
 - (void)installAvatar {
   // Install the image into the badge view. Hide it for now; positioning and
-  // sizing will be done by the layout code. The AvatarButton will choose which
-  // image to display based on the browser.
-  avatarButtonController_.reset(
+  // sizing will be done by the layout code. The AvatarIcon will choose which
+  // image to display based on the browser. The AvatarButton will display
+  // the browser profile's name unless the browser is incognito.
+  NSView* view;
+  if ([self shouldUseNewAvatarButton]) {
+    avatarButtonController_.reset(
       [[AvatarButtonController alloc] initWithBrowser:browser_.get()]);
-
-  NSView* view = [avatarButtonController_ view];
+  } else {
+    avatarButtonController_.reset(
+      [[AvatarIconController alloc] initWithBrowser:browser_.get()]);
+  }
+  view = [avatarButtonController_ view];
   [view setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
   [view setHidden:![self shouldShowAvatar]];
 

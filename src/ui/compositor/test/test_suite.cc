@@ -31,7 +31,7 @@ void CompositorTestSuite::Initialize() {
 #if defined(USE_X11)
   XInitThreads();
 #endif
-  CHECK(gfx::InitializeGLBindings(gfx::kGLImplementationOSMesaGL));
+  CHECK(gfx::InitializeStaticGLBindings(gfx::kGLImplementationOSMesaGL));
   base::TestSuite::Initialize();
 
   gfx::RegisterPathProvider();
@@ -40,7 +40,7 @@ void CompositorTestSuite::Initialize() {
   gfx::InitDeviceScaleFactor(1.0f);
 #endif
 
-  message_loop_.reset(new base::MessageLoop(base::MessageLoop::TYPE_UI));
+  message_loop_.reset(new base::MessageLoopForUI);
 }
 
 void CompositorTestSuite::Shutdown() {

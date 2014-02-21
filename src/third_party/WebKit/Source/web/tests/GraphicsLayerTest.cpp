@@ -24,9 +24,9 @@
 
 #include "config.h"
 
-#include "core/platform/graphics/GraphicsLayer.h"
+#include "platform/graphics/GraphicsLayer.h"
 
-#include "core/platform/ScrollableArea.h"
+#include "platform/scroll/ScrollableArea.h"
 #include "platform/transforms/Matrix3DTransformOperation.h"
 #include "platform/transforms/RotateTransformOperation.h"
 #include "platform/transforms/TranslateTransformOperation.h"
@@ -42,13 +42,13 @@
 #include "public/platform/WebUnitTestSupport.h"
 
 using namespace WebCore;
-using namespace WebKit;
+using namespace blink;
 
 namespace {
 
 class MockGraphicsLayerClient : public GraphicsLayerClient {
 public:
-    virtual void notifyAnimationStarted(const GraphicsLayer*, double time) OVERRIDE { }
+    virtual void notifyAnimationStarted(const GraphicsLayer*, double wallClockTime, double monotonicTime) OVERRIDE { }
     virtual void paintContents(const GraphicsLayer*, GraphicsContext&, GraphicsLayerPaintingPhase, const IntRect& inClip) OVERRIDE { }
     virtual String debugName(const GraphicsLayer*) OVERRIDE { return String(); }
 };
@@ -57,17 +57,25 @@ class GraphicsLayerForTesting : public GraphicsLayer {
 public:
     explicit GraphicsLayerForTesting(GraphicsLayerClient* client)
         : GraphicsLayer(client) { };
+
+    virtual blink::WebLayer* contentsLayer() const { return GraphicsLayer::contentsLayer(); }
 };
 
 class GraphicsLayerTest : public testing::Test {
 public:
     GraphicsLayerTest()
     {
+        m_clipLayer = adoptPtr(new GraphicsLayerForTesting(&m_client));
         m_graphicsLayer = adoptPtr(new GraphicsLayerForTesting(&m_client));
+        m_clipLayer->addChild(m_graphicsLayer.get());
+        m_graphicsLayer->platformLayer()->setScrollClipLayer(
+            m_clipLayer->platformLayer());
         m_platformLayer = m_graphicsLayer->platformLayer();
         m_layerTreeView = adoptPtr(Platform::current()->unitTestSupport()->createLayerTreeViewForTesting(WebUnitTestSupport::TestViewTypeUnitTest));
         ASSERT(m_layerTreeView);
-        m_layerTreeView->setRootLayer(*m_platformLayer);
+        m_layerTreeView->setRootLayer(*m_clipLayer->platformLayer());
+        m_layerTreeView->registerViewportLayers(
+            m_clipLayer->platformLayer(), m_graphicsLayer->platformLayer(), 0);
         m_layerTreeView->setViewportSize(WebSize(1, 1), WebSize(1, 1));
     }
 
@@ -80,6 +88,7 @@ public:
 protected:
     WebLayer* m_platformLayer;
     OwnPtr<GraphicsLayerForTesting> m_graphicsLayer;
+    OwnPtr<GraphicsLayerForTesting> m_clipLayer;
 
 private:
     OwnPtr<WebLayerTreeView> m_layerTreeView;

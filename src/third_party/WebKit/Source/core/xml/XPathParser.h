@@ -31,6 +31,13 @@
 #include "core/xml/XPathStep.h"
 
 namespace WebCore {
+namespace XPath {
+class Parser;
+}
+}
+int xpathyyparse(WebCore::XPath::Parser*);
+
+namespace WebCore {
 
 class ExceptionState;
 class XPathNSResolver;
@@ -62,7 +69,7 @@ public:
     ~Parser();
 
     XPathNSResolver* resolver() const { return m_resolver.get(); }
-    bool expandQName(const String& qName, String& localName, String& namespaceURI);
+    bool expandQName(const String& qName, AtomicString& localName, AtomicString& namespaceURI);
 
     Expression* parseStatement(const String& statement, PassRefPtr<XPathNSResolver>, ExceptionState&);
 

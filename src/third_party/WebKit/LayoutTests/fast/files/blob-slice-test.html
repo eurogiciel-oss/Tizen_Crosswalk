@@ -1,96 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
+<script src="../../resources/js-test.js"></script>
+<script src="resources/blob-slice-common.js"></script>
 <script>
-var blob;
-var testIndex = 0;
-var sliceParams = [
-    [2, 3],
-    [2, 12],
-    [2, 2],
-    [2, 1],
-    [2, -12],
-    [2, 2147483647],
-    [2, -2147483648],
-    [2, 9223372036854775000],
-    [2, -9223372036854775000],
-    [-2, -1],
-    [-2, -2],
-    [-2, -3],
-    [-2, -12],
-    [-2, 2147483647],
-    [-2, -2147483648],
-    [-2, 9223372036854775000],
-    [-2, -9223372036854775000],
-    [0],
-    [2],
-    [-2],
-    [12],
-    [-12],
-    [2147483647],
-    [-2147483648],
-    [9223372036854775000],
-    [-9223372036854775000],
-    [],
+description("Test Blob.slice().");
+
+var sliceTestCases = [
+    [2, 3, "2"],
+    [2, 12, "23456789"],
+    [2, 2, ""],
+    [2, 1, ""],
+    [2, -12, ""],
+    [2, 2147483647, "23456789"],
+    [2, -2147483648, ""],
+    [2, 9223372036854775000, "23456789"],
+    [2, -9223372036854775000, ""],
+    [-2, -1, "8"],
+    [-2, -2, ""],
+    [-2, -3, ""],
+    [-2, -12, ""],
+    [-2, 2147483647, "89"],
+    [-2, -2147483648, ""],
+    [-2, 9223372036854775000, "89"],
+    [-2, -9223372036854775000, ""],
+    [0, null, "0123456789"],
+    [2, null, "23456789"],
+    [-2, null, "89"],
+    [12, null, ""],
+    [-12, null, "0123456789"],
+    [2147483647, null, ""],
+    [-2147483648, null, "0123456789"],
+    [9223372036854775000, null, ""],
+    [-9223372036854775000, null, "0123456789"],
+    [null, null, "0123456789"],
 ];
-
-function log(message)
-{
-    document.getElementById('console').appendChild(document.createTextNode(message + "\n"));
-}
-
-function testSlicing(start, end)
-{
-    var subBlob;
-    var reader = new FileReader();
-    var message = "Slicing ";
-    if (start == undefined && end == undefined) {
-        message += "without parameters";
-        subBlob = blob.slice();
-    } else if (end == undefined) {
-        message += "from " + start;
-        subBlob = blob.slice(start);
-    } else {
-        message += "from " + start + " to " + end;
-        subBlob = blob.slice(start, end);
-    }
-    message += ": ";
-    reader.onload = function(event) {
-        log(message + event.target.result);
-        runNextTest();
-    };
-    reader.onerror = function(event) {
-        log(message + "error " + event.target.error.code);
-        runNextTest();
-    };
-    reader.readAsText(subBlob);
-}
-
-function runNextTest()
-{
-    if (testIndex >= sliceParams.length) {
-        if (window.testRunner)
-            testRunner.notifyDone();
-        return;
-    }
-
-    var start = sliceParams[testIndex][0];
-    var end = sliceParams[testIndex][1];
-    testIndex++;
-    testSlicing(start, end);
-}
 
 function runTests()
 {
     blob = new Blob(["0123456789"]);
+    file = new File(["0123456789"], "slice-test.txt");
 
     runNextTest();
 }
 
-if (window.testRunner) {
-    testRunner.dumpAsText();
-    testRunner.waitUntilDone();
-}
+window.jsTestIsAsync = true;
 </script>
 </head>
 <body onload="runTests()">

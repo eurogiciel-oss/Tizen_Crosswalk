@@ -27,39 +27,36 @@
 #include <math.h>
 #include "CSSPropertyNames.h"
 #include "CSSValueKeywords.h"
-#include "SVGNames.h"
 #include "core/css/CSSFontFaceSrcValue.h"
-#include "core/css/CSSParser.h"
 #include "core/css/CSSStyleSheet.h"
 #include "core/css/CSSValueList.h"
 #include "core/css/StylePropertySet.h"
 #include "core/css/StyleRule.h"
 #include "core/dom/Attribute.h"
 #include "core/dom/Document.h"
-#include "core/platform/graphics/Font.h"
 #include "core/svg/SVGDocumentExtensions.h"
 #include "core/svg/SVGFontElement.h"
 #include "core/svg/SVGFontFaceSrcElement.h"
 #include "core/svg/SVGGlyphElement.h"
+#include "platform/fonts/Font.h"
 
 namespace WebCore {
 
 using namespace SVGNames;
 
-inline SVGFontFaceElement::SVGFontFaceElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+inline SVGFontFaceElement::SVGFontFaceElement(Document& document)
+    : SVGElement(font_faceTag, document)
     , m_fontFaceRule(StyleRuleFontFace::create())
     , m_fontElement(0)
 {
-    ASSERT(hasTagName(font_faceTag));
     ScriptWrappable::init(this);
     RefPtr<MutableStylePropertySet> styleDeclaration = MutableStylePropertySet::create(HTMLStandardMode);
     m_fontFaceRule->setProperties(styleDeclaration.release());
 }
 
-PassRefPtr<SVGFontFaceElement> SVGFontFaceElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGFontFaceElement> SVGFontFaceElement::create(Document& document)
 {
-    return adoptRef(new SVGFontFaceElement(tagName, document));
+    return adoptRef(new SVGFontFaceElement(document));
 }
 
 static CSSPropertyID cssPropertyIdForFontFaceAttributeName(const QualifiedName& attrName)
@@ -276,14 +273,6 @@ void SVGFontFaceElement::rebuildFontFace()
         return;
     }
 
-    // we currently ignore all but the first src element, alternatively we could concat them
-    SVGFontFaceSrcElement* srcElement = 0;
-
-    for (Node* child = firstChild(); child && !srcElement; child = child->nextSibling()) {
-        if (child->hasTagName(font_face_srcTag))
-            srcElement = static_cast<SVGFontFaceSrcElement*>(child);
-    }
-
     bool describesParentFont = parentNode()->hasTagName(SVGNames::fontTag);
     RefPtr<CSSValueList> list;
 
@@ -294,8 +283,13 @@ void SVGFontFaceElement::rebuildFontFace()
         list->append(CSSFontFaceSrcValue::createLocal(fontFamily()));
     } else {
         m_fontElement = 0;
-        if (srcElement)
-            list = srcElement->srcValue();
+        // we currently ignore all but the last src element, alternatively we could concat them
+        for (Node* child = lastChild(); child && !list; child = child->previousSibling()) {
+            if (child->hasTagName(font_face_srcTag)) {
+                list = toSVGFontFaceSrcElement(child)->srcValue();
+                break;
+            }
+        }
     }
 
     if (!list || !list->length())

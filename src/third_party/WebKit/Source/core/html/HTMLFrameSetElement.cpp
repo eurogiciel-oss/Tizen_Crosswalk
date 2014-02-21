@@ -32,7 +32,6 @@
 #include "core/events/MouseEvent.h"
 #include "core/events/ThreadLocalEventNames.h"
 #include "core/html/HTMLCollection.h"
-#include "core/html/HTMLDimension.h"
 #include "core/html/HTMLFrameElement.h"
 #include "core/loader/FrameLoaderClient.h"
 #include "core/frame/Frame.h"
@@ -42,8 +41,8 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-HTMLFrameSetElement::HTMLFrameSetElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+HTMLFrameSetElement::HTMLFrameSetElement(Document& document)
+    : HTMLElement(framesetTag, document)
     , m_border(6)
     , m_borderSet(false)
     , m_borderColorSet(false)
@@ -51,14 +50,13 @@ HTMLFrameSetElement::HTMLFrameSetElement(const QualifiedName& tagName, Document&
     , m_frameborderSet(false)
     , m_noresize(false)
 {
-    ASSERT(hasTagName(framesetTag));
     ScriptWrappable::init(this);
     setHasCustomStyleCallbacks();
 }
 
-PassRefPtr<HTMLFrameSetElement> HTMLFrameSetElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<HTMLFrameSetElement> HTMLFrameSetElement::create(Document& document)
 {
-    return adoptRef(new HTMLFrameSetElement(tagName, document));
+    return adoptRef(new HTMLFrameSetElement(document));
 }
 
 bool HTMLFrameSetElement::isPresentationAttribute(const QualifiedName& name) const
@@ -130,10 +128,8 @@ void HTMLFrameSetElement::parseAttribute(const QualifiedName& name, const Atomic
         document().setWindowAttributeEventListener(EventTypeNames::focusin, createAttributeEventListener(document().frame(), name, value));
     else if (name == onfocusoutAttr)
         document().setWindowAttributeEventListener(EventTypeNames::focusout, createAttributeEventListener(document().frame(), name, value));
-#if ENABLE(ORIENTATION_EVENTS)
-    else if (name == onorientationchangeAttr)
+    else if (RuntimeEnabledFeatures::orientationEventEnabled() && name == onorientationchangeAttr)
         document().setWindowAttributeEventListener(EventTypeNames::orientationchange, createAttributeEventListener(document().frame(), name, value));
-#endif
     else if (name == onhashchangeAttr)
         document().setWindowAttributeEventListener(EventTypeNames::hashchange, createAttributeEventListener(document().frame(), name, value));
     else if (name == onmessageAttr)

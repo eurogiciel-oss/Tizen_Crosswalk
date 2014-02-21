@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body>
 <p id="description"></p>
@@ -25,6 +25,9 @@ var elementsToSuccess = [
     document.createElement('a'),
     document.createElement('section'),
     document.createElement('input'),
+    document.createElement('applet'),
+    document.createElement('embed'),
+    document.createElement('object'),
 ];
 
 // See crbug.com/234020 .
@@ -39,8 +42,6 @@ var elementsToFail = [
     document.createElement('canvas'),
     document.createElement('meter'),
     document.createElement('progress'),
-    document.createElement('object'),
-    document.createElement('embed'),
     document.createElement('keygen'),
     document.createElement('video'),
     document.createElement('audio'),

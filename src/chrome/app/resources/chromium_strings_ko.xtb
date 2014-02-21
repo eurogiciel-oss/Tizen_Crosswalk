@@ -29,7 +29,6 @@
 <translation id="3549345495227188780">Chromium OS 시작하기</translation>
 <translation id="4330297532943865716">Chromium 또는 Chromium 프레임을 시스템에 설치하던 중 이전 설치와 충돌이 발생했습니다. 제거한 다음 다시 시도해 보세요</translation>
 <translation id="6953661834318318668">Chromium 툴바</translation>
-<translation id="2245147136185581459">Chromium 웹포털 인증 감지기</translation>
 <translation id="4285930937574705105">확인되지 않은 오류로 설치에 실패했습니다. Chromium이 실행 중인 경우 종료한 후 다시 실행하세요.</translation>
 <translation id="1396446129537741364">Chromium이 비밀번호를 표시하려고 합니다.</translation>
 <translation id="3555616473548901994">제거를 완료했습니다.</translation>
@@ -62,7 +61,6 @@
 <translation id="7771626876550251690">이러한 경우 인증서에 표시된 주소는 브라우저가 이동하려고 하는 웹사이트 주소와 일치하지 않습니다. 이것은 누군가가 다른 웹사이트의 인증서로 사용자의 서버 통신을 가로채고 있기 때문일 수 있습니다. 또는 인증서가 모든 웹사이트에 유효하지 않음에도 서버가 여러 웹사이트에 동일한 인증서를 사용하도록 설정되어 있기 때문일 수도 있습니다. Chromium을 사용하면 &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;에 접속할 수 있지만 이것이 사용자가 의도한 &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;와(과) 동일한 사이트인지는 확인할 수 없습니다. 이후에도 Chromium은 이름 불일치를 확인하지 않습니다.</translation>
 <translation id="4330585738697551178">이 모듈은 Chromium과 충돌하는 것으로 알려져 있습니다.</translation>
 <translation id="3190315855212034486">Chromium이 다운되었습니다. 다시 시작하시겠습니까?</translation>
-<translation id="3590194807845837023">프로필 잠금 해제 및 다시 시작</translation>
 <translation id="6714487516757221107">업데이트할 Chromium 또는 Chromium 프레임이 없습니다.</translation>
 <translation id="3197823471738295152">기기가 최신 버전입니다.</translation>
 <translation id="8551886023433311834">업데이트가 거의 완료되었습니다. 업데이트를 완료하려면 기기를 다시 시작하세요.</translation>
@@ -153,6 +151,7 @@
 <translation id="6717134281241384636">Chromium의 최신 버전을 사용하기 때문에 프로필을 사용할 수 없습니다.
 
 일부 기능을 사용할 수 없습니다. 다른 프로필 디렉토리를 지정하거나 Chromium의 새로운 버전을 사용하시기 바랍니다.</translation>
+<translation id="8907580949721785412">Chromium에서 비밀번호를 표시하려고 합니다. 허용하려면 Windows 비밀번호를 입력하세요.</translation>
 <translation id="9013087743919948559">Chromium에 추가</translation>
 <translation id="6212496753309875659">컴퓨터에 이미 최신 버전의 Chromium이 있습니다. 소프트웨어가 작동하지 않으면 Chromium의 설치를 제거한 뒤 다시 시도하세요.</translation>
 <translation id="1298199220304005244">Chromium OS 사용에 대한 도움말</translation>

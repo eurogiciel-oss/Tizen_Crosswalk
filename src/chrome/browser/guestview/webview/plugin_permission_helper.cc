@@ -51,7 +51,7 @@ bool PluginPermissionHelper::OnMessageReceived(const IPC::Message& message) {
 }
 
 void PluginPermissionHelper::OnBlockedUnauthorizedPlugin(
-    const string16& name,
+    const base::string16& name,
     const std::string& identifier) {
   const char kPluginName[] = "name";
   const char kPluginIdentifier[] = "identifier";
@@ -71,7 +71,7 @@ void PluginPermissionHelper::OnBlockedUnauthorizedPlugin(
                  identifier),
       true /* allowed_by_default */);
   content::RecordAction(
-      content::UserMetricsAction("WebView.Guest.PluginLoadRequest"));
+      base::UserMetricsAction("WebView.Guest.PluginLoadRequest"));
 }
 
 void PluginPermissionHelper::OnCouldNotLoadPlugin(
@@ -102,14 +102,7 @@ void PluginPermissionHelper::OnPermissionResponse(const std::string& identifier,
                                                   bool allow,
                                                   const std::string& input) {
   if (allow) {
-    RenderViewHost* host = web_contents()->GetRenderViewHost();
     ChromePluginServiceFilter::GetInstance()->AuthorizeAllPlugins(
-        host->GetProcess()->GetID());
-    host->Send(new ChromeViewMsg_LoadBlockedPlugins(
-        host->GetRoutingID(), identifier));
+        web_contents(), true, identifier);
   }
-
-  content::RecordAction(
-      allow ? content::UserMetricsAction("WebView.Guest.PluginLoadAllowed") :
-              content::UserMetricsAction("WebView.Guest.PluginLoadDenied"));
 }

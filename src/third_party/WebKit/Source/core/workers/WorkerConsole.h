@@ -30,7 +30,6 @@
 #ifndef WorkerConsole_h
 #define WorkerConsole_h
 
-#include "bindings/v8/ScriptState.h"
 #include "bindings/v8/ScriptWrappable.h"
 #include "core/inspector/ConsoleAPITypes.h"
 #include "core/frame/ConsoleBase.h"
@@ -44,7 +43,7 @@ namespace WebCore {
 
 class ScriptArguments;
 
-class WorkerConsole : public RefCounted<WorkerConsole>, public ConsoleBase, public ScriptWrappable {
+class WorkerConsole FINAL : public RefCounted<WorkerConsole>, public ConsoleBase, public ScriptWrappable {
 public:
     using RefCounted<WorkerConsole>::ref;
     using RefCounted<WorkerConsole>::deref;
@@ -53,15 +52,14 @@ public:
     virtual ~WorkerConsole();
 
 protected:
-    virtual ExecutionContext* context();
+    virtual ExecutionContext* context() OVERRIDE;
     virtual void reportMessageToClient(MessageLevel, const String& message, PassRefPtr<ScriptCallStack>) OVERRIDE;
-    virtual bool profilerEnabled();
 
 private:
     explicit WorkerConsole(WorkerGlobalScope*);
 
-    virtual void refConsole() { ref(); }
-    virtual void derefConsole() { deref(); }
+    virtual void refConsole() OVERRIDE { ref(); }
+    virtual void derefConsole() OVERRIDE { deref(); }
 
     WorkerGlobalScope* m_scope;
 };

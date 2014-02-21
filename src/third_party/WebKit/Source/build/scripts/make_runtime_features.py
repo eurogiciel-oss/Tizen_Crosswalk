@@ -27,10 +27,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os.path
 import sys
 
-from in_file import InFile
 import in_generator
 from name_utilities import lower_first
 import template_expander
@@ -50,8 +48,8 @@ class RuntimeFeatureWriter(in_generator.Writer):
         'status': None,
     }
 
-    def __init__(self, in_file_path, enabled_conditions):
-        super(RuntimeFeatureWriter, self).__init__(in_file_path, enabled_conditions)
+    def __init__(self, in_file_path):
+        super(RuntimeFeatureWriter, self).__init__(in_file_path)
         self._outputs = {(self.class_name + ".h"): self.generate_header,
                          (self.class_name + ".cpp"): self.generate_implementation,
                         }

@@ -57,8 +57,8 @@ void WriteNode::SetTitle(const std::wstring& title) {
   if (type != BOOKMARKS && needs_encryption) {
     new_legal_title = kEncryptedString;
   } else {
-    SyncAPINameToServerName(WideToUTF8(title), &new_legal_title);
-    TruncateUTF8ToByteSize(new_legal_title, 255, &new_legal_title);
+    SyncAPINameToServerName(base::WideToUTF8(title), &new_legal_title);
+    base::TruncateUTF8ToByteSize(new_legal_title, 255, &new_legal_title);
   }
 
   std::string current_legal_title;

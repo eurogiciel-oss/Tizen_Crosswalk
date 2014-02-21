@@ -20,11 +20,13 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "base/version.h"
+#include "chrome/browser/accessibility/accessibility_events.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
 #include "chrome/browser/chromeos/boot_times_loader.h"
 #include "chrome/browser/chromeos/customization_document.h"
+#include "chrome/browser/chromeos/first_run/first_run.h"
 #include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_settings.h"
 #include "chrome/browser/chromeos/login/helper.h"
 #include "chrome/browser/chromeos/login/login_display_host.h"
@@ -36,7 +38,6 @@
 #include "chrome/browser/chromeos/profiles/profile_helper.h"
 #include "chrome/browser/chromeos/settings/cros_settings.h"
 #include "chrome/browser/google/google_util.h"
-#include "chrome/browser/policy/policy_service.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/chrome_version_info.h"
@@ -47,6 +48,7 @@
 #include "chromeos/dbus/power_manager_client.h"
 #include "chromeos/dbus/session_manager_client.h"
 #include "chromeos/settings/cros_settings_names.h"
+#include "components/policy/core/common/policy_service.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
@@ -59,6 +61,7 @@
 #include "net/http/http_transaction_factory.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
+#include "ui/base/accessibility/accessibility_types.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/views/widget/widget.h"
 
@@ -255,7 +258,7 @@ void ExistingUserController::Observe(
     // just after the UI is closed but before the new credentials were stored
     // in the profile. Therefore we have to give it some time to make sure it
     // has been updated before we copy it.
-    LOG(INFO) << "Authentication was entered manually, possibly for proxyauth.";
+    VLOG(1) << "Authentication was entered manually, possibly for proxyauth.";
     scoped_refptr<net::URLRequestContextGetter> browser_process_context_getter =
         g_browser_process->system_request_context();
     Profile* signin_profile = ProfileHelper::GetSigninProfile();
@@ -300,7 +303,7 @@ void ExistingUserController::CancelPasswordChangedFlow() {
 }
 
 void ExistingUserController::CreateAccount() {
-  content::RecordAction(content::UserMetricsAction("Login.CreateAccount"));
+  content::RecordAction(base::UserMetricsAction("Login.CreateAccount"));
   guest_mode_url_ =
       google_util::AppendGoogleLocaleParam(GURL(kCreateAccountURL));
   LoginAsGuest();
@@ -362,7 +365,7 @@ void ExistingUserController::CompleteLoginInternal(
   }
 }
 
-string16 ExistingUserController::GetConnectedNetworkName() {
+base::string16 ExistingUserController::GetConnectedNetworkName() {
   return network_state_helper_->GetCurrentNetworkName();
 }
 
@@ -424,7 +427,7 @@ void ExistingUserController::PerformLogin(
   } else {
     login_performer_->PerformLogin(user_context, auth_mode);
   }
-  AccessibilityManager::Get()->MaybeSpeak(
+  SendAccessibilityAlert(
       l10n_util::GetStringUTF8(IDS_CHROMEOS_ACC_LOGIN_SIGNING_IN));
 }
 
@@ -442,7 +445,7 @@ void ExistingUserController::LoginAsRetailModeUser() {
   login_performer_.reset(new LoginPerformer(this));
   is_login_in_progress_ = true;
   login_performer_->LoginRetailMode();
-  AccessibilityManager::Get()->MaybeSpeak(
+  SendAccessibilityAlert(
       l10n_util::GetStringUTF8(IDS_CHROMEOS_ACC_LOGIN_SIGNIN_DEMOUSER));
 }
 
@@ -495,7 +498,7 @@ void ExistingUserController::LoginAsGuest() {
   login_performer_.reset(new LoginPerformer(this));
   is_login_in_progress_ = true;
   login_performer_->LoginOffTheRecord();
-  AccessibilityManager::Get()->MaybeSpeak(
+  SendAccessibilityAlert(
       l10n_util::GetStringUTF8(IDS_CHROMEOS_ACC_LOGIN_SIGNIN_OFFRECORD));
 }
 
@@ -551,7 +554,7 @@ void ExistingUserController::LoginAsPublicAccount(
   login_performer_.reset(new LoginPerformer(this));
   is_login_in_progress_ = true;
   login_performer_->LoginAsPublicAccount(username);
-  AccessibilityManager::Get()->MaybeSpeak(
+  SendAccessibilityAlert(
       l10n_util::GetStringUTF8(IDS_CHROMEOS_ACC_LOGIN_SIGNIN_PUBLIC_ACCOUNT));
 }
 
@@ -600,7 +603,7 @@ void ExistingUserController::SetDisplayEmail(const std::string& email) {
 }
 
 void ExistingUserController::ShowWrongHWIDScreen() {
-  scoped_ptr<DictionaryValue> params;
+  scoped_ptr<base::DictionaryValue> params;
   host_->StartWizard(WizardController::kWrongHWIDScreenName, params.Pass());
   login_display_->OnFadeOut();
 }
@@ -639,9 +642,9 @@ void ExistingUserController::OnEnrollmentOwnershipCheckCompleted(
 
 void ExistingUserController::ShowEnrollmentScreen(bool is_auto_enrollment,
                                                   const std::string& user) {
-  scoped_ptr<DictionaryValue> params;
+  scoped_ptr<base::DictionaryValue> params;
   if (is_auto_enrollment) {
-    params.reset(new DictionaryValue());
+    params.reset(new base::DictionaryValue());
     params->SetBoolean("is_auto_enrollment", true);
     params->SetString("user", user);
   }
@@ -651,19 +654,19 @@ void ExistingUserController::ShowEnrollmentScreen(bool is_auto_enrollment,
 }
 
 void ExistingUserController::ShowResetScreen() {
-  scoped_ptr<DictionaryValue> params;
+  scoped_ptr<base::DictionaryValue> params;
   host_->StartWizard(WizardController::kResetScreenName, params.Pass());
   login_display_->OnFadeOut();
 }
 
 void ExistingUserController::ShowKioskEnableScreen() {
-  scoped_ptr<DictionaryValue> params;
+  scoped_ptr<base::DictionaryValue> params;
   host_->StartWizard(WizardController::kKioskEnableScreenName, params.Pass());
   login_display_->OnFadeOut();
 }
 
 void ExistingUserController::ShowKioskAutolaunchScreen() {
-  scoped_ptr<DictionaryValue> params;
+  scoped_ptr<base::DictionaryValue> params;
   host_->StartWizard(WizardController::kKioskAutolaunchScreenName,
                      params.Pass());
   login_display_->OnFadeOut();
@@ -926,7 +929,7 @@ void ExistingUserController::DeviceSettingsChanged() {
 }
 
 void ExistingUserController::ActivateWizard(const std::string& screen_name) {
-  scoped_ptr<DictionaryValue> params;
+  scoped_ptr<base::DictionaryValue> params;
   host_->StartWizard(screen_name, params.Pass());
 }
 
@@ -1051,9 +1054,11 @@ void ExistingUserController::InitializeStartUrls() const {
       UserManager::Get()->IsCurrentUserNew();
 
   if (can_show_getstarted_guide && should_show_getstarted_guide) {
-    // Don't open default Chrome window if we're going to launch the GS app.
-    // Because we dont' want the GS app to be hidden in the background.
+    // Don't open default Chrome window if we're going to launch the first-run
+    // app. Because we dont' want the first-run app to be hidden in the
+    // background.
     CommandLine::ForCurrentProcess()->AppendSwitch(::switches::kSilentLaunch);
+    first_run::MaybeLaunchDialogAfterSessionStart();
   } else {
     for (size_t i = 0; i < start_urls.size(); ++i) {
       CommandLine::ForCurrentProcess()->AppendArg(start_urls[i]);
@@ -1100,6 +1105,13 @@ void ExistingUserController::ShowGaiaPasswordChanged(
 
   login_display_->SetUIEnabled(true);
   login_display_->ShowGaiaPasswordChanged(username);
+}
+
+void ExistingUserController::SendAccessibilityAlert(
+    const std::string& alert_text) {
+  AccessibilityAlertInfo event(ProfileHelper::GetSigninProfile(), alert_text);
+  SendControlAccessibilityNotification(
+      ui::AccessibilityTypes::EVENT_VALUE_CHANGED, &event);
 }
 
 }  // namespace chromeos

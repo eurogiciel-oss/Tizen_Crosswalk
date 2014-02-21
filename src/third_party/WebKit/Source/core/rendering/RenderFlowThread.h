@@ -35,7 +35,6 @@
 #include "wtf/HashCountedSet.h"
 #include "wtf/ListHashSet.h"
 #include "wtf/PassRefPtr.h"
-#include "wtf/UnusedParam.h"
 
 namespace WebCore {
 
@@ -64,9 +63,9 @@ public:
 
     // Always create a RenderLayer for the RenderFlowThread so that we
     // can easily avoid drawing the children directly.
-    virtual bool requiresLayer() const OVERRIDE FINAL { return true; }
+    virtual LayerType layerTypeRequired() const OVERRIDE FINAL { return NormalLayer; }
 
-    virtual bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) OVERRIDE;
+    virtual bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) OVERRIDE FINAL;
 
     void removeFlowChildInfo(RenderObject*);
 #ifndef NDEBUG
@@ -95,7 +94,7 @@ public:
 
     static PassRefPtr<RenderStyle> createFlowThreadStyle(RenderStyle* parentStyle);
 
-    void styleDidChange(StyleDifference, const RenderStyle* oldStyle);
+    virtual void styleDidChange(StyleDifference, const RenderStyle* oldStyle) OVERRIDE;
 
     void repaintRectangleInRegions(const LayoutRect&) const;
 
@@ -114,6 +113,8 @@ public:
         DisallowRegionAutoGeneration,
     };
     RenderRegion* regionAtBlockOffset(LayoutUnit, bool extendLastRegion = false, RegionAutoGenerationPolicy = AllowRegionAutoGeneration);
+
+    RenderRegion* regionFromAbsolutePointAndBox(IntPoint, const RenderBox* flowedBox);
 
     bool regionsHaveUniformLogicalWidth() const { return m_regionsHaveUniformLogicalWidth; }
     bool regionsHaveUniformLogicalHeight() const { return m_regionsHaveUniformLogicalHeight; }
@@ -171,6 +172,9 @@ public:
     void popFlowThreadLayoutState();
     LayoutUnit offsetFromLogicalTopOfFirstRegion(const RenderBlock*) const;
 
+    // Used to estimate the maximum height of the flow thread.
+    static LayoutUnit maxLogicalHeight() { return LayoutUnit::max() / 2; }
+
 protected:
     virtual const char* renderName() const = 0;
 
@@ -178,7 +182,7 @@ protected:
     // no regions have been generated yet.
     virtual LayoutUnit initialLogicalWidth() const { return 0; };
 
-    virtual void mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState&, MapCoordinatesFlags = ApplyContainerFlip, bool* wasFixed = 0) const OVERRIDE;
+    virtual void mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState&, MapCoordinatesFlags = ApplyContainerFlip, bool* wasFixed = 0) const OVERRIDE FINAL;
 
     void updateRegionsFlowThreadPortionRect(const RenderRegion* = 0);
     bool shouldRepaint(const LayoutRect&) const;
@@ -287,7 +291,7 @@ protected:
     bool m_needsTwoPhasesLayout : 1;
 
 private:
-    virtual bool supportsPartialLayout() const OVERRIDE { return false; }
+    virtual bool supportsPartialLayout() const OVERRIDE FINAL { return false; }
 
 };
 

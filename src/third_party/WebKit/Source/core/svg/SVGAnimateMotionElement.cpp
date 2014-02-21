@@ -40,12 +40,11 @@ namespace WebCore {
 
 using namespace SVGNames;
 
-inline SVGAnimateMotionElement::SVGAnimateMotionElement(const QualifiedName& tagName, Document& document)
-    : SVGAnimationElement(tagName, document)
+inline SVGAnimateMotionElement::SVGAnimateMotionElement(Document& document)
+    : SVGAnimationElement(animateMotionTag, document)
     , m_hasToPointAtEndOfDuration(false)
 {
     setCalcMode(CalcModePaced);
-    ASSERT(hasTagName(animateMotionTag));
     ScriptWrappable::init(this);
 }
 
@@ -55,9 +54,9 @@ SVGAnimateMotionElement::~SVGAnimateMotionElement()
         clearAnimatedType(targetElement());
 }
 
-PassRefPtr<SVGAnimateMotionElement> SVGAnimateMotionElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGAnimateMotionElement> SVGAnimateMotionElement::create(Document& document)
 {
-    return adoptRef(new SVGAnimateMotionElement(tagName, document));
+    return adoptRef(new SVGAnimateMotionElement(document));
 }
 
 bool SVGAnimateMotionElement::hasValidAttributeType()
@@ -278,11 +277,10 @@ void SVGAnimateMotionElement::calculateAnimatedValue(float percentage, unsigned 
 
     ASSERT(!m_animationPath.isEmpty());
 
-    bool ok = false;
     float positionOnPath = m_animationPath.length() * percentage;
     FloatPoint position;
     float angle;
-    ok = m_animationPath.pointAndNormalAtLength(positionOnPath, position, angle);
+    bool ok = m_animationPath.pointAndNormalAtLength(positionOnPath, position, angle);
     if (!ok)
         return;
 

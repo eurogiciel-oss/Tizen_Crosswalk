@@ -86,7 +86,8 @@ bool ChooseFallbackFont(HDC hdc,
     log_font.lfFaceName[0] = 0;
     EnumEnhMetaFile(0, meta_file, MetaFileEnumProc, &log_font, NULL);
     if (log_font.lfFaceName[0]) {
-      *result = Font(UTF16ToUTF8(log_font.lfFaceName), font.GetFontSize());
+      *result = Font(base::UTF16ToUTF8(log_font.lfFaceName),
+                     font.GetFontSize());
       found_fallback = true;
     }
   }
@@ -121,7 +122,7 @@ void DeriveFontIfNecessary(int font_size,
 }
 
 // Returns true if |c| is a Unicode BiDi control character.
-bool IsUnicodeBidiControlCharacter(char16 c) {
+bool IsUnicodeBidiControlCharacter(base::char16 c) {
   return c == base::i18n::kRightToLeftMark ||
          c == base::i18n::kLeftToRightMark ||
          c == base::i18n::kLeftToRightEmbeddingMark ||
@@ -159,13 +160,15 @@ Range CharRangeToGlyphRange(const internal::TextRun& run,
 // Starting from |start_char|, finds a suitable line break position at or before
 // |available_width| using word break info from |breaks|. If |empty_line| is
 // true, this function will not roll back to |start_char| and |*next_char| will
-// be greater than |start_char| (to avoid constructing empty lines).
+// be greater than |start_char| (to avoid constructing empty lines). Returns
+// whether to skip the line before |*next_char|.
 // TODO(ckocagil): Do not break ligatures and diacritics.
 //                 TextRun::logical_clusters might help.
 // TODO(ckocagil): We might have to reshape after breaking at ligatures.
 //                 See whether resolving the TODO above resolves this too.
 // TODO(ckocagil): Do not reserve width for whitespace at the end of lines.
-void BreakRunAtWidth(const internal::TextRun& run,
+bool BreakRunAtWidth(const wchar_t* text,
+                     const internal::TextRun& run,
                      const BreakList<size_t>& breaks,
                      size_t start_char,
                      int available_width,
@@ -180,6 +183,11 @@ void BreakRunAtWidth(const internal::TextRun& run,
   *width = 0;
 
   for (size_t i = start_char; i < run.range.end(); ++i) {
+    if (U16_IS_SINGLE(text[i]) && text[i] == L'\n') {
+      *next_char = i + 1;
+      return true;
+    }
+
     // |word| holds the word boundary at or before |i|, and |next_word| holds
     // the word boundary right after |i|. Advance both |word| and |next_word|
     // when |i| reaches |next_word|.
@@ -198,20 +206,24 @@ void BreakRunAtWidth(const internal::TextRun& run,
 
     if (*width > available_width) {
       if (!empty_line || word_width < *width) {
+        // Roll back one word.
         *width -= word_width;
         *next_char = std::max(word->first, start_char);
       } else if (char_width < *width) {
+        // Roll back one character.
         *width -= char_width;
         *next_char = i;
       } else {
+        // Continue from the next character.
         *next_char = i + 1;
       }
 
-      return;
+      return true;
     }
   }
 
   *next_char = run.range.end();
+  return false;
 }
 
 // For segments in the same run, checks the continuity and order of |x_range|
@@ -308,12 +320,14 @@ class LineBreaker {
               int min_baseline,
               int min_height,
               bool multiline,
+              const wchar_t* text,
               const BreakList<size_t>* words,
               const ScopedVector<TextRun>& runs)
       : max_width_(max_width),
         min_baseline_(min_baseline),
         min_height_(min_height),
         multiline_(multiline),
+        text_(text),
         words_(words),
         runs_(runs),
         text_x_(0),
@@ -326,7 +340,16 @@ class LineBreaker {
   // Breaks the run at given |run_index| into Line structs.
   void AddRun(int run_index) {
     const TextRun* run = runs_[run_index];
-    if (multiline_ && line_x_ + run->width > max_width_)
+    bool run_fits = !multiline_;
+    if (multiline_ && line_x_ + run->width <= max_width_) {
+      DCHECK(!run->range.is_empty());
+      const wchar_t first_char = text_[run->range.start()];
+      // Uniscribe always puts newline characters in their own runs.
+      if (!U16_IS_SINGLE(first_char) || first_char != L'\n')
+        run_fits = true;
+    }
+
+    if (!run_fits)
       BreakRun(run_index);
     else
       AddSegment(run_index, run->range, run->width);
@@ -362,10 +385,10 @@ class LineBreaker {
     // Break the run until it fits the current line.
     while (next_char < run->range.end()) {
       const size_t current_char = next_char;
-      BreakRunAtWidth(*run, *words_, current_char, max_width_ - line_x_,
-                      line_x_ == 0, &width, &next_char);
+      const bool skip_line = BreakRunAtWidth(text_, *run, *words_, current_char,
+          max_width_ - line_x_, line_x_ == 0, &width, &next_char);
       AddSegment(run_index, Range(current_char, next_char), width);
-      if (next_char < run->range.end())
+      if (skip_line)
         AdvanceLine();
     }
   }
@@ -449,6 +472,7 @@ class LineBreaker {
   const int min_baseline_;
   const int min_height_;
   const bool multiline_;
+  const wchar_t* text_;
   const BreakList<size_t>* const words_;
   const ScopedVector<TextRun>& runs_;
 
@@ -747,6 +771,7 @@ void RenderTextWin::EnsureLayout() {
     internal::LineBreaker line_breaker(display_rect().width() - 1,
                                        font_list().GetBaseline(),
                                        font_list().GetHeight(), multiline(),
+                                       GetLayoutText().c_str(),
                                        multiline() ? &GetLineBreaks() : NULL,
                                        runs_);
     for (size_t i = 0; i < runs_.size(); ++i)
@@ -902,7 +927,7 @@ void RenderTextWin::ItemizeLogicalText() {
   for (size_t run_break = 0; run_break < layout_text_length;) {
     internal::TextRun* run = new internal::TextRun();
     run->range.set_start(run_break);
-    run->font = GetPrimaryFont();
+    run->font = font_list().GetPrimaryFont();
     run->font_style = (style.style(BOLD) ? Font::BOLD : 0) |
                       (style.style(ITALIC) ? Font::ITALIC : 0);
     DeriveFontIfNecessary(run->font.GetFontSize(), run->font.GetHeight(),

@@ -16,6 +16,10 @@ from telemetry.core import util
 from telemetry.core import wpr_modes
 from telemetry.core.platform.profiler import profiler_finder
 
+util.AddDirToPythonPath(
+    util.GetChromiumSrcDir(), 'third_party', 'webpagereplay')
+import net_configs  # pylint: disable=F0401
+
 
 class BrowserFinderOptions(optparse.Values):
   """Options to be used for discovering a browser."""
@@ -41,6 +45,10 @@ class BrowserFinderOptions(optparse.Values):
 
     self.page_filter = None
     self.page_filter_exclude = None
+    self.page_label_filter = None
+    self.page_label_filter_exclude = None
+
+    self.report_root_metrics = False
 
     self.repeat_options = repeat_options.RepeatOptions()
     self.browser_options = BrowserOptions()
@@ -62,7 +70,7 @@ class BrowserFinderOptions(optparse.Values):
         default=None,
         help='Browser type to run, '
              'in order of priority. Supported values: list,%s' %
-             browser_finder.ALL_BROWSER_TYPES)
+             ','.join(browser_finder.ALL_BROWSER_TYPES))
     group.add_option('--browser-executable',
         dest='browser_executable',
         help='The exact browser to run.')
@@ -119,6 +127,10 @@ class BrowserFinderOptions(optparse.Values):
       help=('Record profiling data using this tool. Supported values: ' +
             ', '.join(profiler_choices)))
     group.add_option(
+      '--interactive', dest='interactive', action='store_true',
+      help=('Let the user interact with the page; the actions specified for '
+            'the page are not run.'))
+    group.add_option(
       '-v', '--verbose', action='count', dest='verbosity',
       help='Increase verbosity level (repeat as needed)')
     group.add_option('--print-bootstrap-deps',
@@ -133,6 +145,9 @@ class BrowserFinderOptions(optparse.Values):
         'test is executed at maximum CPU speed in order to minimize noise '
         '(specially important for dashboards / continuous builds). '
         'This option prevents Telemetry from tweaking such platform settings.')
+    group.add_option(
+      '--report-root-metrics', action='store_true',dest='report_root_metrics',
+      help='Enable metrics that require root access to record.')
     group.add_option('--android-rndis', dest='android_rndis', default=False,
         action='store_true', help='Use RNDIS forwarding on Android.')
     group.add_option('--no-android-rndis', dest='android_rndis',
@@ -205,14 +220,13 @@ class BrowserOptions(object):
     self._extra_browser_args = set()
     self.extra_wpr_args = []
     self.wpr_mode = wpr_modes.WPR_OFF
+    self.netsim = None
 
     self.no_proxy_server = False
     self.browser_user_agent_type = None
 
     self.clear_sytem_cache_for_browser_and_profile_on_start = False
     self.startup_url = None
-
-    self.keep_test_server_ports = False
 
     # Background pages of built-in component extensions can interfere with
     # performance measurements.
@@ -239,18 +253,14 @@ class BrowserOptions(object):
         dest='extra_wpr_args_as_string',
         help=('Additional arguments to pass to Web Page Replay. '
               'See third_party/webpagereplay/replay.py for usage.'))
+    group.add_option('--netsim', default=None, type='choice',
+        choices=net_configs.NET_CONFIG_NAMES,
+        help=('Run benchmark under simulated network conditions. '
+              'Will prompt for sudo. Supported values: ' +
+              ', '.join(net_configs.NET_CONFIG_NAMES)))
     group.add_option('--show-stdout',
         action='store_true',
         help='When possible, will display the stdout of the process')
-    parser.add_option_group(group)
-
-    # Android options. TODO(achuith): Move to AndroidBrowserOptions.
-    group = optparse.OptionGroup(parser, 'Android options')
-    group.add_option('--keep_test_server_ports',
-        action='store_true',
-        help='Indicates the test server ports must be kept. When this is run '
-             'via a sharder the test server ports should be kept and should '
-             'not be reset.')
     parser.add_option_group(group)
 
     group = optparse.OptionGroup(parser, 'Compatibility options')
@@ -262,9 +272,12 @@ class BrowserOptions(object):
   def UpdateFromParseResults(self, finder_options):
     """Copies our options from finder_options"""
     browser_options_list = [
-        'profile_type', 'profile_dir',
-        'extra_browser_args_as_string', 'extra_wpr_args_as_string',
-        'show_stdout'
+        'extra_browser_args_as_string',
+        'extra_wpr_args_as_string',
+        'netsim',
+        'profile_dir',
+        'profile_type',
+        'show_stdout',
         ]
     for o in browser_options_list:
       a = getattr(finder_options, o, None)

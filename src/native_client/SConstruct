@@ -4,6 +4,7 @@
 # found in the LICENSE file.
 
 import atexit
+import json
 import os
 import platform
 import re
@@ -24,6 +25,9 @@ SCons.Warnings.warningAsException()
 sys.path.append("tools")
 import command_tester
 import test_lib
+
+sys.path.append("build")
+import platform_tools
 
 # NOTE: Underlay for  src/third_party_mod/gtest
 # TODO: try to eliminate this hack
@@ -60,7 +64,21 @@ def PrintFinalReport():
     for k in sorted(ENV_COUNTER.keys()):
       print "%4d  %s" % (ENV_COUNTER[k], k)
 
-  failures = GetBuildFailures()
+  failures = []
+  for failure in GetBuildFailures():
+    for node in Flatten(failure.node):
+      failures.append({
+          # If this wasn't a test, "GetTestName" will return raw_name.
+          'test_name': GetTestName(node),
+          'raw_name': str(node.path),
+          'errstr': failure.errstr
+      })
+
+  json_path = ARGUMENTS.get('json_build_results_output_file')
+  if json_path:
+    with open(json_path, 'w') as f:
+      json.dump(failures, f, sort_keys=True, indent=2)
+
   if not failures:
     return
 
@@ -69,16 +87,11 @@ def PrintFinalReport():
   print 'ERROR REPORT: %d failures' % len(failures)
   print '*' * 70
   print
-  for f in failures:
-    for node in Flatten(f.node):
-      test_name = GetTestName(node)
-      raw_name = str(node.path)
-      # If this wasn't a test, "GetTestName" will return raw_name.
-      if test_name != raw_name:
-        test_name = '%s (%s)' % (test_name, raw_name)
-      print "%s failed: %s\n" % (test_name, f.errstr)
-
-atexit.register(PrintFinalReport)
+  for failure in failures:
+    test_name = failure['test_name']
+    if test_name != failure['raw_name']:
+      test_name = '%s (%s)' % (test_name, failure['raw_name'])
+    print "%s failed: %s\n" % (test_name, failure['errstr'])
 
 
 def VerboseConfigInfo(env):
@@ -119,6 +132,8 @@ ACCEPTABLE_ARGUMENTS = set([
     'force_sel_ldr',
     # force irt image used by tests
     'force_irt',
+    # Path to a JSON file for machine-readable output.
+    'json_build_results_output_file',
     # Replacement memcheck command for overriding the DEPS-in memcheck
     # script.  May have commas to separate separate shell args.  There
     # is no quoting, so this implies that this mechanism will fail if
@@ -172,6 +187,10 @@ ACCEPTABLE_ARGUMENTS = set([
     'bindir',
     # Where a Breakpad build output directory is for optional Breakpad testing.
     'breakpad_tools_dir',
+    # Allows overriding the version number in the toolchain's
+    # FEATURE_VERSION file.  This is used for PNaCl ABI compatibility
+    # testing.
+    'toolchain_feature_version',
   ])
 
 
@@ -287,11 +306,6 @@ def SetUpArgumentBits(env):
   BitFromArgument(env, 'pp', default=False,
     desc='Enable pretty printing')
 
-  # By default SCons does not use the system's environment variables when
-  # executing commands, to help isolate the build process.
-  BitFromArgument(env, 'use_environ', arg_name='USE_ENVIRON',
-    default=False, desc='Expose existing environment variables to the build')
-
   # Defaults on when --verbose is specified
   # --verbose sets 'brief_comstr' to False, so this looks a little strange
   BitFromArgument(env, 'sysinfo', default=not GetOption('brief_comstr'),
@@ -365,8 +379,8 @@ def SetUpArgumentBits(env):
   # PNaCl sanity checks
   if ((env.Bit('pnacl_generate_pexe') or env.Bit('use_sandboxed_translator'))
       and not env.Bit('bitcode')):
-    raise ValueError("pnacl_generate_pexe and use_sandboxed_translator"
-                        "don't make sense without bitcode")
+    raise UserError("pnacl_generate_pexe and use_sandboxed_translator"
+                    " don't make sense without bitcode")
 
   # Sandboxed translator only accepts stable bitcode. Hence we must disallow
   # nonstable bitcodes.
@@ -384,10 +398,8 @@ def CheckArguments():
 def SetArgument(key, value):
   print '    %s=%s' % (key, str(value))
   if key in ARGUMENTS:
-    print 'ERROR: %s redefined' % (key, )
-    sys.exit(-1)
-  else:
-    ARGUMENTS[key] = value
+    raise UserError('ERROR: %s redefined' % (key, ))
+  ARGUMENTS[key] = value
 
 # Expands "macro" command line arguments.
 def ExpandArguments():
@@ -428,11 +440,20 @@ def ExpandArguments():
     SetArgument('scale_timeout', 20)
     SetArgument('running_on_valgrind', True)
   elif ARGUMENTS.get('buildbot'):
-    print 'ERROR: unexpected argument buildbot="%s"' % (
-        ARGUMENTS.get('buildbot'), )
-    sys.exit(-1)
+    raise UserError('ERROR: unexpected argument buildbot="%s"' % (
+        ARGUMENTS.get('buildbot'), ))
 
 ExpandArguments()
+
+def GetTargetPlatform():
+  return ARGUMENTS.get('platform', 'x86-32')
+
+def GetBuildPlatform():
+  arch_dict = platform_tools.ArchDict()
+  machine = platform.machine().lower()
+  if machine not in arch_dict:
+    raise UserError('Unrecognized host architecture: %s', platform.machine())
+  return arch_dict[machine]
 
 environment_list = []
 
@@ -441,6 +462,9 @@ kwargs = {}
 if ARGUMENTS.get('DESTINATION_ROOT') is not None:
   kwargs['DESTINATION_ROOT'] = ARGUMENTS.get('DESTINATION_ROOT')
 pre_base_env = Environment(
+    # Use the environment that scons was run in to run scons invoked commands.
+    # This allows in things like externally provided PATH, PYTHONPATH.
+    ENV = os.environ.copy(),
     tools = ['component_setup'],
     # SOURCE_ROOT is one leave above the native_client directory.
     SOURCE_ROOT = Dir('#/..').abspath,
@@ -496,6 +520,10 @@ pre_base_env.SetBitFromOption('nacl_glibc', False)
 # after ExpandArguments.
 SetUpArgumentBits(pre_base_env)
 
+# Register PrintFinalReport only after SetUpArgumentBits since it references
+# bits that get declared in SetUpArgumentBits
+atexit.register(PrintFinalReport)
+
 def DisableCrashDialog():
   if sys.platform == 'win32':
     import win32api
@@ -508,12 +536,6 @@ def DisableCrashDialog():
 
 if pre_base_env.Bit('disable_crash_dialog'):
   DisableCrashDialog()
-
-# Scons normally wants to scrub the environment.  However, sometimes
-# we want to allow PATH and other variables through so that Scons
-# scripts can find nacl-gcc without needing a Scons-specific argument.
-if pre_base_env.Bit('use_environ'):
-  pre_base_env['ENV'] = os.environ.copy()
 
 # We want to pull CYGWIN setup in our environment or at least set flag
 # nodosfilewarning. It does not do anything when CYGWIN is not involved
@@ -613,9 +635,6 @@ nacl_glibc_skiplist = set([
     # web accessible resources in the extensions's manifest.json,
     # not just the nexe and nmf file.
     'run_ppapi_extension_mime_handler_browser_test',
-
-    # This test need more investigation.
-    'run_syscall_test',
     ])
 nacl_glibc_skiplist.update(['%s_irt' % test for test in nacl_glibc_skiplist])
 
@@ -647,7 +666,8 @@ MAJOR_TEST_SUITES = set([
 ACCEPTABLE_TEST_SUITES = set([
   'barebones_tests',
   'dynamic_load_tests',
-  'exception_tests',
+  'eh_tests',  # Tests for C++ exception handling
+  'exception_tests',  # Tests for hardware exception handling
   'exit_status_tests',
   'gdb_tests',
   'mmap_race_tests',
@@ -924,17 +944,11 @@ AVAILABLE_PLATFORMS = {
     'arm-thumb2'  : { 'arch' : 'arm' , 'subarch' : '32' }
     }
 
-# Look up the platform name from the command line arguments.
-def GetPlatform(self):
-  return ARGUMENTS.get('platform', 'x86-32')
-
-pre_base_env.AddMethod(GetPlatform)
-
 # Decode platform into list [ ARCHITECTURE , EXEC_MODE ].
 def DecodePlatform(platform):
   if platform in AVAILABLE_PLATFORMS:
     return AVAILABLE_PLATFORMS[platform]
-  raise Exception('Unrecognized platform: %s' % platform)
+  raise UserError('Unrecognized platform: %s' % platform)
 
 
 DeclareBit('build_x86_32', 'Building binaries for the x86-32 architecture',
@@ -969,9 +983,10 @@ DeclareBit('build_arm', 'Building binaries for the arm architecture')
 DeclareBit('target_arm', 'Tools being built will process arm binaries')
 
 
-def MakeArchSpecificEnv():
+def MakeArchSpecificEnv(platform=None):
   env = pre_base_env.Clone()
-  platform = env.GetPlatform()
+  if platform is None:
+    platform = GetTargetPlatform()
   info = DecodePlatform(platform)
 
   env.Replace(BUILD_FULLARCH=platform)
@@ -998,7 +1013,7 @@ def MakeArchSpecificEnv():
   if env.Bit('target_arm_arm') or env.Bit('target_arm_thumb2'):
     env.SetBits('target_arm')
 
-  env.Replace(BUILD_ISA_NAME=env.GetPlatform())
+  env.Replace(BUILD_ISA_NAME=platform)
 
   if env.Bit('target_mips32'):
     # This is a silent default on MIPS.
@@ -1299,7 +1314,12 @@ def ProgramNameForNmf(env, basename):
 pre_base_env.AddMethod(ProgramNameForNmf)
 
 
-def SelUniversalTest(env, name, nexe, sel_universal_flags=None, **kwargs):
+def SelUniversalTest(env,
+                     name,
+                     nexe,
+                     args=None,
+                     sel_universal_flags=None,
+                     **kwargs):
   # The dynamic linker's ability to receive arguments over IPC at
   # startup currently requires it to reject the plugin's first
   # connection, but this interferes with the sel_universal-based
@@ -1340,6 +1360,7 @@ def SelUniversalTest(env, name, nexe, sel_universal_flags=None, **kwargs):
   node = CommandSelLdrTestNacl(env,
                                name,
                                nexe,
+                               args=args,
                                loader=sel_universal,
                                sel_ldr_flags=sel_universal_flags,
                                skip_bootstrap=True,
@@ -2014,9 +2035,10 @@ def MakeUntrustedNativeEnv(env):
 
 pre_base_env.AddMethod(MakeUntrustedNativeEnv)
 
-def MakeBaseTrustedEnv():
-  base_env = MakeArchSpecificEnv()
+def MakeBaseTrustedEnv(platform=None):
+  base_env = MakeArchSpecificEnv(platform)
   base_env.Append(
+    IS_BUILD_ENV = False,
     BUILD_SUBTYPE = '',
     CPPDEFINES = [
       ['NACL_TARGET_ARCH', '${TARGET_ARCHITECTURE}' ],
@@ -2191,13 +2213,12 @@ Automagically generated help:
 """)
 
 
-def SetupClang(env):
+def SetUpClang(env):
   env['CLANG_DIR'] = '${SOURCE_ROOT}/third_party/llvm-build/Release+Asserts/bin'
   env['CLANG_OPTS'] = []
   if env.Bit('asan'):
     if not (env.Bit('host_linux') or env.Bit('host_mac')):
-      print "ERROR: ASan is only available for Linux and Mac"
-      sys.exit(-1)
+      raise UserError("ERROR: ASan is only available for Linux and Mac")
     env['CLANG_OPTS'].append('-fsanitize=address')
     if env.Bit('host_mac'):
       # The built executables will try to find this library at runtime
@@ -2225,7 +2246,7 @@ def SetupClang(env):
 
 def GenerateOptimizationLevels(env):
   if env.Bit('clang'):
-    SetupClang(env)
+    SetUpClang(env)
 
   # Generate debug variant.
   debug_env = env.Clone(tools = ['target_debug'])
@@ -2263,8 +2284,8 @@ The optional target argument overrides the setting of what that target is."""
     env.Alias('install_bin', install_node)
 
 
-def MakeWindowsEnv():
-  base_env = MakeBaseTrustedEnv()
+def MakeWindowsEnv(platform=None):
+  base_env = MakeBaseTrustedEnv(platform)
   windows_env = base_env.Clone(
       BUILD_TYPE = '${OPTIMIZATION_LEVEL}-win',
       BUILD_TYPE_DESCRIPTION = 'Windows ${OPTIMIZATION_LEVEL} build',
@@ -2326,8 +2347,8 @@ def MakeWindowsEnv():
 (windows_debug_env,
  windows_optimized_env) = GenerateOptimizationLevels(MakeWindowsEnv())
 
-def MakeUnixLikeEnv():
-  unix_like_env = MakeBaseTrustedEnv()
+def MakeUnixLikeEnv(platform=None):
+  unix_like_env = MakeBaseTrustedEnv(platform)
   # -Wdeclaration-after-statement is desirable because MS studio does
   # not allow declarations after statements in a block, and since much
   # of our code is portable and primarily initially tested on Linux,
@@ -2375,8 +2396,8 @@ def MakeUnixLikeEnv():
   return unix_like_env
 
 
-def MakeMacEnv():
-  mac_env = MakeUnixLikeEnv().Clone(
+def MakeMacEnv(platform=None):
+  mac_env = MakeUnixLikeEnv(platform).Clone(
       BUILD_TYPE = '${OPTIMIZATION_LEVEL}-mac',
       BUILD_TYPE_DESCRIPTION = 'MacOS ${OPTIMIZATION_LEVEL} build',
       tools = ['target_platform_mac'],
@@ -2422,7 +2443,7 @@ def which(cmd, paths=os.environ.get('PATH', '').split(os.pathsep)):
   return False
 
 
-def SetupLinuxEnvArm(env):
+def SetUpLinuxEnvArm(env):
   jail = '${SCONSTRUCT_DIR}/toolchain/linux_arm-trusted'
   if env.Bit('arm_hard_float'):
     arm_abi = 'gnueabihf'
@@ -2479,7 +2500,7 @@ def SetupLinuxEnvArm(env):
   # get_plugin_dirname.cc has a dependency on dladdr
   env.Append(LIBS=['dl'])
 
-def SetupAndroidEnv(env):
+def SetUpAndroidEnv(env):
   env.FilterOut(CPPDEFINES=[['NACL_ANDROID', '0']])
   env.Prepend(CPPDEFINES=[['NACL_ANDROID', '1']])
   ndk = os.environ.get('ANDROID_NDK_ROOT')
@@ -2502,11 +2523,11 @@ def SetupAndroidEnv(env):
     ndk_tctarget = 'x86'
     arch = 'x86'
     libarch = 'x86'
-  ndk_version = '4.6'
+  ndk_version = '4.8'
   if not ndk or not sdk:
     print 'Please define ANDROID_NDK_ROOT and ANDROID_SDK_ROOT'
     sys.exit(-1)
-  tc = '%s/toolchains/%s-%s/prebuilt/linux-x86/bin/' \
+  tc = '%s/toolchains/%s-%s/prebuilt/linux-x86_64/bin/' \
       % (ndk, ndk_tctarget, ndk_version)
   tc_prefix = '%s/%s-' % (tc, ndk_target)
   platform_prefix = '%s/platforms/android-14/arch-%s' % (ndk, arch)
@@ -2541,7 +2562,7 @@ def SetupAndroidEnv(env):
                        '-fno-exceptions',
                        ],
              LINKFLAGS=['-Wl,-rpath-link=' + platform_prefix + '/usr/lib',
-                        '-Wl,-Ttext-segment,0x50000000',
+                        '-Wl,-Ttext,0x50000000',
                         '-static',
                         '-nostdlib',
                         '-L%s/../lib/gcc/%s/%s' \
@@ -2560,7 +2581,7 @@ def SetupAndroidEnv(env):
   env.FilterOut(LINKFLAGS=['-pie'])
   return env
 
-def SetupLinuxEnvMips(env):
+def SetUpLinuxEnvMips(env):
   jail = '${SCONSTRUCT_DIR}/toolchain/linux_mips-trusted'
   if not platform.machine().startswith('mips'):
     # Allow emulation on non-MIPS hosts.
@@ -2575,10 +2596,10 @@ def SetupLinuxEnvMips(env):
     tc_dir = os.path.join(os.getcwd(), 'toolchain', 'linux_mips-trusted',
                           'bin')
     if not which(os.path.join(tc_dir, 'mipsel-linux-gnu-gcc')):
-      print ("\nERRROR: MIPS trusted TC is not installed - try running:\n"
-             "tools/trusted_cross_toolchains/trusted-toolchain-creator"
-             ".mipsel.squeeze.sh nacl_sdk")
-      sys.exit(-1)
+      raise UserError("\nERRROR: "
+          "MIPS trusted TC is not installed - try running:\n"
+          "tools/trusted_cross_toolchains/trusted-toolchain-creator"
+          ".mipsel.debian.sh nacl_sdk")
     env.Replace(CC=os.path.join(tc_dir, 'mipsel-linux-gnu-gcc'),
                 CXX=os.path.join(tc_dir, 'mipsel-linux-gnu-g++'),
                 LD=os.path.join(tc_dir, 'mipsel-linux-gnu-ld'),
@@ -2593,8 +2614,8 @@ def SetupLinuxEnvMips(env):
                      CCFLAGS=['-march=mips32r2'])
 
 
-def MakeLinuxEnv():
-  linux_env = MakeUnixLikeEnv().Clone(
+def MakeLinuxEnv(platform=None):
+  linux_env = MakeUnixLikeEnv(platform).Clone(
       BUILD_TYPE = '${OPTIMIZATION_LEVEL}-linux',
       BUILD_TYPE_DESCRIPTION = 'Linux ${OPTIMIZATION_LEVEL} build',
       tools = ['target_platform_linux'],
@@ -2630,11 +2651,11 @@ def MakeLinuxEnv():
         LINKFLAGS = ['-m64'],
         )
   elif linux_env.Bit('build_arm'):
-    SetupLinuxEnvArm(linux_env)
+    SetUpLinuxEnvArm(linux_env)
   elif linux_env.Bit('build_mips32'):
-    SetupLinuxEnvMips(linux_env)
+    SetUpLinuxEnvMips(linux_env)
   else:
-    Banner('Strange platform: %s' % env.GetPlatform())
+    Banner('Strange platform: %s' % GetTargetPlatform())
 
   # These are desireable options for every Linux platform:
   # _FORTIFY_SOURCE: general paranoia "hardening" option for library functions
@@ -2662,13 +2683,12 @@ def MakeLinuxEnv():
   linux_env.Replace(ASFLAGS=['${CCFLAGS}'])
 
   if linux_env.Bit('android'):
-    SetupAndroidEnv(linux_env)
+    SetUpAndroidEnv(linux_env)
 
   return linux_env
 
 (linux_debug_env, linux_optimized_env) = \
     GenerateOptimizationLevels(MakeLinuxEnv())
-
 
 # Do this before the site_scons/site_tools/naclsdk.py stuff to pass it along.
 pre_base_env.Append(
@@ -2679,7 +2699,8 @@ pre_base_env.Append(
 # using a special tool chain which produces platform
 # independent binaries
 # NOTE: this loads stuff from: site_scons/site_tools/naclsdk.py
-nacl_env = MakeArchSpecificEnv().Clone(
+nacl_env = MakeArchSpecificEnv()
+nacl_env = nacl_env.Clone(
     tools = ['naclsdk'],
     NACL_BUILD_FAMILY = 'UNTRUSTED',
     BUILD_TYPE = 'nacl',
@@ -2701,6 +2722,9 @@ nacl_env = MakeArchSpecificEnv().Clone(
     CCFLAGS = ['-O2',
                '-g',
                '-fomit-frame-pointer',
+               # This makes sure unwind/backtrace info is available for
+               # all code locations.  Note build/untrusted.gypi uses it too.
+               '-fasynchronous-unwind-tables',
                '-Wall',
                '-Wundef',
                '-fdiagnostics-show-option',
@@ -2729,19 +2753,22 @@ nacl_env = MakeArchSpecificEnv().Clone(
     # These are settings for in-tree, non-browser tests to use.
     # They use libraries that circumvent the IRT-based implementations
     # in the public libraries.
-    NONIRT_LIBS = ['nacl_sys_private'],
+    # Note that pthread_private is part of NONIRT_LIBS for PNaCl because
+    # libc++ depends on it.
+    NONIRT_LIBS = (['nacl_sys_private'] +
+                   (['pthread_private'] if nacl_env.Bit('bitcode') else [])),
     PTHREAD_LIBS = ['pthread_private'],
     DYNCODE_LIBS = ['nacl_dyncode_private'],
     EXCEPTION_LIBS = ['nacl_exception_private'],
     LIST_MAPPINGS_LIBS = ['nacl_list_mappings_private'],
     )
 
-def IsNewLinker(env):
-  """Return True if using a new-style linker with the new-style layout.
-That means the linker supports the -Trodata-segment switch."""
-  return env.Bit('target_arm') or env.Bit('bitcode')
+def UsesAbiNote(env):
+  """Return True if using a new-style GCC with .note.NaCl.ABI.* notes.
+This means there will always be an RODATA segment, even if just for the note."""
+  return env.Bit('target_arm') and not env.Bit('bitcode')
 
-nacl_env.AddMethod(IsNewLinker)
+nacl_env.AddMethod(UsesAbiNote)
 
 def UnderWindowsCoverage(env):
   """Return True if using running on coverage under windows."""
@@ -2750,44 +2777,6 @@ def UnderWindowsCoverage(env):
   return env['TRUSTED_ENV'].Bit('coverage_enabled') and env.Bit('host_windows')
 
 nacl_env.AddMethod(UnderWindowsCoverage)
-
-def RodataSwitch(env, value, via_compiler=True):
-  """Return string of arguments to place the rodata segment at |value|.
-If |via_compiler| is False, this is going directly to the linker, rather
-than via the compiler driver."""
-  if env.IsNewLinker():
-    args = ['-Trodata-segment=' + value]
-  else:
-    # With the --build-id option (which the compiler will pass, but pass it
-    # here to be doubly sure), the rodata segment starts with the
-    # .note.gnu.build-id section; without --build-id it starts with .rodata.
-    if via_compiler:
-      args = ['--build-id', '--section-start', '.note.gnu.build-id=' + value]
-    else:
-      # If file is linked directly then it's probably some kind of low-level
-      # test so don't use build id and move .rodata to the desired position.
-      args = ['--section-start', '.rodata=' + value]
-  if via_compiler:
-    if env.Bit('bitcode'):
-      # The -Wn flag passes arguments to PNaCl's native linker (as opposed
-      # to the bitcode linker, which gets the -Wl arguments)
-      args = ','.join(['-Wn'] + args)
-    else:
-      args = ','.join(['-Wl'] + args)
-  else:
-    args = ' '.join(args)
-  return args
-
-nacl_env.AddMethod(RodataSwitch)
-
-def TextSwitch(env, value):
-  """ Return a string of arguments to place the text segment at |value|.
-Assume the string is going to the compiler driver, rather than directly
-to the linker. """
-  # TODO(dschuff): just replace uses of this with the flag directly.
-  return '-Wl,-Ttext-segment=' + value
-
-nacl_env.AddMethod(TextSwitch)
 
 def AllowNonStableBitcode(env):
   """ This modifies the environment to allow features that aren't part
@@ -2834,18 +2823,6 @@ nacl_env.AddMethod(AllowInlineAssembly)
 if not enable_chrome:
   nacl_env.Append(CFLAGS=['-Wstrict-prototypes'])
 
-if nacl_env.Bit('target_arm') and not nacl_env.Bit('bitcode'):
-  # arm-nacl-gcc is based on GCC>=4.7, where -Wall includes this new warning.
-  # The COMPILE_ASSERT macro in base/basictypes.h and
-  # gpu/command_buffer/common/types.h triggers this warning and it's proven too
-  # painful to find a formulation that doesn't and also doesn't break any of
-  # the other compilers.
-  # TODO(mcgrathr): Get the chromium code cleaned up so it doesn't trigger this
-  # warning one day, perhaps by just compiling with -std=c++0x and
-  # using static_assert.
-  # See https://code.google.com/p/chromium/issues/detail?id=132339
-  nacl_env.Append(CCFLAGS=['-Wno-unused-local-typedefs'])
-
 # This is the address at which a user executable is expected to place its
 # data segment in order to be compatible with the integrated runtime (IRT)
 # library.  This address should not be changed lightly.
@@ -2882,7 +2859,7 @@ def TestsUsePublicListMappingsLib(env):
 
 def TestsUsePublicLibs(env):
   """Change the environment so it uses public libraries for in-tree tests."""
-  env.Replace(NONIRT_LIBS=[],
+  env.Replace(NONIRT_LIBS=['pthread'] if env.Bit('bitcode') else [],
               PTHREAD_LIBS=['pthread'],
               DYNCODE_LIBS=['nacl_dyncode', 'nacl'],
               EXCEPTION_LIBS=['nacl_exception', 'nacl'])
@@ -2998,19 +2975,17 @@ nacl_env.Replace(PPAPI_LIBS=['ppapi'])
 # See http://code.google.com/p/nativeclient/issues/detail?id=1298
 def GetLinkerScriptBaseName(env):
   if env.Bit('build_x86_64'):
-    return 'elf64_nacl'
+    return 'elf_x86_64_nacl'
   else:
-    return 'elf_nacl'
+    return 'elf_i386_nacl'
 
 if (nacl_env.Bit('nacl_glibc') and
     nacl_env.Bit('nacl_static_link')):
-  if nacl_env.IsNewLinker():
-    nacl_env.Append(LINKFLAGS=['-static'])
-  else:
+  nacl_env.Append(LINKFLAGS=['-static'])
+  if nacl_env.Bit('target_x86'):
     # The "-lc" is necessary because libgcc_eh depends on libc but for
     # some reason nacl-gcc is not linking with "--start-group/--end-group".
     nacl_env.Append(LINKFLAGS=[
-        '-static',
         '-T', 'ldscripts/%s.x.static' % GetLinkerScriptBaseName(nacl_env),
         '-lc'])
 
@@ -3049,7 +3024,7 @@ nacl_env.Append(
     'src/shared/platform/nacl.scons',
     'src/shared/srpc/nacl.scons',
     'src/trusted/service_runtime/nacl.scons',
-    'src/trusted/validator_x86/nacl.scons',
+    'src/trusted/validator/nacl.scons',
     'src/trusted/weak_ref/nacl.scons',
     'src/untrusted/crash_dump/nacl.scons',
     'src/untrusted/minidump_generator/nacl.scons',
@@ -3129,6 +3104,7 @@ irt_variant_tests = [
     'tests/performance/nacl.scons',
     'tests/pnacl_abi/nacl.scons',
     'tests/pnacl_native_objects/nacl.scons',
+    'tests/process_create/nacl.scons',
     'tests/redir/nacl.scons',
     'tests/rodata_not_writable/nacl.scons',
     'tests/sel_ldr/nacl.scons',
@@ -3186,6 +3162,7 @@ nonvariant_tests = [
     # http://code.google.com/p/nativeclient/issues/detail?id=2092
     # See also the comment in "buildbot/buildbot_standard.py"
     'tests/pnacl_shared_lib_test/nacl.scons',
+    'tests/pwrite/nacl.scons',
     'tests/signal_handler_single_step/nacl.scons',
     'tests/thread_suspension/nacl.scons',
     'tests/trusted_crash/crash_in_syscall/nacl.scons',
@@ -3298,6 +3275,12 @@ if nacl_irt_env.Bit('bitcode'):
                                    '--pnacl-allow-translate',
                                    '-arch', 'x86-64'])
 
+# The IRT is C only, don't link with the C++ linker so that it doesn't
+# start depending on the C++ standard library and (in the case of
+# libc++) pthread.
+nacl_irt_env.Replace(LINK=(nacl_irt_env['LINK'].
+                           replace('pnacl-clang++', 'pnacl-clang')))
+
 # All IRT code must avoid direct use of the TLS ABI register, which
 # is reserved for user TLS.  Instead, ensure all TLS accesses use a
 # call to __nacl_read_tp, which the IRT code overrides to segregate
@@ -3308,12 +3291,6 @@ elif nacl_irt_env.Bit('target_arm'):
   nacl_irt_env.Append(CCFLAGS=['-mtp=soft'])
 else:
   nacl_irt_env.Append(CCFLAGS=['-mtls-use-call'])
-# A debugger should be able to unwind IRT call frames. As the IRT is compiled
-# with high level of optimizations and without debug info, compiler is requested
-# to generate unwind tables explicitly. This is the default behavior on x86-64
-# and when compiling C++ with exceptions enabled, the change is for the benefit
-# of x86-32 C.
-nacl_irt_env.Append(CCFLAGS=['-fasynchronous-unwind-tables'])
 
 # TODO(mcgrathr): Clean up uses of these methods.
 def AddLibraryDummy(env, nodes):
@@ -3415,7 +3392,7 @@ def AddImplicitLibs(env):
                         'crti.o',
                         'crtn.o']
       # TODO(mcgrathr): multilib nonsense defeats -B!  figure out a better way.
-      if env.GetPlatform() == 'x86-32':
+      if GetTargetPlatform() == 'x86-32':
         implicit_libs.append(os.path.join('32', 'crt1.o'))
 
   if implicit_libs != []:
@@ -3617,6 +3594,44 @@ def LinkTrustedEnv(selected_envs):
     Banner('Warning: "--mode" did not specify both trusted and untrusted '
            'build environments.  As a result, many tests will not be run.')
 
+def MakeBuildEnv():
+  build_platform = GetBuildPlatform()
+
+  # Build Platform Base Function
+  platform_func_map = {
+      'win32' : MakeWindowsEnv,
+      'cygwin': MakeWindowsEnv,
+      'linux' : MakeLinuxEnv,
+      'linux2': MakeLinuxEnv,
+      'darwin': MakeMacEnv,
+      }
+  if sys.platform not in platform_func_map:
+    raise UserError('Unrecognized host platform: %s', sys.platform)
+  make_env_func = platform_func_map[sys.platform]
+
+  build_env = make_env_func(build_platform)
+  build_env['IS_BUILD_ENV'] = True
+  build_env['BUILD_SCONSCRIPTS'] = []
+
+  # The build environment is only used for intermediate steps and should
+  # not be creating any targets. Aliases are used as means to add targets
+  # to builds (IE, all_programs, all_libraries...etc.). Since we want to
+  # share all of our build scripts but not define any aliases, we should
+  # override the alias function and essentially stub it out.
+  build_env.Alias = lambda env, target, source=[], actions=None, **kw : []
+
+  dbg_build_env, opt_build_env = GenerateOptimizationLevels(build_env)
+
+  return opt_build_env
+
+def LinkBuildEnv(selected_envs, build_env):
+  for env in selected_envs:
+    env['BUILD_ENV'] = build_env
+
+  # If platform is not the same as the host environment, add the targets
+  #  of the host environment so scons can find them
+  if GetBuildPlatform() != GetTargetPlatform():
+    selected_envs.append(build_env)
 
 def DumpEnvironmentInfo(selected_envs):
   if VerboseConfigInfo(pre_base_env):
@@ -3684,10 +3699,12 @@ if nacl_irt_test_env in selected_envs and nacl_env not in selected_envs:
 
 DumpEnvironmentInfo(selected_envs)
 LinkTrustedEnv(selected_envs)
+LinkBuildEnv(selected_envs, MakeBuildEnv())
 # This must happen after LinkTrustedEnv, since that is where TRUSTED_ENV
 # is finally set, and env.UsingEmulator() checks TRUSTED_ENV for the emulator.
 # This must also happen before BuildEnvironments.
 PnaclSetEmulatorForSandboxedTranslator(selected_envs)
+
 BuildEnvironments(selected_envs)
 
 # Change default to build everything, but not run tests.

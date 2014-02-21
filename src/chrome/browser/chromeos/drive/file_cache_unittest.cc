@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "base/callback_helpers.h"
 #include "base/file_util.h"
 #include "base/files/file_enumerator.h"
 #include "base/files/scoped_temp_dir.h"
@@ -19,9 +20,9 @@
 #include "chrome/browser/chromeos/drive/file_system_util.h"
 #include "chrome/browser/chromeos/drive/resource_metadata_storage.h"
 #include "chrome/browser/chromeos/drive/test_util.h"
-#include "chrome/browser/google_apis/test_util.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/test/test_browser_thread_bundle.h"
+#include "google_apis/drive/test_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace drive {
@@ -55,11 +56,11 @@ class FileCacheTestOnUIThread : public testing::Test {
     const base::FilePath cache_dir =
         temp_dir_.path().AppendASCII(kCacheFileDirectory);
 
-    ASSERT_TRUE(file_util::CreateDirectory(metadata_dir));
-    ASSERT_TRUE(file_util::CreateDirectory(cache_dir));
+    ASSERT_TRUE(base::CreateDirectory(metadata_dir));
+    ASSERT_TRUE(base::CreateDirectory(cache_dir));
 
-    ASSERT_TRUE(file_util::CreateTemporaryFileInDir(temp_dir_.path(),
-                                                    &dummy_file_path_));
+    ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(),
+                                               &dummy_file_path_));
     fake_free_disk_space_getter_.reset(new FakeFreeDiskSpaceGetter);
 
     scoped_refptr<base::SequencedWorkerPool> pool =
@@ -159,8 +160,12 @@ class FileCacheTestOnUIThread : public testing::Test {
     expected_cache_state_ = expected_cache_state;
 
     FileError error = FILE_ERROR_OK;
-    cache_->PinOnUIThread(
-        id,
+    base::PostTaskAndReplyWithResult(
+        blocking_task_runner_,
+        FROM_HERE,
+        base::Bind(&internal::FileCache::Pin,
+                   base::Unretained(cache_.get()),
+                   id),
         google_apis::test_util::CreateCopyResultCallback(&error));
     test_util::RunBlockingPoolTask();
     VerifyCacheFileState(error, id);
@@ -173,73 +178,14 @@ class FileCacheTestOnUIThread : public testing::Test {
     expected_cache_state_ = expected_cache_state;
 
     FileError error = FILE_ERROR_OK;
-    cache_->UnpinOnUIThread(
-        id,
-        google_apis::test_util::CreateCopyResultCallback(&error));
-    test_util::RunBlockingPoolTask();
-    VerifyCacheFileState(error, id);
-  }
-
-  void TestMarkDirty(const std::string& id,
-                     FileError expected_error,
-                     int expected_cache_state) {
-    expected_error_ = expected_error;
-    expected_cache_state_ = expected_cache_state;
-
-    FileError error = FILE_ERROR_OK;
     base::PostTaskAndReplyWithResult(
         blocking_task_runner_,
         FROM_HERE,
-        base::Bind(&internal::FileCache::MarkDirty,
+        base::Bind(&internal::FileCache::Unpin,
                    base::Unretained(cache_.get()),
                    id),
         google_apis::test_util::CreateCopyResultCallback(&error));
     test_util::RunBlockingPoolTask();
-
-    VerifyCacheFileState(error, id);
-
-    // Verify filename.
-    if (error == FILE_ERROR_OK) {
-      base::FilePath cache_file_path;
-      base::PostTaskAndReplyWithResult(
-          blocking_task_runner_,
-          FROM_HERE,
-          base::Bind(&FileCache::GetFile,
-                     base::Unretained(cache_.get()),
-                     id, &cache_file_path),
-          google_apis::test_util::CreateCopyResultCallback(&error));
-      test_util::RunBlockingPoolTask();
-
-      EXPECT_EQ(FILE_ERROR_OK, error);
-      EXPECT_EQ(util::EscapeCacheFileName(id),
-                cache_file_path.BaseName().AsUTF8Unsafe());
-    }
-  }
-
-  void TestClearDirty(const std::string& id,
-                      const std::string& md5,
-                      FileError expected_error,
-                      int expected_cache_state) {
-    expected_error_ = expected_error;
-    expected_cache_state_ = expected_cache_state;
-
-    FileError error = FILE_ERROR_OK;
-    PostTaskAndReplyWithResult(
-        blocking_task_runner_.get(),
-        FROM_HERE,
-        base::Bind(&FileCache::ClearDirty,
-                   base::Unretained(cache_.get()),
-                   id,
-                   md5),
-        google_apis::test_util::CreateCopyResultCallback(&error));
-    test_util::RunBlockingPoolTask();
-
-    if (error == FILE_ERROR_OK) {
-      FileCacheEntry cache_entry;
-      EXPECT_TRUE(GetCacheEntryFromOriginThread(id, &cache_entry));
-      EXPECT_EQ(md5, cache_entry.md5());
-    }
-
     VerifyCacheFileState(error, id);
   }
 
@@ -254,10 +200,15 @@ class FileCacheTestOnUIThread : public testing::Test {
 
     FileError error = FILE_ERROR_OK;
     base::FilePath cache_file_path;
-    cache_->MarkAsMountedOnUIThread(
-        id,
-        google_apis::test_util::CreateCopyResultCallback(
-            &error, &cache_file_path));
+
+    base::PostTaskAndReplyWithResult(
+        blocking_task_runner_.get(),
+        FROM_HERE,
+        base::Bind(&FileCache::MarkAsMounted,
+                   base::Unretained(cache_.get()),
+                   id,
+                   &cache_file_path),
+        google_apis::test_util::CreateCopyResultCallback(&error));
     test_util::RunBlockingPoolTask();
 
     EXPECT_TRUE(base::PathExists(cache_file_path));
@@ -272,8 +223,12 @@ class FileCacheTestOnUIThread : public testing::Test {
     expected_cache_state_ = expected_cache_state;
 
     FileError error = FILE_ERROR_OK;
-    cache_->MarkAsUnmountedOnUIThread(
-        file_path,
+    base::PostTaskAndReplyWithResult(
+        blocking_task_runner_.get(),
+        FROM_HERE,
+        base::Bind(&FileCache::MarkAsUnmounted,
+                   base::Unretained(cache_.get()),
+                   file_path),
         google_apis::test_util::CreateCopyResultCallback(&error));
     test_util::RunBlockingPoolTask();
 
@@ -494,156 +449,6 @@ TEST_F(FileCacheTestOnUIThread, RemoveFromCachePinned) {
   TestRemoveFromCache(id, FILE_ERROR_OK);
 }
 
-TEST_F(FileCacheTestOnUIThread, DirtyCacheSimple) {
-  std::string id("pdf:1a2b");
-  std::string md5("abcdef0123456789");
-
-  // First store a file to cache.
-  TestStoreToCache(id, md5, dummy_file_path_,
-                   FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-
-  // Mark the file dirty.
-  TestMarkDirty(id, FILE_ERROR_OK,
-                TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_DIRTY);
-
-  // Clear dirty state of the file.
-  TestClearDirty(id, md5, FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-}
-
-TEST_F(FileCacheTestOnUIThread, DirtyCachePinned) {
-  std::string id("pdf:1a2b");
-  std::string md5("abcdef0123456789");
-
-  // First store a file to cache and pin it.
-  TestStoreToCache(id, md5, dummy_file_path_,
-                   FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-  TestPin(id, FILE_ERROR_OK,
-          TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_PINNED);
-
-  // Mark the file dirty.
-  TestMarkDirty(id, FILE_ERROR_OK,
-                TEST_CACHE_STATE_PRESENT |
-                TEST_CACHE_STATE_DIRTY |
-                TEST_CACHE_STATE_PINNED);
-
-  // Clear dirty state of the file.
-  TestClearDirty(id, md5, FILE_ERROR_OK,
-                 TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_PINNED);
-}
-
-TEST_F(FileCacheTestOnUIThread, PinAndUnpinDirtyCache) {
-  std::string id("pdf:1a2b");
-  std::string md5("abcdef0123456789");
-
-  // First store a file to cache and mark it as dirty.
-  TestStoreToCache(id, md5, dummy_file_path_,
-                   FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-  TestMarkDirty(id, FILE_ERROR_OK,
-                TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_DIRTY);
-
-  // Verifies dirty file exists.
-  base::FilePath dirty_path;
-  FileError error = FILE_ERROR_FAILED;
-  base::PostTaskAndReplyWithResult(
-      blocking_task_runner_,
-      FROM_HERE,
-      base::Bind(&FileCache::GetFile,
-                 base::Unretained(cache_.get()),
-                 id, &dirty_path),
-      google_apis::test_util::CreateCopyResultCallback(&error));
-  test_util::RunBlockingPoolTask();
-  EXPECT_EQ(FILE_ERROR_OK, error);
-  EXPECT_TRUE(base::PathExists(dirty_path));
-
-  // Pin the dirty file.
-  TestPin(id, FILE_ERROR_OK,
-          TEST_CACHE_STATE_PRESENT |
-          TEST_CACHE_STATE_DIRTY |
-          TEST_CACHE_STATE_PINNED);
-
-  // Verify dirty file still exist at the same pathname.
-  EXPECT_TRUE(base::PathExists(dirty_path));
-
-  // Unpin the dirty file.
-  TestUnpin(id, FILE_ERROR_OK,
-            TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_DIRTY);
-
-  // Verify dirty file still exist at the same pathname.
-  EXPECT_TRUE(base::PathExists(dirty_path));
-}
-
-TEST_F(FileCacheTestOnUIThread, DirtyCacheRepetitive) {
-  std::string id("pdf:1a2b");
-  std::string md5("abcdef0123456789");
-
-  // First store a file to cache.
-  TestStoreToCache(id, md5, dummy_file_path_,
-                   FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-
-  // Mark the file dirty.
-  TestMarkDirty(id, FILE_ERROR_OK,
-                TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_DIRTY);
-
-  // Again, mark the file dirty.  Nothing should change.
-  TestMarkDirty(id, FILE_ERROR_OK,
-                TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_DIRTY);
-
-  // Clear dirty state of the file.
-  TestClearDirty(id, md5, FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-
-  // Again, clear dirty state of the file, which is no longer dirty.
-  TestClearDirty(id, md5, FILE_ERROR_INVALID_OPERATION,
-                 TEST_CACHE_STATE_PRESENT);
-}
-
-TEST_F(FileCacheTestOnUIThread, DirtyCacheInvalid) {
-  std::string id("pdf:1a2b");
-  std::string md5("abcdef0123456789");
-
-  // Mark a non-existent file dirty.
-  TestMarkDirty(id, FILE_ERROR_NOT_FOUND, TEST_CACHE_STATE_NONE);
-
-  // Clear dirty state of a non-existent file.
-  TestClearDirty(id, md5, FILE_ERROR_NOT_FOUND, TEST_CACHE_STATE_NONE);
-
-  // Store a file to cache.
-  TestStoreToCache(id, md5, dummy_file_path_,
-                   FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-
-  // Clear dirty state of a non-dirty existing file.
-  TestClearDirty(id, md5, FILE_ERROR_INVALID_OPERATION,
-                 TEST_CACHE_STATE_PRESENT);
-
-  // Mark an existing file dirty, then store a new file to the same ID
-  // but different md5, which should fail.
-  TestMarkDirty(id, FILE_ERROR_OK,
-                TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_DIRTY);
-  md5 = "new_md5";
-  TestStoreToCache(id, md5, dummy_file_path_, FILE_ERROR_IN_USE,
-                   TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_DIRTY);
-}
-
-TEST_F(FileCacheTestOnUIThread, RemoveFromDirtyCache) {
-  std::string id("pdf:1a2b");
-  std::string md5("abcdef0123456789");
-
-  // Store a file to cache, pin it, mark it dirty and commit it.
-  TestStoreToCache(id, md5, dummy_file_path_,
-                   FILE_ERROR_OK, TEST_CACHE_STATE_PRESENT);
-  TestPin(id, FILE_ERROR_OK,
-          TEST_CACHE_STATE_PRESENT | TEST_CACHE_STATE_PINNED);
-  TestMarkDirty(id, FILE_ERROR_OK,
-                TEST_CACHE_STATE_PRESENT |
-                TEST_CACHE_STATE_PINNED |
-                TEST_CACHE_STATE_DIRTY);
-
-  // Try to remove the file.  Dirty caches can be removed at the level of
-  // FileCache::Remove. Upper layer cache clearance functions like
-  // FreeDiskSpaceIfNeededFor() and RemoveStaleCacheFiles() takes care of
-  // securing dirty files.
-  TestRemoveFromCache(id, FILE_ERROR_OK);
-}
-
 TEST_F(FileCacheTestOnUIThread, MountUnmount) {
   std::string id("pdf:1a2b");
   std::string md5("abcdef0123456789");
@@ -720,8 +525,8 @@ class FileCacheTest : public testing::Test {
     const base::FilePath metadata_dir = temp_dir_.path().AppendASCII("meta");
     cache_files_dir_ = temp_dir_.path().AppendASCII(kCacheFileDirectory);
 
-    ASSERT_TRUE(file_util::CreateDirectory(metadata_dir));
-    ASSERT_TRUE(file_util::CreateDirectory(cache_files_dir_));
+    ASSERT_TRUE(base::CreateDirectory(metadata_dir));
+    ASSERT_TRUE(base::CreateDirectory(cache_files_dir_));
 
     fake_free_disk_space_getter_.reset(new FakeFreeDiskSpaceGetter);
 
@@ -803,7 +608,7 @@ TEST_F(FileCacheTest, RecoverFilesFromCacheDirectory) {
 
 TEST_F(FileCacheTest, Iterator) {
   base::FilePath src_file;
-  ASSERT_TRUE(file_util::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
+  ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
 
   // Prepare entries.
   std::map<std::string, std::string> md5s;
@@ -828,7 +633,7 @@ TEST_F(FileCacheTest, Iterator) {
 
 TEST_F(FileCacheTest, FreeDiskSpaceIfNeededFor) {
   base::FilePath src_file;
-  ASSERT_TRUE(file_util::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
+  ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
 
   // Store a file as a 'temporary' file and remember the path.
   const std::string id_tmp = "id_tmp", md5_tmp = "md5_tmp";
@@ -914,6 +719,115 @@ TEST_F(FileCacheTest, GetFile) {
   EXPECT_EQ(src_contents, contents);
 }
 
+TEST_F(FileCacheTest, OpenForWrite) {
+  // Prepare a file.
+  base::FilePath src_file;
+  ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
+
+  const std::string id = "id";
+  ASSERT_EQ(FILE_ERROR_OK, cache_->Store(id, "md5", src_file,
+                                         FileCache::FILE_OPERATION_COPY));
+
+  // Entry is not dirty nor opened.
+  EXPECT_FALSE(cache_->IsOpenedForWrite(id));
+  FileCacheEntry entry;
+  EXPECT_TRUE(cache_->GetCacheEntry(id, &entry));
+  EXPECT_FALSE(entry.is_dirty());
+
+  // Open (1).
+  scoped_ptr<base::ScopedClosureRunner> file_closer1;
+  EXPECT_EQ(FILE_ERROR_OK, cache_->OpenForWrite(id, &file_closer1));
+  EXPECT_TRUE(cache_->IsOpenedForWrite(id));
+
+  // Entry is dirty.
+  EXPECT_TRUE(cache_->GetCacheEntry(id, &entry));
+  EXPECT_TRUE(entry.is_dirty());
+
+  // Open (2).
+  scoped_ptr<base::ScopedClosureRunner> file_closer2;
+  EXPECT_EQ(FILE_ERROR_OK, cache_->OpenForWrite(id, &file_closer2));
+  EXPECT_TRUE(cache_->IsOpenedForWrite(id));
+
+  // Close (1).
+  file_closer1.reset();
+  EXPECT_TRUE(cache_->IsOpenedForWrite(id));
+
+  // Close (2).
+  file_closer2.reset();
+  EXPECT_FALSE(cache_->IsOpenedForWrite(id));
+
+  // Try to open non-existent file.
+  EXPECT_EQ(FILE_ERROR_NOT_FOUND,
+            cache_->OpenForWrite("nonexistent_id", &file_closer1));
+}
+
+TEST_F(FileCacheTest, UpdateMd5) {
+  // Store test data.
+  const base::FilePath src_file_path = temp_dir_.path().Append("test.dat");
+  const std::string contents_before = "before";
+  EXPECT_TRUE(google_apis::test_util::WriteStringToFile(src_file_path,
+                                                        contents_before));
+  std::string id("id1");
+  EXPECT_EQ(FILE_ERROR_OK, cache_->Store(id, base::MD5String(contents_before),
+                                         src_file_path,
+                                         FileCache::FILE_OPERATION_COPY));
+
+  // Modify the cache file.
+  scoped_ptr<base::ScopedClosureRunner> file_closer;
+  EXPECT_EQ(FILE_ERROR_OK, cache_->OpenForWrite(id, &file_closer));
+  base::FilePath cache_file_path;
+  EXPECT_EQ(FILE_ERROR_OK, cache_->GetFile(id, &cache_file_path));
+  const std::string contents_after = "after";
+  EXPECT_TRUE(google_apis::test_util::WriteStringToFile(cache_file_path,
+                                                        contents_after));
+
+  // Cannot update MD5 of an opend file.
+  EXPECT_EQ(FILE_ERROR_IN_USE, cache_->UpdateMd5(id));
+
+  // Close file.
+  file_closer.reset();
+
+  // MD5 was cleared by OpenForWrite().
+  FileCacheEntry entry;
+  EXPECT_TRUE(cache_->GetCacheEntry(id, &entry));
+  EXPECT_TRUE(entry.md5().empty());
+
+  // Update MD5.
+  EXPECT_EQ(FILE_ERROR_OK, cache_->UpdateMd5(id));
+  EXPECT_TRUE(cache_->GetCacheEntry(id, &entry));
+  EXPECT_EQ(base::MD5String(contents_after), entry.md5());
+}
+
+TEST_F(FileCacheTest, ClearDirty) {
+  // Prepare a file.
+  base::FilePath src_file;
+  ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
+
+  const std::string id = "id";
+  ASSERT_EQ(FILE_ERROR_OK, cache_->Store(id, "md5", src_file,
+                                         FileCache::FILE_OPERATION_COPY));
+
+  // Open the file.
+  scoped_ptr<base::ScopedClosureRunner> file_closer;
+  EXPECT_EQ(FILE_ERROR_OK, cache_->OpenForWrite(id, &file_closer));
+
+  // Entry is dirty.
+  FileCacheEntry entry;
+  EXPECT_TRUE(cache_->GetCacheEntry(id, &entry));
+  EXPECT_TRUE(entry.is_dirty());
+
+  // Cannot clear the dirty bit of an opened entry.
+  EXPECT_EQ(FILE_ERROR_IN_USE, cache_->ClearDirty(id));
+
+  // Close the file and clear the dirty bit.
+  file_closer.reset();
+  EXPECT_EQ(FILE_ERROR_OK, cache_->ClearDirty(id));
+
+  // Entry is not dirty.
+  EXPECT_TRUE(cache_->GetCacheEntry(id, &entry));
+  EXPECT_FALSE(entry.is_dirty());
+}
+
 TEST_F(FileCacheTest, RenameCacheFilesToNewFormat) {
   const base::FilePath file_directory =
       temp_dir_.path().AppendASCII(kCacheFileDirectory);
@@ -959,7 +873,7 @@ TEST_F(FileCacheTest, ClearAll) {
 
   // Store an existing file.
   base::FilePath src_file;
-  ASSERT_TRUE(file_util::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
+  ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(), &src_file));
   ASSERT_EQ(FILE_ERROR_OK,
             cache_->Store(id, md5, src_file, FileCache::FILE_OPERATION_COPY));
 
@@ -972,7 +886,7 @@ TEST_F(FileCacheTest, ClearAll) {
 
   // Verify that the cache is removed.
   EXPECT_FALSE(cache_->GetCacheEntry(id, &cache_entry));
-  EXPECT_TRUE(file_util::IsDirectoryEmpty(cache_files_dir_));
+  EXPECT_TRUE(base::IsDirectoryEmpty(cache_files_dir_));
 }
 
 }  // namespace internal

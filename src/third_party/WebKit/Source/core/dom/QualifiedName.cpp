@@ -69,7 +69,7 @@ struct QNameComponentsTranslator {
     }
     static void translate(QualifiedName::QualifiedNameImpl*& location, const QualifiedNameComponents& components, unsigned)
     {
-        location = QualifiedName::QualifiedNameImpl::create(components.m_prefix, components.m_localName, components.m_namespace).leakRef();
+        location = QualifiedName::QualifiedNameImpl::create(AtomicString(components.m_prefix), AtomicString(components.m_localName), AtomicString(components.m_namespace)).leakRef();
     }
 };
 
@@ -77,24 +77,11 @@ QualifiedName::QualifiedName(const AtomicString& p, const AtomicString& l, const
 {
     QualifiedNameComponents components = { p.impl(), l.impl(), n.isEmpty() ? nullAtom.impl() : n.impl() };
     QualifiedNameCache::AddResult addResult = qualifiedNameCache().add<QNameComponentsTranslator>(components);
-    m_impl = *addResult.iterator;
-    if (!addResult.isNewEntry)
-        m_impl->ref();
+    m_impl = addResult.isNewEntry ? adoptRef(*addResult.iterator) : *addResult.iterator;
 }
 
 QualifiedName::~QualifiedName()
 {
-    deref();
-}
-
-void QualifiedName::deref()
-{
-#ifdef QNAME_DEFAULT_CONSTRUCTOR
-    if (!m_impl)
-        return;
-#endif
-    ASSERT(!isHashTableDeletedValue());
-    m_impl->deref();
 }
 
 QualifiedName::QualifiedNameImpl::~QualifiedNameImpl()

@@ -57,6 +57,12 @@ bool StreamResourceHandler::OnWillStart(int request_id,
   return true;
 }
 
+bool StreamResourceHandler::OnBeforeNetworkStart(int request_id,
+                                                 const GURL& url,
+                                                 bool* defer) {
+  return true;
+}
+
 bool StreamResourceHandler::OnWillRead(int request_id,
                                        scoped_refptr<net::IOBuffer>* buf,
                                        int* buf_size,
@@ -93,12 +99,12 @@ bool StreamResourceHandler::OnReadCompleted(int request_id,
   return true;
 }
 
-bool StreamResourceHandler::OnResponseCompleted(
+void StreamResourceHandler::OnResponseCompleted(
     int request_id,
     const net::URLRequestStatus& status,
-    const std::string& sec_info) {
+    const std::string& sec_info,
+    bool* defer) {
   stream_->Finalize();
-  return status.status() == net::URLRequestStatus::SUCCESS;
 }
 
 void StreamResourceHandler::OnDataDownloaded(

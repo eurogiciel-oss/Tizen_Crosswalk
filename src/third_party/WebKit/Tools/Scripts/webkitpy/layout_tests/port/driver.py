@@ -46,12 +46,12 @@ DRIVER_START_TIMEOUT_SECS = 30
 
 
 class DriverInput(object):
-    def __init__(self, test_name, timeout, image_hash, should_run_pixel_test, args=None):
+    def __init__(self, test_name, timeout, image_hash, should_run_pixel_test, args):
         self.test_name = test_name
         self.timeout = timeout  # in ms
         self.image_hash = image_hash
         self.should_run_pixel_test = should_run_pixel_test
-        self.args = args or []
+        self.args = args
 
 
 class DriverOutput(object):
@@ -60,7 +60,7 @@ class DriverOutput(object):
 
     def __init__(self, text, image, image_hash, audio, crash=False,
             test_time=0, measurements=None, timeout=False, error='', crashed_process_name='??',
-            crashed_pid=None, crash_log=None, pid=None, device_offline=False):
+            crashed_pid=None, crash_log=None, pid=None):
         # FIXME: Args could be renamed to better clarify what they do.
         self.text = text
         self.image = image  # May be empty-string if the test crashes.
@@ -76,10 +76,13 @@ class DriverOutput(object):
         self.timeout = timeout
         self.error = error  # stderr output
         self.pid = pid
-        self.device_offline = device_offline
 
     def has_stderr(self):
         return bool(self.error)
+
+
+class DeviceFailure(Exception):
+    pass
 
 
 class Driver(object):
@@ -139,13 +142,6 @@ class Driver(object):
 
         Returns a DriverOutput object.
         """
-        base = self._port.lookup_virtual_test_base(driver_input.test_name)
-        if base:
-            virtual_driver_input = copy.copy(driver_input)
-            virtual_driver_input.test_name = base
-            virtual_driver_input.args = self._port.lookup_virtual_test_args(driver_input.test_name)
-            return self.run_test(virtual_driver_input, stop_when_done)
-
         start_time = time.time()
         self.start(driver_input.should_run_pixel_test, driver_input.args)
         test_begin_time = time.time()

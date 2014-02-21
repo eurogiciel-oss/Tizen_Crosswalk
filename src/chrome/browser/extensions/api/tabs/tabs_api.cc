@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "apps/shell_window.h"
-#include "base/base64.h"
 #include "base/bind.h"
 #include "base/command_line.h"
 #include "base/logging.h"
@@ -20,7 +19,6 @@
 #include "base/strings/string16.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/extensions/api/tabs/tabs_constants.h"
@@ -54,17 +52,14 @@
 #include "chrome/common/extensions/api/i18n/default_locale_handler.h"
 #include "chrome/common/extensions/api/tabs.h"
 #include "chrome/common/extensions/api/windows.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/extension_file_util.h"
 #include "chrome/common/extensions/extension_l10n_util.h"
 #include "chrome/common/extensions/extension_messages.h"
-#include "chrome/common/extensions/incognito_handler.h"
 #include "chrome/common/extensions/message_bundle.h"
-#include "chrome/common/extensions/permissions/permissions_data.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/translate/language_detection_details.h"
 #include "chrome/common/url_constants.h"
+#include "components/translate/core/common/language_detection_details.h"
 #include "components/user_prefs/pref_registry_syncable.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -79,15 +74,16 @@
 #include "extensions/browser/file_reader.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/error_utils.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest_constants.h"
+#include "extensions/common/manifest_handlers/incognito_info.h"
+#include "extensions/common/permissions/permissions_data.h"
 #include "extensions/common/user_script.h"
 #include "skia/ext/image_operations.h"
 #include "skia/ext/platform_canvas.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/models/list_selection_model.h"
 #include "ui/base/ui_base_types.h"
-#include "ui/gfx/codec/jpeg_codec.h"
-#include "ui/gfx/codec/png_codec.h"
 
 #if defined(OS_WIN)
 #include "win8/util/win8_util.h"
@@ -105,20 +101,15 @@ using content::NavigationController;
 using content::NavigationEntry;
 using content::OpenURLParams;
 using content::Referrer;
-using content::RenderViewHost;
 using content::WebContents;
 
 namespace extensions {
 
 namespace windows = api::windows;
-namespace errors = manifest_errors;
 namespace keys = tabs_constants;
 namespace tabs = api::tabs;
-typedef tabs::CaptureVisibleTab::Params::Options FormatEnum;
 
 using api::tabs::InjectDetails;
-
-const int TabsCaptureVisibleTabFunction::kDefaultQuality = 90;
 
 namespace {
 
@@ -627,7 +618,7 @@ bool WindowsCreateFunction::RunImpl() {
       !GetProfile()->IsOffTheRecord() && !include_incognito()) {
     // Don't expose incognito windows if extension itself works in non-incognito
     // profile and CanCrossIncognito isn't allowed.
-    SetResult(Value::CreateNullValue());
+    SetResult(base::Value::CreateNullValue());
   } else {
     SetResult(
         new_window->extension_window_controller()->CreateWindowValueWithTabs(
@@ -936,7 +927,7 @@ bool TabsQueryFunction::RunImpl() {
       }
 
       if (!title.empty() && !MatchPattern(web_contents->GetTitle(),
-                                          UTF8ToUTF16(title)))
+                                          base::UTF8ToUTF16(title)))
         continue;
 
       if (!url_pattern.MatchesURL(web_contents->GetURL()))
@@ -1458,7 +1449,7 @@ bool TabsMoveFunction::RunImpl() {
   if (num_tabs > 1) {
     SetResult(tab_values.DeepCopy());
   } else {
-    Value* value = NULL;
+    base::Value* value = NULL;
     CHECK(tab_values.Get(0, &value));
     SetResult(value->DeepCopy());
   }
@@ -1665,186 +1656,37 @@ bool TabsRemoveFunction::RemoveTab(int tab_id) {
   return true;
 }
 
-bool TabsCaptureVisibleTabFunction::GetTabToCapture(
-    WebContents** web_contents) {
-  scoped_ptr<tabs::CaptureVisibleTab::Params> params(
-      tabs::CaptureVisibleTab::Params::Create(*args_));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
-
-  Browser* browser = NULL;
-  // windowId defaults to "current" window.
-  int window_id = extension_misc::kCurrentWindowId;
-
-  if (params->window_id.get())
-    window_id = *params->window_id;
-
-  if (!GetBrowserFromWindowID(this, window_id, &browser))
-    return false;
-
-  *web_contents = browser->tab_strip_model()->GetActiveWebContents();
-  if (*web_contents == NULL) {
-    error_ = keys::kInternalVisibleTabCaptureError;
-    return false;
-  }
-
-  return true;
-};
-
-bool TabsCaptureVisibleTabFunction::RunImpl() {
-  scoped_ptr<tabs::CaptureVisibleTab::Params> params(
-      tabs::CaptureVisibleTab::Params::Create(*args_));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
-
+bool TabsCaptureVisibleTabFunction::IsScreenshotEnabled() {
   PrefService* service = GetProfile()->GetPrefs();
   if (service->GetBoolean(prefs::kDisableScreenshots)) {
     error_ = keys::kScreenshotsDisabled;
     return false;
   }
-
-  WebContents* web_contents = NULL;
-  if (!GetTabToCapture(&web_contents))
-    return false;
-
-  image_format_ = FormatEnum::FORMAT_JPEG;  // Default format is JPEG.
-  image_quality_ = kDefaultQuality;  // Default quality setting.
-
-  if (params->options.get()) {
-    if (params->options->format != FormatEnum::FORMAT_NONE)
-      image_format_ = params->options->format;
-
-    if (params->options->quality.get())
-      image_quality_ = *params->options->quality;
-  }
-
-  // Use the last committed URL rather than the active URL for permissions
-  // checking, since the visible page won't be updated until it has been
-  // committed. A canonical example of this is interstitials, which show the
-  // URL of the new/loading page (active) but would capture the content of the
-  // old page (last committed).
-  //
-  // TODO(creis): Use WebContents::GetLastCommittedURL instead.
-  // http://crbug.com/237908.
-  NavigationEntry* last_committed_entry =
-      web_contents->GetController().GetLastCommittedEntry();
-  GURL last_committed_url = last_committed_entry ?
-      last_committed_entry->GetURL() : GURL();
-  if (!PermissionsData::CanCaptureVisiblePage(
-          GetExtension(),
-          last_committed_url,
-          SessionID::IdForTab(web_contents),
-          &error_)) {
-    return false;
-  }
-
-  RenderViewHost* render_view_host = web_contents->GetRenderViewHost();
-  content::RenderWidgetHostView* view = render_view_host->GetView();
-  if (!view) {
-    error_ = keys::kInternalVisibleTabCaptureError;
-    return false;
-  }
-  render_view_host->CopyFromBackingStore(
-      gfx::Rect(),
-      view->GetViewBounds().size(),
-      base::Bind(&TabsCaptureVisibleTabFunction::CopyFromBackingStoreComplete,
-                 this));
   return true;
 }
 
-void TabsCaptureVisibleTabFunction::CopyFromBackingStoreComplete(
-    bool succeeded,
-    const SkBitmap& bitmap) {
-  if (succeeded) {
-    VLOG(1) << "captureVisibleTab() got image from backing store.";
-    SendResultFromBitmap(bitmap);
-    return;
+WebContents* TabsCaptureVisibleTabFunction::GetWebContentsForID(int window_id) {
+  Browser* browser = NULL;
+  if (!GetBrowserFromWindowID(this, window_id, &browser))
+    return NULL;
+
+  WebContents* contents = browser->tab_strip_model()->GetActiveWebContents();
+  if (!contents) {
+    error_ = keys::kInternalVisibleTabCaptureError;
+    return NULL;
   }
 
-  WebContents* web_contents = NULL;
-  if (!GetTabToCapture(&web_contents)) {
-    SendInternalError();
-    return;
+  if (!PermissionsData::CanCaptureVisiblePage(GetExtension(),
+                                              SessionID::IdForTab(contents),
+                                              &error_)) {
+    return NULL;
   }
-
-  // Ask the renderer for a snapshot of the tab.
-  content::RenderWidgetHost* render_widget_host =
-      web_contents->GetRenderViewHost();
-  if (!render_widget_host) {
-    SendInternalError();
-    return;
-  }
-
-  render_widget_host->GetSnapshotFromRenderer(
-      gfx::Rect(),
-      base::Bind(
-          &TabsCaptureVisibleTabFunction::GetSnapshotFromRendererComplete,
-          this));
+  return contents;
 }
 
-// If a backing store was not available in
-// TabsCaptureVisibleTabFunction::RunImpl, than the renderer was asked for a
-// snapshot.
-void TabsCaptureVisibleTabFunction::GetSnapshotFromRendererComplete(
-    bool succeeded,
-    const SkBitmap& bitmap) {
-  if (!succeeded) {
-    SendInternalError();
-  } else {
-    VLOG(1) << "captureVisibleTab() got image from renderer.";
-    SendResultFromBitmap(bitmap);
-  }
-}
-
-void TabsCaptureVisibleTabFunction::SendInternalError() {
+void TabsCaptureVisibleTabFunction::OnCaptureFailure(FailureReason reason) {
   error_ = keys::kInternalVisibleTabCaptureError;
   SendResponse(false);
-}
-
-// Turn a bitmap of the screen into an image, set that image as the result,
-// and call SendResponse().
-void TabsCaptureVisibleTabFunction::SendResultFromBitmap(
-    const SkBitmap& screen_capture) {
-  std::vector<unsigned char> data;
-  SkAutoLockPixels screen_capture_lock(screen_capture);
-  bool encoded = false;
-  std::string mime_type;
-  switch (image_format_) {
-    case FormatEnum::FORMAT_JPEG:
-      encoded = gfx::JPEGCodec::Encode(
-          reinterpret_cast<unsigned char*>(screen_capture.getAddr32(0, 0)),
-          gfx::JPEGCodec::FORMAT_SkBitmap,
-          screen_capture.width(),
-          screen_capture.height(),
-          static_cast<int>(screen_capture.rowBytes()),
-          image_quality_,
-          &data);
-      mime_type = keys::kMimeTypeJpeg;
-      break;
-    case FormatEnum::FORMAT_PNG:
-      encoded = gfx::PNGCodec::EncodeBGRASkBitmap(
-          screen_capture,
-          true,  // Discard transparency.
-          &data);
-      mime_type = keys::kMimeTypePng;
-      break;
-    default:
-      NOTREACHED() << "Invalid image format.";
-  }
-
-  if (!encoded) {
-    error_ = keys::kInternalVisibleTabCaptureError;
-    SendResponse(false);
-    return;
-  }
-
-  std::string base64_result;
-  base::StringPiece stream_as_string(
-      reinterpret_cast<const char*>(vector_as_array(&data)), data.size());
-
-  base::Base64Encode(stream_as_string, &base64_result);
-  base64_result.insert(0, base::StringPrintf("data:%s;base64,",
-                                             mime_type.c_str()));
-  SetResult(new StringValue(base64_result));
-  SendResponse(true);
 }
 
 void TabsCaptureVisibleTabFunction::RegisterProfilePrefs(
@@ -1899,12 +1741,12 @@ bool TabsDetectLanguageFunction::RunImpl() {
 
   TranslateTabHelper* translate_tab_helper =
       TranslateTabHelper::FromWebContents(contents);
-  if (!translate_tab_helper->language_state().original_language().empty()) {
+  if (!translate_tab_helper->GetLanguageState().original_language().empty()) {
     // Delay the callback invocation until after the current JS call has
     // returned.
     base::MessageLoop::current()->PostTask(FROM_HERE, base::Bind(
         &TabsDetectLanguageFunction::GotLanguage, this,
-        translate_tab_helper->language_state().original_language()));
+        translate_tab_helper->GetLanguageState().original_language()));
     return true;
   }
   // The tab contents does not know its language yet.  Let's wait until it

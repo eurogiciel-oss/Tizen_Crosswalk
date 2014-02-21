@@ -17,23 +17,31 @@
 #include "media/cast/cast_environment.h"
 
 namespace media {
+class VideoFrame;
+
 namespace cast {
+
+namespace transport {
+class PacketSender;
+}
+
 // Callback in which the raw audio frame and play-out time will be returned
 // once decoding is complete.
 typedef base::Callback<void(scoped_ptr<PcmAudioFrame>, const base::TimeTicks&)>
     AudioFrameDecodedCallback;
 
 // Callback in which the encoded audio frame and play-out time will be returned.
-typedef base::Callback<void(scoped_ptr<EncodedAudioFrame>,
+typedef base::Callback<void(scoped_ptr<transport::EncodedAudioFrame>,
     const base::TimeTicks&)> AudioFrameEncodedCallback;
 
 // Callback in which the raw frame and render time will be returned once
 // decoding is complete.
-typedef base::Callback<void(scoped_ptr<I420VideoFrame>, const base::TimeTicks&)>
+typedef base::Callback<void(const scoped_refptr<media::VideoFrame>& video_frame,
+                            const base::TimeTicks&)>
     VideoFrameDecodedCallback;
 
 // Callback in which the encoded video frame and render time will be returned.
-typedef base::Callback<void(scoped_ptr<EncodedVideoFrame>,
+typedef base::Callback<void(scoped_ptr<transport::EncodedVideoFrame>,
     const base::TimeTicks&)> VideoFrameEncodedCallback;
 
 // This Class is thread safe.
@@ -65,11 +73,11 @@ class CastReceiver {
       scoped_refptr<CastEnvironment> cast_environment,
       const AudioReceiverConfig& audio_config,
       const VideoReceiverConfig& video_config,
-      PacketSender* const packet_sender);
+      transport::PacketSender* const packet_sender);
 
   // All received RTP and RTCP packets for the call should be inserted to this
   // PacketReceiver.
-  virtual scoped_refptr<PacketReceiver> packet_receiver() = 0;
+  virtual scoped_refptr<transport::PacketReceiver> packet_receiver() = 0;
 
   // Polling interface to get audio and video frames from the CastReceiver.
   virtual scoped_refptr<FrameReceiver> frame_receiver() = 0;

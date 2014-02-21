@@ -5,30 +5,26 @@
 #ifndef MOJO_PUBLIC_TESTS_TEST_SUPPORT_H_
 #define MOJO_PUBLIC_TESTS_TEST_SUPPORT_H_
 
-#include "base/basictypes.h"
-#include "base/callback.h"
-#include "base/compiler_specific.h"
-#include "testing/gtest/include/gtest/gtest.h"
+#include <string>
+
+#include "mojo/public/system/core_cpp.h"
 
 namespace mojo {
 namespace test {
 
-class TestBase : public testing::Test {
- public:
-  TestBase();
-  virtual ~TestBase();
-
-  virtual void SetUp() OVERRIDE;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(TestBase);
-};
+bool WriteTextMessage(MessagePipeHandle handle, const std::string& text);
+bool ReadTextMessage(MessagePipeHandle handle, std::string* text);
 
 // Run |single_iteration| an appropriate number of times and report its
 // performance appropriately. (This actually runs |single_iteration| for a fixed
 // amount of time and reports the number of iterations per unit time.)
+typedef void (*PerfTestSingleIteration)(void* closure);
 void IterateAndReportPerf(const char* test_name,
-                          base::Callback<void()> single_iteration);
+                          PerfTestSingleIteration single_iteration,
+                          void* closure);
+
+MojoResult WriteEmptyMessage(const MessagePipeHandle& handle);
+MojoResult ReadEmptyMessage(const MessagePipeHandle& handle);
 
 }  // namespace test
 }  // namespace mojo

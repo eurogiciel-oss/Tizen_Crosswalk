@@ -44,7 +44,6 @@ const char* kPrefToManageType[] = {
   NULL,  // No policy for default value of PPAPI broker
   NULL,  // No policy for default value of multiple automatic downloads
   NULL,  // No policy for default value of MIDI system exclusive requests
-  NULL,  // No policy for default value of save password
 #if defined(OS_WIN)
   NULL,  // No policy for default value of "switch to desktop"
 #elif defined(OS_ANDROID) || defined(OS_CHROMEOS)
@@ -412,7 +411,7 @@ void PolicyProvider::UpdateManagedDefaultSetting(
         ContentSettingsPattern::Wildcard(),
         content_type,
         std::string(),
-        Value::CreateIntegerValue(setting));
+        base::Value::CreateIntegerValue(setting));
   }
 }
 
@@ -432,7 +431,7 @@ bool PolicyProvider::SetWebsiteSetting(
     const ContentSettingsPattern& secondary_pattern,
     ContentSettingsType content_type,
     const ResourceIdentifier& resource_identifier,
-    Value* value) {
+    base::Value* value) {
   return false;
 }
 

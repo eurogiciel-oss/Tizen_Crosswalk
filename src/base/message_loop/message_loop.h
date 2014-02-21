@@ -25,9 +25,8 @@
 #include "base/time/time.h"
 #include "base/tracking_info.h"
 
+// TODO(sky): these includes should not be necessary. Nuke them.
 #if defined(OS_WIN)
-// We need this to declare base::MessagePumpWin::Dispatcher, which we should
-// really just eliminate.
 #include "base/message_loop/message_pump_win.h"
 #elif defined(OS_IOS)
 #include "base/message_loop/message_pump_io_ios.h"
@@ -53,7 +52,6 @@
 namespace base {
 
 class HistogramBase;
-class MessagePumpDispatcher;
 class MessagePumpObserver;
 class RunLoop;
 class ThreadTaskRunnerHandle;
@@ -96,11 +94,10 @@ class WaitableEvent;
 class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
  public:
 
-#if defined(USE_GTK_MESSAGE_PUMP)
-  typedef MessagePumpGdkObserver Observer;
-#elif !defined(OS_MACOSX) && !defined(OS_ANDROID)
-  typedef MessagePumpDispatcher Dispatcher;
+#if defined(USE_AURA)
   typedef MessagePumpObserver Observer;
+#elif defined(USE_GTK_MESSAGE_PUMP)
+  typedef MessagePumpGdkObserver Observer;
 #endif
 
   // A MessageLoop has a particular type, which indicates the set of
@@ -128,9 +125,13 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   //   TYPE_JAVA behaves in essence like TYPE_UI, except during construction
   //   where it does not use the main thread specific pump factory.
   //
+  // TYPE_CUSTOM
+  //   MessagePump was supplied to constructor.
+  //
   enum Type {
     TYPE_DEFAULT,
     TYPE_UI,
+    TYPE_CUSTOM,
 #if defined(TOOLKIT_GTK)
     TYPE_GPU,
 #endif
@@ -143,6 +144,9 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   // Normally, it is not necessary to instantiate a MessageLoop.  Instead, it
   // is typical to make use of the current thread's MessageLoop instance.
   explicit MessageLoop(Type type = TYPE_DEFAULT);
+  // Creates a TYPE_CUSTOM MessageLoop with the supplied MessagePump, which must
+  // be non-NULL.
+  explicit MessageLoop(scoped_ptr<base::MessagePump> pump);
   virtual ~MessageLoop();
 
   // Returns the MessageLoop object for the current thread, or null if none.
@@ -155,6 +159,12 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   // MessagePump implementation for 'TYPE_UI'. Returns true if the factory
   // was successfully registered.
   static bool InitMessagePumpForUIFactory(MessagePumpFactory* factory);
+
+  // Creates the default MessagePump based on |type|. Caller owns return
+  // value.
+  // TODO(sky): convert this and InitMessagePumpForUIFactory() to return a
+  // scoped_ptr.
+  static MessagePump* CreateMessagePumpForType(Type type);
 
   // A DestructionObserver is notified when the current MessageLoop is being
   // destroyed.  These observers are notified prior to MessageLoop::current()
@@ -197,17 +207,10 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   // PostTask(from_here, task) is equivalent to
   // PostDelayedTask(from_here, task, 0).
   //
-  // The TryPostTask is meant for the cases where the calling thread cannot
-  // block. If posting the task will block, the call returns false, the task
-  // is not posted but the task is consumed anyways.
-  //
   // NOTE: These methods may be called on any thread.  The Task will be invoked
   // on the thread that executes MessageLoop::Run().
   void PostTask(const tracked_objects::Location& from_here,
                 const Closure& task);
-
-  bool TryPostTask(const tracked_objects::Location& from_here,
-                   const Closure& task);
 
   void PostDelayedTask(const tracked_objects::Location& from_here,
                        const Closure& task,
@@ -353,14 +356,6 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
     bool old_state_;
   };
 
-  // Enables or disables the restoration during an exception of the unhandled
-  // exception filter that was active when Run() was called. This can happen
-  // if some third party code call SetUnhandledExceptionFilter() and never
-  // restores the previous filter.
-  void set_exception_restoration(bool restore) {
-    exception_restoration_ = restore;
-  }
-
   // Returns true if we are currently running a nested message loop.
   bool IsNested();
 
@@ -411,11 +406,6 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   // Returns true if the message loop is "idle". Provided for testing.
   bool IsIdleForTesting();
 
-  // Takes the incoming queue lock, signals |caller_wait| and waits until
-  // |caller_signal| is signalled.
-  void LockWaitUnLockForTesting(WaitableEvent* caller_wait,
-                                WaitableEvent* caller_signal);
-
   //----------------------------------------------------------------------------
  protected:
 
@@ -442,20 +432,11 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   friend class internal::IncomingTaskQueue;
   friend class RunLoop;
 
-  // A function to encapsulate all the exception handling capability in the
-  // stacks around the running of a main message loop.  It will run the message
-  // loop in a SEH try block or not depending on the set_SEH_restoration()
-  // flag invoking respectively RunInternalInSEHFrame() or RunInternal().
+  // Configures various members for the two constructors.
+  void Init();
+
+  // Invokes the actual run loop using the message pump.
   void RunHandler();
-
-#if defined(OS_WIN)
-  __declspec(noinline) void RunInternalInSEHFrame();
-#endif
-
-  // A surrounding stack frame around the running of the message loop that
-  // supports all saving and restoring of state, as is needed for any/all (ugly)
-  // recursive calls.
-  void RunInternal();
 
   // Called to process any delayed non-nestable tasks.
   bool ProcessNextDelayedNonNestableTask();
@@ -504,7 +485,7 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   virtual void GetQueueingInformation(size_t* queue_size,
                                       TimeDelta* queueing_delay) OVERRIDE;
 
-  Type type_;
+  const Type type_;
 
   // A list of tasks that need to be processed by this instance.  Note that
   // this queue is only accessed (push/pop) by our current thread.
@@ -522,8 +503,6 @@ class BASE_EXPORT MessageLoop : public MessagePump::Delegate {
   TaskQueue deferred_non_nestable_work_queue_;
 
   ObserverList<DestructionObserver> destruction_observers_;
-
-  bool exception_restoration_;
 
   // A recursion block that prevents accidentally running additional tasks when
   // insider a (accidentally induced?) nested message pump.
@@ -586,6 +565,11 @@ class BASE_EXPORT MessageLoopForUI : public MessageLoop {
     return static_cast<MessageLoopForUI*>(loop);
   }
 
+  static bool IsCurrent() {
+    MessageLoop* loop = MessageLoop::current();
+    return loop && loop->type() == MessageLoop::TYPE_UI;
+  }
+
 #if defined(OS_IOS)
   // On iOS, the main message loop cannot be Run().  Instead call Attach(),
   // which connects this MessageLoop to the UI thread's CFRunLoop and allows
@@ -598,12 +582,15 @@ class BASE_EXPORT MessageLoopForUI : public MessageLoop {
   // never be called. Instead use Start(), which will forward all the native UI
   // events to the Java message loop.
   void Start();
-#elif !defined(OS_MACOSX)
+#endif
 
+#if !defined(OS_NACL) && (defined(TOOLKIT_GTK) || defined(USE_OZONE) || \
+                          defined(OS_WIN) || defined(USE_X11))
   // Please see message_pump_win/message_pump_glib for definitions of these
   // methods.
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
+#endif
 
 #if defined(OS_WIN)
   // Plese see MessagePumpForUI for definitions of this method.
@@ -620,11 +607,12 @@ class BASE_EXPORT MessageLoopForUI : public MessageLoop {
   friend class MessagePumpOzone;
 #endif
 
+#if !defined(OS_MACOSX) && !defined(OS_ANDROID)
   // TODO(rvargas): Make this platform independent.
   MessagePumpForUI* pump_ui() {
     return static_cast<MessagePumpForUI*>(pump_.get());
   }
-#endif  // !defined(OS_MACOSX)
+#endif
 };
 
 // Do not add any member variables to MessageLoopForUI!  This is important b/c
@@ -679,6 +667,11 @@ class BASE_EXPORT MessageLoopForIO : public MessageLoop {
     MessageLoop* loop = MessageLoop::current();
     DCHECK_EQ(MessageLoop::TYPE_IO, loop->type());
     return static_cast<MessageLoopForIO*>(loop);
+  }
+
+  static bool IsCurrent() {
+    MessageLoop* loop = MessageLoop::current();
+    return loop && loop->type() == MessageLoop::TYPE_IO;
   }
 
   void AddIOObserver(IOObserver* io_observer) {

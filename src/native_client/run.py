@@ -3,52 +3,26 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import argparse
 import os
 import platform
 import subprocess
 import sys
+import tempfile
+
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "build"))
+import platform_tools
+
+# Target architecture for PNaCl can be set through the ``-arch``
+# command-line argument, and when its value is ``env`` the following
+# program environment variable is queried to figure out which
+# architecture to target.
+ARCH_ENV_VAR_NAME = 'PNACL_RUN_ARCH'
 
 class Environment:
   pass
 env = Environment()
-
-def Usage():
-  name = sys.argv[0]
-  print '-' * 80
-  info = '''
-%s [run_py_options] [sel_ldr_options] <nexe> [nexe_parameters]
-
-Run a command-line nexe (or pexe). Automatically handles translation,
-building sel_ldr, and building the IRT.
-
-run.py options:
-  -L<LIBRARY_PATH>       Additional library path for runnable-ld.so
-  --paranoid             Remove -S (signals) and -a (file access)
-                         from the default sel_ldr options.
-
-  --loader=dbg           Use dbg version of sel_ldr
-  --loader=opt           Use opt version of sel_ldr
-  --loader=<path>        Path to sel_ldr
-  Default: Uses whichever sel_ldr already exists. Otherwise, builds opt version.
-
-  --irt=core             Use Core IRT
-  --irt=none             Don't use IRT
-  --irt=<path>           Path to IRT nexe
-  Default: Uses whichever IRT already exists. Otherwise, builds irt_core.
-
-  -n | --dry-run         Just print commands, don't execute them
-  -h | --help            Display this information
-  -q | --quiet           Don't print anything (nexe output can be redirected
-                         with NACL_EXE_STDOUT/STDERR env vars)
-  --more                 Display sel_ldr usage
-
-  -arch <arch> | -m32 | -m64 | -marm | -mmips32
-                         Specify architecture for PNaCl translation
-                         (arch is one of: x86-32, x86-64, arm or mips32)
-'''
-  print info % name
-  print '-' * 80
-  sys.exit(0)
 
 def SetupEnvironment():
   # linux, win, or mac
@@ -108,6 +82,9 @@ def SetupEnvironment():
   # Debug the nexe using the debug stub
   env.debug = False
 
+  # PNaCl (as opposed to NaCl).
+  env.is_pnacl = False
+
 def PrintBanner(output):
   if not env.quiet:
     lines = output.split('\n')
@@ -131,19 +108,19 @@ def GetMultiDir(arch):
   else:
     Fatal('nacl-gcc does not support %s' % arch)
 
-def SetupArch(arch, allow_build = True):
+def SetupArch(arch, allow_build=True):
   '''Setup environment variables that require knowing the
      architecture. We can only do this after we've seen the
      nexe or once we've read -arch off the command-line.
   '''
   env.arch = arch
-  env.sel_ldr = FindOrBuildSelLdr(allow_build = allow_build)
-  env.irt = FindOrBuildIRT(allow_build = allow_build)
+  env.sel_ldr = FindOrBuildSelLdr(allow_build=allow_build)
+  env.irt = FindOrBuildIRT(allow_build=allow_build)
 
 
-def SetupLibC(arch, is_pnacl, is_dynamic):
+def SetupLibC(arch, is_dynamic):
   if is_dynamic:
-    if is_pnacl:
+    if env.is_pnacl:
       libdir = os.path.join(env.pnacl_base, 'lib-' + arch)
     else:
       libdir = os.path.join(env.nnacl_root, 'x86_64-nacl', GetMultiDir(arch))
@@ -153,18 +130,20 @@ def SetupLibC(arch, is_pnacl, is_dynamic):
 
 def main(argv):
   SetupEnvironment()
+  return_code = 0
 
-  sel_ldr_options, nexe, nexe_params = ArgSplit(argv[1:])
-
-  # Translate .pexe files
-  is_pnacl = nexe.endswith('.pexe')
+  sel_ldr_options = []
+  # sel_ldr's "quiet" options need to come early in the command line
+  # to suppress noisy output from processing other options, like -Q.
+  sel_ldr_quiet_options = []
+  nexe, nexe_params = ArgSplit(argv[1:])
 
   try:
-    if is_pnacl:
+    if env.is_pnacl:
       nexe = Translate(env.arch, nexe)
 
     # Read the ELF file info
-    if is_pnacl and env.dry_run:
+    if env.is_pnacl and env.dry_run:
       # In a dry run, we don't actually run pnacl-translate, so there is
       # no nexe for readelf. Fill in the information manually.
       arch = env.arch
@@ -181,7 +160,10 @@ def main(argv):
         sel_ldr_options += ['-s']
     if env.quiet:
       # Don't print sel_ldr logs
-      sel_ldr_options += ['-l', '/dev/null']
+      # These need to be at the start of the arglist for full effectiveness.
+      # -q means quiet most stderr warnings.
+      # -l /dev/null means log to /dev/null.
+      sel_ldr_quiet_options = ['-q', '-l', '/dev/null']
     if env.debug:
       # Disabling validation (-c) is used by the debug stub test.
       # TODO(dschuff): remove if/when it's no longer necessary
@@ -199,7 +181,7 @@ def main(argv):
     SetupArch(arch)
 
     # Setup LibC-specific environment variables
-    SetupLibC(arch, is_pnacl, is_dynamic)
+    SetupLibC(arch, is_dynamic)
 
     sel_ldr_args = []
 
@@ -217,20 +199,51 @@ def main(argv):
     sel_ldr_args += [os.path.abspath(nexe)] + nexe_params
 
     # Run sel_ldr!
-    RunSelLdr(sel_ldr_args)
+    retries = 0
+    try:
+      if hasattr(env, 'retries'):
+        retries = int(env.retries)
+    except ValueError:
+      pass
+    collate = env.collate or retries > 0
+    input = sys.stdin.read() if collate else None
+    for iter in range(1 + max(retries, 0)):
+      output = RunSelLdr(sel_ldr_args, quiet_args=sel_ldr_quiet_options,
+                         collate=collate, stdin_string=input)
+      if env.last_return_code < 128:
+        # If the application crashes, we expect a 128+ return code.
+        break
+    sys.stdout.write(output or '')
+    return_code = env.last_return_code
   finally:
-    if is_pnacl:
+    if env.is_pnacl:
       # Clean up the .nexe that was created.
       try:
         os.remove(nexe)
       except:
         pass
 
-  return 0
+  return return_code
 
 
-def RunSelLdr(args):
+def RunSelLdr(args, quiet_args=[], collate=False, stdin_string=None):
+  """Run the sel_ldr command and optionally capture its output.
+
+  Args:
+    args: A string list containing the command and arguments.
+    collate: Whether to capture stdout+stderr (rather than passing
+        them through to the terminal).
+    stdin_string: Text to send to the command via stdin.  If None, stdin is
+        inherited from the caller.
+
+  Returns:
+    A string containing the concatenation of any captured stdout plus
+    any captured stderr.
+  """
   prefix = []
+  # The bootstrap loader args (--r_debug, --reserved_at_zero) need to
+  # come before quiet_args.
+  bootstrap_loader_args = []
   if GetBuildArch().find('arm') == -1 and env.arch == 'arm':
     prefix = [ env.qemu_arm, '-cpu', 'cortex-a9']
     if env.trace:
@@ -249,11 +262,14 @@ def RunSelLdr(args):
                              'nacl_helper_bootstrap')
     loader = [bootstrap, env.sel_ldr]
     template_digits = 'X' * 16
-    args = ['--r_debug=0x' + template_digits,
-            '--reserved_at_zero=0x' + template_digits] + args
+    bootstrap_loader_args = ['--r_debug=0x' + template_digits,
+                             '--reserved_at_zero=0x' + template_digits]
   else:
     loader = [env.sel_ldr]
-  Run(prefix + loader + args)
+  return Run(prefix + loader + bootstrap_loader_args + quiet_args + args,
+             exit_on_failure=(not collate),
+             capture_stdout=collate, capture_stderr=collate,
+             stdin_string=stdin_string)
 
 
 def FindOrBuildIRT(allow_build = True):
@@ -295,7 +311,7 @@ def BuildIRT(flavor):
   args = args.split()
   Run([env.scons] + args, cwd=env.nacl_root)
 
-def FindOrBuildSelLdr(allow_build = True):
+def FindOrBuildSelLdr(allow_build=True):
   if env.force_sel_ldr:
     if env.force_sel_ldr in ('dbg','opt'):
       modes = [ env.force_sel_ldr ]
@@ -336,12 +352,12 @@ def BuildSelLdr(mode):
   Run([env.scons] + args, cwd=env.nacl_root)
 
 def Translate(arch, pexe):
-  if arch is None:
-    Fatal('Missing -arch for PNaCl translation.')
   output_file = os.path.splitext(pexe)[0] + '.' + arch + '.nexe'
   pnacl_translate = os.path.join(env.pnacl_base, 'bin', 'pnacl-translate')
   args = [ pnacl_translate, '-arch', arch, pexe, '-o', output_file,
            '--allow-llvm-bitcode-input' ]
+  if env.zerocost_eh:
+    args.append('--pnacl-allow-zerocost-eh')
   Run(args)
   return output_file
 
@@ -354,25 +370,61 @@ def Stringify(args):
       ret += ' %s' % arg
   return ret.strip()
 
-def Run(args, cwd = None, capture = False):
-  if not capture:
+def PrepareStdin(stdin_string):
+  """Prepare a stdin stream for a subprocess based on contents of a string.
+  This has to be in the form of an actual file, rather than directly piping
+  the string, since the child may (inappropriately) try to fseek() on stdin.
+
+  Args:
+    stdin_string: The characters to pipe to the subprocess.
+
+  Returns:
+    An open temporary file object ready to be read from.
+  """
+  f = tempfile.TemporaryFile()
+  f.write(stdin_string)
+  f.seek(0)
+  return f
+
+def Run(args, cwd=None, verbose=True, exit_on_failure=False,
+        capture_stdout=False, capture_stderr=False, stdin_string=None):
+  """Run a command and optionally capture its output.
+
+  Args:
+    args: A string list containing the command and arguments.
+    cwd: Change to this directory before running.
+    verbose: Print the command before running it.
+    exit_on_failure: Exit immediately if the command returns nonzero.
+    capture_stdout: Capture the stdout as a string (rather than passing it
+        through to the terminal).
+    capture_stderr: Capture the stderr as a string (rather than passing it
+        through to the terminal).
+    stdin_string: Text to send to the command via stdin.  If None, stdin is
+        inherited from the caller.
+
+  Returns:
+    A string containing the concatenation of any captured stdout plus
+    any captured stderr.
+  """
+  if verbose:
     PrintCommand(Stringify(args))
     if env.dry_run:
       return
 
-  stdout_pipe = None
+  stdout_redir = None
   stderr_redir = None
-  if capture:
-    stdout_pipe = subprocess.PIPE
-  if env.quiet and not env.paranoid:
-    # Even if you redirect NACLLOG to /dev/null it still prints
-    # "DEBUG MODE ENABLED (bypass acl)", so just swallow the output
-    stderr_redir = open(os.devnull)
-    os.environ['NACLLOG'] = os.devnull
+  stdin_redir = None
+  if capture_stdout:
+    stdout_redir = subprocess.PIPE
+  if capture_stderr:
+    stderr_redir = subprocess.PIPE
+  if stdin_string:
+    stdin_redir = PrepareStdin(stdin_string)
 
   p = None
   try:
-    p = subprocess.Popen(args, stdout=stdout_pipe, stderr=stderr_redir, cwd=cwd)
+    p = subprocess.Popen(args, stdin=stdin_redir, stdout=stdout_redir,
+                         stderr=stderr_redir, cwd=cwd)
     (stdout_contents, stderr_contents) = p.communicate()
   except KeyboardInterrupt, e:
     if p:
@@ -383,119 +435,106 @@ def Run(args, cwd = None, capture = False):
       p.kill()
     raise e
 
-  if p.returncode != 0:
-    if capture:
+  env.last_return_code = p.returncode
+
+  if p.returncode != 0 and exit_on_failure:
+    if capture_stdout or capture_stderr:
+      # Print an extra message if any of the program's output wasn't
+      # going to the screen.
       Fatal('Failed to run: %s' % Stringify(args))
     sys.exit(p.returncode)
 
-  return stdout_contents
+  return (stdout_contents or '') + (stderr_contents or '')
+
 
 def ArgSplit(argv):
-  if len(argv) == 0:
-    Usage()
+  """Parse command-line arguments.
 
-  # Extract up to nexe
-  sel_ldr_options = []
-  nexe = None
-  skip_one = False
-  for i,arg in enumerate(argv):
-    if skip_one:
-      skip_one = False
-      continue
+  Returns:
+    Tuple (nexe, nexe_args) where nexe is the name of the nexe or pexe
+    to execute, and nexe_args are its runtime arguments.
+  """
+  desc = ('Run a command-line nexe (or pexe). Automatically handles\n' +
+          'translation, building sel_ldr, and building the IRT.')
+  parser = argparse.ArgumentParser(description=desc)
+  parser.add_argument('-L', action='append', dest='library_path', default=[],
+                      help='Additional library path for runnable-ld.so.')
+  parser.add_argument('--paranoid', action='store_true', default=False,
+                      help='Remove -S (signals) and -a (file access) ' +
+                      'from the default sel_ldr options.')
+  parser.add_argument('--loader', dest='force_sel_ldr', metavar='SEL_LDR',
+                      help='Path to sel_ldr.  "dbg" or "opt" means use ' +
+                      'dbg or opt version of sel_ldr. ' +
+                      'By default, use whichever sel_ldr already exists; ' +
+                      'otherwise, build opt version.')
+  parser.add_argument('--irt', dest='force_irt', metavar='IRT',
+                      help='Path to IRT nexe.  "core" or "none" means use ' +
+                      'Core IRT or no IRT.  By default, use whichever IRT ' +
+                      'already exists; otherwise, build irt_core.')
+  parser.add_argument('--dry-run', '-n', action='store_true', default=False,
+                      help="Just print commands, don't execute them.")
+  parser.add_argument('--quiet', '-q', action='store_true', default=False,
+                      help="Don't print anything.")
+  parser.add_argument('--retries', default='0', metavar='N',
+                      help='Retry sel_ldr command up to N times (if ' +
+                      'flakiness is expected).  This argument implies ' +
+                      '--collate.')
+  parser.add_argument('--collate', action='store_true', default=False,
+                      help="Combine/collate sel_ldr's stdout and stderr, and " +
+                      "print to stdout.")
+  parser.add_argument('--trace', '-t', action='store_true', default=False,
+                      help='Trace qemu execution.')
+  parser.add_argument('--debug', '-g', action='store_true', default=False,
+                      help='Run sel_ldr with debugging enabled.')
+  parser.add_argument('-arch', '-m', dest='arch', action='store',
+                      choices=sorted(platform_tools.ArchDict().keys() +
+                                     ['env']),
+                      help=('Specify architecture for PNaCl translation. ' +
+                            '"env" is a special value which obtains the ' +
+                            'architecture from the environment ' +
+                            'variable "%s".') % ARCH_ENV_VAR_NAME)
+  parser.add_argument('remainder', nargs=argparse.REMAINDER,
+                      metavar='nexe/pexe + args')
+  parser.add_argument('--pnacl-allow-zerocost-eh', action='store_true',
+                      default=False, dest='zerocost_eh',
+                      help='Allow non-stable zero-cost exception handling.')
+  (options, args) = parser.parse_known_args(argv)
 
-    if arg.startswith('-L'):
-      if arg == '-L':
-        if i+1 < len(argv):
-          path = argv[i+1]
-          skip_one = True
-        else:
-          Fatal('Missing argument to -L')
-      else:
-        path = arg[len('-L'):]
-      env.library_path.append(path)
-    elif arg == '-m32':
-      env.arch = 'x86-32'
-    elif arg == '-m64':
-      env.arch = 'x86-64'
-    elif arg == '-marm':
-      env.arch = 'arm'
-    elif arg == '-mmips32':
-      env.arch = 'mips32'
-    elif arg == '-arch':
-      if i+1 < len(argv):
-        env.arch = FixArch(argv[i+1])
-        skip_one = True
-    elif arg == '--paranoid':
-      env.paranoid = True
-    elif arg.startswith('--loader='):
-      env.force_sel_ldr = arg[len('--loader='):]
-    elif arg.startswith('--irt='):
-      env.force_irt = arg[len('--irt='):]
-    elif arg in ('-n', '--dry-run'):
-      env.dry_run = True
-    elif arg in ('-h', '--help'):
-      Usage()
-    elif arg in ('-q', '--quiet'):
-      env.quiet = True
-    elif arg in '--more':
-      Usage2()
-    elif arg in ('-t', '--trace'):
-      env.trace = True
-    elif arg in ('-g', '--debug'):
-      env.debug = True
-    elif arg.endswith('nexe') or arg.endswith('pexe'):
-      nexe = arg
-      break
-    else:
-      sel_ldr_options.append(arg)
+  # Copy the options into env.
+  for (key, value) in vars(options).iteritems():
+    setattr(env, key, value)
 
-  if not nexe:
-    Fatal('No nexe given!')
+  args += options.remainder
+  nexe = args[0] if len(args) else ''
+  env.is_pnacl = nexe.endswith('.pexe')
 
-  nexe_params = argv[i+1:]
+  if env.arch == 'env':
+    # Get the architecture from the environment.
+    try:
+      env.arch = os.environ[ARCH_ENV_VAR_NAME]
+    except Exception as e:
+      Fatal(('Option "-arch env" specified, but environment variable ' +
+            '"%s" not specified: %s') % (ARCH_ENV_VAR_NAME, e))
+  if not env.arch and env.is_pnacl:
+    # For NaCl we'll figure out the architecture from the nexe's
+    # architecture, but for PNaCl we first need to translate and the
+    # user didn't tell us which architecture to translate to. Be nice
+    # and just translate to the current machine's architecture.
+    env.arch = GetBuildArch()
+  # Canonicalize env.arch.
+  aliases = platform_tools.ArchDict()
+  if env.arch in aliases:
+    env.arch = aliases[env.arch]
+  elif env.arch:
+    Fatal('Unrecognized arch "%s"!', env.arch)
 
-  return sel_ldr_options, nexe, nexe_params
-
-
-def FixArch(arch):
-  x86_32 = 'x86-32 x86_32 x8632 i386 i686 ia32'.split()
-  x86_64 = 'amd64 x86_64 x86-64 x8664'.split()
-  arm = 'arm armv7'.split()
-  mips32 = 'mips mips32'.split()
-
-  if arch in x86_32:
-    return 'x86-32'
-
-  if arch in x86_64:
-    return 'x86-64'
-
-  if arch in arm:
-    return 'arm'
-
-  if arch in mips32:
-    return 'mips32'
-
-  Fatal('Unrecognized arch "%s"!', arch)
-
+  return nexe, args[1:]
 
 def Fatal(msg, *args):
   if len(args) > 0:
     msg = msg % args
   print msg
   sys.exit(1)
-
-def Usage2():
-  # Try to find any sel_ldr that already exists
-  for arch in ['x86-32','x86-64','arm','mips32']:
-    SetupArch(arch, allow_build = False)
-    if env.sel_ldr:
-      break
-
-  if not env.sel_ldr:
-    # If nothing exists, build it.
-    SetupArch('x86-32')
-
-  RunSelLdr(['-h'])
 
 
 def FindReadElf():
@@ -525,7 +564,7 @@ def ReadELFInfo(f):
   ''' Returns: (arch, is_dynamic, is_glibc_static) '''
 
   readelf = env.readelf
-  readelf_out = Run([readelf, '-lh', f], capture = True)
+  readelf_out = Run([readelf, '-lh', f], capture_stdout=True, verbose=False)
 
   machine_line = None
   is_dynamic = False
@@ -567,8 +606,8 @@ def GetSconsOS():
   Fatal('Unsupported platform "%s"' % name)
 
 def GetBuildArch():
-  return FixArch(platform.machine())
-
+  machine = platform.machine().lower()
+  return platform_tools.ArchDict()[machine]
 
 def FindBaseDir():
   '''Crawl backwards, starting from the directory containing this script,

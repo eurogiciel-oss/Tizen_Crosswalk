@@ -25,31 +25,31 @@
 #include "core/svg/SVGAnimatedLength.h"
 #include "core/svg/SVGAnimatedPreserveAspectRatio.h"
 #include "core/svg/SVGAnimatedRect.h"
-#include "core/svg/SVGExternalResourcesRequired.h"
 #include "core/svg/SVGFitToViewBox.h"
 #include "core/svg/SVGGraphicsElement.h"
+#include "core/svg/SVGLengthTearOff.h"
+#include "core/svg/SVGPointTearOff.h"
 #include "core/svg/SVGZoomAndPan.h"
 
 namespace WebCore {
 
 class SVGAngle;
 class SVGMatrix;
+class SVGNumberTearOff;
 class SVGTransform;
 class SVGViewSpec;
 class SVGViewElement;
 class SMILTimeContainer;
 
 class SVGSVGElement FINAL : public SVGGraphicsElement,
-                            public SVGExternalResourcesRequired,
                             public SVGFitToViewBox,
                             public SVGZoomAndPan {
 public:
-    static PassRefPtr<SVGSVGElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGSVGElement> create(Document&);
 
     using SVGGraphicsElement::ref;
     using SVGGraphicsElement::deref;
 
-    virtual bool isValid() const { return SVGTests::isValid(); }
     virtual bool supportsFocus() const OVERRIDE { return hasFocusEventListeners(); }
 
     // 'SVGSVGElement' functions
@@ -59,7 +59,7 @@ public:
     const AtomicString& contentStyleType() const;
     void setContentStyleType(const AtomicString& type);
 
-    SVGRect viewport() const;
+    PassRefPtr<SVGRectTearOff> viewport() const;
 
     float pixelUnitToMillimeterX() const;
     float pixelUnitToMillimeterY() const;
@@ -78,16 +78,14 @@ public:
     Length intrinsicWidth(ConsiderCSSMode = RespectCSSProperties) const;
     Length intrinsicHeight(ConsiderCSSMode = RespectCSSProperties) const;
     FloatSize currentViewportSize() const;
-    SVGRect currentViewBoxRect() const;
+    FloatRect currentViewBoxRect() const;
 
     float currentScale() const;
     void setCurrentScale(float scale);
 
-    SVGPoint& currentTranslate() { return m_translation; }
+    FloatPoint currentTranslate() { return m_translation->value(); }
     void setCurrentTranslate(const FloatPoint&);
-
-    // Only used from the bindings.
-    void updateCurrentTranslate();
+    PassRefPtr<SVGPointTearOff> currentTranslateFromJavascript();
 
     SMILTimeContainer* timeContainer() const { return m_timeContainer.get(); }
 
@@ -103,18 +101,18 @@ public:
     void unsuspendRedrawAll();
     void forceRedraw();
 
-    PassRefPtr<NodeList> getIntersectionList(const SVGRect&, SVGElement* referenceElement) const;
-    PassRefPtr<NodeList> getEnclosureList(const SVGRect&, SVGElement* referenceElement) const;
-    bool checkIntersection(SVGElement*, const SVGRect&) const;
-    bool checkEnclosure(SVGElement*, const SVGRect&) const;
+    PassRefPtr<NodeList> getIntersectionList(PassRefPtr<SVGRectTearOff>, SVGElement* referenceElement) const;
+    PassRefPtr<NodeList> getEnclosureList(PassRefPtr<SVGRectTearOff>, SVGElement* referenceElement) const;
+    bool checkIntersection(SVGElement*, PassRefPtr<SVGRectTearOff>) const;
+    bool checkEnclosure(SVGElement*, PassRefPtr<SVGRectTearOff>) const;
     void deselectAll();
 
-    static float createSVGNumber();
-    static SVGLength createSVGLength();
+    static PassRefPtr<SVGNumberTearOff> createSVGNumber();
+    static PassRefPtr<SVGLengthTearOff> createSVGLength();
     static SVGAngle createSVGAngle();
-    static SVGPoint createSVGPoint();
+    static PassRefPtr<SVGPointTearOff> createSVGPoint();
     static SVGMatrix createSVGMatrix();
-    static SVGRect createSVGRect();
+    static PassRefPtr<SVGRectTearOff> createSVGRect();
     static SVGTransform createSVGTransform();
     static SVGTransform createSVGTransformFromMatrix(const SVGMatrix&);
 
@@ -130,10 +128,17 @@ public:
     SVGZoomAndPanType zoomAndPan() const { return m_zoomAndPan; }
     void setZoomAndPan(unsigned short zoomAndPan) { m_zoomAndPan = SVGZoomAndPan::parseFromNumber(zoomAndPan); }
 
-    bool hasEmptyViewBox() const { return viewBoxCurrentValue().isValid() && viewBoxCurrentValue().isEmpty(); }
+    bool hasEmptyViewBox() const { return m_viewBox->currentValue()->isValid() && m_viewBox->currentValue()->value().isEmpty(); }
+
+    SVGAnimatedLength* x() const { return m_x.get(); }
+    SVGAnimatedLength* y() const { return m_y.get(); }
+    SVGAnimatedLength* width() const { return m_width.get(); }
+    SVGAnimatedLength* height() const { return m_height.get(); }
+    SVGAnimatedRect* viewBox() const { return m_viewBox.get(); }
+    SVGAnimatedPreserveAspectRatio* preserveAspectRatio() { return m_preserveAspectRatio.get(); }
 
 private:
-    SVGSVGElement(const QualifiedName&, Document&);
+    explicit SVGSVGElement(Document&);
     virtual ~SVGSVGElement();
 
     virtual bool isSVGSVGElement() const OVERRIDE { return true; }
@@ -141,54 +146,52 @@ private:
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
 
     virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE;
-    virtual RenderObject* createRenderer(RenderStyle*);
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
 
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void removedFrom(ContainerNode*) OVERRIDE;
 
-    virtual void svgAttributeChanged(const QualifiedName&);
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
 
-    virtual bool selfHasRelativeLengths() const;
+    virtual bool selfHasRelativeLengths() const OVERRIDE;
 
     void inheritViewAttributes(SVGViewElement*);
+
+    void updateCurrentTranslate();
 
     enum CollectIntersectionOrEnclosure {
         CollectIntersectionList,
         CollectEnclosureList
     };
 
-    PassRefPtr<NodeList> collectIntersectionOrEnclosureList(const SVGRect&, SVGElement*, CollectIntersectionOrEnclosure) const;
+    PassRefPtr<NodeList> collectIntersectionOrEnclosureList(const FloatRect&, SVGElement*, CollectIntersectionOrEnclosure) const;
 
+    RefPtr<SVGAnimatedLength> m_x;
+    RefPtr<SVGAnimatedLength> m_y;
+    RefPtr<SVGAnimatedLength> m_width;
+    RefPtr<SVGAnimatedLength> m_height;
+    RefPtr<SVGAnimatedRect> m_viewBox;
+    RefPtr<SVGAnimatedPreserveAspectRatio> m_preserveAspectRatio;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGSVGElement)
-        DECLARE_ANIMATED_LENGTH(X, x)
-        DECLARE_ANIMATED_LENGTH(Y, y)
-        DECLARE_ANIMATED_LENGTH(Width, width)
-        DECLARE_ANIMATED_LENGTH(Height, height)
-        DECLARE_ANIMATED_BOOLEAN(ExternalResourcesRequired, externalResourcesRequired)
-        DECLARE_ANIMATED_RECT(ViewBox, viewBox)
-        DECLARE_ANIMATED_PRESERVEASPECTRATIO(PreserveAspectRatio, preserveAspectRatio)
     END_DECLARE_ANIMATED_PROPERTIES
 
-    virtual AffineTransform localCoordinateSpaceTransform(SVGLocatable::CTMScope) const;
+    virtual AffineTransform localCoordinateSpaceTransform(SVGElement::CTMScope) const OVERRIDE;
 
     bool m_useCurrentView;
     SVGZoomAndPanType m_zoomAndPan;
     RefPtr<SMILTimeContainer> m_timeContainer;
-    SVGPoint m_translation;
+    RefPtr<SVGPoint> m_translation;
     RefPtr<SVGViewSpec> m_viewSpec;
+
+    friend class SVGCurrentTranslateTearOff;
 };
 
-inline SVGSVGElement* toSVGSVGElement(Node* node)
+inline bool isSVGSVGElement(const Node& node)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(!node || toSVGElement(node)->isSVGSVGElement());
-    return static_cast<SVGSVGElement*>(node);
+    return node.isSVGElement() && toSVGElement(node).isSVGSVGElement();
 }
 
-inline const SVGSVGElement* toSVGSVGElement(const Node* node)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!node || toSVGElement(node)->isSVGSVGElement());
-    return static_cast<const SVGSVGElement*>(node);
-}
+DEFINE_NODE_TYPE_CASTS_WITH_FUNCTION(SVGSVGElement);
 
 } // namespace WebCore
 

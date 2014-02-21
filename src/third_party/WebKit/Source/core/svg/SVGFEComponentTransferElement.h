@@ -21,22 +21,22 @@
 #ifndef SVGFEComponentTransferElement_h
 #define SVGFEComponentTransferElement_h
 
-#include "core/platform/graphics/filters/FEComponentTransfer.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
+#include "platform/graphics/filters/FEComponentTransfer.h"
 
 namespace WebCore {
 
 class SVGFEComponentTransferElement FINAL : public SVGFilterPrimitiveStandardAttributes {
 public:
-    static PassRefPtr<SVGFEComponentTransferElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFEComponentTransferElement> create(Document&);
 
 private:
-    SVGFEComponentTransferElement(const QualifiedName&, Document&);
+    explicit SVGFEComponentTransferElement(Document&);
 
     // FIXME: svgAttributeChanged missing.
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*);
+    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*) OVERRIDE;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEComponentTransferElement)
         DECLARE_ANIMATED_STRING(In1, in1)

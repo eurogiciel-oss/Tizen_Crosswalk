@@ -42,9 +42,8 @@ namespace WebCore {
 
 class V8TestInterfaceEmpty {
 public:
-    static bool HasInstance(v8::Handle<v8::Value>, v8::Isolate*, WrapperWorldType);
-    static bool HasInstanceInAnyWorld(v8::Handle<v8::Value>, v8::Isolate*);
-    static v8::Handle<v8::FunctionTemplate> GetTemplate(v8::Isolate*, WrapperWorldType);
+    static bool hasInstance(v8::Handle<v8::Value>, v8::Isolate*);
+    static v8::Handle<v8::FunctionTemplate> domTemplate(v8::Isolate*, WrapperWorldType);
     static TestInterfaceEmpty* toNative(v8::Handle<v8::Object> object)
     {
         return fromInternalPointer(object->GetAlignedPointerFromInternalField(v8DOMWrapperObjectIndex));
@@ -62,7 +61,7 @@ public:
         return static_cast<TestInterfaceEmpty*>(object);
     }
     static void installPerContextEnabledProperties(v8::Handle<v8::Object>, TestInterfaceEmpty*, v8::Isolate*) { }
-    static void installPerContextEnabledPrototypeProperties(v8::Handle<v8::Object>, v8::Isolate*) { }
+    static void installPerContextEnabledMethods(v8::Handle<v8::Object>, v8::Isolate*) { }
 
 private:
     friend v8::Handle<v8::Object> wrap(TestInterfaceEmpty*, v8::Handle<v8::Object> creationContext, v8::Isolate*);
@@ -85,7 +84,7 @@ inline v8::Handle<v8::Object> wrap(TestInterfaceEmpty* impl, v8::Handle<v8::Obje
 inline v8::Handle<v8::Value> toV8(TestInterfaceEmpty* impl, v8::Handle<v8::Object> creationContext, v8::Isolate* isolate)
 {
     if (UNLIKELY(!impl))
-        return v8NullWithCheck(isolate);
+        return v8::Null(isolate);
     v8::Handle<v8::Value> wrapper = DOMDataStore::getWrapper<V8TestInterfaceEmpty>(impl, isolate);
     if (!wrapper.IsEmpty())
         return wrapper;
@@ -156,5 +155,4 @@ inline void v8SetReturnValueFast(const CallbackInfo& callbackInfo, PassRefPtr<Te
 }
 
 }
-
 #endif // V8TestInterfaceEmpty_h

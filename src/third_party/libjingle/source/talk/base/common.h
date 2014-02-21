@@ -61,8 +61,14 @@ inline void Unused(const void*) {}
 #endif  // UNUSED
 
 #ifndef WIN32
+
+#ifndef strnicmp
 #define strnicmp(x, y, n) strncasecmp(x, y, n)
+#endif
+
+#ifndef stricmp
 #define stricmp(x, y) strcasecmp(x, y)
+#endif
 
 // TODO(fbarchard): Remove this. std::max should be used everywhere in the code.
 // NOMINMAX must be defined where we include <windows.h>.
@@ -186,6 +192,10 @@ inline bool ImplicitCastToBool(bool result) { return result; }
 // too. This is like passing -Wno-c++11-extensions, except that GCC won't die
 // (because it won't see this pragma).
 #pragma clang diagnostic ignored "-Wc++11-extensions"
+#define OVERRIDE override
+#elif defined(__GNUC__) && __cplusplus >= 201103 && \
+    (__GNUC__ * 10000 + __GNUC_MINOR__ * 100) >= 40700
+// GCC 4.7 supports explicit virtual overrides when C++11 support is enabled.
 #define OVERRIDE override
 #else
 #define OVERRIDE

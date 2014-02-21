@@ -26,7 +26,6 @@
 #include "SVGNames.h"
 #include "core/svg/SVGAnimatedBoolean.h"
 #include "core/svg/SVGElement.h"
-#include "core/svg/SVGExternalResourcesRequired.h"
 #include "core/svg/SVGGlyphMap.h"
 #include "core/svg/SVGParserUtilities.h"
 
@@ -52,10 +51,9 @@ typedef Vector<SVGKerningPair> KerningPairVector;
 
 class SVGMissingGlyphElement;
 
-class SVGFontElement FINAL : public SVGElement
-                           , public SVGExternalResourcesRequired {
+class SVGFontElement FINAL : public SVGElement {
 public:
-    static PassRefPtr<SVGFontElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFontElement> create(Document&);
 
     void invalidateGlyphCache();
     void collectGlyphsForString(const String&, Vector<SVGGlyph>&);
@@ -71,15 +69,14 @@ public:
     SVGMissingGlyphElement* firstMissingGlyphElement() const;
 
 private:
-    SVGFontElement(const QualifiedName&, Document&);
+    explicit SVGFontElement(Document&);
 
-    virtual bool rendererIsNeeded(const RenderStyle&) { return false; }
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE { return false; }
 
     void ensureGlyphCache();
     void registerLigaturesInGlyphCache(Vector<String>&);
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFontElement)
-        DECLARE_ANIMATED_BOOLEAN(ExternalResourcesRequired, externalResourcesRequired)
     END_DECLARE_ANIMATED_PROPERTIES
 
     KerningPairVector m_horizontalKerningPairs;

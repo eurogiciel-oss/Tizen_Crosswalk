@@ -14,6 +14,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
+#include "chrome/common/chrome_switches.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
@@ -27,6 +28,7 @@
 #include "google_apis/gaia/gaia_urls.h"
 #include "net/http/http_status_code.h"
 #include "net/url_request/test_url_fetcher_factory.h"
+#include "net/url_request/url_request_status.h"
 
 namespace {
 const char kNonSigninURL[] = "www.google.com";
@@ -49,18 +51,20 @@ class SigninBrowserTest : public InProcessBrowserTest {
         "MAP * " + https_server_->host_port_pair().ToString() +
             ",EXCLUDE localhost");
     command_line->AppendSwitch(switches::kIgnoreCertificateErrors);
+    // All tests in this file are for the web based sign in flows.
+    // TODO(guohui): adds new tests for inline sign in flows.
+    command_line->AppendSwitch(switches::kEnableWebBasedSignin);
   }
 
   virtual void SetUp() OVERRIDE {
     factory_.reset(new net::URLFetcherImplFactory());
     fake_factory_.reset(new net::FakeURLFetcherFactory(factory_.get()));
     fake_factory_->SetFakeResponse(
-        GaiaUrls::GetInstance()->service_login_url(),
-        std::string(),
-        net::HTTP_OK);
-    fake_factory_->SetFakeResponse(GURL(kNonSigninURL),
-                                   std::string(),
-                                   net::HTTP_OK);
+        GaiaUrls::GetInstance()->service_login_url(), std::string(),
+        net::HTTP_OK, net::URLRequestStatus::SUCCESS);
+    fake_factory_->SetFakeResponse(
+        GURL(kNonSigninURL), std::string(), net::HTTP_OK,
+        net::URLRequestStatus::SUCCESS);
     // Yield control back to the InProcessBrowserTest framework.
     InProcessBrowserTest::SetUp();
   }
@@ -112,7 +116,7 @@ IN_PROC_BROWSER_TEST_F(SigninBrowserTest, MAYBE_ProcessIsolation) {
   EXPECT_EQ(kOneClickSigninEnabled, signin->HasSigninProcess());
 
   // Navigating away should change the process.
-  ui_test_utils::NavigateToURL(browser(), GURL(chrome::kChromeUINewTabURL));
+  ui_test_utils::NavigateToURL(browser(), GURL(chrome::kChromeUIOmniboxURL));
   EXPECT_FALSE(signin->HasSigninProcess());
 
   ui_test_utils::NavigateToURL(browser(), signin::GetPromoURL(
@@ -139,7 +143,7 @@ IN_PROC_BROWSER_TEST_F(SigninBrowserTest, MAYBE_ProcessIsolation) {
             signin->IsSigninProcess(active_tab_process_id));
 
   // Navigating away should change the process.
-  ui_test_utils::NavigateToURL(browser(), GURL(kNonSigninURL));
+  ui_test_utils::NavigateToURL(browser(), GURL(chrome::kChromeUINewTabURL));
   EXPECT_FALSE(signin->IsSigninProcess(
       active_tab->GetRenderProcessHost()->GetID()));
 }
@@ -174,12 +178,13 @@ class BackOnNTPCommitObserver : public content::WebContentsObserver {
 
   virtual void DidCommitProvisionalLoadForFrame(
       int64 frame_id,
-      const string16& frame_unique_name,
+      const base::string16& frame_unique_name,
       bool is_main_frame,
       const GURL& url,
       content::PageTransition transition_type,
       content::RenderViewHost* render_view_host) OVERRIDE {
-    if (url == GURL(chrome::kChromeUINewTabURL)) {
+    if (url == GURL(chrome::kChromeUINewTabURL) ||
+        url == GURL(chrome::kChromeSearchLocalNtpUrl)) {
       content::WindowedNotificationObserver observer(
           content::NOTIFICATION_NAV_ENTRY_COMMITTED,
           content::NotificationService::AllSources());

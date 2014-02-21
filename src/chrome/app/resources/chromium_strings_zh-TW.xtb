@@ -27,7 +27,6 @@
 <translation id="3549345495227188780">開始使用 Chromium 作業系統</translation>
 <translation id="4330297532943865716">系統在安裝 Chromium 或 Chromium 頁框時發生衝突問題，請先解除安裝，然後再試一次。</translation>
 <translation id="6953661834318318668">Chromium 工具列</translation>
-<translation id="2245147136185581459">Chromium 強制性登入畫面偵測工具</translation>
 <translation id="4285930937574705105">不明錯誤導致安裝失敗。如果目前 Chromium 正在執行，請關閉 Chromium，然後再試一次。</translation>
 <translation id="1396446129537741364">Chromium 即將顯示密碼。</translation>
 <translation id="3555616473548901994">解除安裝已完成。</translation>
@@ -61,7 +60,6 @@
 <translation id="7771626876550251690">在這種情況中，憑證所列的網址與瀏覽器嘗試前往的網址不符。憑證不符的其中一個可能原因是，攻擊者攔截了您的通訊，並且出示另一個網站的憑證。另一個可能的原因是，伺服器已設定為不同的網站傳回相同的憑證 (其中包括您嘗試造訪的網站)，即便該憑證並不適用於某些網站。Chromium 可以確定您已經到達 &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;，但是無法驗證這與您嘗試前往的 &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; 是不是同一個網站。如果您繼續，Chromium 將不再檢查任何名稱不符的情況。</translation>
 <translation id="4330585738697551178">已知這個模組與 Chromium 衝突。</translation>
 <translation id="3190315855212034486">Chromium 當機了，要立即重新啟動嗎？</translation>
-<translation id="3590194807845837023">解除鎖定設定檔並重新啟動</translation>
 <translation id="6714487516757221107">找不到任何要安裝/更新的 Chromium 或 Chromium 頁框。</translation>
 <translation id="3197823471738295152">您的裝置已更新。</translation>
 <translation id="8551886023433311834">即將完成！請重新啟動裝置以完成更新。</translation>
@@ -154,6 +152,7 @@
 <translation id="6717134281241384636">由於您的設定檔是來自較新版本的 Chromium，所以系統無法使用該檔案。
 
 這表示您可能無法使用部分功能。請指定另一個設定檔目錄，或使用較新版本的 Chromium。</translation>
+<translation id="8907580949721785412">Chromium 現在會嘗試顯示密碼。如果您同意的話，請輸入您的 Windows 密碼。</translation>
 <translation id="9013087743919948559">新增至 Chromium</translation>
 <translation id="6212496753309875659">這台電腦已安裝較新的 Chromium 版本。如果軟體無法順利運作，請解除安裝 Chromium，然後再試一次。</translation>
 <translation id="1298199220304005244">前往 Chromium 作業系統說明頁面</translation>

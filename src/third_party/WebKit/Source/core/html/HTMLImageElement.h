@@ -27,16 +27,16 @@
 #include "core/html/HTMLElement.h"
 #include "core/html/HTMLImageLoader.h"
 #include "platform/graphics/GraphicsTypes.h"
+#include "wtf/WeakPtr.h"
 
 namespace WebCore {
 
 class HTMLFormElement;
 
 class HTMLImageElement FINAL : public HTMLElement {
-    friend class HTMLFormElement;
 public:
     static PassRefPtr<HTMLImageElement> create(Document&);
-    static PassRefPtr<HTMLImageElement> create(const QualifiedName&, Document&, HTMLFormElement*);
+    static PassRefPtr<HTMLImageElement> create(Document&, HTMLFormElement*);
     static PassRefPtr<HTMLImageElement> createForJSConstructor(Document&, int width, int height);
 
     virtual ~HTMLImageElement();
@@ -49,7 +49,7 @@ public:
 
     bool isServerMap() const;
 
-    String altText() const;
+    const AtomicString& altText() const;
 
     CompositeOperator compositeOperator() const { return m_compositeOperator; }
 
@@ -74,15 +74,18 @@ public:
 
     bool hasPendingActivity() const { return m_imageLoader.hasPendingActivity(); }
 
-    virtual bool canContainRangeEndPoint() const { return false; }
+    virtual bool canContainRangeEndPoint() const OVERRIDE { return false; }
 
     void addClient(ImageLoaderClient* client) { m_imageLoader.addClient(client); }
     void removeClient(ImageLoaderClient* client) { m_imageLoader.removeClient(client); }
 
     virtual const AtomicString imageSourceURL() const OVERRIDE;
 
+    virtual HTMLFormElement* formOwner() const OVERRIDE;
+    void formRemovedFromTree(const Node* formRoot);
+
 protected:
-    HTMLImageElement(const QualifiedName&, Document&, HTMLFormElement* = 0);
+    explicit HTMLImageElement(Document&, HTMLFormElement* = 0);
 
     virtual void didMoveToNewDocument(Document& oldDocument) OVERRIDE;
 
@@ -94,15 +97,13 @@ private:
     virtual void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStylePropertySet*) OVERRIDE;
 
     virtual void attach(const AttachContext& = AttachContext()) OVERRIDE;
-    virtual RenderObject* createRenderer(RenderStyle*);
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
 
-    virtual bool canStartSelection() const;
+    virtual bool canStartSelection() const OVERRIDE;
 
     virtual bool isURLAttribute(const Attribute&) const OVERRIDE;
 
-    virtual bool draggable() const;
-
-    virtual void addSubresourceAttributeURLs(ListHashSet<KURL>&) const;
+    virtual bool draggable() const OVERRIDE;
 
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void removedFrom(ContainerNode*) OVERRIDE;
@@ -111,11 +112,15 @@ private:
     virtual bool isInteractiveContent() const OVERRIDE;
     virtual Image* imageContents() OVERRIDE;
 
+    void resetFormOwner();
+
     HTMLImageLoader m_imageLoader;
-    HTMLFormElement* m_form;
+    // m_form should be a strong reference in Oilpan.
+    WeakPtr<HTMLFormElement> m_form;
     CompositeOperator m_compositeOperator;
     AtomicString m_bestFitImageURL;
     float m_imageDevicePixelRatio;
+    bool m_formWasSetByParser;
 };
 
 DEFINE_NODE_TYPE_CASTS(HTMLImageElement, hasTagName(HTMLNames::imgTag));

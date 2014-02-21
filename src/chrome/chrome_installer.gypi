@@ -65,7 +65,10 @@
           ],
           'sources': [
             'installer/gcapi/gcapi_last_run_test.cc',
+            'installer/gcapi/gcapi_omaha_experiment_test.cc',
             'installer/gcapi/gcapi_reactivation_test.cc',
+            'installer/gcapi/gcapi_test_registry_overrider.cc',
+            'installer/gcapi/gcapi_test_registry_overrider.h',
             'installer/gcapi/gcapi_test.cc',
             'installer/gcapi/gcapi_test.rc',
             'installer/gcapi/resource.h',
@@ -172,7 +175,6 @@
                          '<(SHARED_INTERMEDIATE_DIR)/installer_util_strings',
                          '<(branding)',],
               'message': 'Generating resources from <(RULE_INPUT_PATH)',
-              'msvs_cygwin_shell': 1,
             },
           ],
           'sources': [
@@ -251,8 +253,6 @@
             '../base/base.gyp:base',
             '../breakpad/breakpad.gyp:breakpad_handler',
             '../chrome/common_constants.gyp:common_constants',
-            '../chrome_frame/chrome_frame.gyp:chrome_tab_idl',
-            '../chrome_frame/chrome_frame.gyp:npchrome_frame',
             '../rlz/rlz.gyp:rlz_lib',
             '../third_party/zlib/zlib.gyp:zlib',
           ],
@@ -270,12 +270,6 @@
             'installer/mini_installer/chrome.release',
             'installer/setup/archive_patch_helper.cc',
             'installer/setup/archive_patch_helper.h',
-            'installer/setup/cf_migration.cc',
-            'installer/setup/cf_migration.h',
-            'installer/setup/chrome_frame_quick_enable.cc',
-            'installer/setup/chrome_frame_quick_enable.h',
-            'installer/setup/chrome_frame_ready_mode.cc',
-            'installer/setup/chrome_frame_ready_mode.h',
             'installer/setup/install.cc',
             'installer/setup/install.h',
             'installer/setup/install_worker.cc',
@@ -357,7 +351,6 @@
                 #'--distribution=$(CHROMIUM_BUILD)',
                 '--distribution=_google_chrome',
               ],
-              'msvs_cygwin_shell': 1,
             },
           ],
           'conditions': [
@@ -384,15 +377,6 @@
                  'branding_dir_100': 'app/theme/default_100_percent/chromium',
               },
             }],
-            ['target_arch=="x64"', {
-              'dependencies!': [
-                '../chrome_frame/chrome_frame.gyp:chrome_tab_idl',
-                '../chrome_frame/chrome_frame.gyp:npchrome_frame',
-              ],
-              'defines': [
-                'OMIT_CHROME_FRAME',
-              ],
-            }],
           ],
         },
         {
@@ -405,7 +389,6 @@
             '../base/base.gyp:base',
             '../base/base.gyp:base_i18n',
             '../base/base.gyp:test_support_base',
-            '../chrome_frame/chrome_frame.gyp:chrome_tab_idl',
             '../testing/gmock.gyp:gmock',
             '../testing/gtest.gyp:gtest',
           ],
@@ -472,7 +455,6 @@
                 #'--distribution=$(CHROMIUM_BUILD)',
                 '--distribution=_google_chrome',
               ],
-              'msvs_cygwin_shell': 1,
             },
           ],
           # TODO(jschuh): crbug.com/167187 fix size_t to int truncations.
@@ -497,7 +479,7 @@
               '<@(nacl_win64_defines)',
           ],
               'dependencies': [
-              '<(DEPTH)/base/base.gyp:base_nacl_win64',
+              '<(DEPTH)/base/base.gyp:base_win64',
           ],
           'configurations': {
             'Common_Base': {
@@ -582,6 +564,9 @@
               '<(PRODUCT_DIR)/libwidevinecdmadapter.so',
               '<(PRODUCT_DIR)/libwidevinecdm.so',
             ],
+            'packaging_files_common': [
+              '<(DEPTH)/build/linux/bin/eu-strip',
+            ],
           }],
           ['target_arch=="x64"', {
             'deb_arch': 'amd64',
@@ -590,6 +575,9 @@
               '<(PRODUCT_DIR)/nacl_irt_x86_64.nexe',
               '<(PRODUCT_DIR)/libwidevinecdmadapter.so',
               '<(PRODUCT_DIR)/libwidevinecdm.so',
+            ],
+            'packaging_files_common': [
+              '<!(which eu-strip)',
             ],
           }],
           ['target_arch=="arm"', {

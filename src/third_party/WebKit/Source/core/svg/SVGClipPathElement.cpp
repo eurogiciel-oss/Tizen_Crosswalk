@@ -23,7 +23,6 @@
 
 #include "core/svg/SVGClipPathElement.h"
 
-#include "SVGNames.h"
 #include "core/rendering/svg/RenderSVGResourceClipper.h"
 #include "core/svg/SVGElementInstance.h"
 
@@ -31,35 +30,31 @@ namespace WebCore {
 
 // Animated property definitions
 DEFINE_ANIMATED_ENUMERATION(SVGClipPathElement, SVGNames::clipPathUnitsAttr, ClipPathUnits, clipPathUnits, SVGUnitTypes::SVGUnitType)
-DEFINE_ANIMATED_BOOLEAN(SVGClipPathElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGClipPathElement)
     REGISTER_LOCAL_ANIMATED_PROPERTY(clipPathUnits)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGGraphicsElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGClipPathElement::SVGClipPathElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
+inline SVGClipPathElement::SVGClipPathElement(Document& document)
+    : SVGGraphicsElement(SVGNames::clipPathTag, document)
     , m_clipPathUnits(SVGUnitTypes::SVG_UNIT_TYPE_USERSPACEONUSE)
 {
-    ASSERT(hasTagName(SVGNames::clipPathTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGClipPathElement();
 }
 
-PassRefPtr<SVGClipPathElement> SVGClipPathElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGClipPathElement> SVGClipPathElement::create(Document& document)
 {
-    return adoptRef(new SVGClipPathElement(tagName, document));
+    return adoptRef(new SVGClipPathElement(document));
 }
 
 bool SVGClipPathElement::isSupportedAttribute(const QualifiedName& attrName)
 {
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
-    if (supportedAttributes.isEmpty()) {
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
+    if (supportedAttributes.isEmpty())
         supportedAttributes.add(SVGNames::clipPathUnitsAttr);
-    }
+
     return supportedAttributes.contains<SVGAttributeHashTranslator>(attrName);
 }
 
@@ -76,9 +71,6 @@ void SVGClipPathElement::parseAttribute(const QualifiedName& name, const AtomicS
             setClipPathUnitsBaseValue(propertyValue);
         return;
     }
-
-    if (SVGExternalResourcesRequired::parseAttribute(name, value))
-        return;
 
     ASSERT_NOT_REACHED();
 }

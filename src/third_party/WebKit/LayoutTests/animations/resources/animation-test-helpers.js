@@ -71,42 +71,25 @@ function parseCrossFade(s)
 
 function parseBasicShape(s)
 {
-    var shapeFunction = s.match(/(\w+)\((.+)\)/);
-    if (!shapeFunction)
+    var functionParse = s.match(/(\w+)\((.+)\)/);
+    if (!functionParse)
         return null;
 
-    var matches;
-    switch (shapeFunction[1]) {
-    case "rectangle":
-        matches = s.match("rectangle\\((.*)\\s*,\\s*(.*)\\s*,\\s*(.*)\\,\\s*(.*)\\)");
-        break;
-    case "circle":
-        matches = s.match("circle\\((.*)\\s*,\\s*(.*)\\s*,\\s*(.*)\\)");
-        break;
-    case "ellipse":
-        matches = s.match("ellipse\\((.*)\\s*,\\s*(.*)\\s*,\\s*(.*)\\,\\s*(.*)\\)");
-        break;
-    case "polygon":
-        matches = s.match("polygon\\(nonzero, (.*)\\s+(.*)\\s*,\\s*(.*)\\s+(.*)\\s*,\\s*(.*)\\s+(.*)\\s*,\\s*(.*)\\s+(.*)\\)");
-        break;
-    default:
-        return null;
-    }
+    var name = functionParse[1];
+    var params = functionParse[2];
+    params = params.split(/\s*[,\s]\s*/);
 
-    if (!matches)
-        return null;
-
-    matches.shift();
-
-    // Normalize percentage values.
-    for (var i = 0; i < matches.length; ++i) {
-        var param = matches[i];
-        matches[i] = parseFloat(matches[i]);
+    // Parse numbers and normalize percentages
+    for (var i = 0; i < params.length; ++i) {
+        var param = params[i];
+        if (!/$\d/.test(param))
+            continue;
+        params[i] = parseFloat(params[i]);
         if (param.indexOf('%') != -1)
-            matches[i] = matches[i] / 100;
+            params[i] = params[i] / 100;
     }
 
-    return {"shape": shapeFunction[1], "params": matches};
+    return {"shape": name, "params": params};
 }
 
 function basicShapeParametersMatch(paramList1, paramList2, tolerance)
@@ -131,11 +114,6 @@ function getFilterParameters(s)
     if (!filterResult)
         throw new Error("There's no filter in \"" + s + "\"");
     var filterParams = filterResult[2];
-    if (filterResult[1] == "custom") {
-        if (!window.getCustomFilterParameters)
-            throw new Error("getCustomFilterParameters not found. Did you include custom-filter-parser.js?");
-        return getCustomFilterParameters(filterParams);
-    }
     var paramList = filterParams.split(' '); // FIXME: the spec may allow comma separation at some point.
     
     // Normalize percentage values.
@@ -149,49 +127,6 @@ function getFilterParameters(s)
     return paramList;
 }
 
-function customFilterParameterMatch(param1, param2, tolerance)
-{
-    if (param1.type != "parameter") {
-        // Checking for shader uris and other keywords. They need to be exactly the same.
-        return (param1.type == param2.type && param1.value == param2.value);
-    }
-
-    if (param1.name != param2.name || param1.value.length != param2.value.length)
-        return false;
-
-    for (var j = 0; j < param1.value.length; ++j) {
-        var val1 = param1.value[j],
-            val2 = param2.value[j];
-        if (val1.type != val2.type)
-            return false;
-        switch (val1.type) {
-        case "function":
-            if (val1.name != val2.name)
-                return false;
-            if (val1.arguments.length != val2.arguments.length) {
-                console.error("Arguments length mismatch: ", val1.arguments.length, "/", val2.arguments.length);
-                return false;
-            }
-            for (var t = 0; t < val1.arguments.length; ++t) {
-                if (val1.arguments[t].type != "number" || val2.arguments[t].type != "number")
-                    return false;
-                if (!isCloseEnough(val1.arguments[t].value, val2.arguments[t].value, tolerance))
-                    return false;
-            }
-            break;
-        case "number":
-            if (!isCloseEnough(val1.value, val2.value, tolerance))
-                return false;
-            break;
-        default:
-            console.error("Unsupported parameter type ", val1.type);
-            return false;
-        }
-    }
-
-    return true;
-}
-
 function filterParametersMatch(paramList1, paramList2, tolerance)
 {
     if (paramList1.length != paramList2.length)
@@ -199,12 +134,6 @@ function filterParametersMatch(paramList1, paramList2, tolerance)
     for (var i = 0; i < paramList1.length; ++i) {
         var param1 = paramList1[i], 
             param2 = paramList2[i];
-        if (typeof param1 == "object") {
-            // This is a custom filter parameter.
-            if (!customFilterParameterMatch(param1, param2, tolerance))
-                return false;
-            continue;
-        }
         var match = isCloseEnough(param1, param2, tolerance);
         if (!match)
             return false;
@@ -317,15 +246,7 @@ function checkExpectedTransitionValue(expected, index)
                     break;
             }
         }
-    } else if (property == "fill" || property == "stroke") {
-        computedValue = window.getComputedStyle(document.getElementById(elementId)).getPropertyCSSValue(property).rgbColor;
-        if (compareRGB([computedValue.red.cssText, computedValue.green.cssText, computedValue.blue.cssText], expectedValue, tolerance))
-            pass = true;
-        else {
-            // We failed. Make sure computed value is something we can read in the error message
-            computedValue = window.getComputedStyle(document.getElementById(elementId)).getPropertyCSSValue(property).cssText;
-        }
-    } else if (property == "stop-color" || property == "flood-color" || property == "lighting-color") {
+    } else if (property == "fill" || property == "stroke" || property == "stop-color" || property == "flood-color" || property == "lighting-color") {
         computedValue = window.getComputedStyle(document.getElementById(elementId)).getPropertyCSSValue(property);
         // The computedValue cssText is rgb(num, num, num)
         var components = computedValue.cssText.split("(")[1].split(")")[0].split(",");
@@ -368,6 +289,11 @@ function checkExpectedTransitionValue(expected, index)
                     break;
             }
         }
+    } else if (property === "shape-inside" || property === "shape-outside") {
+        computedValue = window.getComputedStyle(document.getElementById(elementId)).getPropertyValue(property);
+        var actualShape = parseBasicShape(computedValue);
+        var expectedShape = parseBasicShape(expectedValue);
+        pass = basicShapeParametersMatch(actualShape, expectedShape, tolerance);
     } else {
         var computedStyle = window.getComputedStyle(document.getElementById(elementId)).getPropertyCSSValue(property);
         if (computedStyle.cssValueType == CSSValue.CSS_VALUE_LIST) {
@@ -384,8 +310,8 @@ function checkExpectedTransitionValue(expected, index)
                     // arbitrarily pick shadow-x and shadow-y
                     if (property == 'box-shadow' || property == 'text-shadow') {
                       var text = computedStyle[i].cssText;
-                      // Shadow cssText looks like "rgb(0, 0, 255) 0px -3px 10px 0px"
-                      var shadowPositionRegExp = /\)\s*(-?\d+)px\s*(-?\d+)px/;
+                      // Shadow cssText looks like "rgb(0, 0, 255) 0px -3px 10px 0px" and can be fractional.
+                      var shadowPositionRegExp = /\)\s*(-?[\d.]+)px\s*(-?[\d.]+)px/;
                       var match = shadowPositionRegExp.exec(text);
                       var shadowXY = [parseInt(match[1]), parseInt(match[2])];
                       values.push(shadowXY[0]);
@@ -691,6 +617,7 @@ Function parameters:
     trigger [optional]: a function to be executed just before the test starts (none by default)
     callbacks [optional]: an object in the form {timeS: function} specifing callbacks to be made during the test
     doPixelTest [optional]: whether to dump pixels during the test (false by default)
+    disablePauseAnimationAPI [optional]: whether to disable the pause API and run a RAF-based test (false by default)
 
     Each sub-array must contain these items in this order:
     - the time in seconds at which to snapshot the CSS property
@@ -704,7 +631,7 @@ Function parameters:
     If the CSS property name is "-webkit-transform.N", expected value must be a number corresponding to the Nth element of the matrix
 
 */
-function runTransitionTest(expected, trigger, callbacks, doPixelTest) {
+function runTransitionTest(expected, trigger, callbacks, doPixelTest, disablePauseAnimationAPI) {
     isTransitionsTest = true;
-    runAnimationTest(expected, callbacks, trigger, false, doPixelTest);
+    runAnimationTest(expected, callbacks, trigger, disablePauseAnimationAPI, doPixelTest);
 }

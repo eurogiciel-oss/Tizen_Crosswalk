@@ -59,6 +59,7 @@ public:
         virtual bool isEditControlOwnerDisabled() const = 0;
         virtual bool isEditControlOwnerReadOnly() const = 0;
         virtual AtomicString localeIdentifier() const = 0;
+        virtual void editControlDidChangeValueByKeyboard() = 0;
     };
 
     struct LayoutParameters {
@@ -136,24 +137,21 @@ private:
     virtual bool isDateTimeEditElement() const OVERRIDE;
 
     // DateTimeFieldElement::FieldOwner functions.
-    virtual void didBlurFromField() OVERRIDE FINAL;
-    virtual void didFocusOnField() OVERRIDE FINAL;
-    virtual void fieldValueChanged() OVERRIDE FINAL;
-    virtual bool focusOnNextField(const DateTimeFieldElement&) OVERRIDE FINAL;
-    virtual bool focusOnPreviousField(const DateTimeFieldElement&) OVERRIDE FINAL;
-    virtual bool isFieldOwnerDisabled() const OVERRIDE FINAL;
-    virtual bool isFieldOwnerReadOnly() const OVERRIDE FINAL;
-    virtual AtomicString localeIdentifier() const OVERRIDE FINAL;
+    virtual void didBlurFromField() OVERRIDE;
+    virtual void didFocusOnField() OVERRIDE;
+    virtual void fieldValueChanged() OVERRIDE;
+    virtual bool focusOnNextField(const DateTimeFieldElement&) OVERRIDE;
+    virtual bool focusOnPreviousField(const DateTimeFieldElement&) OVERRIDE;
+    virtual bool isFieldOwnerDisabled() const OVERRIDE;
+    virtual bool isFieldOwnerReadOnly() const OVERRIDE;
+    virtual AtomicString localeIdentifier() const OVERRIDE;
+    virtual void fieldDidChangeValueByKeyboard() OVERRIDE;
 
     Vector<DateTimeFieldElement*, maximumNumberOfFields> m_fields;
     EditControlOwner* m_editControlOwner;
 };
 
-inline DateTimeEditElement* toDateTimeEditElement(Element* element)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!element || element->isDateTimeEditElement());
-    return static_cast<DateTimeEditElement*>(element);
-}
+DEFINE_TYPE_CASTS(DateTimeEditElement, Element, element, element->isDateTimeEditElement(), element.isDateTimeEditElement());
 
 } // namespace WebCore
 

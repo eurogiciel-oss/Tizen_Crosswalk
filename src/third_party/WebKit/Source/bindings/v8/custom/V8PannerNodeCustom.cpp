@@ -26,6 +26,7 @@
 #if ENABLE(WEB_AUDIO)
 #include "V8PannerNode.h"
 
+#include "bindings/v8/ExceptionState.h"
 #include "bindings/v8/V8Binding.h"
 #include "modules/webaudio/PannerNode.h"
 
@@ -33,50 +34,58 @@ namespace WebCore {
 
 void V8PannerNode::panningModelAttributeSetterCustom(v8::Local<v8::Value> value, const v8::PropertyCallbackInfo<void>& info)
 {
+    ExceptionState exceptionState(ExceptionState::SetterContext, "panningModel", "PannerNode", info.Holder(), info.GetIsolate());
     PannerNode* imp = V8PannerNode::toNative(info.Holder());
 
     if (value->IsNumber()) {
-        bool ok = false;
-        uint32_t model = toUInt32(value, ok);
-        ASSERT(ok);
-        if (!imp->setPanningModel(model))
-            throwTypeError("Illegal panningModel", info.GetIsolate());
+        uint32_t model = toUInt32(value, exceptionState);
+        if (exceptionState.throwIfNeeded())
+            return;
+        if (!imp->setPanningModel(model)) {
+            exceptionState.throwTypeError("Illegal panningModel");
+            exceptionState.throwIfNeeded();
+        }
         return;
     }
 
     if (value->IsString()) {
-        String model = toWebCoreString(value);
+        String model = toCoreString(value.As<v8::String>());
         if (model == "equalpower" || model == "HRTF" || model == "soundfield") {
             imp->setPanningModel(model);
             return;
         }
     }
 
-    throwTypeError("Illegal panningModel", info.GetIsolate());
+    exceptionState.throwTypeError("Illegal panningModel");
+    exceptionState.throwIfNeeded();
 }
 
 void V8PannerNode::distanceModelAttributeSetterCustom(v8::Local<v8::Value> value, const v8::PropertyCallbackInfo<void>& info)
 {
+    ExceptionState exceptionState(ExceptionState::SetterContext, "distanceModel", "PannerNode", info.Holder(), info.GetIsolate());
     PannerNode* imp = V8PannerNode::toNative(info.Holder());
 
     if (value->IsNumber()) {
-        bool ok = false;
-        uint32_t model = toUInt32(value, ok);
-        ASSERT(ok);
-        if (!imp->setDistanceModel(model))
-            throwTypeError("Illegal distanceModel", info.GetIsolate());
+        uint32_t model = toUInt32(value, exceptionState);
+        if (exceptionState.throwIfNeeded())
+            return;
+        if (!imp->setDistanceModel(model)) {
+            exceptionState.throwTypeError("Illegal distanceModel");
+            exceptionState.throwIfNeeded();
+        }
         return;
     }
 
     if (value->IsString()) {
-        String model = toWebCoreString(value);
+        String model = toCoreString(value.As<v8::String>());
         if (model == "linear" || model == "inverse" || model == "exponential") {
             imp->setDistanceModel(model);
             return;
         }
     }
 
-    throwTypeError("Illegal distanceModel", info.GetIsolate());
+    exceptionState.throwTypeError("Illegal distanceModel");
+    exceptionState.throwIfNeeded();
 }
 
 } // namespace WebCore

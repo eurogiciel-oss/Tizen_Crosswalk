@@ -65,9 +65,9 @@ class ContactProviderTest : public testing::Test {
   // Starts a (synchronous) query for |utf8_text| in |contact_provider_|.
   void StartQuery(const std::string& utf8_text) {
     contact_provider_->Start(
-        AutocompleteInput(UTF8ToUTF16(utf8_text),
-                          string16::npos,
-                          string16(),
+        AutocompleteInput(base::UTF8ToUTF16(utf8_text),
+                          base::string16::npos,
+                          base::string16(),
                           GURL(),
                           AutocompleteInput::INVALID_SPEC,
                           false,

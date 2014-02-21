@@ -17,6 +17,9 @@
 
 namespace net {
 
+class QuicServerInfo;
+class QuicServerInfoFactory;
+
 // QuicCryptoClientConfig contains crypto-related configuration settings for a
 // client. Note that this object isn't thread-safe. It's designed to be used on
 // a single thread at a time.
@@ -86,6 +89,11 @@ class NET_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
     // unchanged.
     void InitializeFrom(const CachedState& other);
 
+    // TODO(rtenneti): Need to flesh out the details of this method. A temporary
+    // place holder to load CachedState from disk cache.
+    void LoadFromDiskCache(QuicServerInfoFactory* quic_server_info_factory,
+                           const std::string& server_hostname);
+
    private:
     std::string server_config_id_;      // An opaque id from the server.
     std::string server_config_;         // A serialized handshake message.
@@ -106,10 +114,14 @@ class NET_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
     // scfg contains the cached, parsed value of |server_config|.
     mutable scoped_ptr<CryptoHandshakeMessage> scfg_;
 
+    scoped_ptr<QuicServerInfo> quic_server_info_;
+
     DISALLOW_COPY_AND_ASSIGN(CachedState);
   };
 
   QuicCryptoClientConfig();
+  explicit QuicCryptoClientConfig(
+      QuicServerInfoFactory* quic_server_info_factory);
   ~QuicCryptoClientConfig();
 
   // Sets the members to reasonable, default values.
@@ -123,8 +135,11 @@ class NET_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   // source-address token or SCFG from a server. If |cached| is non-NULL, the
   // source-address token will be taken from it. |out_params| is used in order
   // to store the cached certs that were sent as hints to the server in
-  // |out_params->cached_certs|.
+  // |out_params->cached_certs|. |preferred_version| is the version of the QUIC
+  // protocol that this client chose to use initially. This allows the server to
+  // detect downgrade attacks.
   void FillInchoateClientHello(const std::string& server_hostname,
+                               const QuicVersion preferred_version,
                                const CachedState* cached,
                                QuicCryptoNegotiatedParameters* out_params,
                                CryptoHandshakeMessage* out) const;
@@ -136,9 +151,12 @@ class NET_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   //
   // |clock| and |rand| are used to generate the nonce and |out_params| is
   // filled with the results of the handshake that the server is expected to
-  // accept.
+  // accept. |preferred_version| is the version of the QUIC protocol that this
+  // client chose to use initially. This allows the server to detect downgrade
+  // attacks.
   QuicErrorCode FillClientHello(const std::string& server_hostname,
                                 QuicGuid guid,
+                                const QuicVersion preferred_version,
                                 const CachedState* cached,
                                 QuicWallTime now,
                                 QuicRandom* rand,
@@ -162,9 +180,13 @@ class NET_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   // cached information about that server, writes the negotiated parameters to
   // |out_params| and returns QUIC_NO_ERROR. If |server_hello| is unacceptable
   // then it puts an error message in |error_details| and returns an error
-  // code.
+  // code. |negotiated_versions| contains the list of version, if any, that were
+  // present in a version negotiation packet previously recevied from the
+  // server. The contents of this list will be compared against the list of
+  // versions provided in the VER tag of the server hello.
   QuicErrorCode ProcessServerHello(const CryptoHandshakeMessage& server_hello,
                                    QuicGuid guid,
+                                   const QuicVersionVector& negotiated_versions,
                                    CachedState* cached,
                                    QuicCryptoNegotiatedParameters* out_params,
                                    std::string* error_details);
@@ -197,6 +219,7 @@ class NET_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   // about that server.
   std::map<std::string, CachedState*> cached_states_;
 
+  QuicServerInfoFactory* quic_server_info_factory_;
   scoped_ptr<ProofVerifier> proof_verifier_;
   scoped_ptr<ChannelIDSigner> channel_id_signer_;
 

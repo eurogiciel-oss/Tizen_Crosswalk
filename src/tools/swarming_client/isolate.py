@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2012 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Front end tool to operate on .isolate files.
 
@@ -13,18 +13,16 @@ See more information at
 """
 # Run ./isolate.py --help for more detailed information.
 
-import ast
-import copy
-import itertools
+import datetime
 import logging
 import optparse
 import os
 import posixpath
 import re
-import stat
 import subprocess
 import sys
 
+import isolate_format
 import isolateserver
 import run_isolated
 import trace_inputs
@@ -38,20 +36,9 @@ from third_party.depot_tools import subcommand
 
 from utils import file_path
 from utils import tools
-from utils import short_expression_finder
 
 
-__version__ = '0.1.1'
-
-
-PATH_VARIABLES = ('DEPTH', 'PRODUCT_DIR')
-
-# Files that should be 0-length when mapped.
-KEY_TOUCHED = 'isolate_dependency_touched'
-# Files that should be tracked by the build tool.
-KEY_TRACKED = 'isolate_dependency_tracked'
-# Files that should not be tracked by the build tool.
-KEY_UNTRACKED = 'isolate_dependency_untracked'
+__version__ = '0.2'
 
 
 class ExecutionError(Exception):
@@ -61,261 +48,6 @@ class ExecutionError(Exception):
 
 
 ### Path handling code.
-
-
-DEFAULT_BLACKLIST = (
-  # Temporary vim or python files.
-  r'^.+\.(?:pyc|swp)$',
-  # .git or .svn directory.
-  r'^(?:.+' + re.escape(os.path.sep) + r'|)\.(?:git|svn)$',
-)
-
-
-# Chromium-specific.
-DEFAULT_BLACKLIST += (
-  r'^.+\.(?:run_test_cases)$',
-  r'^(?:.+' + re.escape(os.path.sep) + r'|)testserver\.log$',
-)
-
-
-def relpath(path, root):
-  """os.path.relpath() that keeps trailing os.path.sep."""
-  out = os.path.relpath(path, root)
-  if path.endswith(os.path.sep):
-    out += os.path.sep
-  return out
-
-
-def safe_relpath(filepath, basepath):
-  """Do not throw on Windows when filepath and basepath are on different drives.
-
-  Different than relpath() above since this one doesn't keep the trailing
-  os.path.sep and it swallows exceptions on Windows and return the original
-  absolute path in the case of different drives.
-  """
-  try:
-    return os.path.relpath(filepath, basepath)
-  except ValueError:
-    assert sys.platform == 'win32'
-    return filepath
-
-
-def normpath(path):
-  """os.path.normpath() that keeps trailing os.path.sep."""
-  out = os.path.normpath(path)
-  if path.endswith(os.path.sep):
-    out += os.path.sep
-  return out
-
-
-def posix_relpath(path, root):
-  """posix.relpath() that keeps trailing slash."""
-  out = posixpath.relpath(path, root)
-  if path.endswith('/'):
-    out += '/'
-  return out
-
-
-def cleanup_path(x):
-  """Cleans up a relative path. Converts any os.path.sep to '/' on Windows."""
-  if x:
-    x = x.rstrip(os.path.sep).replace(os.path.sep, '/')
-  if x == '.':
-    x = ''
-  if x:
-    x += '/'
-  return x
-
-
-def is_url(path):
-  return bool(re.match(r'^https?://.+$', path))
-
-
-def path_starts_with(prefix, path):
-  """Returns true if the components of the path |prefix| are the same as the
-  initial components of |path| (or all of the components of |path|). The paths
-  must be absolute.
-  """
-  assert os.path.isabs(prefix) and os.path.isabs(path)
-  prefix = os.path.normpath(prefix)
-  path = os.path.normpath(path)
-  assert prefix == file_path.get_native_path_case(prefix), prefix
-  assert path == file_path.get_native_path_case(path), path
-  prefix = prefix.rstrip(os.path.sep) + os.path.sep
-  path = path.rstrip(os.path.sep) + os.path.sep
-  return path.startswith(prefix)
-
-
-def fix_native_path_case(root, path):
-  """Ensures that each component of |path| has the proper native case by
-     iterating slowly over the directory elements of |path|."""
-  native_case_path = root
-  for raw_part in path.split(os.sep):
-    if not raw_part or raw_part == '.':
-      break
-
-    part = file_path.find_item_native_case(native_case_path, raw_part)
-    if not part:
-      raise isolateserver.MappingError(
-          'Input file %s doesn\'t exist' %
-          os.path.join(native_case_path, raw_part))
-    native_case_path = os.path.join(native_case_path, part)
-
-  return os.path.normpath(native_case_path)
-
-
-def expand_symlinks(indir, relfile):
-  """Follows symlinks in |relfile|, but treating symlinks that point outside the
-  build tree as if they were ordinary directories/files. Returns the final
-  symlink-free target and a list of paths to symlinks encountered in the
-  process.
-
-  The rule about symlinks outside the build tree is for the benefit of the
-  Chromium OS ebuild, which symlinks the output directory to an unrelated path
-  in the chroot.
-
-  Fails when a directory loop is detected, although in theory we could support
-  that case.
-  """
-  is_directory = relfile.endswith(os.path.sep)
-  done = indir
-  todo = relfile.strip(os.path.sep)
-  symlinks = []
-
-  while todo:
-    pre_symlink, symlink, post_symlink = file_path.split_at_symlink(
-        done, todo)
-    if not symlink:
-      todo = fix_native_path_case(done, todo)
-      done = os.path.join(done, todo)
-      break
-    symlink_path = os.path.join(done, pre_symlink, symlink)
-    post_symlink = post_symlink.lstrip(os.path.sep)
-    # readlink doesn't exist on Windows.
-    # pylint: disable=E1101
-    target = os.path.normpath(os.path.join(done, pre_symlink))
-    symlink_target = os.readlink(symlink_path)
-    if os.path.isabs(symlink_target):
-      # Absolute path are considered a normal directories. The use case is
-      # generally someone who puts the output directory on a separate drive.
-      target = symlink_target
-    else:
-      # The symlink itself could be using the wrong path case.
-      target = fix_native_path_case(target, symlink_target)
-
-    if not os.path.exists(target):
-      raise isolateserver.MappingError(
-          'Symlink target doesn\'t exist: %s -> %s' % (symlink_path, target))
-    target = file_path.get_native_path_case(target)
-    if not path_starts_with(indir, target):
-      done = symlink_path
-      todo = post_symlink
-      continue
-    if path_starts_with(target, symlink_path):
-      raise isolateserver.MappingError(
-          'Can\'t map recursive symlink reference %s -> %s' %
-          (symlink_path, target))
-    logging.info('Found symlink: %s -> %s', symlink_path, target)
-    symlinks.append(os.path.relpath(symlink_path, indir))
-    # Treat the common prefix of the old and new paths as done, and start
-    # scanning again.
-    target = target.split(os.path.sep)
-    symlink_path = symlink_path.split(os.path.sep)
-    prefix_length = 0
-    for target_piece, symlink_path_piece in zip(target, symlink_path):
-      if target_piece == symlink_path_piece:
-        prefix_length += 1
-      else:
-        break
-    done = os.path.sep.join(target[:prefix_length])
-    todo = os.path.join(
-        os.path.sep.join(target[prefix_length:]), post_symlink)
-
-  relfile = os.path.relpath(done, indir)
-  relfile = relfile.rstrip(os.path.sep) + is_directory * os.path.sep
-  return relfile, symlinks
-
-
-def expand_directory_and_symlink(indir, relfile, blacklist, follow_symlinks):
-  """Expands a single input. It can result in multiple outputs.
-
-  This function is recursive when relfile is a directory.
-
-  Note: this code doesn't properly handle recursive symlink like one created
-  with:
-    ln -s .. foo
-  """
-  if os.path.isabs(relfile):
-    raise isolateserver.MappingError(
-        'Can\'t map absolute path %s' % relfile)
-
-  infile = normpath(os.path.join(indir, relfile))
-  if not infile.startswith(indir):
-    raise isolateserver.MappingError(
-        'Can\'t map file %s outside %s' % (infile, indir))
-
-  filepath = os.path.join(indir, relfile)
-  native_filepath = file_path.get_native_path_case(filepath)
-  if filepath != native_filepath:
-    # Special case './'.
-    if filepath != native_filepath + '.' + os.path.sep:
-      # Give up enforcing strict path case on OSX. Really, it's that sad. The
-      # case where it happens is very specific and hard to reproduce:
-      # get_native_path_case(
-      #    u'Foo.framework/Versions/A/Resources/Something.nib') will return
-      # u'Foo.framework/Versions/A/resources/Something.nib', e.g. lowercase 'r'.
-      #
-      # Note that this is really something deep in OSX because running
-      # ls Foo.framework/Versions/A
-      # will print out 'Resources', while file_path.get_native_path_case()
-      # returns a lower case 'r'.
-      #
-      # So *something* is happening under the hood resulting in the command 'ls'
-      # and Carbon.File.FSPathMakeRef('path').FSRefMakePath() to disagree.  We
-      # have no idea why.
-      if sys.platform != 'darwin':
-        raise isolateserver.MappingError(
-            'File path doesn\'t equal native file path\n%s != %s' %
-            (filepath, native_filepath))
-
-  symlinks = []
-  if follow_symlinks:
-    relfile, symlinks = expand_symlinks(indir, relfile)
-
-  if relfile.endswith(os.path.sep):
-    if not os.path.isdir(infile):
-      raise isolateserver.MappingError(
-          '%s is not a directory but ends with "%s"' % (infile, os.path.sep))
-
-    # Special case './'.
-    if relfile.startswith('.' + os.path.sep):
-      relfile = relfile[2:]
-    outfiles = symlinks
-    try:
-      for filename in os.listdir(infile):
-        inner_relfile = os.path.join(relfile, filename)
-        if blacklist(inner_relfile):
-          continue
-        if os.path.isdir(os.path.join(indir, inner_relfile)):
-          inner_relfile += os.path.sep
-        outfiles.extend(
-            expand_directory_and_symlink(indir, inner_relfile, blacklist,
-                                         follow_symlinks))
-      return outfiles
-    except OSError as e:
-      raise isolateserver.MappingError(
-          'Unable to iterate over directory %s.\n%s' % (infile, e))
-  else:
-    # Always add individual files even if they were blacklisted.
-    if os.path.isdir(infile):
-      raise isolateserver.MappingError(
-          'Input directory %s must have a trailing slash' % infile)
-
-    if not os.path.isfile(infile):
-      raise isolateserver.MappingError(
-          'Input file %s doesn\'t exist' % infile)
-
-    return symlinks + [relfile]
 
 
 def expand_directories_and_symlinks(indir, infiles, blacklist,
@@ -328,8 +60,9 @@ def expand_directories_and_symlinks(indir, infiles, blacklist,
   outfiles = []
   for relfile in infiles:
     try:
-      outfiles.extend(expand_directory_and_symlink(indir, relfile, blacklist,
-                                                   follow_symlinks))
+      outfiles.extend(
+          isolateserver.expand_directory_and_symlink(
+              indir, relfile, blacklist, follow_symlinks))
     except isolateserver.MappingError as e:
       if ignore_broken_items:
         logging.info('warning: %s', e)
@@ -394,173 +127,49 @@ def recreate_tree(outdir, indir, infiles, action, as_hash):
       run_isolated.link_file(outfile, infile, action)
 
 
-def process_input(filepath, prevdict, read_only, flavor, algo):
-  """Processes an input file, a dependency, and return meta data about it.
-
-  Arguments:
-  - filepath: File to act on.
-  - prevdict: the previous dictionary. It is used to retrieve the cached sha-1
-              to skip recalculating the hash.
-  - read_only: If True, the file mode is manipulated. In practice, only save
-               one of 4 modes: 0755 (rwx), 0644 (rw), 0555 (rx), 0444 (r). On
-               windows, mode is not set since all files are 'executable' by
-               default.
-  - algo:      Hashing algorithm used.
-
-  Behaviors:
-  - Retrieves the file mode, file size, file timestamp, file link
-    destination if it is a file link and calcultate the SHA-1 of the file's
-    content if the path points to a file and not a symlink.
-  """
-  out = {}
-  # TODO(csharp): Fix crbug.com/150823 and enable the touched logic again.
-  # if prevdict.get('T') == True:
-  #   # The file's content is ignored. Skip the time and hard code mode.
-  #   if get_flavor() != 'win':
-  #     out['m'] = stat.S_IRUSR | stat.S_IRGRP
-  #   out['s'] = 0
-  #   out['h'] = algo().hexdigest()
-  #   out['T'] = True
-  #   return out
-
-  # Always check the file stat and check if it is a link. The timestamp is used
-  # to know if the file's content/symlink destination should be looked into.
-  # E.g. only reuse from prevdict if the timestamp hasn't changed.
-  # There is the risk of the file's timestamp being reset to its last value
-  # manually while its content changed. We don't protect against that use case.
-  try:
-    filestats = os.lstat(filepath)
-  except OSError:
-    # The file is not present.
-    raise isolateserver.MappingError('%s is missing' % filepath)
-  is_link = stat.S_ISLNK(filestats.st_mode)
-
-  if flavor != 'win':
-    # Ignore file mode on Windows since it's not really useful there.
-    filemode = stat.S_IMODE(filestats.st_mode)
-    # Remove write access for group and all access to 'others'.
-    filemode &= ~(stat.S_IWGRP | stat.S_IRWXO)
-    if read_only:
-      filemode &= ~stat.S_IWUSR
-    if filemode & stat.S_IXUSR:
-      filemode |= stat.S_IXGRP
-    else:
-      filemode &= ~stat.S_IXGRP
-    if not is_link:
-      out['m'] = filemode
-
-  # Used to skip recalculating the hash or link destination. Use the most recent
-  # update time.
-  # TODO(maruel): Save it in the .state file instead of .isolated so the
-  # .isolated file is deterministic.
-  out['t'] = int(round(filestats.st_mtime))
-
-  if not is_link:
-    out['s'] = filestats.st_size
-    # If the timestamp wasn't updated and the file size is still the same, carry
-    # on the sha-1.
-    if (prevdict.get('t') == out['t'] and
-        prevdict.get('s') == out['s']):
-      # Reuse the previous hash if available.
-      out['h'] = prevdict.get('h')
-    if not out.get('h'):
-      out['h'] = isolateserver.hash_file(filepath, algo)
-  else:
-    # If the timestamp wasn't updated, carry on the link destination.
-    if prevdict.get('t') == out['t']:
-      # Reuse the previous link destination if available.
-      out['l'] = prevdict.get('l')
-    if out.get('l') is None:
-      # The link could be in an incorrect path case. In practice, this only
-      # happen on OSX on case insensitive HFS.
-      # TODO(maruel): It'd be better if it was only done once, in
-      # expand_directory_and_symlink(), so it would not be necessary to do again
-      # here.
-      symlink_value = os.readlink(filepath)  # pylint: disable=E1101
-      filedir = file_path.get_native_path_case(os.path.dirname(filepath))
-      native_dest = fix_native_path_case(filedir, symlink_value)
-      out['l'] = os.path.relpath(native_dest, filedir)
-  return out
-
-
 ### Variable stuff.
 
 
-def isolatedfile_to_state(filename):
-  """Replaces the file's extension."""
-  return filename + '.state'
-
-
-def determine_root_dir(relative_root, infiles):
-  """For a list of infiles, determines the deepest root directory that is
-  referenced indirectly.
-
-  All arguments must be using os.path.sep.
+def _normalize_path_variable(cwd, relative_base_dir, key, value):
+  """Normalizes a path variable into a relative directory.
   """
-  # The trick used to determine the root directory is to look at "how far" back
-  # up it is looking up.
-  deepest_root = relative_root
-  for i in infiles:
-    x = relative_root
-    while i.startswith('..' + os.path.sep):
-      i = i[3:]
-      assert not i.startswith(os.path.sep)
-      x = os.path.dirname(x)
-    if deepest_root.startswith(x):
-      deepest_root = x
+  # Variables could contain / or \ on windows. Always normalize to
+  # os.path.sep.
+  x = os.path.join(cwd, value.strip().replace('/', os.path.sep))
+  normalized = file_path.get_native_path_case(os.path.normpath(x))
+  if not os.path.isdir(normalized):
+    raise ExecutionError('%s=%s is not a directory' % (key, normalized))
+
+  # All variables are relative to the .isolate file.
+  normalized = os.path.relpath(normalized, relative_base_dir)
   logging.debug(
-      'determine_root_dir(%s, %d files) -> %s' % (
-          relative_root, len(infiles), deepest_root))
-  return deepest_root
+      'Translated variable %s from %s to %s', key, value, normalized)
+  return normalized
 
 
-def replace_variable(part, variables):
-  m = re.match(r'<\(([A-Z_]+)\)', part)
-  if m:
-    if m.group(1) not in variables:
-      raise ExecutionError(
-        'Variable "%s" was not found in %s.\nDid you forget to specify '
-        '--variable?' % (m.group(1), variables))
-    return variables[m.group(1)]
-  return part
-
-
-def process_variables(cwd, variables, relative_base_dir):
+def normalize_path_variables(cwd, path_variables, relative_base_dir):
   """Processes path variables as a special case and returns a copy of the dict.
 
   For each 'path' variable: first normalizes it based on |cwd|, verifies it
   exists then sets it as relative to relative_base_dir.
   """
+  logging.info(
+      'normalize_path_variables(%s, %s, %s)', cwd, path_variables,
+      relative_base_dir)
+  assert isinstance(cwd, unicode), cwd
+  assert isinstance(relative_base_dir, unicode), relative_base_dir
   relative_base_dir = file_path.get_native_path_case(relative_base_dir)
-  variables = variables.copy()
-  for i in PATH_VARIABLES:
-    if i not in variables:
-      continue
-    variable = variables[i].strip()
-    # Variables could contain / or \ on windows. Always normalize to
-    # os.path.sep.
-    variable = variable.replace('/', os.path.sep)
-    variable = os.path.join(cwd, variable)
-    variable = os.path.normpath(variable)
-    variable = file_path.get_native_path_case(variable)
-    if not os.path.isdir(variable):
-      raise ExecutionError('%s=%s is not a directory' % (i, variable))
-
-    # All variables are relative to the .isolate file.
-    variable = os.path.relpath(variable, relative_base_dir)
-    logging.debug(
-        'Translated variable %s from %s to %s', i, variables[i], variable)
-    variables[i] = variable
-  return variables
+  return dict(
+      (k, _normalize_path_variable(cwd, relative_base_dir, k, v))
+      for k, v in path_variables.iteritems())
 
 
-def eval_variables(item, variables):
-  """Replaces the .isolate variables in a string item.
+### Internal state files.
 
-  Note that the .isolate format is a subset of the .gyp dialect.
-  """
-  return ''.join(
-      replace_variable(p, variables) for p in re.split(r'(<\([A-Z_]+\))', item))
+
+def isolatedfile_to_state(filename):
+  """For a '.isolate' file, returns the path to the saved '.state' file."""
+  return filename + '.state'
 
 
 def classify_files(root_dir, tracked, untracked):
@@ -572,7 +181,7 @@ def classify_files(root_dir, tracked, untracked):
   - untracked: list of files names that must not be tracked.
   """
   # These directories are not guaranteed to be always present on every builder.
-  OPTIONAL_DIRECTORIES = (
+  CHROMIUM_OPTIONAL_DIRECTORIES = (
     'test/data/plugin',
     'third_party/WebKit/LayoutTests',
   )
@@ -588,7 +197,7 @@ def classify_files(root_dir, tracked, untracked):
       return False
     if ' ' in filepath:
       return False
-    if any(i in filepath for i in OPTIONAL_DIRECTORIES):
+    if any(i in filepath for i in CHROMIUM_OPTIONAL_DIRECTORIES):
       return False
     # Look if any element in the path is a symlink.
     split = filepath.split('/')
@@ -606,14 +215,14 @@ def classify_files(root_dir, tracked, untracked):
 
   variables = {}
   if new_tracked:
-    variables[KEY_TRACKED] = sorted(new_tracked)
+    variables[isolate_format.KEY_TRACKED] = sorted(new_tracked)
   if new_untracked:
-    variables[KEY_UNTRACKED] = sorted(new_untracked)
+    variables[isolate_format.KEY_UNTRACKED] = sorted(new_untracked)
   return variables
 
 
 def chromium_fix(f, variables):
-  """Fixes an isolate dependnecy with Chromium-specific fixes."""
+  """Fixes an isolate dependency with Chromium-specific fixes."""
   # Skip log in PRODUCT_DIR. Note that these are applied on '/' style path
   # separator.
   LOG_FILE = re.compile(r'^\<\(PRODUCT_DIR\)\/[^\/]+\.log$')
@@ -661,8 +270,8 @@ def chromium_fix(f, variables):
 
 
 def generate_simplified(
-    tracked, untracked, touched, root_dir, variables, relative_cwd,
-    trace_blacklist):
+    tracked, untracked, touched, root_dir, path_variables, extra_variables,
+    relative_cwd, trace_blacklist):
   """Generates a clean and complete .isolate 'variables' dictionary.
 
   Cleans up and extracts only files from within root_dir then processes
@@ -670,19 +279,21 @@ def generate_simplified(
   """
   root_dir = os.path.realpath(root_dir)
   logging.info(
-      'generate_simplified(%d files, %s, %s, %s)' %
+      'generate_simplified(%d files, %s, %s, %s, %s)' %
       (len(tracked) + len(untracked) + len(touched),
-        root_dir, variables, relative_cwd))
+        root_dir, path_variables, extra_variables, relative_cwd))
 
   # Preparation work.
-  relative_cwd = cleanup_path(relative_cwd)
+  relative_cwd = file_path.cleanup_path(relative_cwd)
   assert not os.path.isabs(relative_cwd), relative_cwd
-  # Creates the right set of variables here. We only care about PATH_VARIABLES.
+
+  # Normalizes to posix path. .isolate files are using posix paths on all OSes
+  # for coherency.
   path_variables = dict(
-      ('<(%s)' % k, variables[k].replace(os.path.sep, '/'))
-      for k in PATH_VARIABLES if k in variables)
-  variables = variables.copy()
-  variables.update(path_variables)
+      (k, v.replace(os.path.sep, '/')) for k, v in path_variables.iteritems())
+  # Contains normalized path_variables plus extra_variables.
+  total_variables = path_variables.copy()
+  total_variables.update(extra_variables)
 
   # Actual work: Process the files.
   # TODO(maruel): if all the files in a directory are in part tracked and in
@@ -707,15 +318,17 @@ def generate_simplified(
       # empty if the whole directory containing the gyp file is needed.
       # Use absolute paths in case cwd_dir is outside of root_dir.
       # Convert the whole thing to / since it's isolate's speak.
-      f = posix_relpath(
+      f = file_path.posix_relpath(
           posixpath.join(root_dir_posix, f),
           posixpath.join(root_dir_posix, relative_cwd)) or './'
 
-    for variable, root_path in path_variables.iteritems():
-      if f.startswith(root_path):
-        f = variable + f[len(root_path):]
-        logging.debug('Converted to %s' % f)
-        break
+      # Use the longest value first.
+      for key, value in sorted(
+          path_variables.iteritems(), key=lambda x: -len(x[1])):
+        if f.startswith(value):
+          f = '<(%s)%s' % (key, f[len(value):])
+          logging.debug('Converted to %s' % f)
+          break
     return f
 
   def fix_all(items):
@@ -723,7 +336,8 @@ def generate_simplified(
     chromium-specific fixes and only return unique items.
     """
     variables_converted = (fix(f.path) for f in items)
-    chromium_fixed = (chromium_fix(f, variables) for f in variables_converted)
+    chromium_fixed = (
+        chromium_fix(f, total_variables) for f in variables_converted)
     return set(f for f in chromium_fixed if f)
 
   tracked = fix_all(tracked)
@@ -731,666 +345,27 @@ def generate_simplified(
   touched = fix_all(touched)
   out = classify_files(root_dir, tracked, untracked)
   if touched:
-    out[KEY_TOUCHED] = sorted(touched)
+    out[isolate_format.KEY_TOUCHED] = sorted(touched)
   return out
-
-
-def chromium_filter_flags(variables):
-  """Filters out build flags used in Chromium that we don't want to treat as
-  configuration variables.
-  """
-  # TODO(benrg): Need a better way to determine this.
-  blacklist = set(PATH_VARIABLES + ('EXECUTABLE_SUFFIX', 'FLAG'))
-  return dict((k, v) for k, v in variables.iteritems() if k not in blacklist)
 
 
 def generate_isolate(
-    tracked, untracked, touched, root_dir, variables, relative_cwd,
-    trace_blacklist):
+    tracked, untracked, touched, root_dir, path_variables, config_variables,
+    extra_variables, relative_cwd, trace_blacklist):
   """Generates a clean and complete .isolate file."""
   dependencies = generate_simplified(
-      tracked, untracked, touched, root_dir, variables, relative_cwd,
-      trace_blacklist)
-  config_variables = chromium_filter_flags(variables)
+      tracked, untracked, touched, root_dir, path_variables, extra_variables,
+      relative_cwd, trace_blacklist)
   config_variable_names, config_values = zip(
       *sorted(config_variables.iteritems()))
-  out = Configs(None)
-  # The new dependencies apply to just one configuration, namely config_values.
-  out.merge_dependencies(dependencies, config_variable_names, [config_values])
+  out = isolate_format.Configs(None, config_variable_names)
+  # TODO(maruel): Create a public interface in Configs to add a ConfigSettings.
+  # pylint: disable=W0212
+  out._by_config[config_values] = isolate_format.ConfigSettings(dependencies)
   return out.make_isolate_file()
 
 
-def split_touched(files):
-  """Splits files that are touched vs files that are read."""
-  tracked = []
-  touched = []
-  for f in files:
-    if f.size:
-      tracked.append(f)
-    else:
-      touched.append(f)
-  return tracked, touched
-
-
-def pretty_print(variables, stdout):
-  """Outputs a gyp compatible list from the decoded variables.
-
-  Similar to pprint.print() but with NIH syndrome.
-  """
-  # Order the dictionary keys by these keys in priority.
-  ORDER = (
-      'variables', 'condition', 'command', 'relative_cwd', 'read_only',
-      KEY_TRACKED, KEY_UNTRACKED)
-
-  def sorting_key(x):
-    """Gives priority to 'most important' keys before the others."""
-    if x in ORDER:
-      return str(ORDER.index(x))
-    return x
-
-  def loop_list(indent, items):
-    for item in items:
-      if isinstance(item, basestring):
-        stdout.write('%s\'%s\',\n' % (indent, item))
-      elif isinstance(item, dict):
-        stdout.write('%s{\n' % indent)
-        loop_dict(indent + '  ', item)
-        stdout.write('%s},\n' % indent)
-      elif isinstance(item, list):
-        # A list inside a list will write the first item embedded.
-        stdout.write('%s[' % indent)
-        for index, i in enumerate(item):
-          if isinstance(i, basestring):
-            stdout.write(
-                '\'%s\', ' % i.replace('\\', '\\\\').replace('\'', '\\\''))
-          elif isinstance(i, dict):
-            stdout.write('{\n')
-            loop_dict(indent + '  ', i)
-            if index != len(item) - 1:
-              x = ', '
-            else:
-              x = ''
-            stdout.write('%s}%s' % (indent, x))
-          else:
-            assert False
-        stdout.write('],\n')
-      else:
-        assert False
-
-  def loop_dict(indent, items):
-    for key in sorted(items, key=sorting_key):
-      item = items[key]
-      stdout.write("%s'%s': " % (indent, key))
-      if isinstance(item, dict):
-        stdout.write('{\n')
-        loop_dict(indent + '  ', item)
-        stdout.write(indent + '},\n')
-      elif isinstance(item, list):
-        stdout.write('[\n')
-        loop_list(indent + '  ', item)
-        stdout.write(indent + '],\n')
-      elif isinstance(item, basestring):
-        stdout.write(
-            '\'%s\',\n' % item.replace('\\', '\\\\').replace('\'', '\\\''))
-      elif item in (True, False, None):
-        stdout.write('%s\n' % item)
-      else:
-        assert False, item
-
-  stdout.write('{\n')
-  loop_dict('  ', variables)
-  stdout.write('}\n')
-
-
-def union(lhs, rhs):
-  """Merges two compatible datastructures composed of dict/list/set."""
-  assert lhs is not None or rhs is not None
-  if lhs is None:
-    return copy.deepcopy(rhs)
-  if rhs is None:
-    return copy.deepcopy(lhs)
-  assert type(lhs) == type(rhs), (lhs, rhs)
-  if hasattr(lhs, 'union'):
-    # Includes set, ConfigSettings and Configs.
-    return lhs.union(rhs)
-  if isinstance(lhs, dict):
-    return dict((k, union(lhs.get(k), rhs.get(k))) for k in set(lhs).union(rhs))
-  elif isinstance(lhs, list):
-    # Do not go inside the list.
-    return lhs + rhs
-  assert False, type(lhs)
-
-
-def extract_comment(content):
-  """Extracts file level comment."""
-  out = []
-  for line in content.splitlines(True):
-    if line.startswith('#'):
-      out.append(line)
-    else:
-      break
-  return ''.join(out)
-
-
-def eval_content(content):
-  """Evaluates a python file and return the value defined in it.
-
-  Used in practice for .isolate files.
-  """
-  globs = {'__builtins__': None}
-  locs = {}
-  try:
-    value = eval(content, globs, locs)
-  except TypeError as e:
-    e.args = list(e.args) + [content]
-    raise
-  assert locs == {}, locs
-  assert globs == {'__builtins__': None}, globs
-  return value
-
-
-def match_configs(expr, config_variables, all_configs):
-  """Returns the configs from |all_configs| that match the |expr|, where
-  the elements of |all_configs| are tuples of values for the |config_variables|.
-  Example:
-  >>> match_configs(expr = "(foo==1 or foo==2) and bar=='b'",
-                    config_variables = ["foo", "bar"],
-                    all_configs = [(1, 'a'), (1, 'b'), (2, 'a'), (2, 'b')])
-  [(1, 'b'), (2, 'b')]
-  """
-  return [
-    config for config in all_configs
-    if eval(expr, dict(zip(config_variables, config)))
-  ]
-
-
-def verify_variables(variables):
-  """Verifies the |variables| dictionary is in the expected format."""
-  VALID_VARIABLES = [
-    KEY_TOUCHED,
-    KEY_TRACKED,
-    KEY_UNTRACKED,
-    'command',
-    'read_only',
-  ]
-  assert isinstance(variables, dict), variables
-  assert set(VALID_VARIABLES).issuperset(set(variables)), variables.keys()
-  for name, value in variables.iteritems():
-    if name == 'read_only':
-      assert value in (True, False, None), value
-    else:
-      assert isinstance(value, list), value
-      assert all(isinstance(i, basestring) for i in value), value
-
-
-def verify_ast(expr, variables_and_values):
-  """Verifies that |expr| is of the form
-  expr ::= expr ( "or" | "and" ) expr
-         | identifier "==" ( string | int )
-  Also collects the variable identifiers and string/int values in the dict
-  |variables_and_values|, in the form {'var': set([val1, val2, ...]), ...}.
-  """
-  assert isinstance(expr, (ast.BoolOp, ast.Compare))
-  if isinstance(expr, ast.BoolOp):
-    assert isinstance(expr.op, (ast.And, ast.Or))
-    for subexpr in expr.values:
-      verify_ast(subexpr, variables_and_values)
-  else:
-    assert isinstance(expr.left.ctx, ast.Load)
-    assert len(expr.ops) == 1
-    assert isinstance(expr.ops[0], ast.Eq)
-    var_values = variables_and_values.setdefault(expr.left.id, set())
-    rhs = expr.comparators[0]
-    assert isinstance(rhs, (ast.Str, ast.Num))
-    var_values.add(rhs.n if isinstance(rhs, ast.Num) else rhs.s)
-
-
-def verify_condition(condition, variables_and_values):
-  """Verifies the |condition| dictionary is in the expected format.
-  See verify_ast() for the meaning of |variables_and_values|.
-  """
-  VALID_INSIDE_CONDITION = ['variables']
-  assert isinstance(condition, list), condition
-  assert len(condition) == 2, condition
-  expr, then = condition
-
-  test_ast = compile(expr, '<condition>', 'eval', ast.PyCF_ONLY_AST)
-  verify_ast(test_ast.body, variables_and_values)
-
-  assert isinstance(then, dict), then
-  assert set(VALID_INSIDE_CONDITION).issuperset(set(then)), then.keys()
-  verify_variables(then['variables'])
-
-
-def verify_root(value, variables_and_values):
-  """Verifies that |value| is the parsed form of a valid .isolate file.
-  See verify_ast() for the meaning of |variables_and_values|.
-  """
-  VALID_ROOTS = ['includes', 'conditions']
-  assert isinstance(value, dict), value
-  assert set(VALID_ROOTS).issuperset(set(value)), value.keys()
-
-  includes = value.get('includes', [])
-  assert isinstance(includes, list), includes
-  for include in includes:
-    assert isinstance(include, basestring), include
-
-  conditions = value.get('conditions', [])
-  assert isinstance(conditions, list), conditions
-  for condition in conditions:
-    verify_condition(condition, variables_and_values)
-
-
-def remove_weak_dependencies(values, key, item, item_configs):
-  """Removes any configs from this key if the item is already under a
-  strong key.
-  """
-  if key == KEY_TOUCHED:
-    item_configs = set(item_configs)
-    for stronger_key in (KEY_TRACKED, KEY_UNTRACKED):
-      try:
-        item_configs -= values[stronger_key][item]
-      except KeyError:
-        pass
-
-  return item_configs
-
-
-def remove_repeated_dependencies(folders, key, item, item_configs):
-  """Removes any configs from this key if the item is in a folder that is
-  already included."""
-
-  if key in (KEY_UNTRACKED, KEY_TRACKED, KEY_TOUCHED):
-    item_configs = set(item_configs)
-    for (folder, configs) in folders.iteritems():
-      if folder != item and item.startswith(folder):
-        item_configs -= configs
-
-  return item_configs
-
-
-def get_folders(values_dict):
-  """Returns a dict of all the folders in the given value_dict."""
-  return dict(
-    (item, configs) for (item, configs) in values_dict.iteritems()
-    if item.endswith('/')
-  )
-
-
-def invert_map(variables):
-  """Converts {config: {deptype: list(depvals)}} to
-  {deptype: {depval: set(configs)}}.
-  """
-  KEYS = (
-    KEY_TOUCHED,
-    KEY_TRACKED,
-    KEY_UNTRACKED,
-    'command',
-    'read_only',
-  )
-  out = dict((key, {}) for key in KEYS)
-  for config, values in variables.iteritems():
-    for key in KEYS:
-      if key == 'command':
-        items = [tuple(values[key])] if key in values else []
-      elif key == 'read_only':
-        items = [values[key]] if key in values else []
-      else:
-        assert key in (KEY_TOUCHED, KEY_TRACKED, KEY_UNTRACKED)
-        items = values.get(key, [])
-      for item in items:
-        out[key].setdefault(item, set()).add(config)
-  return out
-
-
-def reduce_inputs(values):
-  """Reduces the output of invert_map() to the strictest minimum list.
-
-  Looks at each individual file and directory, maps where they are used and
-  reconstructs the inverse dictionary.
-
-  Returns the minimized dictionary.
-  """
-  KEYS = (
-    KEY_TOUCHED,
-    KEY_TRACKED,
-    KEY_UNTRACKED,
-    'command',
-    'read_only',
-  )
-
-  # Folders can only live in KEY_UNTRACKED.
-  folders = get_folders(values.get(KEY_UNTRACKED, {}))
-
-  out = dict((key, {}) for key in KEYS)
-  for key in KEYS:
-    for item, item_configs in values.get(key, {}).iteritems():
-      item_configs = remove_weak_dependencies(values, key, item, item_configs)
-      item_configs = remove_repeated_dependencies(
-          folders, key, item, item_configs)
-      if item_configs:
-        out[key][item] = item_configs
-  return out
-
-
-def convert_map_to_isolate_dict(values, config_variables):
-  """Regenerates back a .isolate configuration dict from files and dirs
-  mappings generated from reduce_inputs().
-  """
-  # Gather a list of configurations for set inversion later.
-  all_mentioned_configs = set()
-  for configs_by_item in values.itervalues():
-    for configs in configs_by_item.itervalues():
-      all_mentioned_configs.update(configs)
-
-  # Invert the mapping to make it dict first.
-  conditions = {}
-  for key in values:
-    for item, configs in values[key].iteritems():
-      then = conditions.setdefault(frozenset(configs), {})
-      variables = then.setdefault('variables', {})
-
-      if item in (True, False):
-        # One-off for read_only.
-        variables[key] = item
-      else:
-        assert item
-        if isinstance(item, tuple):
-          # One-off for command.
-          # Do not merge lists and do not sort!
-          # Note that item is a tuple.
-          assert key not in variables
-          variables[key] = list(item)
-        else:
-          # The list of items (files or dirs). Append the new item and keep
-          # the list sorted.
-          l = variables.setdefault(key, [])
-          l.append(item)
-          l.sort()
-
-  if all_mentioned_configs:
-    config_values = map(set, zip(*all_mentioned_configs))
-    sef = short_expression_finder.ShortExpressionFinder(
-        zip(config_variables, config_values))
-
-  conditions = sorted(
-      [sef.get_expr(configs), then] for configs, then in conditions.iteritems())
-  return {'conditions': conditions}
-
-
-### Internal state files.
-
-
-class ConfigSettings(object):
-  """Represents the dependency variables for a single build configuration.
-  The structure is immutable.
-  """
-  def __init__(self, config, values):
-    self.config = config
-    verify_variables(values)
-    self.touched = sorted(values.get(KEY_TOUCHED, []))
-    self.tracked = sorted(values.get(KEY_TRACKED, []))
-    self.untracked = sorted(values.get(KEY_UNTRACKED, []))
-    self.command = values.get('command', [])[:]
-    self.read_only = values.get('read_only')
-
-  def union(self, rhs):
-    assert not (self.config and rhs.config) or (self.config == rhs.config)
-    assert not (self.command and rhs.command) or (self.command == rhs.command)
-    var = {
-      KEY_TOUCHED: sorted(self.touched + rhs.touched),
-      KEY_TRACKED: sorted(self.tracked + rhs.tracked),
-      KEY_UNTRACKED: sorted(self.untracked + rhs.untracked),
-      'command': self.command or rhs.command,
-      'read_only': rhs.read_only if self.read_only is None else self.read_only,
-    }
-    return ConfigSettings(self.config or rhs.config, var)
-
-  def flatten(self):
-    out = {}
-    if self.command:
-      out['command'] = self.command
-    if self.touched:
-      out[KEY_TOUCHED] = self.touched
-    if self.tracked:
-      out[KEY_TRACKED] = self.tracked
-    if self.untracked:
-      out[KEY_UNTRACKED] = self.untracked
-    if self.read_only is not None:
-      out['read_only'] = self.read_only
-    return out
-
-
-class Configs(object):
-  """Represents a processed .isolate file.
-
-  Stores the file in a processed way, split by configuration.
-  """
-  def __init__(self, file_comment):
-    self.file_comment = file_comment
-    # The keys of by_config are tuples of values for the configuration
-    # variables. The names of the variables (which must be the same for
-    # every by_config key) are kept in config_variables. Initially by_config
-    # is empty and we don't know what configuration variables will be used,
-    # so config_variables also starts out empty. It will be set by the first
-    # call to union() or merge_dependencies().
-    self.by_config = {}
-    self.config_variables = ()
-
-  def union(self, rhs):
-    """Adds variables from rhs (a Configs) to the existing variables.
-    """
-    config_variables = self.config_variables
-    if not config_variables:
-      config_variables = rhs.config_variables
-    else:
-      # We can't proceed if this isn't true since we don't know the correct
-      # default values for extra variables. The variables are sorted so we
-      # don't need to worry about permutations.
-      if rhs.config_variables and rhs.config_variables != config_variables:
-        raise ExecutionError(
-            'Variables in merged .isolate files do not match: %r and %r' % (
-                config_variables, rhs.config_variables))
-
-    # Takes the first file comment, prefering lhs.
-    out = Configs(self.file_comment or rhs.file_comment)
-    out.config_variables = config_variables
-    for config in set(self.by_config) | set(rhs.by_config):
-      out.by_config[config] = union(
-          self.by_config.get(config), rhs.by_config.get(config))
-    return out
-
-  def merge_dependencies(self, values, config_variables, configs):
-    """Adds new dependencies to this object for the given configurations.
-    Arguments:
-      values: A variables dict as found in a .isolate file, e.g.,
-          {KEY_TOUCHED: [...], 'command': ...}.
-      config_variables: An ordered list of configuration variables, e.g.,
-          ["OS", "chromeos"]. If this object already contains any dependencies,
-          the configuration variables must match.
-      configs: a list of tuples of values of the configuration variables,
-          e.g., [("mac", 0), ("linux", 1)]. The dependencies in |values|
-          are added to all of these configurations, and other configurations
-          are unchanged.
-    """
-    if not values:
-      return
-
-    if not self.config_variables:
-      self.config_variables = config_variables
-    else:
-      # See comment in Configs.union().
-      assert self.config_variables == config_variables
-
-    for config in configs:
-      self.by_config[config] = union(
-          self.by_config.get(config), ConfigSettings(config, values))
-
-  def flatten(self):
-    """Returns a flat dictionary representation of the configuration.
-    """
-    return dict((k, v.flatten()) for k, v in self.by_config.iteritems())
-
-  def make_isolate_file(self):
-    """Returns a dictionary suitable for writing to a .isolate file.
-    """
-    dependencies_by_config = self.flatten()
-    configs_by_dependency = reduce_inputs(invert_map(dependencies_by_config))
-    return convert_map_to_isolate_dict(configs_by_dependency,
-                                       self.config_variables)
-
-
-# TODO(benrg): Remove this function when no old-format files are left.
-def convert_old_to_new_format(value):
-  """Converts from the old .isolate format, which only has one variable (OS),
-  always includes 'linux', 'mac' and 'win' in the set of valid values for OS,
-  and allows conditions that depend on the set of all OSes, to the new format,
-  which allows any set of variables, has no hardcoded values, and only allows
-  explicit positive tests of variable values.
-  """
-  conditions = value.get('conditions', [])
-  if 'variables' not in value and all(len(cond) == 2 for cond in conditions):
-    return value  # Nothing to change
-
-  def parse_condition(cond):
-    return re.match(r'OS=="(\w+)"\Z', cond[0]).group(1)
-
-  oses = set(map(parse_condition, conditions))
-  default_oses = set(['linux', 'mac', 'win'])
-  oses = sorted(oses | default_oses)
-
-  def if_not_os(not_os, then):
-    expr = ' or '.join('OS=="%s"' % os for os in oses if os != not_os)
-    return [expr, then]
-
-  conditions = [
-    cond[:2] for cond in conditions if cond[1]
-  ] + [
-    if_not_os(parse_condition(cond), cond[2])
-    for cond in conditions if len(cond) == 3
-  ]
-
-  if 'variables' in value:
-    conditions.append(if_not_os(None, {'variables': value.pop('variables')}))
-  conditions.sort()
-
-  value = value.copy()
-  value['conditions'] = conditions
-  return value
-
-
-def load_isolate_as_config(isolate_dir, value, file_comment):
-  """Parses one .isolate file and returns a Configs() instance.
-
-  |value| is the loaded dictionary that was defined in the gyp file.
-
-  The expected format is strict, anything diverting from the format below will
-  throw an assert:
-  {
-    'includes': [
-      'foo.isolate',
-    ],
-    'conditions': [
-      ['OS=="vms" and foo=42', {
-        'variables': {
-          'command': [
-            ...
-          ],
-          'isolate_dependency_tracked': [
-            ...
-          ],
-          'isolate_dependency_untracked': [
-            ...
-          ],
-          'read_only': False,
-        },
-      }],
-      ...
-    ],
-  }
-  """
-  value = convert_old_to_new_format(value)
-
-  variables_and_values = {}
-  verify_root(value, variables_and_values)
-  if variables_and_values:
-    config_variables, config_values = zip(
-        *sorted(variables_and_values.iteritems()))
-    all_configs = list(itertools.product(*config_values))
-  else:
-    config_variables = None
-    all_configs = []
-
-  isolate = Configs(file_comment)
-
-  # Add configuration-specific variables.
-  for expr, then in value.get('conditions', []):
-    configs = match_configs(expr, config_variables, all_configs)
-    isolate.merge_dependencies(then['variables'], config_variables, configs)
-
-  # Load the includes.
-  for include in value.get('includes', []):
-    if os.path.isabs(include):
-      raise ExecutionError(
-          'Failed to load configuration; absolute include path \'%s\'' %
-          include)
-    included_isolate = os.path.normpath(os.path.join(isolate_dir, include))
-    with open(included_isolate, 'r') as f:
-      included_isolate = load_isolate_as_config(
-          os.path.dirname(included_isolate),
-          eval_content(f.read()),
-          None)
-    isolate = union(isolate, included_isolate)
-
-  return isolate
-
-
-def load_isolate_for_config(isolate_dir, content, variables):
-  """Loads the .isolate file and returns the information unprocessed but
-  filtered for the specific OS.
-
-  Returns the command, dependencies and read_only flag. The dependencies are
-  fixed to use os.path.sep.
-  """
-  # Load the .isolate file, process its conditions, retrieve the command and
-  # dependencies.
-  isolate = load_isolate_as_config(isolate_dir, eval_content(content), None)
-  try:
-    config_name = tuple(variables[var] for var in isolate.config_variables)
-  except KeyError:
-    raise ExecutionError(
-        'These configuration variables were missing from the command line: %s' %
-        ', '.join(sorted(set(isolate.config_variables) - set(variables))))
-  config = isolate.by_config.get(config_name)
-  if not config:
-    raise ExecutionError(
-        'Failed to load configuration for variable \'%s\' for config(s) \'%s\''
-        '\nAvailable configs: %s' %
-        (', '.join(isolate.config_variables),
-        ', '.join(config_name),
-        ', '.join(str(s) for s in isolate.by_config)))
-  # Merge tracked and untracked variables, isolate.py doesn't care about the
-  # trackability of the variables, only the build tool does.
-  dependencies = [
-    f.replace('/', os.path.sep) for f in config.tracked + config.untracked
-  ]
-  touched = [f.replace('/', os.path.sep) for f in config.touched]
-  return config.command, dependencies, touched, config.read_only
-
-
-def save_isolated(isolated, data):
-  """Writes one or multiple .isolated files.
-
-  Note: this reference implementation does not create child .isolated file so it
-  always returns an empty list.
-
-  Returns the list of child isolated files that are included by |isolated|.
-  """
-  trace_inputs.write_json(isolated, data, True)
-  return []
-
-
-def chromium_save_isolated(isolated, data, variables, algo):
+def chromium_save_isolated(isolated, data, path_variables, algo):
   """Writes one or many .isolated files.
 
   This slightly increases the cold cache cost but greatly reduce the warm cache
@@ -1416,18 +391,18 @@ def chromium_save_isolated(isolated, data, variables, algo):
   extract_into_included_isolated(os.path.join('test', 'data', ''))
 
   # Split everything out of PRODUCT_DIR in its own .isolated file.
-  if variables.get('PRODUCT_DIR'):
-    extract_into_included_isolated(variables['PRODUCT_DIR'])
+  if path_variables.get('PRODUCT_DIR'):
+    extract_into_included_isolated(path_variables['PRODUCT_DIR'])
 
   files = []
   for index, f in enumerate(slaves):
     slavepath = isolated[:-len('.isolated')] + '.%d.isolated' % index
-    trace_inputs.write_json(slavepath, f, True)
+    tools.write_json(slavepath, f, True)
     data.setdefault('includes', []).append(
         isolateserver.hash_file(slavepath, algo))
     files.append(os.path.basename(slavepath))
 
-  files.extend(save_isolated(isolated, data))
+  files.extend(isolateserver.save_isolated(isolated, data))
   return files
 
 
@@ -1467,7 +442,7 @@ class Flattenable(object):
   def load_file(cls, filename, *args, **kwargs):
     """Loads the data from a file or return an empty instance."""
     try:
-      out = cls.load(trace_inputs.read_json(filename), *args, **kwargs)
+      out = cls.load(tools.read_json(filename), *args, **kwargs)
       logging.debug('Loaded %s(%s)', cls.__name__, filename)
     except (IOError, ValueError) as e:
       # On failure, loads the default instance.
@@ -1494,6 +469,12 @@ class SavedState(Flattenable):
     # files are never loaded by isolate.py so it's the only way to load the
     # command safely.
     'command',
+    # GYP variables that are used to generate conditions. The most frequent
+    # example is 'OS'.
+    'config_variables',
+    # GYP variables that will be replaced in 'command' and paths but will not be
+    # considered a relative directory.
+    'extra_variables',
     # Cache of the files found so the next run can skip hash calculation.
     'files',
     # Path of the original .isolate file. Relative path to isolated_basedir.
@@ -1505,10 +486,9 @@ class SavedState(Flattenable):
     'read_only',
     # Relative cwd to use to start the command.
     'relative_cwd',
-    # GYP variables used to generate the .isolated file. Variables are saved so
-    # a user can use isolate.py after building and the GYP variables are still
-    # defined.
-    'variables',
+    # GYP variables used to generate the .isolated files paths based on path
+    # variables. Frequent examples are DEPTH and PRODUCT_DIR.
+    'path_variables',
     # Version of the file format in format 'major.minor'. Any non-breaking
     # change must update minor. Any breaking change must update major.
     'version',
@@ -1527,17 +507,19 @@ class SavedState(Flattenable):
 
     # The default algorithm used.
     self.algo = isolateserver.SUPPORTED_ALGOS['sha-1']
+    self.child_isolated_files = []
     self.command = []
+    self.config_variables = {}
+    self.extra_variables = {}
     self.files = {}
     self.isolate_file = None
-    self.child_isolated_files = []
+    self.path_variables = {}
     self.read_only = None
     self.relative_cwd = None
-    self.variables = {'OS': get_flavor()}
-    # The current version.
-    self.version = '1.0'
+    self.version = isolateserver.ISOLATED_FILE_VERSION
 
-  def update(self, isolate_file, variables):
+  def update(
+      self, isolate_file, path_variables, config_variables, extra_variables):
     """Updates the saved state with new data to keep GYP variables and internal
     reference to the original .isolate file.
     """
@@ -1545,14 +527,16 @@ class SavedState(Flattenable):
     # Convert back to a relative path. On Windows, if the isolate and
     # isolated files are on different drives, isolate_file will stay an absolute
     # path.
-    isolate_file = safe_relpath(isolate_file, self.isolated_basedir)
+    isolate_file = file_path.safe_relpath(isolate_file, self.isolated_basedir)
 
     # The same .isolate file should always be used to generate the .isolated and
     # .isolated.state.
     assert isolate_file == self.isolate_file or not self.isolate_file, (
         isolate_file, self.isolate_file)
+    self.config_variables.update(config_variables)
+    self.extra_variables.update(extra_variables)
     self.isolate_file = isolate_file
-    self.variables.update(variables)
+    self.path_variables.update(path_variables)
 
   def update_isolated(self, command, infiles, touched, read_only, relative_cwd):
     """Updates the saved state with data necessary to generate a .isolated file.
@@ -1586,9 +570,10 @@ class SavedState(Flattenable):
       'algo': isolateserver.SUPPORTED_ALGOS_REVERSE[self.algo],
       'files': dict(
           (filepath, strip(data)) for filepath, data in self.files.iteritems()),
-      'os': self.variables['OS'],
       'version': self.version,
     }
+    if self.config_variables.get('OS'):
+      out['os'] = self.config_variables['OS']
     if self.command:
       out['command'] = self.command
     if self.read_only is not None:
@@ -1612,8 +597,8 @@ class SavedState(Flattenable):
     file is saved in OS-specific format.
     """
     out = super(SavedState, cls).load(data, isolated_basedir)
-    if 'os' in data:
-      out.variables['OS'] = data['os']
+    if data.get('os'):
+      out.config_variables['OS'] = data['os']
 
     # Converts human readable form back into the proper class type.
     algo = data.get('algo', 'sha-1')
@@ -1621,10 +606,12 @@ class SavedState(Flattenable):
       raise isolateserver.ConfigError('Unknown algo \'%s\'' % out.algo)
     out.algo = isolateserver.SUPPORTED_ALGOS[algo]
 
-    # For example, 1.1 is guaranteed to be backward compatible with 1.0 code.
+    # Refuse the load non-exact version, even minor difference. This is unlike
+    # isolateserver.load_isolated(). This is because .isolated.state could have
+    # changed significantly even in minor version difference.
     if not re.match(r'^(\d+)\.(\d+)$', out.version):
       raise isolateserver.ConfigError('Unknown version \'%s\'' % out.version)
-    if out.version.split('.', 1)[0] != '1':
+    if out.version != isolateserver.ISOLATED_FILE_VERSION:
       raise isolateserver.ConfigError(
           'Unsupported version \'%s\'' % out.version)
 
@@ -1642,6 +629,9 @@ class SavedState(Flattenable):
     return out
 
   def __str__(self):
+    def dict_to_str(d):
+      return ''.join('\n    %s=%s' % (k, d[k]) for k in sorted(d))
+
     out = '%s(\n' % self.__class__.__name__
     out += '  command: %s\n' % self.command
     out += '  files: %d\n' % len(self.files)
@@ -1649,9 +639,9 @@ class SavedState(Flattenable):
     out += '  read_only: %s\n' % self.read_only
     out += '  relative_cwd: %s\n' % self.relative_cwd
     out += '  child_isolated_files: %s\n' % self.child_isolated_files
-    out += '  variables: %s' % ''.join(
-        '\n    %s=%s' % (k, self.variables[k]) for k in sorted(self.variables))
-    out += ')'
+    out += '  path_variables: %s\n' % dict_to_str(self.path_variables)
+    out += '  config_variables: %s\n' % dict_to_str(self.config_variables)
+    out += '  extra_variables: %s\n' % dict_to_str(self.extra_variables)
     return out
 
 
@@ -1675,7 +665,9 @@ class CompleteState(object):
         SavedState.load_file(
             isolatedfile_to_state(isolated_filepath), isolated_basedir))
 
-  def load_isolate(self, cwd, isolate_file, variables, ignore_broken_items):
+  def load_isolate(
+      self, cwd, isolate_file, path_variables, config_variables,
+      extra_variables, ignore_broken_items):
     """Updates self.isolated and self.saved_state with information loaded from a
     .isolate file.
 
@@ -1685,53 +677,73 @@ class CompleteState(object):
     assert os.path.isabs(isolate_file), isolate_file
     isolate_file = file_path.get_native_path_case(isolate_file)
     logging.info(
-        'CompleteState.load_isolate(%s, %s, %s, %s)',
-        cwd, isolate_file, variables, ignore_broken_items)
+        'CompleteState.load_isolate(%s, %s, %s, %s, %s, %s)',
+        cwd, isolate_file, path_variables, config_variables, extra_variables,
+        ignore_broken_items)
     relative_base_dir = os.path.dirname(isolate_file)
 
-    # Processes the variables and update the saved state.
-    variables = process_variables(cwd, variables, relative_base_dir)
-    self.saved_state.update(isolate_file, variables)
-    variables = self.saved_state.variables
+    # Processes the variables.
+    path_variables = normalize_path_variables(
+        cwd, path_variables, relative_base_dir)
+    # Update the saved state.
+    self.saved_state.update(
+        isolate_file, path_variables, config_variables, extra_variables)
+    path_variables = self.saved_state.path_variables
 
     with open(isolate_file, 'r') as f:
       # At that point, variables are not replaced yet in command and infiles.
       # infiles may contain directory entries and is in posix style.
-      command, infiles, touched, read_only = load_isolate_for_config(
-          os.path.dirname(isolate_file), f.read(), variables)
-    command = [eval_variables(i, variables) for i in command]
-    infiles = [eval_variables(f, variables) for f in infiles]
-    touched = [eval_variables(f, variables) for f in touched]
+      command, infiles, touched, read_only = (
+          isolate_format.load_isolate_for_config(
+              os.path.dirname(isolate_file), f.read(),
+              self.saved_state.config_variables))
+
+    total_variables = self.saved_state.path_variables.copy()
+    total_variables.update(self.saved_state.config_variables)
+    total_variables.update(self.saved_state.extra_variables)
+    command = [
+        isolate_format.eval_variables(i, total_variables) for i in command
+    ]
+
+    total_variables = self.saved_state.path_variables.copy()
+    total_variables.update(self.saved_state.extra_variables)
+    infiles = [
+        isolate_format.eval_variables(f, total_variables) for f in infiles
+    ]
+    touched = [
+        isolate_format.eval_variables(f, total_variables) for f in touched
+    ]
     # root_dir is automatically determined by the deepest root accessed with the
     # form '../../foo/bar'. Note that path variables must be taken in account
     # too, add them as if they were input files.
-    path_variables = [variables[v] for v in PATH_VARIABLES if v in variables]
-    root_dir = determine_root_dir(
-        relative_base_dir, infiles + touched + path_variables)
+    root_dir = isolate_format.determine_root_dir(
+        relative_base_dir, infiles + touched +
+        self.saved_state.path_variables.values())
     # The relative directory is automatically determined by the relative path
     # between root_dir and the directory containing the .isolate file,
     # isolate_base_dir.
     relative_cwd = os.path.relpath(relative_base_dir, root_dir)
-    # Now that we know where the root is, check that the PATH_VARIABLES point
+    # Now that we know where the root is, check that the path_variables point
     # inside it.
-    for i in PATH_VARIABLES:
-      if i in variables:
-        if not path_starts_with(
-            root_dir, os.path.join(relative_base_dir, variables[i])):
-          raise isolateserver.MappingError(
-              'Path variable %s=%r points outside the inferred root directory'
-              ' %s' % (i, variables[i], root_dir))
+    for k, v in self.saved_state.path_variables.iteritems():
+      if not file_path.path_starts_with(
+          root_dir, os.path.join(relative_base_dir, v)):
+        raise isolateserver.MappingError(
+            'Path variable %s=%r points outside the inferred root directory %s'
+            % (k, v, root_dir))
     # Normalize the files based to root_dir. It is important to keep the
     # trailing os.path.sep at that step.
     infiles = [
-      relpath(normpath(os.path.join(relative_base_dir, f)), root_dir)
+      file_path.relpath(
+          file_path.normpath(os.path.join(relative_base_dir, f)), root_dir)
       for f in infiles
     ]
     touched = [
-      relpath(normpath(os.path.join(relative_base_dir, f)), root_dir)
+      file_path.relpath(
+          file_path.normpath(os.path.join(relative_base_dir, f)), root_dir)
       for f in touched
     ]
-    follow_symlinks = variables['OS'] != 'win'
+    follow_symlinks = config_variables['OS'] != 'win'
     # Expand the directories by listing each file inside. Up to now, trailing
     # os.path.sep must be kept. Do not expand 'touched'.
     infiles = expand_directories_and_symlinks(
@@ -1762,18 +774,18 @@ class CompleteState(object):
     If |subdir| is specified, filters to a subdirectory. The resulting .isolated
     file is tainted.
 
-    See process_input() for more information.
+    See isolateserver.process_input() for more information.
     """
     for infile in sorted(self.saved_state.files):
       if subdir and not infile.startswith(subdir):
         self.saved_state.files.pop(infile)
       else:
         filepath = os.path.join(self.root_dir, infile)
-        self.saved_state.files[infile] = process_input(
+        self.saved_state.files[infile] = isolateserver.process_input(
             filepath,
             self.saved_state.files[infile],
             self.saved_state.read_only,
-            self.saved_state.variables['OS'],
+            self.saved_state.config_variables['OS'],
             self.saved_state.algo)
 
   def save_files(self):
@@ -1782,7 +794,7 @@ class CompleteState(object):
     self.saved_state.child_isolated_files = chromium_save_isolated(
         self.isolated_filepath,
         self.saved_state.to_isolated(),
-        self.saved_state.variables,
+        self.saved_state.path_variables,
         self.saved_state.algo)
     total_bytes = sum(
         i.get('s', 0) for i in self.saved_state.files.itervalues())
@@ -1791,7 +803,7 @@ class CompleteState(object):
       logging.debug('Total size: %d bytes' % total_bytes)
     saved_state_file = isolatedfile_to_state(self.isolated_filepath)
     logging.debug('Dumping to %s' % saved_state_file)
-    trace_inputs.write_json(saved_state_file, self.saved_state.flatten(), True)
+    tools.write_json(saved_state_file, self.saved_state.flatten(), True)
 
   @property
   def root_dir(self):
@@ -1876,7 +888,7 @@ def load_complete_state(options, cwd, subdir, skip_update):
   else:
     isolate = options.isolate
     if complete_state.saved_state.isolate_file:
-      rel_isolate = safe_relpath(
+      rel_isolate = file_path.safe_relpath(
           options.isolate, complete_state.saved_state.isolated_basedir)
       if rel_isolate != complete_state.saved_state.isolate_file:
         raise ExecutionError(
@@ -1886,12 +898,21 @@ def load_complete_state(options, cwd, subdir, skip_update):
   if not skip_update:
     # Then load the .isolate and expands directories.
     complete_state.load_isolate(
-        cwd, isolate, options.variables, options.ignore_broken_items)
+        cwd, isolate, options.path_variables, options.config_variables,
+        options.extra_variables, options.ignore_broken_items)
 
   # Regenerate complete_state.saved_state.files.
   if subdir:
     subdir = unicode(subdir)
-    subdir = eval_variables(subdir, complete_state.saved_state.variables)
+    # This is tricky here. If it is a path, take it from the root_dir. If
+    # it is a variable, it must be keyed from the directory containing the
+    # .isolate file. So translate all variables first.
+    translated_path_variables = dict(
+        (k,
+          os.path.normpath(os.path.join(complete_state.saved_state.relative_cwd,
+            v)))
+        for k, v in complete_state.saved_state.path_variables.iteritems())
+    subdir = isolate_format.eval_variables(subdir, translated_path_variables)
     subdir = subdir.replace('/', os.path.sep)
 
   if not skip_update:
@@ -1915,13 +936,15 @@ def read_trace_as_isolate_dict(complete_state, trace_blacklist):
     results = (i['results'] for i in data if 'results' in i)
     results_stripped = (i.strip_root(complete_state.root_dir) for i in results)
     files = set(sum((result.existent for result in results_stripped), []))
-    tracked, touched = split_touched(files)
+    tracked, touched = isolate_format.split_touched(files)
     value = generate_isolate(
         tracked,
         [],
         touched,
         complete_state.root_dir,
-        complete_state.saved_state.variables,
+        complete_state.saved_state.path_variables,
+        complete_state.saved_state.config_variables,
+        complete_state.saved_state.extra_variables,
         complete_state.saved_state.relative_cwd,
         trace_blacklist)
     return value, exceptions
@@ -1929,15 +952,6 @@ def read_trace_as_isolate_dict(complete_state, trace_blacklist):
     raise ExecutionError(
         'Reading traces failed for: %s\n%s' %
           (' '.join(complete_state.saved_state.command), str(e)))
-
-
-def print_all(comment, data, stream):
-  """Prints a complete .isolate file and its top-level file comment into a
-  stream.
-  """
-  if comment:
-    stream.write(comment)
-  pretty_print(data, stream)
 
 
 def merge(complete_state, trace_blacklist):
@@ -1949,16 +963,16 @@ def merge(complete_state, trace_blacklist):
   with open(complete_state.saved_state.isolate_filepath, 'r') as f:
     prev_content = f.read()
   isolate_dir = os.path.dirname(complete_state.saved_state.isolate_filepath)
-  prev_config = load_isolate_as_config(
+  prev_config = isolate_format.load_isolate_as_config(
       isolate_dir,
-      eval_content(prev_content),
-      extract_comment(prev_content))
-  new_config = load_isolate_as_config(isolate_dir, value, '')
-  config = union(prev_config, new_config)
+      isolate_format.eval_content(prev_content),
+      isolate_format.extract_comment(prev_content))
+  new_config = isolate_format.load_isolate_as_config(isolate_dir, value, '')
+  config = isolate_format.union(prev_config, new_config)
   data = config.make_isolate_file()
   print('Updating %s' % complete_state.saved_state.isolate_file)
   with open(complete_state.saved_state.isolate_filepath, 'wb') as f:
-    print_all(config.file_comment, data, f)
+    isolate_format.print_all(config.file_comment, data, f)
   if exceptions:
     # It got an exception, raise the first one.
     raise \
@@ -1967,7 +981,59 @@ def merge(complete_state, trace_blacklist):
         exceptions[0][2]
 
 
+def get_remap_dir(root_dir, isolated, outdir):
+  """If necessary, creates a directory aside the root directory."""
+  if outdir:
+    if not os.path.isdir(outdir):
+      os.makedirs(outdir)
+    return outdir
+
+  if not os.path.isabs(root_dir):
+    root_dir = os.path.join(os.path.dirname(isolated), root_dir)
+  return run_isolated.make_temp_dir(
+      'isolate-%s' % datetime.date.today(), root_dir)
+
+
+def create_isolate_tree(outdir, root_dir, files, relative_cwd, read_only):
+  """Creates a isolated tree usable for test execution.
+
+  Returns the current working directory where the isolated command should be
+  started in.
+  """
+  # Forcibly copy when the tree has to be read only. Otherwise the inode is
+  # modified, and this cause real problems because the user's source tree
+  # becomes read only. On the other hand, the cost of doing file copy is huge.
+  if read_only not in (0, None):
+    action = run_isolated.COPY
+  else:
+    action = run_isolated.HARDLINK_WITH_FALLBACK
+
+  recreate_tree(
+      outdir=outdir,
+      indir=root_dir,
+      infiles=files,
+      action=action,
+      as_hash=False)
+  cwd = os.path.normpath(os.path.join(outdir, relative_cwd))
+  if not os.path.isdir(cwd):
+    # It can happen when no files are mapped from the directory containing the
+    # .isolate file. But the directory must exist to be the current working
+    # directory.
+    os.makedirs(cwd)
+  run_isolated.change_tree_read_only(outdir, read_only)
+  return cwd
+
+
 ### Commands.
+
+
+def add_subdir_flag(parser):
+  parser.add_option(
+      '--subdir',
+      help='Filters to a subdirectory. Its behavior changes depending if it '
+           'is a relative path as a string or as a path variable. Path '
+           'variables are always keyed from the directory containing the '
+           '.isolate file. Anything else is keyed on the root directory.')
 
 
 def CMDarchive(parser, args):
@@ -1976,7 +1042,7 @@ def CMDarchive(parser, args):
   All the files listed in the .isolated file are put in the isolate server
   cache via isolateserver.py.
   """
-  parser.add_option('--subdir', help='Filters to a subdirectory')
+  add_subdir_flag(parser)
   options, args = parser.parse_args(args)
   if args:
     parser.error('Unsupported argument: %s' % args)
@@ -2019,7 +1085,7 @@ def CMDarchive(parser, args):
       logging.info('Creating content addressed object store with %d item',
                    len(infiles))
 
-      if is_url(options.outdir):
+      if file_path.is_url(options.outdir):
         isolateserver.upload_tree(
             base_url=options.outdir,
             indir=complete_state.root_dir,
@@ -2032,6 +1098,7 @@ def CMDarchive(parser, args):
             infiles=infiles,
             action=run_isolated.HARDLINK_WITH_FALLBACK,
             as_hash=True)
+        # TODO(maruel): Make the files read-only?
       success = True
       print('%s  %s' % (isolated_hash[0], os.path.basename(options.isolated)))
     finally:
@@ -2044,7 +1111,7 @@ def CMDarchive(parser, args):
 
 def CMDcheck(parser, args):
   """Checks that all the inputs are present and generates .isolated."""
-  parser.add_option('--subdir', help='Filters to a subdirectory')
+  add_subdir_flag(parser)
   options, args = parser.parse_args(args)
   if args:
     parser.error('Unsupported argument: %s' % args)
@@ -2072,7 +1139,7 @@ def CMDmerge(parser, args):
     parser.error('Unsupported argument: %s' % args)
 
   complete_state = load_complete_state(options, os.getcwd(), None, False)
-  blacklist = trace_inputs.gen_blacklist(options.trace_blacklist)
+  blacklist = tools.gen_blacklist(options.trace_blacklist)
   merge(complete_state, blacklist)
   return 0
 
@@ -2097,12 +1164,12 @@ def CMDread(parser, args):
 
   complete_state = load_complete_state(
       options, os.getcwd(), None, options.skip_refresh)
-  blacklist = trace_inputs.gen_blacklist(options.trace_blacklist)
+  blacklist = tools.gen_blacklist(options.trace_blacklist)
   value, exceptions = read_trace_as_isolate_dict(complete_state, blacklist)
   if options.merge:
     merge(complete_state, blacklist)
   else:
-    pretty_print(value, sys.stdout)
+    isolate_format.pretty_print(value, sys.stdout)
 
   if exceptions:
     # It got an exception, raise the first one.
@@ -2120,31 +1187,30 @@ def CMDremap(parser, args):
   run.
   """
   parser.require_isolated = False
+  parser.add_option(
+      '--skip-refresh', action='store_true',
+      help='Skip reading .isolate file and do not refresh the hash of '
+           'dependencies')
   options, args = parser.parse_args(args)
   if args:
     parser.error('Unsupported argument: %s' % args)
-  complete_state = load_complete_state(options, os.getcwd(), None, False)
+  if options.outdir and file_path.is_url(options.outdir):
+    parser.error('Can\'t use url for --outdir with mode remap.')
 
-  if not options.outdir:
-    options.outdir = run_isolated.make_temp_dir(
-        'isolate', complete_state.root_dir)
-  else:
-    if is_url(options.outdir):
-      parser.error('Can\'t use url for --outdir with mode remap.')
-    if not os.path.isdir(options.outdir):
-      os.makedirs(options.outdir)
-  print('Remapping into %s' % options.outdir)
-  if len(os.listdir(options.outdir)):
+  complete_state = load_complete_state(
+      options, os.getcwd(), None, options.skip_refresh)
+
+  outdir = get_remap_dir(
+      complete_state.root_dir, options.isolated, options.outdir)
+
+  print('Remapping into %s' % outdir)
+  if len(os.listdir(outdir)):
     raise ExecutionError('Can\'t remap in a non-empty directory')
-  recreate_tree(
-      outdir=options.outdir,
-      indir=complete_state.root_dir,
-      infiles=complete_state.saved_state.files,
-      action=run_isolated.HARDLINK_WITH_FALLBACK,
-      as_hash=False)
-  if complete_state.saved_state.read_only:
-    run_isolated.make_writable(options.outdir, True)
 
+  create_isolate_tree(
+      outdir, complete_state.root_dir, complete_state.saved_state.files,
+      complete_state.saved_state.relative_cwd,
+      complete_state.saved_state.read_only)
   if complete_state.isolated_filepath:
     complete_state.save_files()
   return 0
@@ -2168,14 +1234,14 @@ def CMDrewrite(parser, args):
 
   with open(isolate, 'r') as f:
     content = f.read()
-  config = load_isolate_as_config(
+  config = isolate_format.load_isolate_as_config(
       os.path.dirname(os.path.abspath(isolate)),
-      eval_content(content),
-      extract_comment(content))
+      isolate_format.eval_content(content),
+      isolate_format.extract_comment(content))
   data = config.make_isolate_file()
   print('Updating %s' % isolate)
   with open(isolate, 'wb') as f:
-    print_all(config.file_comment, data, f)
+    isolate_format.print_all(config.file_comment, data, f)
   return 0
 
 
@@ -2197,7 +1263,7 @@ def CMDrun(parser, args):
       help='Skip reading .isolate file and do not refresh the hash of '
            'dependencies')
   options, args = parser.parse_args(args)
-  if options.outdir and is_url(options.outdir):
+  if options.outdir and file_path.is_url(options.outdir):
     parser.error('Can\'t use url for --outdir with mode run.')
 
   complete_state = load_complete_state(
@@ -2205,32 +1271,16 @@ def CMDrun(parser, args):
   cmd = complete_state.saved_state.command + args
   if not cmd:
     raise ExecutionError('No command to run.')
-
   cmd = tools.fix_python_path(cmd)
+
   try:
-    root_dir = complete_state.root_dir
-    if not options.outdir:
-      if not os.path.isabs(root_dir):
-        root_dir = os.path.join(os.path.dirname(options.isolated), root_dir)
-      options.outdir = run_isolated.make_temp_dir('isolate', root_dir)
-    else:
-      if not os.path.isdir(options.outdir):
-        os.makedirs(options.outdir)
-    recreate_tree(
-        outdir=options.outdir,
-        indir=root_dir,
-        infiles=complete_state.saved_state.files,
-        action=run_isolated.HARDLINK_WITH_FALLBACK,
-        as_hash=False)
-    cwd = os.path.normpath(
-        os.path.join(options.outdir, complete_state.saved_state.relative_cwd))
-    if not os.path.isdir(cwd):
-      # It can happen when no files are mapped from the directory containing the
-      # .isolate file. But the directory must exist to be the current working
-      # directory.
-      os.makedirs(cwd)
-    if complete_state.saved_state.read_only:
-      run_isolated.make_writable(options.outdir, True)
+    outdir = get_remap_dir(
+        complete_state.root_dir, options.isolated, options.outdir)
+    # TODO(maruel): Use run_isolated.run_tha_test().
+    cwd = create_isolate_tree(
+        outdir, complete_state.root_dir, complete_state.saved_state.files,
+        complete_state.saved_state.relative_cwd,
+        complete_state.saved_state.read_only)
     logging.info('Running %s, cwd=%s' % (cmd, cwd))
     result = subprocess.call(cmd, cwd=cwd)
   finally:
@@ -2302,29 +1352,35 @@ def CMDtrace(parser, args):
   complete_state.save_files()
 
   if options.merge:
-    blacklist = trace_inputs.gen_blacklist(options.trace_blacklist)
+    blacklist = tools.gen_blacklist(options.trace_blacklist)
     merge(complete_state, blacklist)
 
   return result
 
 
-def _process_variable_arg(_option, _opt, _value, parser):
+def _process_variable_arg(option, opt, _value, parser):
+  """Called by OptionParser to process a --<foo>-variable argument."""
   if not parser.rargs:
     raise optparse.OptionValueError(
-        'Please use --variable FOO=BAR or --variable FOO BAR')
+        'Please use %s FOO=BAR or %s FOO BAR' % (opt, opt))
   k = parser.rargs.pop(0)
+  variables = getattr(parser.values, option.dest)
   if '=' in k:
-    parser.values.variables.append(tuple(k.split('=', 1)))
+    k, v = k.split('=', 1)
   else:
     if not parser.rargs:
       raise optparse.OptionValueError(
-          'Please use --variable FOO=BAR or --variable FOO BAR')
+          'Please use %s FOO=BAR or %s FOO BAR' % (opt, opt))
     v = parser.rargs.pop(0)
-    parser.values.variables.append((k, v))
+  if not re.match('^' + isolate_format.VALID_VARIABLE + '$', k):
+    raise optparse.OptionValueError(
+        'Variable \'%s\' doesn\'t respect format \'%s\'' %
+        (k, isolate_format.VALID_VARIABLE))
+  variables.append((k, v.decode('utf-8')))
 
 
 def add_variable_option(parser):
-  """Adds --isolated and --variable to an OptionParser."""
+  """Adds --isolated and --<foo>-variable to an OptionParser."""
   parser.add_option(
       '-s', '--isolated',
       metavar='FILE',
@@ -2334,28 +1390,50 @@ def add_variable_option(parser):
       '-r', '--result',
       dest='isolated',
       help=optparse.SUPPRESS_HELP)
-  default_variables = [('OS', get_flavor())]
-  if sys.platform in ('win32', 'cygwin'):
-    default_variables.append(('EXECUTABLE_SUFFIX', '.exe'))
-  else:
-    default_variables.append(('EXECUTABLE_SUFFIX', ''))
+  is_win = sys.platform in ('win32', 'cygwin')
+  # There is really 3 kind of variables:
+  # - path variables, like DEPTH or PRODUCT_DIR that should be
+  #   replaced opportunistically when tracing tests.
+  # - extraneous things like EXECUTABE_SUFFIX.
+  # - configuration variables that are to be used in deducing the matrix to
+  #   reduce.
+  # - unrelated variables that are used as command flags for example.
   parser.add_option(
-      '-V', '--variable',
+      '--config-variable',
       action='callback',
       callback=_process_variable_arg,
-      default=default_variables,
-      dest='variables',
+      default=[('OS', get_flavor())],
+      dest='config_variables',
       metavar='FOO BAR',
-      help='Variables to process in the .isolate file, default: %default. '
-            'Variables are persistent accross calls, they are saved inside '
-            '<.isolated>.state')
+      help='Config variables are used to determine which conditions should be '
+           'matched when loading a .isolate file, default: %default. '
+            'All 3 kinds of variables are persistent accross calls, they are '
+            'saved inside <.isolated>.state')
+  parser.add_option(
+      '--path-variable',
+      action='callback',
+      callback=_process_variable_arg,
+      default=[],
+      dest='path_variables',
+      metavar='FOO BAR',
+      help='Path variables are used to replace file paths when loading a '
+           '.isolate file, default: %default')
+  parser.add_option(
+      '--extra-variable',
+      action='callback',
+      callback=_process_variable_arg,
+      default=[('EXECUTABLE_SUFFIX', '.exe' if is_win else '')],
+      dest='extra_variables',
+      metavar='FOO BAR',
+      help='Extraneous variables are replaced on the \'command\' entry and on '
+           'paths in the .isolate file but are not considered relative paths.')
 
 
 def add_trace_option(parser):
   """Adds --trace-blacklist to the parser."""
   parser.add_option(
       '--trace-blacklist',
-      action='append', default=list(DEFAULT_BLACKLIST),
+      action='append', default=list(isolateserver.DEFAULT_BLACKLIST),
       help='List of regexp to use as blacklist filter for files to consider '
            'important, not to be confused with --blacklist which blacklists '
            'test case.')
@@ -2373,7 +1451,7 @@ def parse_isolated_option(parser, options, cwd, require_isolated):
 
 
 def parse_variable_option(options):
-  """Processes --variable."""
+  """Processes all the --<foo>-variable flags."""
   # TODO(benrg): Maybe we should use a copy of gyp's NameValueListToDict here,
   # but it wouldn't be backward compatible.
   def try_make_int(s):
@@ -2382,11 +1460,15 @@ def parse_variable_option(options):
       return int(s)
     except ValueError:
       return s.decode('utf-8')
-  options.variables = dict((k, try_make_int(v)) for k, v in options.variables)
+  options.config_variables = dict(
+      (k, try_make_int(v)) for k, v in options.config_variables)
+  options.path_variables = dict(options.path_variables)
+  options.extra_variables = dict(options.extra_variables)
 
 
 class OptionParserIsolate(tools.OptionParserWithLogging):
-  """Adds automatic --isolate, --isolated, --out and --variable handling."""
+  """Adds automatic --isolate, --isolated, --out and --<foo>-variable handling.
+  """
   # Set it to False if it is not required, e.g. it can be passed on but do not
   # fail if not given.
   require_isolated = True
@@ -2436,7 +1518,7 @@ class OptionParserIsolate(tools.OptionParserWithLogging):
       options.isolate = os.path.normpath(os.path.join(cwd, options.isolate))
       options.isolate = file_path.get_native_path_case(options.isolate)
 
-    if options.outdir and not is_url(options.outdir):
+    if options.outdir and not file_path.is_url(options.outdir):
       options.outdir = unicode(options.outdir).replace('/', os.path.sep)
       # outdir doesn't need native path case since tracing is never done from
       # there.
@@ -2449,13 +1531,8 @@ def main(argv):
   dispatcher = subcommand.CommandDispatcher(__name__)
   try:
     return dispatcher.execute(OptionParserIsolate(version=__version__), argv)
-  except (
-      ExecutionError,
-      isolateserver.ConfigError,
-      isolateserver.MappingError) as e:
-    sys.stderr.write('\nError: ')
-    sys.stderr.write(str(e))
-    sys.stderr.write('\n')
+  except Exception as e:
+    tools.report_error(e)
     return 1
 
 

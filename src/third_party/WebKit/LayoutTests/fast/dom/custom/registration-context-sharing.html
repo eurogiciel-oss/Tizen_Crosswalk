@@ -33,7 +33,7 @@ testUpgrade_oneDefinitionShouldUpgradeMultipleDocuments = function () {
     var protoU = Object.create(this.window.HTMLElement.prototype);
     protoU.prototypeTag = 'U';
     protoU.createdCallback = created;
-    this.documentB.register('x-u', {prototype: protoU});
+    this.documentB.registerElement('x-u', {prototype: protoU});
 
     assert_array_equals(
         invocations,
@@ -54,7 +54,7 @@ testRegisterInAInstantiateInB_shouldActivateDefinition = function () {
     var protoV = Object.create(this.window.HTMLElement.prototype);
     protoV.prototypeTag = 'V';
     protoV.createdCallback = created;
-    this.documentA.register('x-v', {prototype: protoV});
+    this.documentA.registerElement('x-v', {prototype: protoV});
 
     var div = this.documentB.createElement('div');
     div.innerHTML = '<x-v data-name="document B element V"></x-v>';
@@ -63,23 +63,6 @@ testRegisterInAInstantiateInB_shouldActivateDefinition = function () {
         ['created document B element V with prototype tagged V'],
         'the created callback should have been called for the x-v element');
 };
-
-(function () {
-
-var t = async_test('registration context is shared with the template document');
-
-withFrame(t.step_func(function (frame) {
-    var documentA = frame.contentDocument;
-    documentA.body.innerHTML = '<template>foo</template>';
-    var documentB = documentA.body.firstChild.content.ownerDocument;
-    var tester = new TestRegistrationContextSharing(
-        frame.contentWindow, documentA, documentB);
-    tester.testRegistrationContextIsShared();
-    frame.remove();
-    t.done();
-}));
-
-})();
 
 (function () {
 

@@ -32,9 +32,8 @@ bool TestPasswordStore::FormsAreEquivalent(const autofill::PasswordForm& lhs,
       lhs.signon_realm == rhs.signon_realm;
 }
 
-bool TestPasswordStore::ScheduleTask(const base::Closure& task) {
-  task.Run();
-  return true;
+scoped_refptr<base::SequencedTaskRunner> TestPasswordStore::GetTaskRunner() {
+  return base::MessageLoopProxy::current();
 }
 
 void TestPasswordStore::WrapModificationTask(base::Closure task) {
@@ -70,6 +69,7 @@ void TestPasswordStore::RemoveLoginImpl(const autofill::PasswordForm& form) {
 
 void TestPasswordStore::GetLoginsImpl(
     const autofill::PasswordForm& form,
+    PasswordStore::AuthorizationPromptPolicy prompt_policy,
     const PasswordStore::ConsumerCallbackRunner& runner) {
   std::vector<autofill::PasswordForm*> matched_forms;
   std::vector<autofill::PasswordForm> forms =

@@ -9,13 +9,13 @@
 
 #include "ash/ash_switches.h"
 #include "ash/display/display_controller.h"
-#include "ash/screen_ash.h"
 #include "ash/shell.h"
 #include "ash/shell/toplevel_window.h"
 #include "ash/test/ash_test_helper.h"
 #include "ash/test/display_manager_test_api.h"
 #include "ash/test/test_session_state_delegate.h"
 #include "ash/test/test_shell_delegate.h"
+#include "ash/test/test_system_tray_delegate.h"
 #include "ash/wm/coordinate_conversion.h"
 #include "ash/wm/window_positioner.h"
 #include "base/command_line.h"
@@ -122,7 +122,7 @@ void AshTestBase::SetUp() {
   ash_test_helper_->SetUp(start_session_);
 
   Shell::GetPrimaryRootWindow()->Show();
-  Shell::GetPrimaryRootWindow()->GetDispatcher()->ShowRootWindow();
+  Shell::GetPrimaryRootWindow()->GetDispatcher()->host()->Show();
   // Move the mouse cursor to far away so that native events doesn't
   // interfere test expectations.
   Shell::GetPrimaryRootWindow()->MoveCursorTo(gfx::Point(-1000, -1000));
@@ -139,8 +139,8 @@ void AshTestBase::SetUp() {
           new TestMetroViewerProcessHost(ipc_thread_->message_loop_proxy()));
       CHECK(metro_viewer_host_->LaunchViewerAndWaitForConnection(
           win8::test::kDefaultTestAppUserModelId));
-      aura::RemoteRootWindowHostWin* root_window_host =
-          aura::RemoteRootWindowHostWin::Instance();
+      aura::RemoteWindowTreeHostWin* root_window_host =
+          aura::RemoteWindowTreeHostWin::Instance();
       CHECK(root_window_host != NULL);
     }
     ash::WindowPositioner::SetMaximizeFirstWindow(true);
@@ -240,21 +240,18 @@ aura::Window* AshTestBase::CreateTestWindowInShellWithDelegate(
     int id,
     const gfx::Rect& bounds) {
   return CreateTestWindowInShellWithDelegateAndType(
-      delegate,
-      aura::client::WINDOW_TYPE_NORMAL,
-      id,
-      bounds);
+      delegate, ui::wm::WINDOW_TYPE_NORMAL, id, bounds);
 }
 
 aura::Window* AshTestBase::CreateTestWindowInShellWithDelegateAndType(
     aura::WindowDelegate* delegate,
-    aura::client::WindowType type,
+    ui::wm::WindowType type,
     int id,
     const gfx::Rect& bounds) {
   aura::Window* window = new aura::Window(delegate);
   window->set_id(id);
   window->SetType(type);
-  window->Init(ui::LAYER_TEXTURED);
+  window->Init(aura::WINDOW_LAYER_TEXTURED);
   window->Show();
 
   if (bounds.IsEmpty()) {
@@ -284,6 +281,11 @@ void AshTestBase::RunAllPendingInMessageLoop() {
 
 TestScreenshotDelegate* AshTestBase::GetScreenshotDelegate() {
   return ash_test_helper_->test_screenshot_delegate();
+}
+
+TestSystemTrayDelegate* AshTestBase::GetSystemTrayDelegate() {
+  return static_cast<TestSystemTrayDelegate*>(
+      Shell::GetInstance()->system_tray_delegate());
 }
 
 void AshTestBase::SetSessionStarted(bool session_started) {

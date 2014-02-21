@@ -27,14 +27,19 @@ function testSpinButtonChangeAndInputEvents(inputType, initialValue, expectedVal
     eventSender.mouseMoveTo(0, 0);
     shouldEvaluateTo('changeEventCounter', 0);
     shouldEvaluateTo('inputEventCounter', 0);
+    testInput.focus();
 
     debug('Click the upper button');
     // Move the cursor on the upper button.
     var spinButton = getElementByPseudoId(internals.oldestShadowRoot(testInput), "-webkit-inner-spin-button");
     eventSender.mouseMoveTo(testInput.offsetLeft + spinButton.offsetLeft, testInput.offsetTop + testInput.offsetHeight / 4);
     eventSender.mouseDown();
-    eventSender.mouseUp();
+    debug('Triggers only input event');
     shouldBeEqualToString('testInput.value', expectedValue);
+    shouldEvaluateTo('changeEventCounter', 0);
+    shouldEvaluateTo('inputEventCounter', 1);
+    debug('Triggers only change event');
+    eventSender.mouseUp();
     shouldEvaluateTo('changeEventCounter', 1);
     shouldEvaluateTo('inputEventCounter', 1);
 

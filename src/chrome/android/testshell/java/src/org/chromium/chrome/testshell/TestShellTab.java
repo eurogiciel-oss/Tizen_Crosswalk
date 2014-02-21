@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,52 +8,36 @@ import android.content.Context;
 import android.text.TextUtils;
 
 import org.chromium.chrome.browser.TabBase;
+import org.chromium.chrome.browser.UrlUtilities;
+import org.chromium.chrome.browser.contextmenu.ChromeContextMenuPopulator;
+import org.chromium.chrome.browser.contextmenu.ContextMenuPopulator;
 import org.chromium.chrome.browser.infobar.AutoLoginProcessor;
 import org.chromium.content.browser.ContentView;
+import org.chromium.content.browser.ContentViewClient;
 import org.chromium.content.browser.LoadUrlParams;
-import org.chromium.content.common.CleanupReference;
-import org.chromium.ui.WindowAndroid;
+import org.chromium.ui.base.WindowAndroid;
 
 /**
  * TestShell's implementation of a tab. This mirrors how Chrome for Android subclasses
  * and extends {@link TabBase}.
  */
 public class TestShellTab extends TabBase {
-    private int mNativeTestShellTab;
-
-    private CleanupReference mCleanupReference;
-
     // Tab state
     private boolean mIsLoading;
 
     /**
-     * @param context  The Context the view is running in.
-     * @param url      The URL to start this tab with.
-     * @param window   The WindowAndroid should represent this tab.
+     * @param context           The Context the view is running in.
+     * @param url               The URL to start this tab with.
+     * @param window            The WindowAndroid should represent this tab.
+     * @param contentViewClient The client for the {@link ContentView}s of this Tab.
      */
-    public TestShellTab(Context context, String url, WindowAndroid window) {
+    public TestShellTab(Context context, String url, WindowAndroid window,
+            ContentViewClient contentViewClient) {
         super(false, context, window);
         initialize();
         initContentView();
+        setContentViewClient(contentViewClient);
         loadUrlWithSanitization(url);
-    }
-
-    @Override
-    public void initialize() {
-        super.initialize();
-
-        mNativeTestShellTab = nativeInit();
-        mCleanupReference = new CleanupReference(this, new DestroyRunnable(mNativeTestShellTab));
-    }
-
-    @Override
-    public void destroy() {
-        super.destroy();
-
-        if (mNativeTestShellTab != 0) {
-            mCleanupReference.cleanupNow();
-            mNativeTestShellTab = 0;
-        }
     }
 
     /**
@@ -72,14 +56,14 @@ public class TestShellTab extends TabBase {
         if (url == null) return;
 
         // Sanitize the URL.
-        url = nativeFixupUrl(mNativeTestShellTab, url);
+        url = UrlUtilities.fixupUrl(url);
 
         // Invalid URLs will just return empty.
         if (TextUtils.isEmpty(url)) return;
 
         ContentView contentView = getContentView();
         if (TextUtils.equals(url, contentView.getUrl())) {
-            contentView.reload();
+            contentView.getContentViewCore().reload(true);
         } else {
             if (postData == null) {
                 contentView.loadUrl(new LoadUrlParams(url));
@@ -102,29 +86,27 @@ public class TestShellTab extends TabBase {
         return new TestShellTabBaseChromeWebContentsDelegateAndroid();
     }
 
-    private static final class DestroyRunnable implements Runnable {
-        private final int mNativeTestShellTab;
-        private DestroyRunnable(int nativeTestShellTab) {
-            mNativeTestShellTab = nativeTestShellTab;
-        }
-        @Override
-        public void run() {
-            nativeDestroy(mNativeTestShellTab);
-        }
+    @Override
+    protected AutoLoginProcessor createAutoLoginProcessor() {
+        return new AutoLoginProcessor() {
+            @Override
+            public void processAutoLoginResult(String accountName,
+                    String authToken, boolean success, String result) {
+                getInfoBarContainer().processAutoLogin(accountName, authToken,
+                        success, result);
+            }
+        };
     }
 
     @Override
-    protected AutoLoginProcessor createAutoLoginProcessor() {
-       return new AutoLoginProcessor() {
-           @Override
-           public void processAutoLoginResult(String accountName,
-                   String authToken, boolean success, String result) {
-               getInfoBarContainer().processAutoLogin(accountName, authToken,
-                       success, result);
-           }
-       };
+    protected ContextMenuPopulator createContextMenuPopulator() {
+        return new ChromeContextMenuPopulator(new TabBaseChromeContextMenuItemDelegate() {
+            @Override
+            public void onOpenImageUrl(String url) {
+                loadUrlWithSanitization(url);
+            }
+        });
     }
-
 
     private class TestShellTabBaseChromeWebContentsDelegateAndroid
             extends TabBaseChromeWebContentsDelegateAndroid {
@@ -138,8 +120,4 @@ public class TestShellTab extends TabBase {
             mIsLoading = false;
         }
     }
-
-    private native int nativeInit();
-    private static native void nativeDestroy(int nativeTestShellTab);
-    private native String nativeFixupUrl(int nativeTestShellTab, String url);
 }

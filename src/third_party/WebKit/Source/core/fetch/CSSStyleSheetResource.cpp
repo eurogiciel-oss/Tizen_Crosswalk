@@ -30,7 +30,7 @@
 #include "core/css/StyleSheetContents.h"
 #include "core/fetch/ResourceClientWalker.h"
 #include "core/fetch/StyleSheetResourceClient.h"
-#include "core/fetch/TextResourceDecoder.h"
+#include "core/html/parser/TextResourceDecoder.h"
 #include "platform/SharedBuffer.h"
 #include "platform/network/HTTPParsers.h"
 #include "wtf/CurrentTime.h"
@@ -39,7 +39,7 @@
 namespace WebCore {
 
 CSSStyleSheetResource::CSSStyleSheetResource(const ResourceRequest& resourceRequest, const String& charset)
-    : Resource(resourceRequest, CSSStyleSheet)
+    : StyleSheetResource(resourceRequest, CSSStyleSheet)
     , m_decoder(TextResourceDecoder::create("text/css", charset))
 {
     DEFINE_STATIC_LOCAL(const AtomicString, acceptCSS, ("text/css,*/*;q=0.1", AtomicString::ConstructFromLiteral));
@@ -89,7 +89,7 @@ const String CSSStyleSheetResource::sheetText(bool enforceMIMEType, bool* hasVal
 
     // Don't cache the decoded text, regenerating is cheap and it can use quite a bit of memory
     String sheetText = m_decoder->decode(m_data->data(), m_data->size());
-    sheetText.append(m_decoder->flush());
+    sheetText = sheetText + m_decoder->flush();
     return sheetText;
 }
 
@@ -98,7 +98,7 @@ void CSSStyleSheetResource::checkNotify()
     // Decode the data to find out the encoding and keep the sheet text around during checkNotify()
     if (m_data) {
         m_decodedSheetText = m_decoder->decode(m_data->data(), m_data->size());
-        m_decodedSheetText.append(m_decoder->flush());
+        m_decodedSheetText = m_decodedSheetText + m_decoder->flush();
     }
 
     ResourceClientWalker<StyleSheetResourceClient> w(m_clients);
@@ -123,7 +123,7 @@ bool CSSStyleSheetResource::canUseSheet(bool enforceMIMEType, bool* hasValidMIME
     //
     // This code defaults to allowing the stylesheet for non-HTTP protocols so
     // folks can use standards mode for local HTML documents.
-    String mimeType = extractMIMETypeFromMediaType(response().httpHeaderField("Content-Type"));
+    const AtomicString& mimeType = extractMIMETypeFromMediaType(response().httpHeaderField("Content-Type"));
     bool typeOK = mimeType.isEmpty() || equalIgnoringCase(mimeType, "text/css") || equalIgnoringCase(mimeType, "application/x-unknown-content-type");
     if (hasValidMIMEType)
         *hasValidMIMEType = typeOK;

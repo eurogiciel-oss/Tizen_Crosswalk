@@ -1,12 +1,12 @@
 /*
-  Copyright (c) 2012 The WebM project authors. All Rights Reserved.
-
-  Use of this source code is governed by a BSD-style license
-  that can be found in the LICENSE file in the root of the source
-  tree. An additional intellectual property rights grant can be found
-  in the file PATENTS.  All contributing project authors may
-  be found in the AUTHORS file in the root of the source tree.
-*/
+ *  Copyright (c) 2013 The WebM project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
 #include "test/codec_factory.h"
@@ -35,7 +35,7 @@ class LossLessTest : public ::libvpx_test::EncoderTest,
   }
 
   virtual void BeginPassHook(unsigned int /*pass*/) {
-    psnr_ = 0.0;
+    psnr_ = kMaxPsnr;
     nframes_ = 0;
   }
 
@@ -65,9 +65,9 @@ TEST_P(LossLessTest, TestLossLessEncoding) {
   init_flags_ = VPX_CODEC_USE_PSNR;
 
   // intentionally changed the dimension for better testing coverage
-  libvpx_test::I420VideoSource video("hantro_collage_w352h288.yuv", 356, 284,
-                                     timebase.den, timebase.num, 0, 30);
-
+  libvpx_test::I420VideoSource video("hantro_collage_w352h288.yuv", 352, 288,
+                                     timebase.den, timebase.num, 0, 10);
+  ASSERT_NO_FATAL_FAILURE(RunLoop(&video));
   const double psnr_lossless = GetMinPsnr();
   EXPECT_GE(psnr_lossless, kMaxPsnr);
 }

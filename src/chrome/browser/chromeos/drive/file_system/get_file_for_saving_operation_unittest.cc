@@ -10,10 +10,11 @@
 #include "base/run_loop.h"
 #include "base/task_runner_util.h"
 #include "chrome/browser/chromeos/drive/drive.pb.h"
+#include "chrome/browser/chromeos/drive/file_cache.h"
 #include "chrome/browser/chromeos/drive/file_errors.h"
 #include "chrome/browser/chromeos/drive/file_system/operation_test_base.h"
 #include "chrome/browser/chromeos/drive/file_write_watcher.h"
-#include "chrome/browser/google_apis/test_util.h"
+#include "google_apis/drive/test_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace drive {
@@ -37,8 +38,7 @@ class TestObserver : public OperationObserver {
   virtual void OnDirectoryChangedByOperation(
       const base::FilePath& path) OVERRIDE {}
 
-  virtual void OnCacheFileUploadNeededByOperation(
-      const std::string& local_id) OVERRIDE {
+  virtual void OnEntryUpdatedByOperation(const std::string& local_id) OVERRIDE {
     observed_local_id_ = local_id;
     quit_closure_.Run();
   }
@@ -136,7 +136,7 @@ TEST_F(GetFileForSavingOperationTest, GetFileForSaving_NotExist) {
   EXPECT_EQ(FILE_ERROR_OK, error);
   EXPECT_EQ(FILE_ERROR_OK, GetLocalResourceEntry(drive_path, &src_entry));
   int64 size = -1;
-  EXPECT_TRUE(file_util::GetFileSize(local_path, &size));
+  EXPECT_TRUE(base::GetFileSize(local_path, &size));
   EXPECT_EQ(0, size);
 }
 

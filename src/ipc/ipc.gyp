@@ -37,7 +37,6 @@
         'test_support_ipc',
         '../base/base.gyp:base',
         '../base/base.gyp:base_i18n',
-        '../base/base.gyp:run_all_unittests',
         '../base/base.gyp:test_support_base',
         '../testing/gtest.gyp:gtest',
       ],
@@ -57,6 +56,7 @@
         'ipc_sync_message_unittest.h',
         'ipc_test_base.cc',
         'ipc_test_base.h',
+        'run_all_unittests.cc',
         'sync_socket_unittest.cc',
         'unix_domain_socket_util_unittest.cc',
       ],
@@ -156,7 +156,7 @@
             'ipc_target': 1,
           },
           'dependencies': [
-            '../base/base.gyp:base_nacl_win64',
+            '../base/base.gyp:base_win64',
             # TODO(viettrungluu): Needed for base/lazy_instance.h, which is
             # suspect.
             '../base/third_party/dynamic_annotations/dynamic_annotations.gyp:dynamic_annotations_win64',

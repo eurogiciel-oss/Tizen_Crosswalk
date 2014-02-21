@@ -21,10 +21,10 @@
 #ifndef SVGFEColorMatrixElement_h
 #define SVGFEColorMatrixElement_h
 
-#include "core/platform/graphics/filters/FEColorMatrix.h"
 #include "core/svg/SVGAnimatedEnumeration.h"
 #include "core/svg/SVGAnimatedNumberList.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
+#include "platform/graphics/filters/FEColorMatrix.h"
 
 namespace WebCore {
 
@@ -67,21 +67,23 @@ struct SVGPropertyTraits<ColorMatrixType> {
 
 class SVGFEColorMatrixElement FINAL : public SVGFilterPrimitiveStandardAttributes {
 public:
-    static PassRefPtr<SVGFEColorMatrixElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFEColorMatrixElement> create(Document&);
+
+    SVGAnimatedNumberList* values() { return m_values.get(); }
 
 private:
-    SVGFEColorMatrixElement(const QualifiedName&, Document&);
+    explicit SVGFEColorMatrixElement(Document&);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&);
-    virtual void svgAttributeChanged(const QualifiedName&);
-    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*);
+    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&) OVERRIDE;
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
+    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*) OVERRIDE;
 
+    RefPtr<SVGAnimatedNumberList> m_values;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEColorMatrixElement)
         DECLARE_ANIMATED_STRING(In1, in1)
         DECLARE_ANIMATED_ENUMERATION(Type, type, ColorMatrixType)
-        DECLARE_ANIMATED_NUMBER_LIST(Values, values)
     END_DECLARE_ANIMATED_PROPERTIES
 };
 

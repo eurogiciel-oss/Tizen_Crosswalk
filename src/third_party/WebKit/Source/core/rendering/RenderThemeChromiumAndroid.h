@@ -30,7 +30,7 @@
 
 namespace WebCore {
 
-class RenderThemeChromiumAndroid : public RenderThemeChromiumDefault {
+class RenderThemeChromiumAndroid FINAL : public RenderThemeChromiumDefault {
 public:
     static PassRefPtr<RenderTheme> create();
     virtual String extraDefaultStyleSheet() OVERRIDE;
@@ -54,7 +54,6 @@ public:
     {
         return RenderThemeChromiumAndroid::defaultActiveSelectionBackgroundColor;
     }
-    virtual bool supportsDataListUI(const AtomicString&) const;
 
 protected:
     virtual int menuListArrowPadding() const OVERRIDE;

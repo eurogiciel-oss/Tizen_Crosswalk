@@ -81,7 +81,7 @@ class OmniboxResultView : public views::View,
   // added to all of the classifications. Returns the x position to the right
   // of the string.
   int DrawString(gfx::Canvas* canvas,
-                 const string16& text,
+                 const base::string16& text,
                  const ACMatchClassifications& classifications,
                  bool force_dim,
                  int x,
@@ -110,22 +110,6 @@ class OmniboxResultView : public views::View,
 
   gfx::ImageSkia GetIcon() const;
   const gfx::ImageSkia* GetKeywordIcon() const;
-
-  // Elides |runs| to fit in |remaining_width|.  The runs in |runs| should be in
-  // logical order.
-  //
-  // When we need to elide a run, the ellipsis will be placed at the end of that
-  // run.  This means that if we elide a run whose visual direction is opposite
-  // that of the drawing context, the ellipsis will not be at the "end" of the
-  // drawn string.  For example, if in an LTR context we have the LTR run
-  // "LTR_STRING" and the RTL run "RTL_STRING", the unelided text would be drawn
-  // like:
-  //     LTR_STRING GNIRTS_LTR
-  // If we need to elide the RTL run, then it will be drawn like:
-  //     LTR_STRING ...RTS_LTR
-  // Instead of:
-  //     LTR_STRING RTS_LTR...
-  void Elide(Runs* runs, int remaining_width) const;
 
   // views::View:
   virtual void Layout() OVERRIDE;

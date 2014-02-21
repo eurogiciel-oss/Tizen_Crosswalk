@@ -6,7 +6,7 @@
 #define UI_VIEWS_WIDGET_DESKTOP_AURA_DESKTOP_ROOT_WINDOW_HOST_WIN_H_
 
 #include "ui/aura/client/animation_host.h"
-#include "ui/aura/root_window_host.h"
+#include "ui/aura/window_tree_host.h"
 #include "ui/views/views_export.h"
 #include "ui/views/widget/desktop_aura/desktop_root_window_host.h"
 #include "ui/views/win/hwnd_message_handler_delegate.h"
@@ -15,6 +15,7 @@ namespace aura {
 namespace client {
 class DragDropClient;
 class FocusClient;
+class ScopedTooltipDisabler;
 }
 }
 
@@ -27,22 +28,22 @@ namespace corewm {
 class TooltipWin;
 }
 
-class VIEWS_EXPORT DesktopRootWindowHostWin
-    : public DesktopRootWindowHost,
+class VIEWS_EXPORT DesktopWindowTreeHostWin
+    : public DesktopWindowTreeHost,
       public aura::client::AnimationHost,
-      public aura::RootWindowHost,
+      public aura::WindowTreeHost,
       public HWNDMessageHandlerDelegate {
  public:
-  DesktopRootWindowHostWin(
+  DesktopWindowTreeHostWin(
       internal::NativeWidgetDelegate* native_widget_delegate,
       DesktopNativeWidgetAura* desktop_native_widget_aura);
-  virtual ~DesktopRootWindowHostWin();
+  virtual ~DesktopWindowTreeHostWin();
 
   // A way of converting an HWND into a content window.
   static aura::Window* GetContentWindowForHWND(HWND hwnd);
 
  protected:
-  // Overridden from DesktopRootWindowHost:
+  // Overridden from DesktopWindowTreeHost:
   virtual void Init(aura::Window* content_window,
                     const Widget::InitParams& params,
                     aura::RootWindow::CreateParams* rw_create_params) OVERRIDE;
@@ -53,12 +54,13 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
       CreateDragDropClient(DesktopNativeCursorManager* cursor_manager) OVERRIDE;
   virtual void Close() OVERRIDE;
   virtual void CloseNow() OVERRIDE;
-  virtual aura::RootWindowHost* AsRootWindowHost() OVERRIDE;
+  virtual aura::WindowTreeHost* AsWindowTreeHost() OVERRIDE;
   virtual void ShowWindowWithState(ui::WindowShowState show_state) OVERRIDE;
   virtual void ShowMaximizedWithBounds(
       const gfx::Rect& restored_bounds) OVERRIDE;
   virtual bool IsVisible() const OVERRIDE;
   virtual void SetSize(const gfx::Size& size) OVERRIDE;
+  virtual void StackAtTop() OVERRIDE;
   virtual void CenterWindow(const gfx::Size& size) OVERRIDE;
   virtual void GetWindowPlacement(
       gfx::Rect* bounds,
@@ -79,7 +81,7 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   virtual bool HasCapture() const OVERRIDE;
   virtual void SetAlwaysOnTop(bool always_on_top) OVERRIDE;
   virtual bool IsAlwaysOnTop() const OVERRIDE;
-  virtual void SetWindowTitle(const string16& title) OVERRIDE;
+  virtual bool SetWindowTitle(const base::string16& title) OVERRIDE;
   virtual void ClearNativeFocus() OVERRIDE;
   virtual Widget::MoveLoopResult RunMoveLoop(
       const gfx::Vector2d& drag_offset,
@@ -102,8 +104,7 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   virtual void OnNativeWidgetBlur() OVERRIDE;
   virtual bool IsAnimatingClosed() const OVERRIDE;
 
-  // Overridden from aura::RootWindowHost:
-  virtual void SetDelegate(aura::RootWindowHostDelegate* delegate) OVERRIDE;
+  // Overridden from aura::WindowTreeHost:
   virtual aura::RootWindow* GetRootWindow() OVERRIDE;
   virtual gfx::AcceleratedWidget GetAcceleratedWidget() OVERRIDE;
   virtual void Show() OVERRIDE;
@@ -122,7 +123,6 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   virtual void UnConfineCursor() OVERRIDE;
   virtual void OnCursorVisibilityChanged(bool show) OVERRIDE;
   virtual void MoveCursorTo(const gfx::Point& location) OVERRIDE;
-  virtual void SetFocusWhenShown(bool focus_when_shown) OVERRIDE;
   virtual void PostNativeEvent(const base::NativeEvent& native_event) OVERRIDE;
   virtual void OnDeviceScaleFactorChanged(float device_scale_factor) OVERRIDE;
   virtual void PrepareForShutdown() OVERRIDE;
@@ -172,7 +172,7 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   virtual void HandleCreate() OVERRIDE;
   virtual void HandleDestroying() OVERRIDE;
   virtual void HandleDestroyed() OVERRIDE;
-  virtual bool HandleInitialFocus() OVERRIDE;
+  virtual bool HandleInitialFocus(ui::WindowShowState show_state) OVERRIDE;
   virtual void HandleDisplayChange() OVERRIDE;
   virtual void HandleBeginWMSizeMove() OVERRIDE;
   virtual void HandleEndWMSizeMove() OVERRIDE;
@@ -202,6 +202,7 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   virtual void HandleTooltipMouseMove(UINT message,
                                       WPARAM w_param,
                                       LPARAM l_param) OVERRIDE;
+  virtual void HandleMenuLoop(bool in_menu_loop) OVERRIDE;
   virtual bool PreHandleMSG(UINT message,
                             WPARAM w_param,
                             LPARAM l_param,
@@ -233,7 +234,6 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
 
   DesktopNativeWidgetAura* desktop_native_widget_aura_;
 
-  aura::RootWindowHostDelegate* root_window_host_delegate_;
   aura::Window* content_window_;
 
   // Owned by DesktopNativeWidgetAura.
@@ -272,7 +272,9 @@ class VIEWS_EXPORT DesktopRootWindowHostWin
   // State of the cursor.
   bool is_cursor_visible_;
 
-  DISALLOW_COPY_AND_ASSIGN(DesktopRootWindowHostWin);
+  scoped_ptr<aura::client::ScopedTooltipDisabler> tooltip_disabler_;
+
+  DISALLOW_COPY_AND_ASSIGN(DesktopWindowTreeHostWin);
 };
 
 }  // namespace views

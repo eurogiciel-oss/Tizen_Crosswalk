@@ -36,9 +36,22 @@ WebSourceBufferImpl::~WebSourceBufferImpl() {
   DCHECK(!demuxer_) << "Object destroyed w/o removedFromMediaSource() call";
 }
 
-WebKit::WebTimeRanges WebSourceBufferImpl::buffered() {
+bool WebSourceBufferImpl::setMode(WebSourceBuffer::AppendMode mode) {
+  bool sequence_mode = false;
+  switch (mode) {
+    case WebSourceBuffer::AppendModeSegments:
+      break;
+    case WebSourceBuffer::AppendModeSequence:
+      sequence_mode = true;
+      break;
+  }
+
+  return demuxer_->SetSequenceMode(id_, sequence_mode);
+}
+
+blink::WebTimeRanges WebSourceBufferImpl::buffered() {
   media::Ranges<base::TimeDelta> ranges = demuxer_->GetBufferedRanges(id_);
-  WebKit::WebTimeRanges result(ranges.size());
+  blink::WebTimeRanges result(ranges.size());
   for (size_t i = 0; i < ranges.size(); i++) {
     result[i].start = ranges.start(i).InSecondsF();
     result[i].end = ranges.end(i).InSecondsF();

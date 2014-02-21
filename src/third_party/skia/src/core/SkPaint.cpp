@@ -1010,16 +1010,9 @@ static void set_bounds(const SkGlyph& g, SkRect* bounds) {
 // we don't overflow along the way
 typedef int64_t Sk48Dot16;
 
-#ifdef SK_SCALAR_IS_FLOAT
-    static inline float Sk48Dot16ToScalar(Sk48Dot16 x) {
-        return (float) (x * 1.5258789e-5);   // x * (1 / 65536.0f)
-    }
-#else
-    static inline SkFixed Sk48Dot16ToScalar(Sk48Dot16 x) {
-        // just return the low 32bits
-        return static_cast<SkFixed>(x);
-    }
-#endif
+static inline float Sk48Dot16ToScalar(Sk48Dot16 x) {
+    return (float) (x * 1.5258789e-5);   // x * (1 / 65536.0f)
+}
 
 static void join_bounds_x(const SkGlyph& g, SkRect* bounds, Sk48Dot16 dx) {
     SkScalar sx = Sk48Dot16ToScalar(dx);
@@ -1556,13 +1549,8 @@ static bool tooBigForLCD(const SkScalerContext::Rec& rec) {
  *  typically returns the same looking resuts for tiny changes in the matrix.
  */
 static SkScalar sk_relax(SkScalar x) {
-#ifdef SK_SCALAR_IS_FLOAT
     int n = sk_float_round2int(x * 1024);
     return n / 1024.0f;
-#else
-    // round to the nearest 10 fractional bits
-    return (x + (1 << 5)) & ~(1024 - 1);
-#endif
 }
 
 void SkScalerContext::MakeRec(const SkPaint& paint,
@@ -1659,7 +1647,7 @@ void SkScalerContext::MakeRec(const SkPaint& paint,
         flags |= SkScalerContext::kSubpixelPositioning_Flag;
     }
     if (paint.isAutohinted()) {
-        flags |= SkScalerContext::kAutohinting_Flag;
+        flags |= SkScalerContext::kForceAutohinting_Flag;
     }
     if (paint.isVerticalText()) {
         flags |= SkScalerContext::kVertical_Flag;
@@ -1696,7 +1684,7 @@ void SkScalerContext::MakeRec(const SkPaint& paint,
      * With higher values lcd fringing is worse and the smoothing effect of
      * partial coverage is diminished.
      */
-    rec->setContrast(SkFloatToScalar(0.5f));
+    rec->setContrast(0.5f);
 #endif
 
     rec->fReservedAlign = 0;
@@ -1827,9 +1815,7 @@ void SkPaint::descriptorProc(const SkDeviceProperties* deviceProperties,
     SkMaskFilter*   mf = this->getMaskFilter();
     SkRasterizer*   ra = this->getRasterizer();
 
-    SkOrderedWriteBuffer    peBuffer(MIN_SIZE_FOR_EFFECT_BUFFER);
-    SkOrderedWriteBuffer    mfBuffer(MIN_SIZE_FOR_EFFECT_BUFFER);
-    SkOrderedWriteBuffer    raBuffer(MIN_SIZE_FOR_EFFECT_BUFFER);
+    SkOrderedWriteBuffer    peBuffer, mfBuffer, raBuffer;
 
     if (pe) {
         peBuffer.writeFlattenable(pe);
@@ -1857,7 +1843,7 @@ void SkPaint::descriptorProc(const SkDeviceProperties* deviceProperties,
     }
 
 #ifdef SK_BUILD_FOR_ANDROID
-    SkOrderedWriteBuffer androidBuffer(128);
+    SkOrderedWriteBuffer androidBuffer;
     fPaintOptionsAndroid.flatten(androidBuffer);
     descSize += androidBuffer.size();
     entryCount += 1;
@@ -2005,11 +1991,7 @@ enum FlatFlags {
 };
 
 // The size of a flat paint's POD fields
-// Include an SkScalar for hinting scale factor whether it is
-// supported or not so that an SKP is valid whether it was
-// created with support or not.
-
-static const uint32_t kPODPaintSize =   6 * sizeof(SkScalar) +
+static const uint32_t kPODPaintSize =   5 * sizeof(SkScalar) +
                                         1 * sizeof(SkColor) +
                                         1 * sizeof(uint16_t) +
                                         6 * sizeof(uint8_t);
@@ -2046,8 +2028,6 @@ void SkPaint::flatten(SkFlattenableWriteBuffer& buffer) const {
         ptr = write_scalar(ptr, this->getTextSize());
         ptr = write_scalar(ptr, this->getTextScaleX());
         ptr = write_scalar(ptr, this->getTextSkewX());
-        // Dummy value for obsolete hinting scale factor.  TODO: remove with next picture version
-        ptr = write_scalar(ptr, SK_Scalar1);
         ptr = write_scalar(ptr, this->getStrokeWidth());
         ptr = write_scalar(ptr, this->getStrokeMiter());
         *ptr++ = this->getColor();
@@ -2064,8 +2044,6 @@ void SkPaint::flatten(SkFlattenableWriteBuffer& buffer) const {
         buffer.writeScalar(fTextSize);
         buffer.writeScalar(fTextScaleX);
         buffer.writeScalar(fTextSkewX);
-        // Dummy value for obsolete hinting scale factor.  TODO: remove with next picture version
-        buffer.writeScalar(SK_Scalar1);
         buffer.writeScalar(fWidth);
         buffer.writeScalar(fMiterLimit);
         buffer.writeColor(fColor);
@@ -2120,8 +2098,6 @@ void SkPaint::unflatten(SkFlattenableReadBuffer& buffer) {
         this->setTextSize(read_scalar(pod));
         this->setTextScaleX(read_scalar(pod));
         this->setTextSkewX(read_scalar(pod));
-        // Skip the hinting scalar factor, which is not supported.
-        read_scalar(pod);
         this->setStrokeWidth(read_scalar(pod));
         this->setStrokeMiter(read_scalar(pod));
         this->setColor(*pod++);

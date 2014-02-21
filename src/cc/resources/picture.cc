@@ -16,7 +16,7 @@
 #include "cc/debug/traced_picture.h"
 #include "cc/debug/traced_value.h"
 #include "cc/layers/content_layer_client.h"
-#include "skia/ext/lazy_pixel_ref_utils.h"
+#include "skia/ext/pixel_ref_utils.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkData.h"
 #include "third_party/skia/include/core/SkDrawFilter.h"
@@ -81,11 +81,11 @@ bool DecodeBitmap(const void* buffer, size_t size, SkBitmap* bm) {
 
 }  // namespace
 
-scoped_refptr<Picture> Picture::Create(gfx::Rect layer_rect) {
+scoped_refptr<Picture> Picture::Create(const gfx::Rect& layer_rect) {
   return make_scoped_refptr(new Picture(layer_rect));
 }
 
-Picture::Picture(gfx::Rect layer_rect)
+Picture::Picture(const gfx::Rect& layer_rect)
   : layer_rect_(layer_rect),
     cell_size_(layer_rect.size()) {
   // Instead of recording a trace event for object creation here, we wait for
@@ -152,8 +152,8 @@ scoped_refptr<Picture> Picture::CreateFromValue(const base::Value* raw_value) {
 }
 
 Picture::Picture(SkPicture* picture,
-                 gfx::Rect layer_rect,
-                 gfx::Rect opaque_rect) :
+                 const gfx::Rect& layer_rect,
+                 const gfx::Rect& opaque_rect) :
     layer_rect_(layer_rect),
     opaque_rect_(opaque_rect),
     picture_(skia::AdoptRef(picture)),
@@ -161,8 +161,8 @@ Picture::Picture(SkPicture* picture,
 }
 
 Picture::Picture(const skia::RefPtr<SkPicture>& picture,
-                 gfx::Rect layer_rect,
-                 gfx::Rect opaque_rect,
+                 const gfx::Rect& layer_rect,
+                 const gfx::Rect& opaque_rect,
                  const PixelRefMap& pixel_refs) :
     layer_rect_(layer_rect),
     opaque_rect_(opaque_rect),
@@ -248,6 +248,8 @@ void Picture::GatherPixelRefs(
                "height", layer_rect_.height());
 
   DCHECK(picture_);
+  if (!WillPlayBackBitmaps())
+    return;
   cell_size_ = gfx::Size(
       tile_grid_info.fTileInterval.width() +
           2 * tile_grid_info.fMargin.width(),
@@ -261,9 +263,9 @@ void Picture::GatherPixelRefs(
   int max_x = 0;
   int max_y = 0;
 
-  skia::LazyPixelRefList pixel_refs;
-  skia::LazyPixelRefUtils::GatherPixelRefs(picture_.get(), &pixel_refs);
-  for (skia::LazyPixelRefList::const_iterator it = pixel_refs.begin();
+  skia::DiscardablePixelRefList pixel_refs;
+  skia::PixelRefUtils::GatherDiscardablePixelRefs(picture_.get(), &pixel_refs);
+  for (skia::DiscardablePixelRefList::const_iterator it = pixel_refs.begin();
        it != pixel_refs.end();
        ++it) {
     gfx::Point min(
@@ -280,7 +282,7 @@ void Picture::GatherPixelRefs(
     for (int y = min.y(); y <= max.y(); y += cell_size_.height()) {
       for (int x = min.x(); x <= max.x(); x += cell_size_.width()) {
         PixelRefMapKey key(x, y);
-        pixel_refs_[key].push_back(it->lazy_pixel_ref);
+        pixel_refs_[key].push_back(it->pixel_ref);
       }
     }
 
@@ -383,7 +385,7 @@ Picture::PixelRefIterator::PixelRefIterator()
 }
 
 Picture::PixelRefIterator::PixelRefIterator(
-    gfx::Rect query_rect,
+    const gfx::Rect& rect,
     const Picture* picture)
     : picture_(picture),
       current_pixel_refs_(empty_pixel_refs_.Pointer()),
@@ -392,6 +394,7 @@ Picture::PixelRefIterator::PixelRefIterator(
   gfx::Size cell_size = picture->cell_size_;
   DCHECK(!cell_size.IsEmpty());
 
+  gfx::Rect query_rect(rect);
   // Early out if the query rect doesn't intersect this picture.
   if (!query_rect.Intersects(layer_rect)) {
     min_point_ = gfx::Point(0, 0);

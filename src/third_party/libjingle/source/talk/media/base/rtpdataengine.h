@@ -96,7 +96,8 @@ class RtpDataMediaChannel : public DataMediaChannel {
     timing_ = timing;
   }
 
-  virtual bool SetSendBandwidth(bool autobw, int bps);
+  virtual bool SetStartSendBandwidth(int bps) { return true; }
+  virtual bool SetMaxSendBandwidth(int bps);
   virtual bool SetRecvRtpHeaderExtensions(
       const std::vector<RtpHeaderExtension>& extensions) { return true; }
   virtual bool SetSendRtpHeaderExtensions(
@@ -115,8 +116,10 @@ class RtpDataMediaChannel : public DataMediaChannel {
     receiving_ = receive;
     return true;
   }
-  virtual void OnPacketReceived(talk_base::Buffer* packet);
-  virtual void OnRtcpReceived(talk_base::Buffer* packet) {}
+  virtual void OnPacketReceived(talk_base::Buffer* packet,
+                                const talk_base::PacketTime& packet_time);
+  virtual void OnRtcpReceived(talk_base::Buffer* packet,
+                              const talk_base::PacketTime& packet_time) {}
   virtual void OnReadyToSend(bool ready) {}
   virtual bool SendData(
     const SendDataParams& params,

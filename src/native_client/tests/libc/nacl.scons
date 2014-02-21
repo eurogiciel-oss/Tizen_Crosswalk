@@ -44,9 +44,12 @@ AddLibcTest(env, 'malloc_realloc_calloc_free.c', '0')
 AddLibcTest(env, 'strtoll.c', '0')
 AddLibcTest(env, 'strtoull.c', '0')
 AddLibcTest(env, 'wcstoll.c', '0', is_broken=env.Bit('nacl_glibc'))
-AddLibcTest(env, 'iconv.c', '0',
-            is_broken=(env.Bit('nacl_glibc') or
-                       (env.Bit('target_arm') and not env.Bit('bitcode'))))
+
+iconv_broken = (env.Bit('nacl_glibc') or
+  # The PNaCl archived frontend tests use an archived newlib,
+  # but the iconv test requires a new-enough newlib with fixes.
+  (env.Bit('bitcode') and env['TOOLCHAIN_FEATURE_VERSION'] < 3))
+AddLibcTest(env, 'iconv.c', '0', is_broken=iconv_broken)
 
 # Test that using link-time optimization does not convert calls to
 # library functions that were never linked in.
@@ -61,9 +64,9 @@ if env.Bit('bitcode'):
   AddLibcTest(env, 'printf_to_puts.c', '0',
               compile_env=unopt_env, link_env=opt_env)
 
-if env.Bit('nacl_glibc'):
-  memalign_env = env
-else:
-  memalign_env = env.Clone()
-  memalign_env.Append(CPPDEFINES=['NEWLIB=1'])
-AddLibcTest(memalign_env, 'posix_memalign.c')
+# This was only made to compile without warnings/hacks after modifying newlib
+# headers, so the PNaCl archived frontend test with older headers can't
+# compile the non-hacky version of the test. We don't test archived
+# GCC toolchains, so always let those run the test.
+if not env.Bit('bitcode') or env['TOOLCHAIN_FEATURE_VERSION'] >= 3:
+  AddLibcTest(env, 'posix_memalign.c')

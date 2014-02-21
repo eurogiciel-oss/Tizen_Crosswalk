@@ -2,41 +2,56 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/memory/discardable_memory.h"
+#include "base/memory/discardable_memory_android.h"
 
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <limits>
+
+#include "base/android/sys_utils.h"
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
 #include "base/file_util.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
-#include "base/posix/eintr_wrapper.h"
-#include "base/synchronization/lock.h"
+#include "base/memory/discardable_memory_allocator_android.h"
+#include "base/memory/discardable_memory_emulated.h"
 #include "third_party/ashmem/ashmem.h"
 
 namespace base {
 namespace {
 
-// Protects |g_num_discardable_memory| below.
-base::LazyInstance<base::Lock>::Leaky g_discardable_memory_lock =
+const char kAshmemAllocatorName[] = "DiscardableMemoryAllocator";
+
+struct DiscardableMemoryAllocatorWrapper {
+  DiscardableMemoryAllocatorWrapper()
+      : allocator(kAshmemAllocatorName,
+                  GetOptimalAshmemRegionSizeForAllocator()) {
+  }
+
+  internal::DiscardableMemoryAllocator allocator;
+
+ private:
+  // Returns 64 MBytes for a 512 MBytes device, 128 MBytes for 1024 MBytes...
+  static size_t GetOptimalAshmemRegionSizeForAllocator() {
+    // Note that this may do some I/O (without hitting the disk though) so it
+    // should not be called on the critical path.
+    return base::android::SysUtils::AmountOfPhysicalMemoryKB() * 1024 / 8;
+  }
+};
+
+LazyInstance<DiscardableMemoryAllocatorWrapper>::Leaky g_context =
     LAZY_INSTANCE_INITIALIZER;
 
-// Total number of discardable memory in the process.
-int g_num_discardable_memory = 0;
+}  // namespace
 
-// Upper limit on the number of discardable memory to avoid hitting file
-// descriptor limit.
-const int kDiscardableMemoryNumLimit = 128;
+namespace internal {
 
 bool CreateAshmemRegion(const char* name,
                         size_t size,
                         int* out_fd,
                         void** out_address) {
-  base::AutoLock lock(g_discardable_memory_lock.Get());
-  if (g_num_discardable_memory + 1 > kDiscardableMemoryNumLimit)
-    return false;
   int fd = ashmem_create_region(name, size);
   if (fd < 0) {
     DLOG(ERROR) << "ashmem_create_region() failed";
@@ -61,15 +76,12 @@ bool CreateAshmemRegion(const char* name,
   }
 
   ignore_result(fd_closer.release());
-  ++g_num_discardable_memory;
   *out_fd = fd;
   *out_address = address;
   return true;
 }
 
-bool DeleteAshmemRegion(int fd, size_t size, void* address) {
-  base::AutoLock lock(g_discardable_memory_lock.Get());
-  --g_num_discardable_memory;
+bool CloseAshmemRegion(int fd, size_t size, void* address) {
   if (munmap(address, size) == -1) {
     DPLOG(ERROR) << "Failed to unmap memory.";
     close(fd);
@@ -78,14 +90,14 @@ bool DeleteAshmemRegion(int fd, size_t size, void* address) {
   return close(fd) == 0;
 }
 
-LockDiscardableMemoryStatus LockAshmemRegion(int fd,
+DiscardableMemoryLockStatus LockAshmemRegion(int fd,
                                              size_t off,
                                              size_t size,
                                              const void* address) {
   const int result = ashmem_pin_region(fd, off, size);
   DCHECK_EQ(0, mprotect(address, size, PROT_READ | PROT_WRITE));
-  return result == ASHMEM_WAS_PURGED ?
-      DISCARDABLE_MEMORY_PURGED : DISCARDABLE_MEMORY_SUCCESS;
+  return result == ASHMEM_WAS_PURGED ? DISCARDABLE_MEMORY_LOCK_STATUS_PURGED
+                                     : DISCARDABLE_MEMORY_LOCK_STATUS_SUCCESS;
 }
 
 bool UnlockAshmemRegion(int fd, size_t off, size_t size, const void* address) {
@@ -97,62 +109,50 @@ bool UnlockAshmemRegion(int fd, size_t off, size_t size, const void* address) {
   return !failed;
 }
 
-class DiscardableMemoryAndroid : public DiscardableMemory {
- public:
-  DiscardableMemoryAndroid(int fd, void* address, size_t size)
-      : fd_(fd),
-        memory_(address),
-        size_(size) {
-    DCHECK_GE(fd_, 0);
-    DCHECK(memory_);
-  }
-
-  virtual ~DiscardableMemoryAndroid() {
-    DeleteAshmemRegion(fd_, size_, memory_);
-  }
-
-  // DiscardableMemory:
-  virtual LockDiscardableMemoryStatus Lock() OVERRIDE {
-    return LockAshmemRegion(fd_, 0, size_, memory_);
-  }
-
-  virtual void Unlock() OVERRIDE {
-    UnlockAshmemRegion(fd_, 0, size_, memory_);
-  }
-
-  virtual void* Memory() const OVERRIDE {
-    return memory_;
-  }
-
- private:
-  const int fd_;
-  void* const memory_;
-  const size_t size_;
-
-  DISALLOW_COPY_AND_ASSIGN(DiscardableMemoryAndroid);
-};
-
-}  // namespace
+}  // namespace internal
 
 // static
-bool DiscardableMemory::SupportedNatively() {
-  return true;
+void DiscardableMemory::RegisterMemoryPressureListeners() {
+  internal::DiscardableMemoryEmulated::RegisterMemoryPressureListeners();
 }
 
 // static
-scoped_ptr<DiscardableMemory> DiscardableMemory::CreateLockedMemory(
-    size_t size) {
-  // Pinning & unpinning works with page granularity therefore align the size
-  // upfront.
-  const size_t kPageSize = 4096;
-  const size_t mask = ~(kPageSize - 1);
-  size = (size + kPageSize - 1) & mask;
-  int fd;
-  void* address;
-  if (!CreateAshmemRegion("", size, &fd, &address))
-    return scoped_ptr<DiscardableMemory>();
-  return scoped_ptr<DiscardableMemory>(
-      new DiscardableMemoryAndroid(fd, address, size));
+void DiscardableMemory::UnregisterMemoryPressureListeners() {
+  internal::DiscardableMemoryEmulated::UnregisterMemoryPressureListeners();
+}
+
+// static
+void DiscardableMemory::GetSupportedTypes(
+    std::vector<DiscardableMemoryType>* types) {
+  const DiscardableMemoryType supported_types[] = {
+    DISCARDABLE_MEMORY_TYPE_ANDROID,
+    DISCARDABLE_MEMORY_TYPE_EMULATED
+  };
+  types->assign(supported_types, supported_types + arraysize(supported_types));
+}
+
+// static
+scoped_ptr<DiscardableMemory> DiscardableMemory::CreateLockedMemoryWithType(
+    DiscardableMemoryType type, size_t size) {
+  switch (type) {
+    case DISCARDABLE_MEMORY_TYPE_NONE:
+    case DISCARDABLE_MEMORY_TYPE_MAC:
+      return scoped_ptr<DiscardableMemory>();
+    case DISCARDABLE_MEMORY_TYPE_ANDROID: {
+      return g_context.Pointer()->allocator.Allocate(size);
+    }
+    case DISCARDABLE_MEMORY_TYPE_EMULATED: {
+      scoped_ptr<internal::DiscardableMemoryEmulated> memory(
+          new internal::DiscardableMemoryEmulated(size));
+      if (!memory->Initialize())
+        return scoped_ptr<DiscardableMemory>();
+
+      return memory.PassAs<DiscardableMemory>();
+    }
+  }
+
+  NOTREACHED();
+  return scoped_ptr<DiscardableMemory>();
 }
 
 // static

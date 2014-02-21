@@ -12,26 +12,31 @@
 #include "media/cast/cast_defines.h"
 #include "media/cast/rtcp/rtcp.h"
 #include "media/cast/rtcp/rtcp_defines.h"
+#include "media/cast/transport/cast_transport_defines.h"
+#include "media/cast/transport/rtcp/rtcp_builder.h"
 
 namespace media {
 namespace cast {
 
+// TODO(mikhal): Resolve duplication between this and RtcpBuilder.
 class RtcpSender {
  public:
-  RtcpSender(PacedPacketSender* const paced_packet_sender,
+  RtcpSender(scoped_refptr<CastEnvironment> cast_environment,
+             transport::PacedPacketSender* outgoing_transport,
              uint32 sending_ssrc,
              const std::string& c_name);
 
   virtual ~RtcpSender();
 
-  void SendRtcp(uint32 packet_type_flags,
-                const RtcpSenderInfo* sender_info,
-                const RtcpReportBlock* report_block,
-                uint32 pli_remote_ssrc,
-                const RtcpDlrrReportBlock* dlrr,
-                const RtcpReceiverReferenceTimeReport* rrtr,
-                const RtcpCastMessage* cast_message);
+  // Returns true if |event| is an interesting receiver event.
+  // Such an event should be sent via RTCP.
+  static bool IsReceiverEvent(const media::cast::CastLoggingEvent& event);
 
+  void SendRtcpFromRtpReceiver(uint32 packet_type_flags,
+                               const transport::RtcpReportBlock* report_block,
+                               const RtcpReceiverReferenceTimeReport* rrtr,
+                               const RtcpCastMessage* cast_message,
+                               RtcpReceiverLogMessage* receiver_log);
   enum RtcpPacketType {
     kRtcpSr     = 0x0002,
     kRtcpRr     = 0x0004,
@@ -45,43 +50,40 @@ class RtcpSender {
     kRtcpRpsi   = 0x8000,
     kRtcpRemb   = 0x10000,
     kRtcpCast   = 0x20000,
+    kRtcpSenderLog = 0x40000,
+    kRtcpReceiverLog = 0x80000,
   };
-
  private:
-  void BuildSR(const RtcpSenderInfo& sender_info,
-               const RtcpReportBlock* report_block,
-               std::vector<uint8>* packet) const;
+  void BuildRR(const transport::RtcpReportBlock* report_block,
+               Packet* packet) const;
 
-  void BuildRR(const RtcpReportBlock* report_block,
-               std::vector<uint8>* packet) const;
+  void AddReportBlocks(const transport::RtcpReportBlock& report_block,
+                       Packet* packet) const;
 
-  void AddReportBlocks(const RtcpReportBlock& report_block,
-                       std::vector<uint8>* packet) const;
-
-  void BuildSdec(std::vector<uint8>* packet) const;
+  void BuildSdec(Packet* packet) const;
 
   void BuildPli(uint32 remote_ssrc,
-                std::vector<uint8>* packet) const;
+                Packet* packet) const;
 
   void BuildRemb(const RtcpRembMessage* remb,
-                 std::vector<uint8>* packet) const;
+                 Packet* packet) const;
 
   void BuildRpsi(const RtcpRpsiMessage* rpsi,
-                 std::vector<uint8>* packet) const;
+                 Packet* packet) const;
 
   void BuildNack(const RtcpNackMessage* nack,
-                 std::vector<uint8>* packet) const;
+                 Packet* packet) const;
 
-  void BuildBye(std::vector<uint8>* packet) const;
-
-  void BuildDlrrRb(const RtcpDlrrReportBlock* dlrr,
-                   std::vector<uint8>* packet) const;
+  void BuildBye(Packet* packet) const;
 
   void BuildRrtr(const RtcpReceiverReferenceTimeReport* rrtr,
-                 std::vector<uint8>* packet) const;
+                 Packet* packet) const;
 
   void BuildCast(const RtcpCastMessage* cast_message,
-                 std::vector<uint8>* packet) const;
+                 Packet* packet) const;
+
+  void BuildReceiverLog(RtcpReceiverLogMessage* receiver_log_message,
+                        Packet* packet) const;
 
   inline void BitrateToRembExponentBitrate(uint32 bitrate,
                                            uint8* exponent,
@@ -101,7 +103,8 @@ class RtcpSender {
   const std::string c_name_;
 
   // Not owned by this class.
-  PacedPacketSender* transport_;
+  transport::PacedPacketSender* const transport_;
+  scoped_refptr<CastEnvironment> cast_environment_;
 
   DISALLOW_COPY_AND_ASSIGN(RtcpSender);
 };

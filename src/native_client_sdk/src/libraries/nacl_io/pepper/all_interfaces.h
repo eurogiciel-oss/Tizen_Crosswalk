@@ -47,17 +47,17 @@ BEGIN_INTERFACE(FileIoInterface, PPB_FileIO_1_0, PPB_FILEIO_INTERFACE_1_0)
           const char*, int32_t, PP_CompletionCallback)
 END_INTERFACE(FileIoInterface, PPB_FileIO_1_0)
 
-BEGIN_INTERFACE(FileRefInterface, PPB_FileRef_1_1, PPB_FILEREF_INTERFACE_1_1)
+BEGIN_INTERFACE(FileRefInterface, PPB_FileRef_1_2, PPB_FILEREF_INTERFACE_1_2)
   METHOD2(FileRefInterface, PP_Resource, Create, PP_Resource, const char*)
   METHOD2(FileRefInterface, int32_t, Delete, PP_Resource, PP_CompletionCallback)
   METHOD1(FileRefInterface, PP_Var, GetName, PP_Resource)
-  METHOD3(FileRefInterface, int32_t, MakeDirectory, PP_Resource, PP_Bool,
+  METHOD3(FileRefInterface, int32_t, MakeDirectory, PP_Resource, int32_t,
           PP_CompletionCallback)
   METHOD3(FileRefInterface, int32_t, Query, PP_Resource, PP_FileInfo*,
           PP_CompletionCallback)
   METHOD3(FileRefInterface, int32_t, ReadDirectoryEntries, PP_Resource,
           const PP_ArrayOutput&, PP_CompletionCallback)
-END_INTERFACE(FileRefInterface, PPB_FileRef_1_1)
+END_INTERFACE(FileRefInterface, PPB_FileRef_1_2)
 
 BEGIN_INTERFACE(FileSystemInterface, PPB_FileSystem_1_0,
                 PPB_FILESYSTEM_INTERFACE_1_0)
@@ -83,6 +83,23 @@ BEGIN_INTERFACE(MessagingInterface, PPB_Messaging_1_0,
                 PPB_MESSAGING_INTERFACE_1_0)
   METHOD2(MessagingInterface, void, PostMessage, PP_Instance, PP_Var)
 END_INTERFACE(MessagingInterface, PPB_Messaging_1_0)
+
+BEGIN_INTERFACE(VarArrayInterface, PPB_VarArray_1_0,
+                PPB_VAR_ARRAY_INTERFACE_1_0)
+  METHOD0(VarArrayInterface, PP_Var, Create)
+  METHOD2(VarArrayInterface, PP_Var, Get, PP_Var, uint32_t)
+  METHOD3(VarArrayInterface, PP_Bool, Set, PP_Var, uint32_t, PP_Var)
+  METHOD1(VarArrayInterface, uint32_t, GetLength, PP_Var)
+  METHOD2(VarArrayInterface, PP_Bool, SetLength, PP_Var, uint32_t)
+END_INTERFACE(VarArrayInterface, PPB_VarArray_1_0)
+
+BEGIN_INTERFACE(VarArrayBufferInterface, PPB_VarArrayBuffer_1_0,
+                PPB_VAR_ARRAY_BUFFER_INTERFACE_1_0)
+  METHOD1(VarArrayBufferInterface, PP_Var, Create, uint32_t)
+  METHOD2(VarArrayBufferInterface, PP_Bool, ByteLength, PP_Var, uint32_t*)
+  METHOD1(VarArrayBufferInterface, void*, Map, PP_Var)
+  METHOD1(VarArrayBufferInterface, void, Unmap, PP_Var)
+END_INTERFACE(VarArrayBufferInterface, PPB_VarArrayBuffer_1_0)
 
 BEGIN_INTERFACE(VarInterface, PPB_Var_1_1, PPB_VAR_INTERFACE_1_1)
   METHOD1(VarInterface, void, AddRef, PP_Var)

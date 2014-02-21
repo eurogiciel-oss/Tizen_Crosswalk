@@ -23,6 +23,7 @@
 
 #include "ppapi/c/private/ppb_nacl_private.h"
 #include "ppapi/cpp/private/instance_private.h"
+#include "ppapi/cpp/private/uma_private.h"
 #include "ppapi/cpp/url_loader.h"
 #include "ppapi/cpp/var.h"
 #include "ppapi/cpp/view.h"
@@ -146,21 +147,12 @@ class Plugin : public pp::InstancePrivate {
   // event (loadstart, progress, error, abort, load, loadend).  Events are
   // enqueued on the JavaScript event loop, which then calls back through
   // DispatchProgressEvent.
-  void EnqueueProgressEvent(const char* event_type);
-  void EnqueueProgressEvent(const char* event_type,
+  void EnqueueProgressEvent(PP_NaClEventType event_type);
+  void EnqueueProgressEvent(PP_NaClEventType event_type,
                             const nacl::string& url,
                             LengthComputable length_computable,
                             uint64_t loaded_bytes,
                             uint64_t total_bytes);
-
-  // Progress event types.
-  static const char* const kProgressEventLoadStart;
-  static const char* const kProgressEventProgress;
-  static const char* const kProgressEventError;
-  static const char* const kProgressEventAbort;
-  static const char* const kProgressEventLoad;
-  static const char* const kProgressEventLoadEnd;
-  static const char* const kProgressEventCrash;
 
   // Report the error code that sel_ldr produces when starting a nexe.
   void ReportSelLdrLoadStatus(int status);
@@ -211,16 +203,6 @@ class Plugin : public pp::InstancePrivate {
   // Requests a NaCl manifest download from a |url| relative to the page origin.
   void RequestNaClManifest(const nacl::string& url);
 
-  // Support for property getting.
-  typedef void (Plugin::* PropertyGetter)(NaClSrpcArg* prop_value);
-  void AddPropertyGet(const nacl::string& prop_name, PropertyGetter getter);
-  bool HasProperty(const nacl::string& prop_name);
-  bool GetProperty(const nacl::string& prop_name, NaClSrpcArg* prop_value);
-  // The supported property getters.
-  void GetExitStatus(NaClSrpcArg* prop_value);
-  void GetLastError(NaClSrpcArg* prop_value);
-  void GetReadyStateProperty(NaClSrpcArg* prop_value);
-
   // The size returned when a file download operation is unable to determine
   // the size of the file to load.  W3C ProgressEvents specify that unknown
   // sizes return 0.
@@ -250,11 +232,7 @@ class Plugin : public pp::InstancePrivate {
   // document to request the URL using CORS even if this function returns false.
   bool DocumentCanRequest(const std::string& url);
 
-  // Get the text description of the last error reported by the plugin.
-  const nacl::string& last_error_string() const { return last_error_string_; }
-  void set_last_error_string(const nacl::string& error) {
-    last_error_string_ = error;
-  }
+  void set_last_error_string(const nacl::string& error);
 
   // The MIME type used to instantiate this instance of the NaCl plugin.
   // Typically, the MIME type will be application/x-nacl.  However, if the NEXE
@@ -271,15 +249,12 @@ class Plugin : public pp::InstancePrivate {
   Manifest const* manifest() const { return manifest_.get(); }
   const pp::URLUtil_Dev* url_util() const { return url_util_; }
 
-  // Extracts the exit status from the (main) service runtime.
-  int exit_status() const {
-    if (NULL == main_service_runtime()) {
-      return -1;
-    }
-    return main_service_runtime()->exit_status();
-  }
+  int exit_status() const { return exit_status_; }
+  // set_exit_status may be called off the main thread.
+  void set_exit_status(int exit_status);
 
   const PPB_NaCl_Private* nacl_interface() const { return nacl_interface_; }
+  pp::UMAPrivate& uma_interface() { return uma_interface_; }
 
  private:
   NACL_DISALLOW_COPY_AND_ASSIGN(Plugin);
@@ -304,6 +279,24 @@ class Plugin : public pp::InstancePrivate {
   ServiceRuntime* main_service_runtime() const {
     return main_subprocess_.service_runtime();
   }
+
+  // Histogram helper functions, internal to Plugin so they can use
+  // uma_interface_ normally.
+  void HistogramTimeSmall(const std::string& name, int64_t ms);
+  void HistogramTimeMedium(const std::string& name, int64_t ms);
+  void HistogramTimeLarge(const std::string& name, int64_t ms);
+  void HistogramSizeKB(const std::string& name, int32_t sample);
+  void HistogramEnumerate(const std::string& name,
+                          int sample,
+                          int maximum,
+                          int out_of_range_replacement);
+  void HistogramEnumerateOsArch(const std::string& sandbox_isa);
+  void HistogramEnumerateLoadStatus(PluginErrorCode error_code,
+                                    bool is_installed);
+  void HistogramEnumerateSelLdrLoadStatus(NaClErrorCode error_code,
+                                          bool is_installed);
+  void HistogramEnumerateManifestIsDataURI(bool is_data_uri);
+  void HistogramHTTPStatusCode(const std::string& name, int status);
 
   // Help load a nacl module, from the file specified in wrapper.
   // This will fully initialize the |subprocess| if the load was successful.
@@ -395,6 +388,10 @@ class Plugin : public pp::InstancePrivate {
   // request so it won't slow down non-installed file downloads.
   bool OpenURLFast(const nacl::string& url, FileDownloader* downloader);
 
+  void set_nacl_ready_state(ReadyState state);
+
+  void SetExitStatusOnMainThread(int32_t pp_error, int exit_status);
+
   ScriptablePlugin* scriptable_plugin_;
 
   int argc_;
@@ -412,8 +409,6 @@ class Plugin : public pp::InstancePrivate {
 
   nacl::DescWrapperFactory* wrapper_factory_;
 
-  std::map<nacl::string, PropertyGetter> property_getters_;
-
   // File download support.  |nexe_downloader_| can be opened with a specific
   // callback to run when the file has been downloaded and is opened for
   // reading.  We use one downloader for all URL downloads to prevent issuing
@@ -429,10 +424,6 @@ class Plugin : public pp::InstancePrivate {
   nacl::scoped_ptr<Manifest> manifest_;
   // URL processing interface for use in looking up resources in manifests.
   const pp::URLUtil_Dev* url_util_;
-
-  // A string containing the text description of the last error
-  // produced by this plugin.
-  nacl::string last_error_string_;
 
   // PPAPI Dev interfaces are disabled by default.
   bool enable_dev_interfaces_;
@@ -491,8 +482,10 @@ class Plugin : public pp::InstancePrivate {
   const FileDownloader* FindFileDownloader(PP_Resource url_loader) const;
 
   int64_t time_of_last_progress_event_;
+  int exit_status_;
 
   const PPB_NaCl_Private* nacl_interface_;
+  pp::UMAPrivate uma_interface_;
 };
 
 }  // namespace plugin

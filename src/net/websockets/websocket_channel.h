@@ -26,6 +26,8 @@ namespace net {
 class BoundNetLog;
 class IOBuffer;
 class URLRequestContext;
+struct WebSocketHandshakeRequestInfo;
+struct WebSocketHandshakeResponseInfo;
 
 // Transport-independent implementation of WebSockets. Implements protocol
 // semantics that do not depend on the underlying transport. Provides the
@@ -34,7 +36,7 @@ class URLRequestContext;
 // clarification.
 class NET_EXPORT WebSocketChannel {
  public:
-  // The type of a WebSocketStream factory callback. Must match the signature of
+  // The type of a WebSocketStream creator callback. Must match the signature of
   // WebSocketStream::CreateAndConnectStream().
   typedef base::Callback<scoped_ptr<WebSocketStreamRequest>(
       const GURL&,
@@ -42,7 +44,7 @@ class NET_EXPORT WebSocketChannel {
       const GURL&,
       URLRequestContext*,
       const BoundNetLog&,
-      scoped_ptr<WebSocketStream::ConnectDelegate>)> WebSocketStreamFactory;
+      scoped_ptr<WebSocketStream::ConnectDelegate>)> WebSocketStreamCreator;
 
   // Creates a new WebSocketChannel in an idle state.
   // SendAddChannelRequest() must be called immediately afterwards to start the
@@ -88,20 +90,32 @@ class NET_EXPORT WebSocketChannel {
   // processing to OnClosingHandshake() if necessary.
   void StartClosingHandshake(uint16 code, const std::string& reason);
 
-  // Starts the connection process, using a specified factory function rather
+  // Starts the connection process, using a specified creator callback rather
   // than the default. This is exposed for testing.
   void SendAddChannelRequestForTesting(
       const GURL& socket_url,
       const std::vector<std::string>& requested_protocols,
       const GURL& origin,
-      const WebSocketStreamFactory& factory);
+      const WebSocketStreamCreator& creator);
 
   // The default timout for the closing handshake is a sensible value (see
   // kClosingHandshakeTimeoutSeconds in websocket_channel.cc). However, we can
   // set it to a very small value for testing purposes.
   void SetClosingHandshakeTimeoutForTesting(base::TimeDelta delay);
 
+  // Called when the stream starts the WebSocket Opening Handshake.
+  // This method is public for testing.
+  void OnStartOpeningHandshake(
+      scoped_ptr<WebSocketHandshakeRequestInfo> request);
+
+  // Called when the stream ends the WebSocket Opening Handshake.
+  // This method is public for testing.
+  void OnFinishOpeningHandshake(
+      scoped_ptr<WebSocketHandshakeResponseInfo> response);
+
  private:
+  class HandshakeNotificationSender;
+
   // Methods which return a value of type ChannelState may delete |this|. If the
   // return value is CHANNEL_DELETED, then the caller must return without making
   // any further access to member variables or methods.
@@ -124,14 +138,6 @@ class NET_EXPORT WebSocketChannel {
                   // has been closed; or the connection is failed.
   };
 
-  // When failing a channel, sometimes it is inappropriate to expose the real
-  // reason for failing to the remote server. This enum is used by FailChannel()
-  // to select between sending the real status or a "Going Away" status.
-  enum ExposeError {
-    SEND_REAL_ERROR,
-    SEND_GOING_AWAY,
-  };
-
   // Implementation of WebSocketStream::ConnectDelegate for
   // WebSocketChannel. WebSocketChannel does not inherit from
   // WebSocketStream::ConnectDelegate directly to avoid cluttering the public
@@ -140,12 +146,12 @@ class NET_EXPORT WebSocketChannel {
   // connection process.
   class ConnectDelegate;
 
-  // Starts the connection progress, using a specified factory function.
-  void SendAddChannelRequestWithFactory(
+  // Starts the connection process, using the supplied creator callback.
+  void SendAddChannelRequestWithSuppliedCreator(
       const GURL& socket_url,
       const std::vector<std::string>& requested_protocols,
       const GURL& origin,
-      const WebSocketStreamFactory& factory);
+      const WebSocketStreamCreator& creator);
 
   // Success callback from WebSocketStream::CreateAndConnectStream(). Reports
   // success to the event interface. May delete |this|.
@@ -153,7 +159,11 @@ class NET_EXPORT WebSocketChannel {
 
   // Failure callback from WebSocketStream::CreateAndConnectStream(). Reports
   // failure to the event interface. May delete |this|.
-  void OnConnectFailure(uint16 websocket_error);
+  void OnConnectFailure(const std::string& message);
+
+  // Posts a task that sends pending notifications relating WebSocket Opening
+  // Handshake to the renderer.
+  void ScheduleOpeningHandshakeNotification();
 
   // Returns true if state_ is SEND_CLOSED, CLOSE_WAIT or CLOSED.
   bool InClosingState() const;
@@ -200,14 +210,15 @@ class NET_EXPORT WebSocketChannel {
                             size_t size) WARN_UNUSED_RESULT;
 
   // Performs the "Fail the WebSocket Connection" operation as defined in
-  // RFC6455. The supplied code and reason are sent back to the renderer in an
-  // OnDropChannel message. If state_ is CONNECTED then a Close message is sent
-  // to the remote host. If |expose| is SEND_REAL_ERROR then the remote host is
-  // given the same status code passed to the renderer; otherwise it is sent a
-  // fixed "Going Away" code.  Closes the stream_ and sets state_ to CLOSED.
-  // FailChannel() always returns CHANNEL_DELETED. It is not valid to access any
-  // member variables or methods after calling FailChannel().
-  ChannelState FailChannel(ExposeError expose,
+  // RFC6455. A NotifyFailure message is sent to the renderer with |message|.
+  // The renderer will log the message to the console but not expose it to
+  // Javascript. Javascript will see a Close code of AbnormalClosure (1006) with
+  // an empty reason string. If state_ is CONNECTED then a Close message is sent
+  // to the remote host containing the supplied |code| and |reason|. If the
+  // stream is open, closes it and sets state_ to CLOSED.  FailChannel() always
+  // returns CHANNEL_DELETED. It is not valid to access any member variables or
+  // methods after calling FailChannel().
+  ChannelState FailChannel(const std::string& message,
                            uint16 code,
                            const std::string& reason) WARN_UNUSED_RESULT;
 
@@ -218,15 +229,22 @@ class NET_EXPORT WebSocketChannel {
   ChannelState SendClose(uint16 code,
                          const std::string& reason) WARN_UNUSED_RESULT;
 
-  // Parses a Close frame. If no status code is supplied, then |code| is set to
-  // 1005 (No status code) with empty |reason|. If the supplied code is
-  // outside the valid range, then 1002 (Protocol error) is set instead. If the
-  // reason text is not valid UTF-8, then |reason| is set to an empty string
-  // instead.
-  void ParseClose(const scoped_refptr<IOBuffer>& buffer,
+  // Parses a Close frame payload. If no status code is supplied, then |code| is
+  // set to 1005 (No status code) with empty |reason|. If the reason text is not
+  // valid UTF-8, then |reason| is set to an empty string. If the payload size
+  // is 1, or the supplied code is not permitted to be sent over the network,
+  // then false is returned and |message| is set to an appropriate console
+  // message.
+  bool ParseClose(const scoped_refptr<IOBuffer>& buffer,
                   size_t size,
                   uint16* code,
-                  std::string* reason);
+                  std::string* reason,
+                  std::string* message);
+
+  // Drop this channel.
+  // If there are pending opening handshake notifications, notify them
+  // before dropping.
+  ChannelState DoDropChannel(uint16 code, const std::string& reason);
 
   // Called if the closing handshake times out. Closes the connection and
   // informs the |event_interface_| if appropriate.
@@ -238,7 +256,7 @@ class NET_EXPORT WebSocketChannel {
   // The object receiving events.
   const scoped_ptr<WebSocketEventInterface> event_interface_;
 
-  // The URLRequestContext to pass to the WebSocketStream factory.
+  // The URLRequestContext to pass to the WebSocketStream creator.
   URLRequestContext* const url_request_context_;
 
   // The WebSocketStream on which to send and receive data.
@@ -286,6 +304,9 @@ class NET_EXPORT WebSocketChannel {
   // The current state of the channel. Mainly used for sanity checking, but also
   // used to track the close state.
   State state_;
+
+  // |notification_sender_| is owned by this object.
+  scoped_ptr<HandshakeNotificationSender> notification_sender_;
 
   DISALLOW_COPY_AND_ASSIGN(WebSocketChannel);
 };

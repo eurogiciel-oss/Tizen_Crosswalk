@@ -14,8 +14,10 @@ more or less like a key+value data-store.
 
 import logging
 import os
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 import file_tools
@@ -23,8 +25,16 @@ import http_download
 
 
 GS_PATTERN = 'gs://%s'
-GS_HTTPS_PATTERN = 'https://commondatastorage.googleapis.com/%s'
+GS_HTTPS_PATTERN = 'https://storage.googleapis.com/%s'
 
+
+def LegalizeName(name):
+  """ Return a file name suitable for uploading to Google Storage.
+
+  The names of such files cannot contain dashes or other non-identifier
+  characters.
+  """
+  return re.sub(r'[^A-Za-z0-9_/.]', '_', name)
 
 def HttpDownload(url, target):
   """Default download route."""
@@ -61,7 +71,10 @@ class GSDStorage(object):
     """
     if gsutil is None:
       try:
-        gsutil = [file_tools.Which(os.environ.get('GSUTIL', 'gsutil'))]
+        # Require that gsutil be Python if it is specified in the environment.
+        gsutil = [sys.executable,
+                  file_tools.Which(os.environ.get('GSUTIL', 'gsutil'),
+                                   require_executable=False)]
       except file_tools.ExecutableNotFound:
         gsutil = ['gsutil']
     assert isinstance(gsutil, list)

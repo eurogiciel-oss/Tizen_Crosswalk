@@ -37,7 +37,6 @@ static scoped_refptr<DecoderBuffer> CreateFakeEncryptedBuffer() {
       std::string(reinterpret_cast<const char*>(kFakeKeyId),
                   arraysize(kFakeKeyId)),
       std::string(reinterpret_cast<const char*>(kFakeIv), arraysize(kFakeIv)),
-      0,
       std::vector<SubsampleEntry>())));
   return buffer;
 }
@@ -56,7 +55,7 @@ ACTION_P2(ResetAndRunCallback, callback, param) {
 }
 
 MATCHER(IsEndOfStream, "end of stream") {
-  return (arg->IsEndOfStream());
+  return (arg->end_of_stream());
 }
 
 }  // namespace
@@ -74,7 +73,7 @@ class DecryptingVideoDecoderTest : public testing::Test {
         decoded_video_frame_(VideoFrame::CreateBlackFrame(
             TestVideoConfig::NormalCodedSize())),
         null_video_frame_(scoped_refptr<VideoFrame>()),
-        end_of_stream_video_frame_(VideoFrame::CreateEmptyFrame()) {
+        end_of_stream_video_frame_(VideoFrame::CreateEOSFrame()) {
     EXPECT_CALL(*this, RequestDecryptorNotification(_))
         .WillRepeatedly(RunCallbackIfNotNull(decryptor_.get()));
   }
@@ -109,7 +108,7 @@ class DecryptingVideoDecoderTest : public testing::Test {
       const scoped_refptr<VideoFrame>& video_frame) {
     if (status != VideoDecoder::kOk)
       EXPECT_CALL(*this, FrameReady(status, IsNull()));
-    else if (video_frame.get() && video_frame->IsEndOfStream())
+    else if (video_frame.get() && video_frame->end_of_stream())
       EXPECT_CALL(*this, FrameReady(status, IsEndOfStream()));
     else
       EXPECT_CALL(*this, FrameReady(status, video_frame));
@@ -363,7 +362,7 @@ TEST_F(DecryptingVideoDecoderTest, Reset_DuringPendingDecode) {
   Initialize();
   EnterPendingDecodeState();
 
-  EXPECT_CALL(*this, FrameReady(VideoDecoder::kOk, IsNull()));
+  EXPECT_CALL(*this, FrameReady(VideoDecoder::kAborted, IsNull()));
 
   Reset();
 }
@@ -373,7 +372,7 @@ TEST_F(DecryptingVideoDecoderTest, Reset_DuringWaitingForKey) {
   Initialize();
   EnterWaitingForKeyState();
 
-  EXPECT_CALL(*this, FrameReady(VideoDecoder::kOk, IsNull()));
+  EXPECT_CALL(*this, FrameReady(VideoDecoder::kAborted, IsNull()));
 
   Reset();
 }
@@ -446,7 +445,7 @@ TEST_F(DecryptingVideoDecoderTest, Stop_DuringPendingDecode) {
   Initialize();
   EnterPendingDecodeState();
 
-  EXPECT_CALL(*this, FrameReady(VideoDecoder::kOk, IsNull()));
+  EXPECT_CALL(*this, FrameReady(VideoDecoder::kAborted, IsNull()));
 
   Stop();
 }
@@ -456,7 +455,7 @@ TEST_F(DecryptingVideoDecoderTest, Stop_DuringWaitingForKey) {
   Initialize();
   EnterWaitingForKeyState();
 
-  EXPECT_CALL(*this, FrameReady(VideoDecoder::kOk, IsNull()));
+  EXPECT_CALL(*this, FrameReady(VideoDecoder::kAborted, IsNull()));
 
   Stop();
 }
@@ -478,7 +477,7 @@ TEST_F(DecryptingVideoDecoderTest, Stop_DuringPendingReset) {
   EnterPendingDecodeState();
 
   EXPECT_CALL(*decryptor_, ResetDecoder(Decryptor::kVideo));
-  EXPECT_CALL(*this, FrameReady(VideoDecoder::kOk, IsNull()));
+  EXPECT_CALL(*this, FrameReady(VideoDecoder::kAborted, IsNull()));
 
   decoder_->Reset(NewExpectedClosure());
   Stop();

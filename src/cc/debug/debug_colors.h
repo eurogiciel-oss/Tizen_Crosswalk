@@ -29,6 +29,9 @@ class DebugColors {
   static SkColor ContainerLayerBorderColor();
   static int ContainerLayerBorderWidth(const LayerTreeImpl* tree_impl);
 
+  static SkColor SurfaceLayerBorderColor();
+  static int SurfaceLayerBorderWidth(const LayerTreeImpl* tree_impl);
+
   static SkColor SurfaceBorderColor();
   static int SurfaceBorderWidth(const LayerTreeImpl* tree_impl);
 
@@ -105,6 +108,10 @@ class DebugColors {
   static SkColor NonFastScrollableRectBorderColor();
   static int NonFastScrollableRectBorderWidth();
   static SkColor NonFastScrollableRectFillColor();
+
+  static SkColor LayerAnimationBoundsBorderColor();
+  static int LayerAnimationBoundsBorderWidth();
+  static SkColor LayerAnimationBoundsFillColor();
 
   static SkColor NonPaintedFillColor();
   static SkColor MissingPictureFillColor();

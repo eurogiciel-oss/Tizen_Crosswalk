@@ -12,14 +12,14 @@
 #include "base/threading/thread_restrictions.h"
 #include "chrome/browser/extensions/extension_install_prompt.h"
 #include "chrome/browser/extensions/extension_install_ui.h"
-#include "chrome/browser/extensions/extension_prefs.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/permissions_updater.h"
 #include "chrome/common/extensions/api/plugins/plugins_handler.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_file_util.h"
 #include "chrome/common/extensions/extension_l10n_util.h"
 #include "content/public/browser/browser_thread.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/id_util.h"
 #include "extensions/common/manifest.h"
 #include "sync/api/string_ordinal.h"
@@ -88,6 +88,7 @@ namespace extensions {
 // static
 scoped_refptr<UnpackedInstaller> UnpackedInstaller::Create(
     ExtensionService* extension_service) {
+  DCHECK(extension_service);
   return scoped_refptr<UnpackedInstaller>(
       new UnpackedInstaller(extension_service));
 }
@@ -283,9 +284,9 @@ void UnpackedInstaller::ReportExtensionLoadError(const std::string &error) {
 
 void UnpackedInstaller::ConfirmInstall() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  string16 error = installer_.CheckManagementPolicy();
+  base::string16 error = installer_.CheckManagementPolicy();
   if (!error.empty()) {
-    ReportExtensionLoadError(UTF16ToUTF8(error));
+    ReportExtensionLoadError(base::UTF16ToUTF8(error));
     return;
   }
 
@@ -296,7 +297,7 @@ void UnpackedInstaller::ConfirmInstall() {
       installer_.extension().get(),
       syncer::StringOrdinal(),
       false /* no requirement errors */,
-      Blacklist::NOT_BLACKLISTED,
+      NOT_BLACKLISTED,
       false /* don't wait for idle */);
 }
 

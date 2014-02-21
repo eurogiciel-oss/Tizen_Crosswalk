@@ -23,6 +23,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 
+using base::ASCIIToUTF16;
+
 namespace {
 
 // Unlike the base AutofillMetrics, exposes copy and assignment constructors,
@@ -109,8 +111,7 @@ TEST_F(PasswordGenerationManagerTest, IsGenerationEnabled) {
 
   PrefService* prefs = profile()->GetPrefs();
 
-  // Always set password sync enabled so we can test the behavior of password
-  // generation.
+  // Enable syncing. Generation should be enabled.
   prefs->SetBoolean(prefs::kSyncKeepEverythingSynced, false);
   ProfileSyncService* sync_service = ProfileSyncServiceFactory::GetForProfile(
       profile());
@@ -118,13 +119,6 @@ TEST_F(PasswordGenerationManagerTest, IsGenerationEnabled) {
   syncer::ModelTypeSet preferred_set;
   preferred_set.Put(syncer::PASSWORDS);
   sync_service->ChangePreferredDataTypes(preferred_set);
-
-  // Pref is false, should not be enabled.
-  prefs->SetBoolean(prefs::kPasswordGenerationEnabled, false);
-  EXPECT_FALSE(IsGenerationEnabled());
-
-  // Pref is true, should be enabled.
-  prefs->SetBoolean(prefs::kPasswordGenerationEnabled, true);
   EXPECT_TRUE(IsGenerationEnabled());
 
   // Change syncing preferences to not include passwords. Generation should
@@ -149,8 +143,6 @@ TEST_F(PasswordGenerationManagerTest, DetectAccountCreationForms) {
   ProfileSyncService* sync_service = ProfileSyncServiceFactory::GetForProfile(
       profile());
   sync_service->SetSyncSetupCompleted();
-
-  profile()->GetPrefs()->SetBoolean(prefs::kPasswordGenerationEnabled, true);
 
   autofill::FormData login_form;
   login_form.origin = GURL("http://www.yahoo.com/login/");
@@ -214,9 +206,6 @@ TEST_F(IncognitoPasswordGenerationManagerTest,
 
   // Allow this test to control what should get synced.
   prefs->SetBoolean(prefs::kSyncKeepEverythingSynced, false);
-  // Always set password generation enabled check box so we can test the
-  // behavior of password sync.
-  prefs->SetBoolean(prefs::kPasswordGenerationEnabled, true);
 
   browser_sync::SyncPrefs sync_prefs(profile()->GetPrefs());
   sync_prefs.SetSyncSetupCompleted();

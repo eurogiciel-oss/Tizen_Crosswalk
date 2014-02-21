@@ -32,7 +32,6 @@
 #include "core/inspector/InspectorResourceAgent.h"
 
 #include "FetchInitiatorTypeNames.h"
-#include "InspectorFrontend.h"
 #include "bindings/v8/ExceptionStatePlaceholder.h"
 #include "bindings/v8/ScriptCallStackFactory.h"
 #include "core/dom/Document.h"
@@ -59,14 +58,14 @@
 #include "core/page/Page.h"
 #include "core/xml/XMLHttpRequest.h"
 #include "modules/websockets/WebSocketFrame.h"
-#include "modules/websockets/WebSocketHandshakeRequest.h"
-#include "modules/websockets/WebSocketHandshakeResponse.h"
 #include "platform/JSONValues.h"
 #include "platform/network/HTTPHeaderMap.h"
 #include "platform/network/ResourceError.h"
 #include "platform/network/ResourceRequest.h"
 #include "platform/network/ResourceResponse.h"
-#include "weborigin/KURL.h"
+#include "platform/network/WebSocketHandshakeRequest.h"
+#include "platform/network/WebSocketHandshakeResponse.h"
+#include "platform/weborigin/KURL.h"
 #include "wtf/CurrentTime.h"
 #include "wtf/RefPtr.h"
 
@@ -92,7 +91,7 @@ static PassRefPtr<JSONObject> buildObjectForHeaders(const HTTPHeaderMap& headers
     return headersObject;
 }
 
-class InspectorThreadableLoaderClient : public ThreadableLoaderClient {
+class InspectorThreadableLoaderClient FINAL : public ThreadableLoaderClient {
     WTF_MAKE_NONCOPYABLE(InspectorThreadableLoaderClient);
 public:
     InspectorThreadableLoaderClient(PassRefPtr<LoadResourceForFrontendCallback> callback)
@@ -101,7 +100,7 @@ public:
 
     virtual ~InspectorThreadableLoaderClient() { }
 
-    virtual void didReceiveResponse(unsigned long identifier, const ResourceResponse& response)
+    virtual void didReceiveResponse(unsigned long identifier, const ResourceResponse& response) OVERRIDE
     {
         WTF::TextEncoding textEncoding(response.textEncodingName());
         bool useDetector = false;
@@ -114,7 +113,7 @@ public:
         m_responseHeaders = response.httpHeaderFields();
     }
 
-    virtual void didReceiveData(const char* data, int dataLength)
+    virtual void didReceiveData(const char* data, int dataLength) OVERRIDE
     {
         if (!dataLength)
             return;
@@ -125,7 +124,7 @@ public:
         m_responseText = m_responseText.concatenateWith(m_decoder->decode(data, dataLength));
     }
 
-    virtual void didFinishLoading(unsigned long /*identifier*/, double /*finishTime*/)
+    virtual void didFinishLoading(unsigned long /*identifier*/, double /*finishTime*/) OVERRIDE
     {
         if (m_decoder)
             m_responseText = m_responseText.concatenateWith(m_decoder->flush());
@@ -133,13 +132,13 @@ public:
         dispose();
     }
 
-    virtual void didFail(const ResourceError&)
+    virtual void didFail(const ResourceError&) OVERRIDE
     {
         m_callback->sendFailure("Loading resource for inspector failed");
         dispose();
     }
 
-    virtual void didFailRedirectCheck()
+    virtual void didFailRedirectCheck() OVERRIDE
     {
         m_callback->sendFailure("Loading resource for inspector failed redirect check");
         dispose();
@@ -165,7 +164,7 @@ private:
 
     RefPtr<LoadResourceForFrontendCallback> m_callback;
     RefPtr<ThreadableLoader> m_loader;
-    RefPtr<TextResourceDecoder> m_decoder;
+    OwnPtr<TextResourceDecoder> m_decoder;
     ScriptString m_responseText;
     int m_statusCode;
     HTTPHeaderMap m_responseHeaders;
@@ -300,7 +299,7 @@ void InspectorResourceAgent::willSendRequest(unsigned long identifier, DocumentL
         for (JSONObject::const_iterator it = headers->begin(); it != end; ++it) {
             String value;
             if (it->value->asString(&value))
-                request.setHTTPHeaderField(it->key, value);
+                request.setHTTPHeaderField(AtomicString(it->key), AtomicString(value));
         }
     }
 
@@ -330,7 +329,7 @@ void InspectorResourceAgent::markResourceAsCached(unsigned long identifier)
     m_frontend->requestServedFromCache(IdentifiersFactory::requestId(identifier));
 }
 
-void InspectorResourceAgent::didReceiveResourceResponse(unsigned long identifier, DocumentLoader* loader, const ResourceResponse& response, ResourceLoader* resourceLoader)
+void InspectorResourceAgent::didReceiveResourceResponse(Frame*, unsigned long identifier, DocumentLoader* loader, const ResourceResponse& response, ResourceLoader* resourceLoader)
 {
     if (!loader)
         return;
@@ -354,11 +353,11 @@ void InspectorResourceAgent::didReceiveResourceResponse(unsigned long identifier
     }
 
     InspectorPageAgent::ResourceType type = cachedResource ? InspectorPageAgent::cachedResourceType(*cachedResource) : InspectorPageAgent::OtherResource;
-    if (m_resourcesData->resourceType(requestId) == InspectorPageAgent::XHRResource)
-        type = InspectorPageAgent::XHRResource;
-    else if (m_resourcesData->resourceType(requestId) == InspectorPageAgent::ScriptResource)
+    // Workaround for worker scripts that use RawResources for loading.
+    if (m_resourcesData->resourceType(requestId) == InspectorPageAgent::ScriptResource)
         type = InspectorPageAgent::ScriptResource;
-    else if (equalIgnoringFragmentIdentifier(response.url(), loader->url()) && !loader->isCommitted())
+    // Workaround for background: url() in inline style.
+    if (equalIgnoringFragmentIdentifier(response.url(), loader->url()) && !loader->isCommitted())
         type = InspectorPageAgent::DocumentResource;
 
     m_resourcesData->responseReceived(requestId, m_pageAgent->frameId(loader->frame()), response);
@@ -402,10 +401,10 @@ void InspectorResourceAgent::didFinishLoading(unsigned long identifier, Document
     m_frontend->loadingFinished(requestId, finishTime);
 }
 
-void InspectorResourceAgent::didReceiveCORSRedirectResponse(unsigned long identifier, DocumentLoader* loader, const ResourceResponse& response, ResourceLoader* resourceLoader)
+void InspectorResourceAgent::didReceiveCORSRedirectResponse(Frame* frame, unsigned long identifier, DocumentLoader* loader, const ResourceResponse& response, ResourceLoader* resourceLoader)
 {
     // Update the response and finish loading
-    didReceiveResourceResponse(identifier, loader, response, resourceLoader);
+    didReceiveResourceResponse(frame, identifier, loader, response, resourceLoader);
     didFinishLoading(identifier, loader, 0);
 }
 
@@ -440,28 +439,24 @@ void InspectorResourceAgent::documentThreadableLoaderStartedLoadingForClient(uns
     m_resourcesData->setXHRReplayData(requestId, xhrReplayData);
 }
 
-void InspectorResourceAgent::willLoadXHR(ThreadableLoaderClient* client, const String& method, const KURL& url, bool async, PassRefPtr<FormData> formData, const HTTPHeaderMap& headers, bool includeCredentials)
+void InspectorResourceAgent::willLoadXHR(XMLHttpRequest* xhr, ThreadableLoaderClient* client, const AtomicString& method, const KURL& url, bool async, PassRefPtr<FormData> formData, const HTTPHeaderMap& headers, bool includeCredentials)
 {
-    RefPtr<XHRReplayData> xhrReplayData = XHRReplayData::create(method, urlWithoutFragment(url), async, formData, includeCredentials);
+    ASSERT(xhr);
+    RefPtr<XHRReplayData> xhrReplayData = XHRReplayData::create(xhr->executionContext(), method, urlWithoutFragment(url), async, formData, includeCredentials);
     HTTPHeaderMap::const_iterator end = headers.end();
     for (HTTPHeaderMap::const_iterator it = headers.begin(); it!= end; ++it)
         xhrReplayData->addHeader(it->key, it->value);
     m_pendingXHRReplayData.set(client, xhrReplayData);
 }
 
-void InspectorResourceAgent::didFailXHRLoading(ThreadableLoaderClient* client)
+void InspectorResourceAgent::didFailXHRLoading(XMLHttpRequest*, ThreadableLoaderClient* client)
 {
     m_pendingXHRReplayData.remove(client);
 }
 
-void InspectorResourceAgent::didFinishXHRLoading(ThreadableLoaderClient* client, unsigned long identifier, ScriptString sourceString, const String&, const String&, unsigned)
+void InspectorResourceAgent::didFinishXHRLoading(XMLHttpRequest*, ThreadableLoaderClient* client, unsigned long identifier, ScriptString sourceString, const AtomicString&, const String&, const String&, unsigned)
 {
     m_pendingXHRReplayData.remove(client);
-}
-
-void InspectorResourceAgent::didReceiveXHRResponse(unsigned long identifier)
-{
-    m_resourcesData->setResourceType(IdentifiersFactory::requestId(identifier), InspectorPageAgent::XHRResource);
 }
 
 void InspectorResourceAgent::willDestroyResource(Resource* cachedResource)
@@ -653,12 +648,19 @@ void InspectorResourceAgent::getResponseBody(ErrorString* errorString, const Str
 
 void InspectorResourceAgent::replayXHR(ErrorString*, const String& requestId)
 {
-    RefPtr<XMLHttpRequest> xhr = XMLHttpRequest::create(m_pageAgent->mainFrame()->document());
     String actualRequestId = requestId;
 
     XHRReplayData* xhrReplayData = m_resourcesData->xhrReplayData(requestId);
     if (!xhrReplayData)
         return;
+
+    ExecutionContext* executionContext = xhrReplayData->executionContext();
+    if (!executionContext) {
+        m_resourcesData->setXHRReplayData(requestId, 0);
+        return;
+    }
+
+    RefPtr<XMLHttpRequest> xhr = XMLHttpRequest::create(executionContext);
 
     Resource* cachedResource = memoryCache()->resourceForURL(xhrReplayData->url());
     if (cachedResource)
@@ -722,14 +724,13 @@ void InspectorResourceAgent::loadResourceForFrontend(ErrorString* errorString, c
                 *errorString = "Request header \"" + it->key + "\" value is not a string";
                 return;
             }
-            request.addHTTPHeaderField(it->key, value);
+            request.addHTTPHeaderField(AtomicString(it->key), AtomicString(value));
         }
     }
 
     ThreadableLoaderOptions options;
     options.allowCredentials = AllowStoredCredentials;
     options.crossOriginRequestPolicy = AllowCrossOriginRequests;
-    options.sendLoadCallbacks = SendCallbacks;
 
     InspectorThreadableLoaderClient* inspectorThreadableLoaderClient = new InspectorThreadableLoaderClient(callback);
     RefPtr<DocumentThreadableLoader> loader = DocumentThreadableLoader::create(document, inspectorThreadableLoaderClient, request, options);
@@ -786,8 +787,8 @@ bool InspectorResourceAgent::fetchResourceContent(Frame* frame, const KURL& url,
     return false;
 }
 
-InspectorResourceAgent::InspectorResourceAgent(InstrumentingAgents* instrumentingAgents, InspectorPageAgent* pageAgent, InspectorClient* client, InspectorCompositeState* state)
-    : InspectorBaseAgent<InspectorResourceAgent>("Network", instrumentingAgents, state)
+InspectorResourceAgent::InspectorResourceAgent(InspectorPageAgent* pageAgent, InspectorClient* client)
+    : InspectorBaseAgent<InspectorResourceAgent>("Network")
     , m_pageAgent(pageAgent)
     , m_client(client)
     , m_frontend(0)

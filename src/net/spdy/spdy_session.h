@@ -67,53 +67,57 @@ class SpdyStream;
 class SSLInfo;
 
 // NOTE: There's an enum of the same name (also with numeric suffixes)
-// in histograms.xml.
-//
-// WARNING: DO NOT INSERT ENUMS INTO THIS LIST! Add only to the end.
+// in histograms.xml. Be sure to add new values there also.
 enum SpdyProtocolErrorDetails {
-  // SpdyFramer::SpdyErrors
-  SPDY_ERROR_NO_ERROR,
-  SPDY_ERROR_INVALID_CONTROL_FRAME,
-  SPDY_ERROR_CONTROL_PAYLOAD_TOO_LARGE,
-  SPDY_ERROR_ZLIB_INIT_FAILURE,
-  SPDY_ERROR_UNSUPPORTED_VERSION,
-  SPDY_ERROR_DECOMPRESS_FAILURE,
-  SPDY_ERROR_COMPRESS_FAILURE,
-  SPDY_ERROR_CREDENTIAL_FRAME_CORRUPT,
-  SPDY_ERROR_INVALID_DATA_FRAME_FLAGS,
-  SPDY_ERROR_INVALID_CONTROL_FRAME_FLAGS,
-  // SpdyRstStreamStatus
-  STATUS_CODE_INVALID,
-  STATUS_CODE_PROTOCOL_ERROR,
-  STATUS_CODE_INVALID_STREAM,
-  STATUS_CODE_REFUSED_STREAM,
-  STATUS_CODE_UNSUPPORTED_VERSION,
-  STATUS_CODE_CANCEL,
-  STATUS_CODE_INTERNAL_ERROR,
-  STATUS_CODE_FLOW_CONTROL_ERROR,
-  STATUS_CODE_STREAM_IN_USE,
-  STATUS_CODE_STREAM_ALREADY_CLOSED,
-  STATUS_CODE_INVALID_CREDENTIALS,
-  STATUS_CODE_FRAME_TOO_LARGE,
+  // SpdyFramer::SpdyError mappings.
+  SPDY_ERROR_NO_ERROR = 0,
+  SPDY_ERROR_INVALID_CONTROL_FRAME = 1,
+  SPDY_ERROR_CONTROL_PAYLOAD_TOO_LARGE = 2,
+  SPDY_ERROR_ZLIB_INIT_FAILURE = 3,
+  SPDY_ERROR_UNSUPPORTED_VERSION = 4,
+  SPDY_ERROR_DECOMPRESS_FAILURE = 5,
+  SPDY_ERROR_COMPRESS_FAILURE = 6,
+  // SPDY_ERROR_CREDENTIAL_FRAME_CORRUPT = 7, (removed).
+  SPDY_ERROR_GOAWAY_FRAME_CORRUPT = 29,
+  SPDY_ERROR_RST_STREAM_FRAME_CORRUPT = 30,
+  SPDY_ERROR_INVALID_DATA_FRAME_FLAGS = 8,
+  SPDY_ERROR_INVALID_CONTROL_FRAME_FLAGS = 9,
+  // SpdyRstStreamStatus mappings.
+  // RST_STREAM_INVALID not mapped.
+  STATUS_CODE_PROTOCOL_ERROR = 11,
+  STATUS_CODE_INVALID_STREAM = 12,
+  STATUS_CODE_REFUSED_STREAM = 13,
+  STATUS_CODE_UNSUPPORTED_VERSION = 14,
+  STATUS_CODE_CANCEL = 15,
+  STATUS_CODE_INTERNAL_ERROR = 16,
+  STATUS_CODE_FLOW_CONTROL_ERROR = 17,
+  STATUS_CODE_STREAM_IN_USE = 18,
+  STATUS_CODE_STREAM_ALREADY_CLOSED = 19,
+  STATUS_CODE_INVALID_CREDENTIALS = 20,
+  STATUS_CODE_FRAME_TOO_LARGE = 21,
   // SpdySession errors
-  PROTOCOL_ERROR_UNEXPECTED_PING,
-  PROTOCOL_ERROR_RST_STREAM_FOR_NON_ACTIVE_STREAM,
-  PROTOCOL_ERROR_SPDY_COMPRESSION_FAILURE,
-  PROTOCOL_ERROR_REQUEST_FOR_SECURE_CONTENT_OVER_INSECURE_SESSION,
-  PROTOCOL_ERROR_SYN_REPLY_NOT_RECEIVED,
-  PROTOCOL_ERROR_INVALID_WINDOW_UPDATE_SIZE,
-  PROTOCOL_ERROR_RECEIVE_WINDOW_VIOLATION,
-  NUM_SPDY_PROTOCOL_ERROR_DETAILS
+  PROTOCOL_ERROR_UNEXPECTED_PING = 22,
+  PROTOCOL_ERROR_RST_STREAM_FOR_NON_ACTIVE_STREAM = 23,
+  PROTOCOL_ERROR_SPDY_COMPRESSION_FAILURE = 24,
+  PROTOCOL_ERROR_REQUEST_FOR_SECURE_CONTENT_OVER_INSECURE_SESSION = 25,
+  PROTOCOL_ERROR_SYN_REPLY_NOT_RECEIVED = 26,
+  PROTOCOL_ERROR_INVALID_WINDOW_UPDATE_SIZE = 27,
+  PROTOCOL_ERROR_RECEIVE_WINDOW_VIOLATION = 28,
+
+  // Next free value.
+  NUM_SPDY_PROTOCOL_ERROR_DETAILS = 31,
 };
+SpdyProtocolErrorDetails NET_EXPORT_PRIVATE MapFramerErrorToProtocolError(
+    SpdyFramer::SpdyError);
+SpdyProtocolErrorDetails NET_EXPORT_PRIVATE MapRstStreamStatusToProtocolError(
+    SpdyRstStreamStatus);
 
-COMPILE_ASSERT(STATUS_CODE_INVALID ==
-               static_cast<SpdyProtocolErrorDetails>(SpdyFramer::LAST_ERROR),
+// If these compile asserts fail then SpdyProtocolErrorDetails needs
+// to be updated with new values, as do the mapping functions above.
+COMPILE_ASSERT(11 == SpdyFramer::LAST_ERROR,
                SpdyProtocolErrorDetails_SpdyErrors_mismatch);
-
-COMPILE_ASSERT(PROTOCOL_ERROR_UNEXPECTED_PING ==
-               static_cast<SpdyProtocolErrorDetails>(
-                   RST_STREAM_NUM_STATUS_CODES + STATUS_CODE_INVALID),
-               SpdyProtocolErrorDetails_SpdyErrors_mismatch);
+COMPILE_ASSERT(12 == RST_STREAM_NUM_STATUS_CODES,
+               SpdyProtocolErrorDetails_RstStreamStatus_mismatch);
 
 // A helper class used to manage a request to create a stream.
 class NET_EXPORT_PRIVATE SpdyStreamRequest {
@@ -433,7 +437,7 @@ class NET_EXPORT SpdySession : public BufferedSpdyFramerVisitorInterface,
     return pooled_aliases_;
   }
 
-  int GetProtocolVersion() const;
+  SpdyMajorVersion GetProtocolVersion() const;
 
   size_t GetDataFrameMinimumSize() const {
     return buffered_spdy_framer_->GetDataFrameMinimumSize();
@@ -781,6 +785,9 @@ class NET_EXPORT SpdySession : public BufferedSpdyFramerVisitorInterface,
                            SpdyRstStreamStatus status) OVERRIDE;
   virtual void OnGoAway(SpdyStreamId last_accepted_stream_id,
                         SpdyGoAwayStatus status) OVERRIDE;
+  virtual void OnDataFrameHeader(SpdyStreamId stream_id,
+                                 size_t length,
+                                 bool fin) OVERRIDE;
   virtual void OnStreamFrameData(SpdyStreamId stream_id,
                                  const char* data,
                                  size_t len,
@@ -817,7 +824,7 @@ class NET_EXPORT SpdySession : public BufferedSpdyFramerVisitorInterface,
   virtual void OnReceiveCompressedFrame(
       SpdyStreamId stream_id,
       SpdyFrameType type,
-      size_t frame_len) OVERRIDE {}
+      size_t frame_len) OVERRIDE;
 
   // Called when bytes are consumed from a SpdyBuffer for a DATA frame
   // that is to be written or is being written. Increases the send
@@ -1032,6 +1039,9 @@ class NET_EXPORT SpdySession : public BufferedSpdyFramerVisitorInterface,
 
   // This is the last time we had activity in the session.
   base::TimeTicks last_activity_time_;
+
+  // This is the length of the last compressed frame.
+  size_t last_compressed_frame_len_;
 
   // This is the next time that unclaimed push streams should be checked for
   // expirations.

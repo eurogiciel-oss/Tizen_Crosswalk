@@ -14,6 +14,7 @@
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/infobars/confirm_infobar_delegate.h"
+#include "chrome/browser/infobars/infobar.h"
 #include "chrome/browser/infobars/infobar_service.h"
 #include "chrome/browser/notifications/desktop_notification_service.h"
 #include "chrome/browser/notifications/notification.h"
@@ -31,22 +32,18 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/web_applications/web_app.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/page_transition_types.h"
 #include "content/public/test/browser_test_utils.h"
+#include "extensions/common/extension.h"
 #include "grit/generated_resources.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/l10n/l10n_util.h"
-
-// http://crbug.com/31663
-// TODO(linux_aura) http://crbug.com/163931
-#if !(defined(OS_WIN) && defined(USE_AURA)) && !(defined(OS_LINUX) && !defined(OS_CHROMEOS) && defined(USE_AURA))
 
 using content::WebContents;
 
@@ -96,12 +93,10 @@ class TaskManagerNoShowBrowserTest : public ExtensionBrowserTest {
   virtual void SetUpCommandLine(CommandLine* command_line) OVERRIDE {
     ExtensionBrowserTest::SetUpCommandLine(command_line);
 
-    // Do not prelaunch the GPU process and disable accelerated compositing
-    // for these tests as the GPU process will show up in task manager but
-    // whether it appears before or after the new tab renderer process is not
-    // well defined.
-    command_line->AppendSwitch(switches::kDisableGpuProcessPrelaunch);
-    command_line->AppendSwitch(switches::kDisableAcceleratedCompositing);
+    // Do not launch the GPU process as the GPU process will show up in task
+    // manager but whether it appears before or after the new tab renderer
+    // process is not well defined.
+    command_line->AppendSwitch(switches::kDisableGpu);
 
     // Do not launch device discovery process.
     command_line->AppendSwitch(switches::kDisableDeviceDiscoveryNotifications);
@@ -147,8 +142,8 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, NoticeTabContentsChanges) {
   // Check that the last entry is a tab contents resource whose title starts
   // starts with "Tab:".
   ASSERT_TRUE(model()->GetResourceWebContents(resource_count) != NULL);
-  string16 prefix = l10n_util::GetStringFUTF16(
-      IDS_TASK_MANAGER_TAB_PREFIX, string16());
+  base::string16 prefix = l10n_util::GetStringFUTF16(
+      IDS_TASK_MANAGER_TAB_PREFIX, base::string16());
   ASSERT_TRUE(StartsWith(model()->GetResourceTitle(resource_count), prefix,
                          true));
 
@@ -189,8 +184,8 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, MAYBE_NoticePanelChanges) {
   // Check that the fourth entry is a resource with the panel's web contents
   // and whose title starts with "Extension:".
   ASSERT_EQ(panel->GetWebContents(), model()->GetResourceWebContents(3));
-  string16 prefix = l10n_util::GetStringFUTF16(
-      IDS_TASK_MANAGER_EXTENSION_PREFIX, string16());
+  base::string16 prefix = l10n_util::GetStringFUTF16(
+      IDS_TASK_MANAGER_EXTENSION_PREFIX, base::string16());
   ASSERT_TRUE(StartsWith(model()->GetResourceTitle(3), prefix, true));
 
   // Close the panel and verify that we notice.
@@ -261,8 +256,8 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, NoticeExtensionTabs) {
       resource_count));
   ASSERT_TRUE(model()->GetResourceWebContents(resource_count) == NULL);
   ASSERT_TRUE(model()->GetResourceExtension(resource_count) != NULL);
-  string16 prefix = l10n_util::GetStringFUTF16(
-      IDS_TASK_MANAGER_EXTENSION_PREFIX, string16());
+  base::string16 prefix = l10n_util::GetStringFUTF16(
+      IDS_TASK_MANAGER_EXTENSION_PREFIX, base::string16());
   ASSERT_TRUE(StartsWith(model()->GetResourceTitle(resource_count),
                          prefix, true));
 
@@ -303,8 +298,8 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, NoticeAppTabs) {
       resource_count));
   ASSERT_TRUE(model()->GetResourceWebContents(resource_count) != NULL);
   ASSERT_TRUE(model()->GetResourceExtension(resource_count) == extension);
-  string16 prefix = l10n_util::GetStringFUTF16(
-      IDS_TASK_MANAGER_APP_PREFIX, string16());
+  base::string16 prefix = l10n_util::GetStringFUTF16(
+      IDS_TASK_MANAGER_APP_PREFIX, base::string16());
   ASSERT_TRUE(StartsWith(model()->GetResourceTitle(resource_count),
                          prefix, true));
 
@@ -339,8 +334,8 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, NoticeHostedAppTabs) {
   Refresh();
 
   // Check that the third entry's title starts with "Tab:".
-  string16 tab_prefix = l10n_util::GetStringFUTF16(
-      IDS_TASK_MANAGER_TAB_PREFIX, string16());
+  base::string16 tab_prefix = l10n_util::GetStringFUTF16(
+      IDS_TASK_MANAGER_TAB_PREFIX, base::string16());
   ASSERT_TRUE(StartsWith(model()->GetResourceTitle(resource_count),
                          tab_prefix, true));
 
@@ -357,8 +352,8 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, NoticeHostedAppTabs) {
   ui_test_utils::NavigateToURL(browser(), url);
   // Force the TaskManager to query the title.
   Refresh();
-  string16 app_prefix = l10n_util::GetStringFUTF16(
-      IDS_TASK_MANAGER_APP_PREFIX, string16());
+  base::string16 app_prefix = l10n_util::GetStringFUTF16(
+      IDS_TASK_MANAGER_APP_PREFIX, base::string16());
   ASSERT_TRUE(StartsWith(model()->GetResourceTitle(resource_count),
                          app_prefix, true));
 
@@ -399,7 +394,7 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest,
       browser()->tab_strip_model()->GetActiveWebContents());
   ASSERT_EQ(1U, infobar_service->infobar_count());
   ConfirmInfoBarDelegate* delegate =
-      infobar_service->infobar_at(0)->AsConfirmInfoBarDelegate();
+      infobar_service->infobar_at(0)->delegate()->AsConfirmInfoBarDelegate();
   ASSERT_TRUE(delegate);
   delegate->Accept();
   TaskManagerBrowserTestUtil::WaitForWebResourceChange(3);
@@ -513,12 +508,8 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, DISABLED_WebWorkerJSHeapMemory) {
 }
 
 IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, NoticeInTabDevToolsWindow) {
-  DevToolsWindow* dev_tools = DevToolsWindow::ToggleDevToolsWindow(
-      model()->GetResourceWebContents(1)->GetRenderViewHost(),
-      true,
-      DevToolsToggleAction::Inspect());
-  // Dock side bottom should be the default.
-  ASSERT_EQ(DEVTOOLS_DOCK_SIDE_BOTTOM, dev_tools->dock_side());
+  DevToolsWindow::OpenDevToolsWindowForTest(
+      model()->GetResourceWebContents(1)->GetRenderViewHost(), true);
   TaskManagerBrowserTestUtil::WaitForWebResourceChange(2);
 }
 
@@ -527,12 +518,9 @@ IN_PROC_BROWSER_TEST_F(TaskManagerBrowserTest, NoticeInTabDevToolsWindow) {
 IN_PROC_BROWSER_TEST_F(TaskManagerNoShowBrowserTest,
                        NoticeInTabDevToolsWindow) {
   // First create the devtools window.
-  DevToolsWindow* dev_tools = DevToolsWindow::ToggleDevToolsWindow(
+  DevToolsWindow::OpenDevToolsWindowForTest(
       browser()->tab_strip_model()->GetActiveWebContents()->GetRenderViewHost(),
-      true,
-      DevToolsToggleAction::Inspect());
-  // Dock side bottom should be the default.
-  ASSERT_EQ(DEVTOOLS_DOCK_SIDE_BOTTOM, dev_tools->dock_side());
+      true);
   // Make sure that the devtools window is loaded before starting the task
   // manager.
   content::RunAllPendingInMessageLoop();
@@ -545,5 +533,3 @@ IN_PROC_BROWSER_TEST_F(TaskManagerNoShowBrowserTest,
                  base::Unretained(this)));
   TaskManagerBrowserTestUtil::WaitForWebResourceChange(2);
 }
-
-#endif

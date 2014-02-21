@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2012 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Merges multiple OS-specific gyp dependency lists into one that works on all
 of them.
@@ -14,8 +14,8 @@ import logging
 import os
 import sys
 
-from isolate import eval_content, extract_comment
-from isolate import load_isolate_as_config, print_all, union
+from isolate_format import eval_content, extract_comment
+from isolate_format import load_isolate_as_config, print_all, union
 
 from utils import tools
 
@@ -29,7 +29,8 @@ def load_isolates(items):
     files: dict(filename, set(OS where this filename is a dependency))
     dirs:  dict(dirame, set(OS where this dirname is a dependency))
     oses:  set(all the OSes referenced)
-    """
+  """
+  # pylint: disable=W0212
   configs = None
   for item in items:
     item = os.path.abspath(item)
@@ -43,9 +44,9 @@ def load_isolates(items):
         os.path.dirname(item),
         eval_content(content),
         extract_comment(content))
-    logging.debug('has configs: ' + ','.join(map(repr, new_config.by_config)))
+    logging.debug('has configs: ' + ','.join(map(repr, new_config._by_config)))
     configs = union(configs, new_config)
-  logging.debug('Total configs: ' + ','.join(map(repr, configs.by_config)))
+  logging.debug('Total configs: ' + ','.join(map(repr, configs._by_config)))
   return configs
 
 

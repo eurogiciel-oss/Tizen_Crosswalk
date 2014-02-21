@@ -70,20 +70,23 @@ public:
 
     virtual ~TimedItem() { }
 
+    virtual bool isAnimation() const { return false; }
+
     Phase phase() const { return ensureCalculated().phase; }
     bool isCurrent() const { return ensureCalculated().isCurrent; }
     bool isInEffect() const { return ensureCalculated().isInEffect; }
     bool isInPlay() const { return ensureCalculated().isInPlay; }
     double timeToEffectChange() const { return ensureCalculated().timeToEffectChange; }
 
-    double startTime() const { return m_startTime; }
-
     double currentIteration() const { return ensureCalculated().currentIteration; }
-    double activeDuration() const { return ensureCalculated().activeDuration; }
+    double activeDuration() const;
     double timeFraction() const { return ensureCalculated().timeFraction; }
+    double startTime() const { return m_startTime; }
+    double endTime() const { return startTime() + specified().startDelay + activeDuration(); }
+
     const Player* player() const { return m_player; }
     Player* player() { return m_player; }
-
+    Player* player(bool& isNull) { isNull = !m_player; return m_player; }
     const Timing& specified() const { return m_specified; }
 
 protected:
@@ -94,15 +97,25 @@ protected:
     // updateChildrenAndEffects.
     // Returns whether style recalc was triggered.
     bool updateInheritedTime(double inheritedTime) const;
+    void invalidate() const { m_needsUpdate = true; };
 
 private:
+    double iterationDuration() const;
+    double repeatedDuration() const;
+
     // Returns whether style recalc was triggered.
     virtual bool updateChildrenAndEffects() const = 0;
     virtual double intrinsicIterationDuration() const { return 0; };
-    virtual void willDetach() = 0;
-    virtual double calculateTimeToEffectChange(double inheritedTime, double activeTime, Phase) const = 0;
+    virtual double calculateTimeToEffectChange(double localTime, double timeToNextIteration) const = 0;
+    virtual void didAttach() { };
+    virtual void willDetach() { };
 
-    void attach(Player* player) { m_player = player; };
+    void attach(Player* player)
+    {
+        m_player = player;
+        didAttach();
+    };
+
     void detach()
     {
         ASSERT(m_player);
@@ -119,7 +132,6 @@ private:
 
     // FIXME: Should be versioned by monotonic value on player.
     mutable struct CalculatedTiming {
-        double activeDuration;
         Phase phase;
         double currentIteration;
         double timeFraction;
@@ -129,6 +141,8 @@ private:
         double timeToEffectChange;
     } m_calculated;
     mutable bool m_isFirstSample;
+    mutable bool m_needsUpdate;
+    mutable double m_lastUpdateTime;
 
     // FIXME: Should check the version and reinherit time if inconsistent.
     const CalculatedTiming& ensureCalculated() const { return m_calculated; }

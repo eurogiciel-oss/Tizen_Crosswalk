@@ -37,9 +37,13 @@ OBJDUMP_ARCH_MAP = {
     'elf32-i386': 'x86-32',
     'elf32-little': 'arm',
     'elf32-littlearm': 'arm',
-    # Names returned by x86_64-nacl-objdump:
+    # Names returned by old x86_64-nacl-objdump:
     'elf64-nacl': 'x86-64',
     'elf32-nacl': 'x86-32',
+    # Names returned by new x86_64-nacl-objdump:
+    'elf64-x86-64-nacl': 'x86-64',
+    'elf32-x86-64-nacl': 'x86-64',
+    'elf32-i386-nacl': 'x86-32',
 }
 
 ARCH_LOCATION = {
@@ -287,8 +291,10 @@ class NmfUtils(object):
 
     cmd = [self.objdump, '-p'] + list(full_paths)
     DebugPrint('GleanFromObjdump[%s](%s)' % (arch, cmd))
+    env = {'LANG': 'en_US.UTF-8'}
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, bufsize=-1)
+                            stderr=subprocess.PIPE, bufsize=-1,
+                            env=env)
 
     input_info = {}
     found_basenames = set()
@@ -298,6 +304,7 @@ class NmfUtils(object):
       raise Error('%s\nStdError=%s\nobjdump failed with error code: %d' %
                   (output, err_output, proc.returncode))
 
+    file_arch = None
     for line in output.splitlines(True):
       # Objdump should display the architecture first and then the dependencies
       # second for each file in the list.
@@ -316,6 +323,7 @@ class NmfUtils(object):
             url='/'.join(self.lib_prefix + [ARCH_LOCATION[file_arch], name]))
       matched = NeededMatcher.match(line)
       if matched:
+        assert file_arch is not None
         match = '/'.join([file_arch, matched.group(1)])
         needed.add(match)
         Trace("NEEDED: %s" % match)

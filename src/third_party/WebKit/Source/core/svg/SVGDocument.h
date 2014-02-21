@@ -21,14 +21,14 @@
 #ifndef SVGDocument_h
 #define SVGDocument_h
 
-#include "core/dom/Document.h"
+#include "core/dom/XMLDocument.h"
 #include "platform/geometry/FloatPoint.h"
 
 namespace WebCore {
 
 class SVGSVGElement;
 
-class SVGDocument FINAL : public Document {
+class SVGDocument FINAL : public XMLDocument {
 public:
     static PassRefPtr<SVGDocument> create(const DocumentInit& initializer = DocumentInit())
     {
@@ -45,30 +45,15 @@ public:
     void startPan(const FloatPoint& start);
     void updatePan(const FloatPoint& pos) const;
 
-    virtual PassRefPtr<Document> cloneDocumentWithoutChildren() OVERRIDE FINAL;
+    virtual PassRefPtr<Document> cloneDocumentWithoutChildren() OVERRIDE;
 
 private:
     explicit SVGDocument(const DocumentInit&);
 
-    virtual bool childShouldCreateRenderer(const Node& child) const;
-
     FloatPoint m_translate;
 };
 
-inline SVGDocument* toSVGDocument(Document* document)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!document || document->isSVGDocument());
-    return static_cast<SVGDocument*>(document);
-}
-
-inline const SVGDocument* toSVGDocument(const Document* document)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!document || document->isSVGDocument());
-    return static_cast<const SVGDocument*>(document);
-}
-
-// This will catch anyone doing an unnecessary cast.
-void toSVGDocument(const SVGDocument*);
+DEFINE_DOCUMENT_TYPE_CASTS(SVGDocument);
 
 } // namespace WebCore
 

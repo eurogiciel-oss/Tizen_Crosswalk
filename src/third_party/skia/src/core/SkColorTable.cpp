@@ -12,8 +12,6 @@
 #include "SkStream.h"
 #include "SkTemplates.h"
 
-SK_DEFINE_INST_COUNT(SkColorTable)
-
 // As copy constructor is hidden in the class hierarchy, we need to call
 // default constructor explicitly to suppress a compiler warning.
 SkColorTable::SkColorTable(const SkColorTable& src) : INHERITED() {
@@ -92,8 +90,15 @@ SkColorTable::SkColorTable(SkFlattenableReadBuffer& buffer) {
 
     fAlphaType = SkToU8(buffer.readUInt());
     fCount = buffer.getArrayCount();
-    fColors = (SkPMColor*)sk_malloc_throw(fCount * sizeof(SkPMColor));
-    SkDEBUGCODE(bool success =) buffer.readColorArray(fColors, fCount);
+    size_t allocSize = fCount * sizeof(SkPMColor);
+    SkDEBUGCODE(bool success = false;)
+    if (buffer.validateAvailable(allocSize)) {
+        fColors = (SkPMColor*)sk_malloc_throw(allocSize);
+        SkDEBUGCODE(success =) buffer.readColorArray(fColors, fCount);
+    } else {
+        fCount = 0;
+        fColors = NULL;
+    }
 #ifdef SK_DEBUG
     SkASSERT((unsigned)fCount <= 256);
     SkASSERT(success);

@@ -8,9 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef WEBRTC_VIDEO_ENGINE_NEW_INCLUDE_VIDEO_RECEIVE_STREAM_H_
-#define WEBRTC_VIDEO_ENGINE_NEW_INCLUDE_VIDEO_RECEIVE_STREAM_H_
+#ifndef WEBRTC_VIDEO_RECEIVE_STREAM_H_
+#define WEBRTC_VIDEO_RECEIVE_STREAM_H_
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -105,14 +106,31 @@ class VideoReceiveStream {
 
     // Receive-stream specific RTP settings.
     struct Rtp {
-      Rtp() : ssrc(0), rtcp_mode(newapi::kRtcpReducedSize) {}
+      Rtp()
+          : remote_ssrc(0),
+            local_ssrc(0),
+            rtcp_mode(newapi::kRtcpReducedSize),
+            remb(false) {}
 
-      // TODO(mflodman) Do we require a set ssrc? What happens if the ssrc
-      // changes?
-      uint32_t ssrc;
+      // Synchronization source (stream identifier) to be received.
+      uint32_t remote_ssrc;
+      // Sender SSRC used for sending RTCP (such as receiver reports).
+      uint32_t local_ssrc;
 
       // See RtcpMode for description.
       newapi::RtcpMode rtcp_mode;
+
+      // Extended RTCP settings.
+      struct RtcpXr {
+        RtcpXr() : receiver_reference_time_report(false) {}
+
+        // True if RTCP Receiver Reference Time Report Block extension
+        // (RFC 3611) should be enabled.
+        bool receiver_reference_time_report;
+      } rtcp_xr;
+
+      // See draft-alvestrand-rmcat-remb for information.
+      bool remb;
 
       // See NackConfig for description.
       NackConfig nack;
@@ -120,9 +138,9 @@ class VideoReceiveStream {
       // See FecConfig for description.
       FecConfig fec;
 
-      // RTX settings for possible payloads. RTX is disabled if the vector is
-      // empty.
-      std::vector<RtxConfig> rtx;
+      // RTX settings for video payloads that may be received. RTX is disabled
+      // if there's no config present.
+      std::map<int, RtxConfig> rtx;
 
       // RTP header extensions used for the received stream.
       std::vector<RtpExtension> extensions;
@@ -164,8 +182,8 @@ class VideoReceiveStream {
     StatsCallback* stats_callback;
   };
 
-  virtual void StartReceive() = 0;
-  virtual void StopReceive() = 0;
+  virtual void StartReceiving() = 0;
+  virtual void StopReceiving() = 0;
 
   // TODO(mflodman) Replace this with callback.
   virtual void GetCurrentReceiveCodec(VideoCodec* receive_codec) = 0;
@@ -176,4 +194,4 @@ class VideoReceiveStream {
 
 }  // namespace webrtc
 
-#endif  // WEBRTC_VIDEO_ENGINE_NEW_INCLUDE_VIDEO_RECEIVE_STREAM_H_
+#endif  // WEBRTC_VIDEO_RECEIVE_STREAM_H_

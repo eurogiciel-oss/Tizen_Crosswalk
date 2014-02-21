@@ -9,11 +9,11 @@
  */
 
 #if defined(WEBRTC_ANDROID)
-#if defined(WEBRTC_ANDROID_OPENSLES)
-#include "webrtc/modules/audio_device/android/audio_manager_jni.h"
-#else
-#include "webrtc/modules/audio_device/android/audio_device_jni_android.h"
-#endif
+#include "webrtc/modules/audio_device/android/audio_device_template.h"
+#include "webrtc/modules/audio_device/android/audio_record_jni.h"
+#include "webrtc/modules/audio_device/android/audio_track_jni.h"
+#include "webrtc/modules/audio_device/android/opensles_input.h"
+#include "webrtc/modules/audio_device/android/opensles_output.h"
 #endif
 
 #include "webrtc/modules/audio_coding/main/interface/audio_coding_module.h"
@@ -149,12 +149,18 @@ int VoiceEngine::SetAndroidObjects(void* javaVM, void* env, void* context)
 {
 #ifdef WEBRTC_ANDROID
 #ifdef WEBRTC_ANDROID_OPENSLES
-  AudioManagerJni::SetAndroidAudioDeviceObjects(javaVM, env, context);
-  return 0;
+  typedef AudioDeviceTemplate<OpenSlesInput, OpenSlesOutput>
+      AudioDeviceInstance;
 #else
-  return AudioDeviceAndroidJni::SetAndroidAudioDeviceObjects(
-      javaVM, env, context);
+  typedef AudioDeviceTemplate<AudioRecordJni, AudioTrackJni>
+      AudioDeviceInstance;
 #endif
+  if (javaVM && env && context) {
+    AudioDeviceInstance::SetAndroidAudioDeviceObjects(javaVM, env, context);
+  } else {
+    AudioDeviceInstance::ClearAndroidAudioDeviceObjects();
+  }
+  return 0;
 #else
   return -1;
 #endif

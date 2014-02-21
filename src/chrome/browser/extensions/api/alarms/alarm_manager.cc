@@ -14,13 +14,13 @@
 #include "base/value_conversions.h"
 #include "base/values.h"
 #include "chrome/browser/chrome_notification_types.h"
-#include "chrome/browser/extensions/event_router.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/state_store.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/alarms.h"
 #include "content/public/browser/notification_service.h"
+#include "extensions/browser/event_router.h"
 
 namespace extensions {
 
@@ -33,7 +33,9 @@ const char kRegisteredAlarms[] = "alarms";
 const char kAlarmGranularity[] = "granularity";
 
 // The minimum period between polling for alarms to run.
-const base::TimeDelta kDefaultMinPollPeriod = base::TimeDelta::FromDays(1);
+const base::TimeDelta kDefaultMinPollPeriod() {
+  return base::TimeDelta::FromDays(1);
+}
 
 class DefaultAlarmDelegate : public AlarmManager::Delegate {
  public:
@@ -217,7 +219,7 @@ g_factory = LAZY_INSTANCE_INITIALIZER;
 
 // static
 ProfileKeyedAPIFactory<AlarmManager>* AlarmManager::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 // static
@@ -247,9 +249,20 @@ void AlarmManager::OnAlarm(AlarmIterator it) {
   // Update our scheduled time for the next alarm.
   if (double* period_in_minutes =
       alarm.js_alarm->period_in_minutes.get()) {
-    alarm.js_alarm->scheduled_time =
-        (last_poll_time_ +
-         TimeDeltaFromDelay(*period_in_minutes)).ToJsTime();
+    // Get the timer's delay in JS time (i.e., convert it from minutes to
+    // milliseconds).
+    double period_in_js_time =
+        *period_in_minutes * base::Time::kMicrosecondsPerMinute /
+        base::Time::kMicrosecondsPerMillisecond;
+    // Find out how many periods have transpired since the alarm last went off
+    // (it's possible that we missed some).
+    int transpired_periods =
+        (last_poll_time_.ToJsTime() - alarm.js_alarm->scheduled_time) /
+        period_in_js_time;
+    // Schedule the alarm for the next period that is in-line with the original
+    // scheduling.
+    alarm.js_alarm->scheduled_time +=
+        period_in_js_time * (transpired_periods + 1);
   } else {
     RemoveAlarmIterator(it);
   }
@@ -315,7 +328,7 @@ void AlarmManager::ScheduleNextPoll() {
   // alarms_ guarantees that none of its contained lists are empty.
   base::Time soonest_alarm_time = base::Time::FromJsTime(
       alarms_.begin()->second.begin()->js_alarm->scheduled_time);
-  base::TimeDelta min_granularity = kDefaultMinPollPeriod;
+  base::TimeDelta min_granularity = kDefaultMinPollPeriod();
   for (AlarmMap::const_iterator m_it = alarms_.begin(), m_end = alarms_.end();
        m_it != m_end; ++m_it) {
     for (AlarmList::const_iterator l_it = m_it->second.begin();
@@ -326,11 +339,11 @@ void AlarmManager::ScheduleNextPoll() {
         soonest_alarm_time = cur_alarm_time;
       if (l_it->granularity < min_granularity)
         min_granularity = l_it->granularity;
-      base::TimeDelta cur_alarm_delta = cur_alarm_time - clock_->Now();
+      base::TimeDelta cur_alarm_delta = cur_alarm_time - last_poll_time_;
+      if (cur_alarm_delta < l_it->minimum_granularity)
+        cur_alarm_delta = l_it->minimum_granularity;
       if (cur_alarm_delta < min_granularity)
         min_granularity = cur_alarm_delta;
-      if (min_granularity < l_it->minimum_granularity)
-        min_granularity = l_it->minimum_granularity;
     }
   }
 

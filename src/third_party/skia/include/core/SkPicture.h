@@ -172,8 +172,8 @@ public:
      *  signature can be passed to serialize() and SkOrderedWriteBuffer.
      *  Returning NULL will tell the SkOrderedWriteBuffer to use
      *  SkBitmap::flatten() to store the bitmap.
-     *  @param pixelRefOffset Output parameter, telling the deserializer what
-     *      offset in the bm's pixelRef corresponds to the encoded data.
+     *
+     *  @param pixelRefOffset DEPRECATED -- caller assumes it will return 0.
      *  @return SkData If non-NULL, holds encoded data representing the passed
      *      in bitmap. The caller is responsible for calling unref().
      */
@@ -218,13 +218,12 @@ protected:
     // V13: add flag to drawBitmapRectToRect
     //      parameterize blurs by sigma rather than radius
     // V14: Add flags word to PathRef serialization
-#ifndef DELETE_THIS_CODE_WHEN_SKPS_ARE_REBUILT_AT_V13_AND_ALL_OTHER_INSTANCES_TOO
-    static const uint32_t PRIOR_PRIOR_PICTURE_VERSION = 12;  // TODO: remove when .skps regenerated
-#endif
-#ifndef DELETE_THIS_CODE_WHEN_SKPS_ARE_REBUILT_AT_V14_AND_ALL_OTHER_INSTANCES_TOO
-    static const uint32_t PRIOR_PICTURE_VERSION2 = 13;  // TODO: remove when .skps regenerated
-#endif
-    static const uint32_t PICTURE_VERSION = 14;
+    // V15: Remove A1 bitmpa config (and renumber remaining configs)
+    // V16: Move SkPath's isOval flag to SkPathRef
+    // V17: SkPixelRef now writes SkImageInfo
+    // V18: SkBitmap now records x,y for its pixelref origin, instead of offset.
+    // V19: encode matrices and regions into the ops stream
+    static const uint32_t PICTURE_VERSION = 19;
 
     // fPlayback, fRecord, fWidth & fHeight are protected to allow derived classes to
     // install their own SkPicturePlayback-derived players,SkPictureRecord-derived
@@ -251,26 +250,6 @@ private:
     friend class SkPicturePlayback;
 
     typedef SkRefCnt INHERITED;
-};
-
-class SkAutoPictureRecord : SkNoncopyable {
-public:
-    SkAutoPictureRecord(SkPicture* pict, int width, int height,
-                        uint32_t recordingFlags = 0) {
-        fPicture = pict;
-        fCanvas = pict->beginRecording(width, height, recordingFlags);
-    }
-    ~SkAutoPictureRecord() {
-        fPicture->endRecording();
-    }
-
-    /** Return the canvas to draw into for recording into the picture.
-    */
-    SkCanvas* getRecordingCanvas() const { return fCanvas; }
-
-private:
-    SkPicture*  fPicture;
-    SkCanvas*   fCanvas;
 };
 
 /**

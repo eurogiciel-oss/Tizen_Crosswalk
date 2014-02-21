@@ -45,6 +45,36 @@ VCMProcessTimer::Processed() {
 }  // namespace vcm
 
 namespace {
+// This wrapper provides a way to modify the callback without the need to expose
+// a register method all the way down to the function calling it.
+class EncodedImageCallbackWrapper : public EncodedImageCallback {
+ public:
+  EncodedImageCallbackWrapper()
+      : cs_(CriticalSectionWrapper::CreateCriticalSection()), callback_(NULL) {}
+
+  virtual ~EncodedImageCallbackWrapper() {}
+
+  void Register(EncodedImageCallback* callback) {
+    CriticalSectionScoped cs(cs_.get());
+    callback_ = callback;
+  }
+
+  // TODO(andresp): Change to void as return value is ignored.
+  virtual int32_t Encoded(EncodedImage& encoded_image,
+                          const CodecSpecificInfo* codec_specific_info,
+                          const RTPFragmentationHeader* fragmentation) {
+    CriticalSectionScoped cs(cs_.get());
+    if (callback_)
+      return callback_->Encoded(
+          encoded_image, codec_specific_info, fragmentation);
+    return 0;
+  }
+
+ private:
+  scoped_ptr<CriticalSectionWrapper> cs_;
+  EncodedImageCallback* callback_ GUARDED_BY(cs_);
+};
+
 class VideoCodingModuleImpl : public VideoCodingModule {
  public:
   VideoCodingModuleImpl(const int32_t id,
@@ -52,7 +82,7 @@ class VideoCodingModuleImpl : public VideoCodingModule {
                         EventFactory* event_factory,
                         bool owns_event_factory)
       : VideoCodingModule(),
-        sender_(new vcm::VideoSender(id, clock)),
+        sender_(new vcm::VideoSender(id, clock, &post_encode_callback_)),
         receiver_(new vcm::VideoReceiver(id, clock, event_factory)),
         own_event_factory_(owns_event_factory ? event_factory : NULL) {}
 
@@ -194,19 +224,16 @@ class VideoCodingModuleImpl : public VideoCodingModule {
   }
 
   virtual int StopDebugRecording() OVERRIDE {
-    return sender_->StopDebugRecording();
+    sender_->StopDebugRecording();
+    return VCM_OK;
   }
 
-  virtual void EnableAutoMuting() {
-    return sender_->EnableAutoMuting();
+  virtual void SuspendBelowMinBitrate() {
+    return sender_->SuspendBelowMinBitrate();
   }
 
-  virtual void DisableAutoMuting() {
-    return sender_->DisableAutoMuting();
-  }
-
-  virtual bool VideoMuted() const {
-    return sender_->VideoMuted();
+  virtual bool VideoSuspended() const {
+    return sender_->VideoSuspended();
   }
 
   virtual int32_t InitializeReceiver() OVERRIDE {
@@ -323,7 +350,18 @@ class VideoCodingModuleImpl : public VideoCodingModule {
     return receiver_->SetReceiveChannelParameters(rtt);
   }
 
+  virtual void RegisterPreDecodeImageCallback(
+      EncodedImageCallback* observer) OVERRIDE {
+    receiver_->RegisterPreDecodeImageCallback(observer);
+  }
+
+  virtual void RegisterPostEncodeImageCallback(
+      EncodedImageCallback* observer) OVERRIDE {
+    post_encode_callback_.Register(observer);
+  }
+
  private:
+  EncodedImageCallbackWrapper post_encode_callback_;
   scoped_ptr<vcm::VideoSender> sender_;
   scoped_ptr<vcm::VideoReceiver> receiver_;
   scoped_ptr<EventFactory> own_event_factory_;

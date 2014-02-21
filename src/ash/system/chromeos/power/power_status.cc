@@ -189,15 +189,13 @@ bool PowerStatus::IsUsbChargerConnected() const {
 }
 
 bool PowerStatus::IsOriginalSpringChargerConnected() const {
-  // Use has_external_power() as a workaround for R31 and R32 to detect
-  // the spring original charger, due to the fact the enum
-  // PowerSupplyProperties_ExternalPower_ORIGINAL_SPRING_CHARGER can't
-  // be integrated back to the older releases. has_exteranl_pwower() returns
-  // false for PowerSupplyProperties_ExternalPower_ORIGINAL_SPRING_CHARGER.
+  // Use the hard coded enum integer value for
+  // PowerSupplyProperties_ExternalPower_ORIGINAL_SPRING_CHARGER
+  // in purpose of backport compatibility.
   // TODO(jennyz): change this to use
   // PowerSupplyProperties_ExternalPower_ORIGINAL_SPRING_CHARGER on trunk
   // after the change has been merged.
-  return !proto_.has_external_power();
+  return proto_.external_power() == 3;
 }
 
 gfx::ImageSkia PowerStatus::GetBatteryImage(IconSet icon_set) const {
@@ -264,7 +262,7 @@ base::string16 PowerStatus::GetAccessibleNameString() const {
     int hour = 0, min = 0;
     PowerStatus::SplitTimeIntoHoursAndMinutes(time, &hour, &min);
     base::string16 minute = min < 10 ?
-        ASCIIToUTF16("0") + base::IntToString16(min) :
+        base::ASCIIToUTF16("0") + base::IntToString16(min) :
         base::IntToString16(min);
     battery_time_accessible =
         l10n_util::GetStringFUTF16(
@@ -275,7 +273,7 @@ base::string16 PowerStatus::GetAccessibleNameString() const {
   }
   return battery_time_accessible.empty() ?
       battery_percentage_accessible :
-      battery_percentage_accessible + ASCIIToUTF16(". ") +
+      battery_percentage_accessible + base::ASCIIToUTF16(". ") +
       battery_time_accessible;
 }
 

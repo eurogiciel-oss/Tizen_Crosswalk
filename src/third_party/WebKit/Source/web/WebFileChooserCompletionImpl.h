@@ -37,22 +37,22 @@
 #include "public/platform/WebVector.h"
 #include "wtf/PassRefPtr.h"
 
-using WebKit::WebFileChooserCompletion;
-using WebKit::WebString;
-using WebKit::WebVector;
+using blink::WebFileChooserCompletion;
+using blink::WebString;
+using blink::WebVector;
 
-namespace WebKit {
+namespace blink {
 
-class WebFileChooserCompletionImpl : public WebFileChooserCompletion {
+class WebFileChooserCompletionImpl FINAL : public WebFileChooserCompletion {
 public:
     WebFileChooserCompletionImpl(PassRefPtr<WebCore::FileChooser> chooser);
-    ~WebFileChooserCompletionImpl();
-    virtual void didChooseFile(const WebVector<WebString>& fileNames);
-    virtual void didChooseFile(const WebVector<SelectedFileInfo>& files);
+    virtual ~WebFileChooserCompletionImpl();
+    virtual void didChooseFile(const WebVector<WebString>& fileNames) OVERRIDE;
+    virtual void didChooseFile(const WebVector<SelectedFileInfo>& files) OVERRIDE;
 private:
     RefPtr<WebCore::FileChooser> m_fileChooser;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

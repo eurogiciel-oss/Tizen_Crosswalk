@@ -64,7 +64,7 @@ class ResponseBuffer : public base::RefCountedThreadSafe<ResponseBuffer> {
 void ExecuteCommandOnIOThread(
     const std::string& command, scoped_refptr<ResponseBuffer> response_buffer,
     int port) {
-  CHECK(base::MessageLoop::current()->IsType(base::MessageLoop::TYPE_IO));
+  CHECK(base::MessageLoopForIO::IsCurrent());
   AdbClientSocket::AdbQuery(port, command,
       base::Bind(&ResponseBuffer::OnResponse, response_buffer));
 }
@@ -119,7 +119,7 @@ Status AdbImpl::SetCommandLineFile(const std::string& device_serial,
                                    const std::string& args) {
   std::string response;
   std::string quoted_command =
-      base::GetDoubleQuotedJson(exec_name + " " + args);
+      base::GetQuotedJSONString(exec_name + " " + args);
   Status status = ExecuteHostShellCommand(
       device_serial,
       base::StringPrintf("echo %s > %s; echo $?",

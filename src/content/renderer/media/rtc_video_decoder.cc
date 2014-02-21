@@ -9,12 +9,12 @@
 #include "base/memory/ref_counted.h"
 #include "base/message_loop/message_loop_proxy.h"
 #include "base/metrics/histogram.h"
-#include "base/safe_numerics.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/stl_util.h"
 #include "base/task_runner_util.h"
 #include "content/child/child_thread.h"
 #include "content/renderer/media/native_handle_impl.h"
-#include "media/base/bind_to_loop.h"
+#include "media/base/bind_to_current_loop.h"
 #include "media/filters/gpu_video_accelerator_factories.h"
 #include "third_party/webrtc/common_video/interface/texture_video_frame.h"
 #include "third_party/webrtc/system_wrappers/interface/ref_count.h"
@@ -73,33 +73,34 @@ RTCVideoDecoder::BufferData::~BufferData() {}
 
 RTCVideoDecoder::RTCVideoDecoder(
     const scoped_refptr<media::GpuVideoAcceleratorFactories>& factories)
-    : weak_factory_(this),
-      weak_this_(weak_factory_.GetWeakPtr()),
-      factories_(factories),
-      vda_loop_proxy_(factories->GetMessageLoop()),
+    : factories_(factories),
+      vda_task_runner_(factories->GetTaskRunner()),
       decoder_texture_target_(0),
       next_picture_buffer_id_(0),
       state_(UNINITIALIZED),
       decode_complete_callback_(NULL),
       num_shm_buffers_(0),
       next_bitstream_buffer_id_(0),
-      reset_bitstream_buffer_id_(ID_INVALID) {
-  DCHECK(!vda_loop_proxy_->BelongsToCurrentThread());
+      reset_bitstream_buffer_id_(ID_INVALID),
+      weak_factory_(this) {
+  DCHECK(!vda_task_runner_->BelongsToCurrentThread());
+  weak_this_ = weak_factory_.GetWeakPtr();
+
   base::WaitableEvent message_loop_async_waiter(false, false);
   // Waiting here is safe. The media thread is stopped in the child thread and
   // the child thread is blocked when VideoDecoderFactory::CreateVideoDecoder
   // runs.
-  vda_loop_proxy_->PostTask(FROM_HERE,
-                            base::Bind(&RTCVideoDecoder::Initialize,
-                                       base::Unretained(this),
-                                       &message_loop_async_waiter));
+  vda_task_runner_->PostTask(FROM_HERE,
+                             base::Bind(&RTCVideoDecoder::Initialize,
+                                        base::Unretained(this),
+                                        &message_loop_async_waiter));
   message_loop_async_waiter.Wait();
 }
 
 RTCVideoDecoder::~RTCVideoDecoder() {
   DVLOG(2) << "~RTCVideoDecoder";
   // Destroy VDA and remove |this| from the observer if this is vda thread.
-  if (vda_loop_proxy_->BelongsToCurrentThread()) {
+  if (vda_task_runner_->BelongsToCurrentThread()) {
     base::MessageLoop::current()->RemoveDestructionObserver(this);
     DestroyVDA();
   } else {
@@ -145,7 +146,7 @@ scoped_ptr<RTCVideoDecoder> RTCVideoDecoder::Create(
   if (decoder->vda_ != NULL) {
     decoder->state_ = INITIALIZED;
   } else {
-    factories->GetMessageLoop()->DeleteSoon(FROM_HERE, decoder.release());
+    factories->GetTaskRunner()->DeleteSoon(FROM_HERE, decoder.release());
   }
   return decoder.Pass();
 }
@@ -166,11 +167,11 @@ int32_t RTCVideoDecoder::InitDecode(const webrtc::VideoCodec* codecSettings,
   }
   // Create some shared memory if the queue is empty.
   if (available_shm_segments_.size() == 0) {
-    vda_loop_proxy_->PostTask(FROM_HERE,
-                              base::Bind(&RTCVideoDecoder::CreateSHM,
-                                         weak_this_,
-                                         kMaxInFlightDecodes,
-                                         kSharedMemorySegmentBytes));
+    vda_task_runner_->PostTask(FROM_HERE,
+                               base::Bind(&RTCVideoDecoder::CreateSHM,
+                                          weak_this_,
+                                          kMaxInFlightDecodes,
+                                          kSharedMemorySegmentBytes));
   }
   return RecordInitDecodeUMA(WEBRTC_VIDEO_CODEC_OK);
 }
@@ -256,7 +257,7 @@ int32_t RTCVideoDecoder::Decode(
   }
 
   SaveToDecodeBuffers_Locked(inputImage, shm_buffer.Pass(), buffer_data);
-  vda_loop_proxy_->PostTask(
+  vda_task_runner_->PostTask(
       FROM_HERE, base::Bind(&RTCVideoDecoder::RequestBufferDecode, weak_this_));
   return WEBRTC_VIDEO_CODEC_OK;
 }
@@ -290,7 +291,7 @@ int32_t RTCVideoDecoder::Reset() {
   // If VDA is already resetting, no need to request the reset again.
   if (state_ != RESETTING) {
     state_ = RESETTING;
-    vda_loop_proxy_->PostTask(
+    vda_task_runner_->PostTask(
         FROM_HERE, base::Bind(&RTCVideoDecoder::ResetInternal, weak_this_));
   }
   return WEBRTC_VIDEO_CODEC_OK;
@@ -304,7 +305,7 @@ void RTCVideoDecoder::NotifyInitializeDone() {
 void RTCVideoDecoder::ProvidePictureBuffers(uint32 count,
                                             const gfx::Size& size,
                                             uint32 texture_target) {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   DVLOG(3) << "ProvidePictureBuffers. texture_target=" << texture_target;
 
   if (!vda_)
@@ -339,7 +340,7 @@ void RTCVideoDecoder::ProvidePictureBuffers(uint32 count,
 
 void RTCVideoDecoder::DismissPictureBuffer(int32 id) {
   DVLOG(3) << "DismissPictureBuffer. id=" << id;
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
 
   std::map<int32, media::PictureBuffer>::iterator it =
       assigned_picture_buffers_.find(id);
@@ -367,7 +368,7 @@ void RTCVideoDecoder::DismissPictureBuffer(int32 id) {
 
 void RTCVideoDecoder::PictureReady(const media::Picture& picture) {
   DVLOG(3) << "PictureReady";
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
 
   std::map<int32, media::PictureBuffer>::iterator it =
       assigned_picture_buffers_.find(picture.picture_buffer_id());
@@ -417,15 +418,15 @@ scoped_refptr<media::VideoFrame> RTCVideoDecoder::CreateVideoFrame(
   DCHECK(decoder_texture_target_);
   // Convert timestamp from 90KHz to ms.
   base::TimeDelta timestamp_ms = base::TimeDelta::FromInternalValue(
-      base::checked_numeric_cast<uint64_t>(timestamp) * 1000 / 90);
+      base::checked_cast<uint64_t>(timestamp) * 1000 / 90);
   return media::VideoFrame::WrapNativeTexture(
-      new media::VideoFrame::MailboxHolder(
+      make_scoped_ptr(new media::VideoFrame::MailboxHolder(
           pb.texture_mailbox(),
           0,  // sync_point
           media::BindToCurrentLoop(
               base::Bind(&RTCVideoDecoder::ReusePictureBuffer,
                          weak_this_,
-                         picture.picture_buffer_id()))),
+                         picture.picture_buffer_id())))),
       decoder_texture_target_,
       pb.size(),
       visible_rect,
@@ -440,7 +441,7 @@ scoped_refptr<media::VideoFrame> RTCVideoDecoder::CreateVideoFrame(
 
 void RTCVideoDecoder::NotifyEndOfBitstreamBuffer(int32 id) {
   DVLOG(3) << "NotifyEndOfBitstreamBuffer. id=" << id;
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
 
   std::map<int32, SHMBuffer*>::iterator it =
       bitstream_buffers_in_decoder_.find(id);
@@ -465,7 +466,7 @@ void RTCVideoDecoder::NotifyFlushDone() {
 }
 
 void RTCVideoDecoder::NotifyResetDone() {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   DVLOG(3) << "NotifyResetDone";
 
   if (!vda_)
@@ -481,7 +482,7 @@ void RTCVideoDecoder::NotifyResetDone() {
 }
 
 void RTCVideoDecoder::NotifyError(media::VideoDecodeAccelerator::Error error) {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   if (!vda_)
     return;
 
@@ -497,7 +498,7 @@ void RTCVideoDecoder::NotifyError(media::VideoDecodeAccelerator::Error error) {
 
 void RTCVideoDecoder::WillDestroyCurrentMessageLoop() {
   DVLOG(2) << "WillDestroyCurrentMessageLoop";
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   factories_->Abort();
   weak_factory_.InvalidateWeakPtrs();
   DestroyVDA();
@@ -505,13 +506,13 @@ void RTCVideoDecoder::WillDestroyCurrentMessageLoop() {
 
 void RTCVideoDecoder::Initialize(base::WaitableEvent* waiter) {
   DVLOG(2) << "Initialize";
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   base::MessageLoop::current()->AddDestructionObserver(this);
   waiter->Signal();
 }
 
 void RTCVideoDecoder::RequestBufferDecode() {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   if (!vda_)
     return;
 
@@ -633,7 +634,7 @@ void RTCVideoDecoder::MovePendingBuffersToDecodeBuffers() {
 }
 
 void RTCVideoDecoder::ResetInternal() {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   DVLOG(2) << "ResetInternal";
   if (vda_)
     vda_->Reset();
@@ -641,7 +642,7 @@ void RTCVideoDecoder::ResetInternal() {
 
 void RTCVideoDecoder::ReusePictureBuffer(int64 picture_buffer_id,
                                          uint32 sync_point) {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   DVLOG(3) << "ReusePictureBuffer. id=" << picture_buffer_id;
 
   if (!vda_)
@@ -670,7 +671,7 @@ void RTCVideoDecoder::ReusePictureBuffer(int64 picture_buffer_id,
 }
 
 void RTCVideoDecoder::DestroyTextures() {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   std::map<int32, media::PictureBuffer>::iterator it;
 
   for (it = assigned_picture_buffers_.begin();
@@ -690,7 +691,7 @@ void RTCVideoDecoder::DestroyTextures() {
 
 void RTCVideoDecoder::DestroyVDA() {
   DVLOG(2) << "DestroyVDA";
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   if (vda_)
     vda_.release()->Destroy();
   DestroyTextures();
@@ -711,7 +712,7 @@ scoped_ptr<RTCVideoDecoder::SHMBuffer> RTCVideoDecoder::GetSHM_Locked(
   // queue is almost empty.
   if (num_shm_buffers_ < kMaxNumSharedMemorySegments &&
       (ret == NULL || available_shm_segments_.size() <= 1)) {
-    vda_loop_proxy_->PostTask(
+    vda_task_runner_->PostTask(
         FROM_HERE,
         base::Bind(&RTCVideoDecoder::CreateSHM, weak_this_, 1, min_size));
   }
@@ -723,7 +724,7 @@ void RTCVideoDecoder::PutSHM_Locked(scoped_ptr<SHMBuffer> shm_buffer) {
 }
 
 void RTCVideoDecoder::CreateSHM(int number, size_t min_size) {
-  DCHECK(vda_loop_proxy_->BelongsToCurrentThread());
+  DCHECK(vda_task_runner_->BelongsToCurrentThread());
   DVLOG(2) << "CreateSHM. size=" << min_size;
   int number_to_allocate;
   {

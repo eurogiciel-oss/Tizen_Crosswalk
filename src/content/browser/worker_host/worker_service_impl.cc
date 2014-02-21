@@ -18,6 +18,7 @@
 #include "content/public/browser/child_process_data.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host.h"
@@ -31,8 +32,17 @@
 
 namespace content {
 
+namespace {
+void AddRenderFrameID(std::set<std::pair<int, int> >* visible_frame_ids,
+                      RenderFrameHost* rfh) {
+  visible_frame_ids->insert(
+      std::pair<int, int>(rfh->GetProcess()->GetID(),
+                          rfh->GetRoutingID()));
+}
+}
+
 const int WorkerServiceImpl::kMaxWorkersWhenSeparate = 64;
-const int WorkerServiceImpl::kMaxWorkersPerTabWhenSeparate = 16;
+const int WorkerServiceImpl::kMaxWorkersPerFrameWhenSeparate = 16;
 
 class WorkerPrioritySetter
     : public NotificationObserver,
@@ -64,8 +74,8 @@ class WorkerPrioritySetter
   // widgets being shown.
   void RegisterObserver();
 
-  // Sets priorities for shared workers given a set of visible tabs (as a
-  // std::set of std::pair<render_process, render_view> ids.
+  // Sets priorities for shared workers given a set of visible frames (as a
+  // std::set of std::pair<render_process, render_frame> ids.
   void UpdateWorkerPrioritiesFromVisibleSet(
       const std::set<std::pair<int, int> >* visible);
 
@@ -107,7 +117,7 @@ void WorkerPrioritySetter::PostTaskToGatherAndUpdateWorkerPriorities() {
 
 void WorkerPrioritySetter::GatherVisibleIDsAndUpdateWorkerPriorities() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  std::set<std::pair<int, int> >* visible_renderer_ids =
+  std::set<std::pair<int, int> >* visible_frame_ids =
       new std::set<std::pair<int, int> >();
 
   // Gather up all the visible renderer process/view pairs
@@ -116,23 +126,28 @@ void WorkerPrioritySetter::GatherVisibleIDsAndUpdateWorkerPriorities() {
   while (RenderWidgetHost* widget = widgets->GetNextHost()) {
     if (widget->GetProcess()->VisibleWidgetCount() == 0)
       continue;
+    if (!widget->IsRenderView())
+      continue;
 
-    RenderWidgetHostView* render_view = widget->GetView();
-    if (render_view && render_view->IsShowing()) {
-      visible_renderer_ids->insert(
-          std::pair<int, int>(widget->GetProcess()->GetID(),
-                              widget->GetRoutingID()));
-    }
+    RenderWidgetHostView* widget_view = widget->GetView();
+    if (!widget_view || !widget_view->IsShowing())
+      continue;
+    RenderViewHost* rvh = RenderViewHost::From(widget);
+    WebContents* web_contents = WebContents::FromRenderViewHost(rvh);
+    if (!web_contents)
+      continue;
+    web_contents->ForEachFrame(
+        base::Bind(&AddRenderFrameID, visible_frame_ids));
   }
 
   BrowserThread::PostTask(
       BrowserThread::IO, FROM_HERE,
       base::Bind(&WorkerPrioritySetter::UpdateWorkerPrioritiesFromVisibleSet,
-                 this, base::Owned(visible_renderer_ids)));
+                 this, base::Owned(visible_frame_ids)));
 }
 
 void WorkerPrioritySetter::UpdateWorkerPrioritiesFromVisibleSet(
-    const std::set<std::pair<int, int> >* visible_renderer_ids) {
+    const std::set<std::pair<int, int> >* visible_frame_ids) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
 
   for (WorkerProcessHostIterator iter; !iter.Done(); ++iter) {
@@ -156,8 +171,8 @@ void WorkerPrioritySetter::UpdateWorkerPrioritiesFromVisibleSet(
       for (; info != first_instance->worker_document_set()->documents().end();
           ++info) {
         std::pair<int, int> id(
-            info->render_process_id(), info->render_view_id());
-        if (visible_renderer_ids->find(id) != visible_renderer_ids->end()) {
+            info->render_process_id(), info->render_frame_id());
+        if (visible_frame_ids->find(id) != visible_frame_ids->end()) {
           throttle = false;
           break;
         }
@@ -175,11 +190,11 @@ void WorkerPrioritySetter::UpdateWorkerPrioritiesFromVisibleSet(
 void WorkerPrioritySetter::OnRenderWidgetVisibilityChanged(
     std::pair<int, int> id) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-  std::set<std::pair<int, int> > visible_renderer_ids;
+  std::set<std::pair<int, int> > visible_frame_ids;
 
-  visible_renderer_ids.insert(id);
+  visible_frame_ids.insert(id);
 
-  UpdateWorkerPrioritiesFromVisibleSet(&visible_renderer_ids);
+  UpdateWorkerPrioritiesFromVisibleSet(&visible_frame_ids);
 }
 
 void WorkerPrioritySetter::RegisterObserver() {
@@ -297,6 +312,8 @@ void WorkerServiceImpl::CreateWorker(
   WorkerProcessHost::WorkerInstance instance(
       params.url,
       params.name,
+      params.content_security_policy,
+      params.security_policy_type,
       next_worker_route_id(),
       0,
       params.script_resource_appcache_id,
@@ -305,7 +322,7 @@ void WorkerServiceImpl::CreateWorker(
   instance.AddFilter(filter, route_id);
   instance.worker_document_set()->Add(
       filter, params.document_id, filter->render_process_id(),
-      params.render_view_route_id);
+      params.render_frame_route_id);
 
   CreateWorkerFromInstance(instance);
 }
@@ -350,7 +367,7 @@ void WorkerServiceImpl::LookupSharedWorker(
     // worker's document set for nested workers.
     instance->worker_document_set()->Add(
         filter, params.document_id, filter->render_process_id(),
-        params.render_view_route_id);
+        params.render_frame_route_id);
   }
 }
 
@@ -497,9 +514,9 @@ bool WorkerServiceImpl::CanCreateWorkerProcess(
            parents.begin();
        parent_iter != parents.end(); ++parent_iter) {
     bool hit_total_worker_limit = false;
-    if (TabCanCreateWorkerProcess(parent_iter->render_process_id(),
-                                  parent_iter->render_view_id(),
-                                  &hit_total_worker_limit)) {
+    if (FrameCanCreateWorkerProcess(parent_iter->render_process_id(),
+                                    parent_iter->render_frame_id(),
+                                    &hit_total_worker_limit)) {
       return true;
     }
     // Return false if already at the global worker limit (no need to continue
@@ -512,9 +529,9 @@ bool WorkerServiceImpl::CanCreateWorkerProcess(
   return false;
 }
 
-bool WorkerServiceImpl::TabCanCreateWorkerProcess(
+bool WorkerServiceImpl::FrameCanCreateWorkerProcess(
     int render_process_id,
-    int render_view_id,
+    int render_frame_id,
     bool* hit_total_worker_limit) {
   int total_workers = 0;
   int workers_per_tab = 0;
@@ -528,9 +545,9 @@ bool WorkerServiceImpl::TabCanCreateWorkerProcess(
         *hit_total_worker_limit = true;
         return false;
       }
-      if (cur_instance->RendererIsParent(render_process_id, render_view_id)) {
+      if (cur_instance->FrameIsParent(render_process_id, render_frame_id)) {
         workers_per_tab++;
-        if (workers_per_tab >= kMaxWorkersPerTabWhenSeparate)
+        if (workers_per_tab >= kMaxWorkersPerFrameWhenSeparate)
           return false;
       }
     }
@@ -564,7 +581,7 @@ void WorkerServiceImpl::TryStartingQueuedWorker() {
 
 bool WorkerServiceImpl::GetRendererForWorker(int worker_process_id,
                                              int* render_process_id,
-                                             int* render_view_id) const {
+                                             int* render_frame_id) const {
   for (WorkerProcessHostIterator iter; !iter.Done(); ++iter) {
     if (iter.GetData().id != worker_process_id)
       continue;
@@ -578,7 +595,7 @@ bool WorkerServiceImpl::GetRendererForWorker(int worker_process_id,
     WorkerDocumentSet::DocumentInfoSet::const_iterator info =
         first_instance->worker_document_set()->documents().begin();
     *render_process_id = info->render_process_id();
-    *render_view_id = info->render_view_id();
+    *render_frame_id = info->render_frame_id();
     return true;
   }
   return false;
@@ -650,7 +667,7 @@ void WorkerServiceImpl::NotifyWorkerProcessCreated() {
 
 WorkerProcessHost::WorkerInstance* WorkerServiceImpl::FindSharedWorkerInstance(
     const GURL& url,
-    const string16& name,
+    const base::string16& name,
     const WorkerStoragePartition& partition,
     ResourceContext* resource_context) {
   for (WorkerProcessHostIterator iter; !iter.Done(); ++iter) {
@@ -667,7 +684,7 @@ WorkerProcessHost::WorkerInstance* WorkerServiceImpl::FindSharedWorkerInstance(
 
 WorkerProcessHost::WorkerInstance* WorkerServiceImpl::FindPendingInstance(
     const GURL& url,
-    const string16& name,
+    const base::string16& name,
     const WorkerStoragePartition& partition,
     ResourceContext* resource_context) {
   // Walk the pending instances looking for a matching pending worker.
@@ -684,7 +701,7 @@ WorkerProcessHost::WorkerInstance* WorkerServiceImpl::FindPendingInstance(
 
 void WorkerServiceImpl::RemovePendingInstances(
     const GURL& url,
-    const string16& name,
+    const base::string16& name,
     const WorkerStoragePartition& partition,
     ResourceContext* resource_context) {
   // Walk the pending instances looking for a matching pending worker.
@@ -701,7 +718,7 @@ void WorkerServiceImpl::RemovePendingInstances(
 
 WorkerProcessHost::WorkerInstance* WorkerServiceImpl::CreatePendingInstance(
     const GURL& url,
-    const string16& name,
+    const base::string16& name,
     ResourceContext* resource_context,
     const WorkerStoragePartition& partition) {
   // Look for an existing pending shared worker.

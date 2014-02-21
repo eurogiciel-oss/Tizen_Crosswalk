@@ -354,23 +354,36 @@ void SkBitmapProcShader::toString(SkString* str) const {
 #include "effects/GrSimpleTextureEffect.h"
 #include "SkGr.h"
 
+// Note that this will return -1 if either matrix is perspective.
+static SkScalar get_combined_min_stretch(const SkMatrix& viewMatrix, const SkMatrix& localMatrix) {
+    if (localMatrix.isIdentity()) {
+        return viewMatrix.getMinStretch();
+    } else {
+        SkMatrix combined;
+        combined.setConcat(viewMatrix, localMatrix);
+        return combined.getMinStretch();
+    }
+}
+
 GrEffectRef* SkBitmapProcShader::asNewEffect(GrContext* context, const SkPaint& paint) const {
     SkMatrix matrix;
     matrix.setIDiv(fRawBitmap.width(), fRawBitmap.height());
 
-    if (this->hasLocalMatrix()) {
-        SkMatrix inverse;
-        if (!this->getLocalMatrix().invert(&inverse)) {
-            return NULL;
-        }
-        matrix.preConcat(inverse);
+    SkMatrix lmInverse;
+    if (!this->getLocalMatrix().invert(&lmInverse)) {
+        return NULL;
     }
+    matrix.preConcat(lmInverse);
+
     SkShader::TileMode tm[] = {
         (TileMode)fState.fTileModeX,
         (TileMode)fState.fTileModeY,
     };
 
-    // Must set wrap and filter on the sampler before requesting a texture.
+    // Must set wrap and filter on the sampler before requesting a texture. In two places below
+    // we check the matrix scale factors to determine how to interpret the filter quality setting.
+    // This completely ignores the complexity of the drawVertices case where explicit local coords
+    // are provided by the caller.
     SkPaint::FilterLevel paintFilterLevel = paint.getFilterLevel();
     GrTextureParams::FilterMode textureFilterMode;
     switch(paintFilterLevel) {
@@ -381,12 +394,26 @@ GrEffectRef* SkBitmapProcShader::asNewEffect(GrContext* context, const SkPaint& 
             textureFilterMode = GrTextureParams::kBilerp_FilterMode;
             break;
         case SkPaint::kMedium_FilterLevel:
-            textureFilterMode = GrTextureParams::kMipMap_FilterMode;
+            if (get_combined_min_stretch(context->getMatrix(), this->getLocalMatrix()) <
+                SK_Scalar1) {
+                textureFilterMode = GrTextureParams::kMipMap_FilterMode;
+            } else {
+                // Don't trigger MIP level generation unnecessarily.
+                textureFilterMode = GrTextureParams::kBilerp_FilterMode;
+            }
             break;
         case SkPaint::kHigh_FilterLevel:
-            // fall back to no filtering here; we will install another
-            // shader that will do the HQ filtering.
-            textureFilterMode = GrTextureParams::kNone_FilterMode;
+            // Minification can look bad with bicubic filtering.
+            if (get_combined_min_stretch(context->getMatrix(), this->getLocalMatrix()) >=
+                SK_Scalar1) {
+                // fall back to no filtering here; we will install another shader that will do the
+                // HQ filtering.
+                textureFilterMode = GrTextureParams::kNone_FilterMode;
+            } else {
+                // Fall back to MIP-mapping.
+                paintFilterLevel = SkPaint::kMedium_FilterLevel;
+                textureFilterMode = GrTextureParams::kMipMap_FilterMode;
+            }
             break;
         default:
             SkErrorInternals::SetError( kInvalidPaint_SkError,
@@ -408,7 +435,7 @@ GrEffectRef* SkBitmapProcShader::asNewEffect(GrContext* context, const SkPaint& 
 
     GrEffectRef* effect = NULL;
     if (paintFilterLevel == SkPaint::kHigh_FilterLevel) {
-        effect = GrBicubicEffect::Create(texture, matrix, params);
+        effect = GrBicubicEffect::Create(texture, matrix, tm);
     } else {
         effect = GrSimpleTextureEffect::Create(texture, matrix, params);
     }

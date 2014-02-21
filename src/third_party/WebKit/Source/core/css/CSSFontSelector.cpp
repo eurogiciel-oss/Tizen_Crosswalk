@@ -33,15 +33,16 @@
 #include "core/css/CSSFontFaceSource.h"
 #include "core/css/CSSSegmentedFontFace.h"
 #include "core/css/CSSValueList.h"
+#include "core/css/FontFaceSet.h"
 #include "core/css/resolver/StyleResolver.h"
 #include "core/dom/Document.h"
 #include "core/fetch/FontResource.h"
 #include "core/fetch/ResourceFetcher.h"
 #include "core/loader/FrameLoader.h"
 #include "core/frame/Frame.h"
-#include "core/page/Settings.h"
-#include "core/platform/graphics/FontCache.h"
-#include "core/platform/graphics/SimpleFontData.h"
+#include "core/frame/Settings.h"
+#include "platform/fonts/FontCache.h"
+#include "platform/fonts/SimpleFontData.h"
 #include "wtf/text/AtomicString.h"
 
 using namespace std;
@@ -56,7 +57,7 @@ FontLoader::FontLoader(ResourceFetcher* resourceFetcher)
 
 void FontLoader::addFontToBeginLoading(FontResource* fontResource)
 {
-    if (!m_resourceFetcher)
+    if (!m_resourceFetcher || !fontResource->stillNeedsLoad())
         return;
 
     m_fontsToBeginLoading.append(fontResource);
@@ -69,6 +70,11 @@ void FontLoader::addFontToBeginLoading(FontResource* fontResource)
 }
 
 void FontLoader::beginLoadTimerFired(Timer<WebCore::FontLoader>*)
+{
+    loadPendingFonts();
+}
+
+void FontLoader::loadPendingFonts()
 {
     ASSERT(m_resourceFetcher);
 
@@ -103,34 +109,37 @@ void FontLoader::clearResourceFetcher()
 CSSFontSelector::CSSFontSelector(Document* document)
     : m_document(document)
     , m_fontLoader(document->fetcher())
+    , m_genericFontFamilySettings(document->frame()->settings()->genericFontFamilySettings())
 {
     // FIXME: An old comment used to say there was no need to hold a reference to m_document
     // because "we are guaranteed to be destroyed before the document". But there does not
     // seem to be any such guarantee.
 
     ASSERT(m_document);
-    fontCache()->addClient(this);
+    ASSERT(m_document->frame());
+    FontCache::fontCache()->addClient(this);
+    FontFaceSet::from(document)->addFontFacesToCSSSegmentedFontFaceCache(&m_cssSegmentedFontFaceCache, this);
 }
 
 CSSFontSelector::~CSSFontSelector()
 {
     clearDocument();
-    fontCache()->removeClient(this);
+    FontCache::fontCache()->removeClient(this);
 }
 
-void CSSFontSelector::registerForInvalidationCallbacks(FontSelectorClient* client)
+void CSSFontSelector::registerForInvalidationCallbacks(CSSFontSelectorClient* client)
 {
     m_clients.add(client);
 }
 
-void CSSFontSelector::unregisterForInvalidationCallbacks(FontSelectorClient* client)
+void CSSFontSelector::unregisterForInvalidationCallbacks(CSSFontSelectorClient* client)
 {
     m_clients.remove(client);
 }
 
 void CSSFontSelector::dispatchInvalidationCallbacks()
 {
-    Vector<FontSelectorClient*> clients;
+    Vector<CSSFontSelectorClient*> clients;
     copyToVector(m_clients, clients);
     for (size_t i = 0; i < clients.size(); ++i)
         clients[i]->fontsNeedUpdate(this);
@@ -146,27 +155,50 @@ void CSSFontSelector::fontCacheInvalidated()
     dispatchInvalidationCallbacks();
 }
 
-void CSSFontSelector::addFontFaceRule(const StyleRuleFontFace* fontFaceRule)
+static AtomicString familyNameFromSettings(const GenericFontFamilySettings& settings, const FontDescription& fontDescription, const AtomicString& genericFamilyName)
 {
-    m_cssSegmentedFontFaceCache.addFontFaceRule(this, fontFaceRule);
+    UScriptCode script = fontDescription.script();
+
+    if (fontDescription.genericFamily() == FontDescription::StandardFamily && !fontDescription.isSpecifiedFont())
+        return settings.standard(script);
+
+#if OS(ANDROID)
+    return FontCache::getGenericFamilyNameForScript(genericFamilyName, script);
+#else
+    if (genericFamilyName == FontFamilyNames::webkit_serif)
+        return settings.serif(script);
+    if (genericFamilyName == FontFamilyNames::webkit_sans_serif)
+        return settings.sansSerif(script);
+    if (genericFamilyName == FontFamilyNames::webkit_cursive)
+        return settings.cursive(script);
+    if (genericFamilyName == FontFamilyNames::webkit_fantasy)
+        return settings.fantasy(script);
+    if (genericFamilyName == FontFamilyNames::webkit_monospace)
+        return settings.fixed(script);
+    if (genericFamilyName == FontFamilyNames::webkit_pictograph)
+        return settings.pictograph(script);
+    if (genericFamilyName == FontFamilyNames::webkit_standard)
+        return settings.standard(script);
+#endif
+    return emptyAtom;
 }
 
 PassRefPtr<FontData> CSSFontSelector::getFontData(const FontDescription& fontDescription, const AtomicString& familyName)
 {
-    if (!m_document || !m_document->frame())
+    if (CSSSegmentedFontFace* face = m_cssSegmentedFontFaceCache.get(fontDescription, familyName))
+        return face->getFontData(fontDescription);
+
+    // Try to return the correct font based off our settings, in case we were handed the generic font family name.
+    AtomicString settingsFamilyName = familyNameFromSettings(m_genericFontFamilySettings, fontDescription, familyName);
+    if (settingsFamilyName.isEmpty())
         return 0;
 
-    return m_cssSegmentedFontFaceCache.getFontData(m_document->frame()->settings(), fontDescription, familyName);
-}
-
-CSSSegmentedFontFace* CSSFontSelector::getFontFace(const FontDescription& fontDescription, const AtomicString& familyName)
-{
-    return m_cssSegmentedFontFaceCache.getFontFace(fontDescription, familyName);
+    return FontCache::fontCache()->getFontData(fontDescription, settingsFamilyName);
 }
 
 void CSSFontSelector::willUseFontData(const FontDescription& fontDescription, const AtomicString& family)
 {
-    CSSSegmentedFontFace* face = getFontFace(fontDescription, family);
+    CSSSegmentedFontFace* face = m_cssSegmentedFontFaceCache.get(fontDescription, family);
     if (face)
         face->willUseFontData(fontDescription);
 }
@@ -180,6 +212,11 @@ void CSSFontSelector::clearDocument()
 void CSSFontSelector::beginLoadingFontSoon(FontResource* font)
 {
     m_fontLoader.addFontToBeginLoading(font);
+}
+
+void CSSFontSelector::loadPendingFonts()
+{
+    m_fontLoader.loadPendingFonts();
 }
 
 }

@@ -2,22 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(vtl): Factor out the POSIX-specific bits of this test (once we have a
-// non-POSIX implementation).
+// TODO(vtl): Factor out the remaining POSIX-specific bits of this test (once we
+// have a non-POSIX implementation).
 
 #include "mojo/system/raw_channel.h"
 
 #include <fcntl.h>
 #include <stdint.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include <vector>
 
 #include "base/basictypes.h"
 #include "base/bind.h"
-#include "base/callback.h"
 #include "base/compiler_specific.h"
 #include "base/location.h"
 #include "base/logging.h"
@@ -30,12 +27,12 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/platform_thread.h"  // For |Sleep()|.
 #include "base/threading/simple_thread.h"
-#include "base/threading/thread.h"
 #include "base/time/time.h"
+#include "mojo/system/embedder/platform_channel_pair.h"
+#include "mojo/system/embedder/platform_handle.h"
+#include "mojo/system/embedder/scoped_platform_handle.h"
 #include "mojo/system/message_in_transit.h"
-#include "mojo/system/platform_channel_handle.h"
 #include "mojo/system/test_utils.h"
-#include "testing/gtest/include/gtest/gtest.h"
 
 namespace mojo {
 namespace system {
@@ -45,7 +42,10 @@ MessageInTransit* MakeTestMessage(uint32_t num_bytes) {
   std::vector<unsigned char> bytes(num_bytes, 0);
   for (size_t i = 0; i < num_bytes; i++)
     bytes[i] = static_cast<unsigned char>(i + num_bytes);
-  return MessageInTransit::Create(bytes.data(), num_bytes);
+  return MessageInTransit::Create(
+      MessageInTransit::kTypeMessagePipeEndpoint,
+      MessageInTransit::kSubtypeMessagePipeEndpointData,
+      bytes.data(), num_bytes);
 }
 
 bool CheckMessageData(const void* bytes, uint32_t num_bytes) {
@@ -57,55 +57,36 @@ bool CheckMessageData(const void* bytes, uint32_t num_bytes) {
   return true;
 }
 
+void InitOnIOThread(RawChannel* raw_channel) {
+  CHECK(raw_channel->Init());
+}
+
 // -----------------------------------------------------------------------------
 
-class RawChannelPosixTest : public testing::Test {
+class RawChannelPosixTest : public test::TestWithIOThreadBase {
  public:
-  RawChannelPosixTest() : io_thread_("io_thread") {
-    fds_[0] = -1;
-    fds_[1] = -1;
-  }
-
-  virtual ~RawChannelPosixTest() {
-  }
+  RawChannelPosixTest() {}
+  virtual ~RawChannelPosixTest() {}
 
   virtual void SetUp() OVERRIDE {
-    io_thread_.StartWithOptions(
-        base::Thread::Options(base::MessageLoop::TYPE_IO, 0));
+    test::TestWithIOThreadBase::SetUp();
 
-    // Create the socket.
-    PCHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, fds_) == 0);
-
-    // Set the ends to non-blocking.
-    PCHECK(fcntl(fds_[0], F_SETFL, O_NONBLOCK) == 0);
-    PCHECK(fcntl(fds_[1], F_SETFL, O_NONBLOCK) == 0);
+    embedder::PlatformChannelPair channel_pair;
+    handles[0] = channel_pair.PassServerHandle();
+    handles[1] = channel_pair.PassClientHandle();
   }
 
   virtual void TearDown() OVERRIDE {
-    if (fds_[0] != -1)
-      CHECK_EQ(close(fds_[0]), 0);
-    if (fds_[1] != -1)
-      CHECK_EQ(close(fds_[1]), 0);
+    handles[0].reset();
+    handles[1].reset();
 
-    io_thread_.Stop();
+    test::TestWithIOThreadBase::TearDown();
   }
 
  protected:
-  int fd(size_t i) { return fds_[i]; }
-  void clear_fd(size_t i) { fds_[i] = -1; }
-
-  base::MessageLoop* io_thread_message_loop() {
-    return io_thread_.message_loop();
-  }
-
-  scoped_refptr<base::TaskRunner> io_thread_task_runner() {
-    return io_thread_message_loop()->message_loop_proxy();
-  }
+  embedder::ScopedPlatformHandle handles[2];
 
  private:
-  base::Thread io_thread_;
-  int fds_[2];
-
   DISALLOW_COPY_AND_ASSIGN(RawChannelPosixTest);
 };
 
@@ -133,14 +114,16 @@ static const size_t kMessageReaderMaxPollIterations = 3000;
 
 class TestMessageReaderAndChecker {
  public:
-  explicit TestMessageReaderAndChecker(int fd) : fd_(fd) {}
+  explicit TestMessageReaderAndChecker(embedder::PlatformHandle handle)
+      : handle_(handle) {}
   ~TestMessageReaderAndChecker() { CHECK(bytes_.empty()); }
 
   bool ReadAndCheckNextMessage(uint32_t expected_size) {
     unsigned char buffer[4096];
 
     for (size_t i = 0; i < kMessageReaderMaxPollIterations;) {
-      ssize_t read_size = HANDLE_EINTR(read(fd_, buffer, sizeof(buffer)));
+      ssize_t read_size = HANDLE_EINTR(
+          read(handle_.fd, buffer, sizeof(buffer)));
       if (read_size < 0) {
         PCHECK(errno == EAGAIN || errno == EWOULDBLOCK);
         read_size = 0;
@@ -189,7 +172,7 @@ class TestMessageReaderAndChecker {
   }
 
  private:
-  const int fd_;
+  const embedder::PlatformHandle handle_;
 
   // The start of the received data should always be on a message boundary.
   std::vector<unsigned char> bytes_;
@@ -200,18 +183,15 @@ class TestMessageReaderAndChecker {
 // Tests writing (and verifies reading using our own custom reader).
 TEST_F(RawChannelPosixTest, WriteMessage) {
   WriteOnlyRawChannelDelegate delegate;
-  scoped_ptr<RawChannel> rc(RawChannel::Create(PlatformChannelHandle(fd(0)),
+  scoped_ptr<RawChannel> rc(RawChannel::Create(handles[0].Pass(),
                                                &delegate,
                                                io_thread_message_loop()));
-  // |RawChannel::Create()| takes ownership of the FD.
-  clear_fd(0);
 
-  TestMessageReaderAndChecker checker(fd(1));
+  TestMessageReaderAndChecker checker(handles[1].get());
 
   test::PostTaskAndWait(io_thread_task_runner(),
                         FROM_HERE,
-                        base::Bind(&RawChannel::Init,
-                                   base::Unretained(rc.get())));
+                        base::Bind(&InitOnIOThread, rc.get()));
 
   // Write and read, for a variety of sizes.
   for (uint32_t size = 1; size < 5 * 1000 * 1000; size += size / 2 + 1) {
@@ -293,26 +273,27 @@ class ReadCheckerRawChannelDelegate : public RawChannel::Delegate {
 // Tests reading (writing using our own custom writer).
 TEST_F(RawChannelPosixTest, OnReadMessage) {
   // We're going to write to |fd(1)|. We'll do so in a blocking manner.
-  PCHECK(fcntl(fd(1), F_SETFL, 0) == 0);
+  PCHECK(fcntl(handles[1].get().fd, F_SETFL, 0) == 0);
 
   ReadCheckerRawChannelDelegate delegate;
-  scoped_ptr<RawChannel> rc(RawChannel::Create(PlatformChannelHandle(fd(0)),
+  scoped_ptr<RawChannel> rc(RawChannel::Create(handles[0].Pass(),
                                                &delegate,
                                                io_thread_message_loop()));
-  // |RawChannel::Create()| takes ownership of the FD.
-  clear_fd(0);
 
   test::PostTaskAndWait(io_thread_task_runner(),
                         FROM_HERE,
-                        base::Bind(&RawChannel::Init,
-                                   base::Unretained(rc.get())));
+                        base::Bind(&InitOnIOThread, rc.get()));
 
   // Write and read, for a variety of sizes.
   for (uint32_t size = 1; size < 5 * 1000 * 1000; size += size / 2 + 1) {
     delegate.SetExpectedSizes(std::vector<uint32_t>(1, size));
     MessageInTransit* message = MakeTestMessage(size);
+
+    ssize_t write_size = HANDLE_EINTR(
+        write(handles[1].get().fd, message,
+              message->size_with_header_and_padding()));
     EXPECT_EQ(static_cast<ssize_t>(message->size_with_header_and_padding()),
-              write(fd(1), message, message->size_with_header_and_padding()));
+              write_size);
     message->Destroy();
     delegate.Wait();
   }
@@ -325,8 +306,11 @@ TEST_F(RawChannelPosixTest, OnReadMessage) {
   delegate.SetExpectedSizes(expected_sizes);
   for (uint32_t size = 1; size < 5 * 1000 * 1000; size += size / 2 + 1) {
     MessageInTransit* message = MakeTestMessage(size);
+    ssize_t write_size = HANDLE_EINTR(
+        write(handles[1].get().fd, message,
+              message->size_with_header_and_padding()));
     EXPECT_EQ(static_cast<ssize_t>(message->size_with_header_and_padding()),
-              write(fd(1), message, message->size_with_header_and_padding()));
+              write_size);
     message->Destroy();
   }
   delegate.Wait();
@@ -408,30 +392,24 @@ TEST_F(RawChannelPosixTest, WriteMessageAndOnReadMessage) {
 
   WriteOnlyRawChannelDelegate writer_delegate;
   scoped_ptr<RawChannel> writer_rc(
-      RawChannel::Create(PlatformChannelHandle(fd(0)),
-                                               &writer_delegate,
-                                               io_thread_message_loop()));
-  // |RawChannel::Create()| takes ownership of the FD.
-  clear_fd(0);
+      RawChannel::Create(handles[0].Pass(),
+                         &writer_delegate,
+                         io_thread_message_loop()));
 
   test::PostTaskAndWait(io_thread_task_runner(),
                         FROM_HERE,
-                        base::Bind(&RawChannel::Init,
-                                   base::Unretained(writer_rc.get())));
+                        base::Bind(&InitOnIOThread, writer_rc.get()));
 
   ReadCountdownRawChannelDelegate reader_delegate(
       kNumWriterThreads * kNumWriteMessagesPerThread);
   scoped_ptr<RawChannel> reader_rc(
-      RawChannel::Create(PlatformChannelHandle(fd(1)),
-                                               &reader_delegate,
-                                               io_thread_message_loop()));
-  // |RawChannel::Create()| takes ownership of the FD.
-  clear_fd(1);
+      RawChannel::Create(handles[1].Pass(),
+                         &reader_delegate,
+                         io_thread_message_loop()));
 
   test::PostTaskAndWait(io_thread_task_runner(),
                         FROM_HERE,
-                        base::Bind(&RawChannel::Init,
-                                   base::Unretained(reader_rc.get())));
+                        base::Bind(&InitOnIOThread, reader_rc.get()));
 
   {
     ScopedVector<RawChannelWriterThread> writer_threads;
@@ -502,20 +480,16 @@ class FatalErrorRecordingRawChannelDelegate : public RawChannel::Delegate {
 // that it does.)
 TEST_F(RawChannelPosixTest, OnFatalError) {
   FatalErrorRecordingRawChannelDelegate delegate;
-  scoped_ptr<RawChannel> rc(RawChannel::Create(PlatformChannelHandle(fd(0)),
+  scoped_ptr<RawChannel> rc(RawChannel::Create(handles[0].Pass(),
                                                &delegate,
                                                io_thread_message_loop()));
-  // |RawChannel::Create()| takes ownership of the FD.
-  clear_fd(0);
 
   test::PostTaskAndWait(io_thread_task_runner(),
                         FROM_HERE,
-                        base::Bind(&RawChannel::Init,
-                                   base::Unretained(rc.get())));
+                        base::Bind(&InitOnIOThread, rc.get()));
 
   // Close the other end, which should make writing fail.
-  CHECK_EQ(close(fd(1)), 0);
-  clear_fd(1);
+  handles[1].reset();
 
   EXPECT_FALSE(rc->WriteMessage(MakeTestMessage(1)));
 
@@ -528,7 +502,6 @@ TEST_F(RawChannelPosixTest, OnFatalError) {
                         FROM_HERE,
                         base::Bind(&RawChannel::Shutdown,
                                    base::Unretained(rc.get())));
-
 }
 
 // RawChannelPosixTest.WriteMessageAfterShutdown -------------------------------
@@ -537,16 +510,13 @@ TEST_F(RawChannelPosixTest, OnFatalError) {
 // correctly.
 TEST_F(RawChannelPosixTest, WriteMessageAfterShutdown) {
   WriteOnlyRawChannelDelegate delegate;
-  scoped_ptr<RawChannel> rc(RawChannel::Create(PlatformChannelHandle(fd(0)),
+  scoped_ptr<RawChannel> rc(RawChannel::Create(handles[0].Pass(),
                                                &delegate,
                                                io_thread_message_loop()));
-  // |RawChannel::Create()| takes ownership of the FD.
-  clear_fd(0);
 
   test::PostTaskAndWait(io_thread_task_runner(),
                         FROM_HERE,
-                        base::Bind(&RawChannel::Init,
-                                   base::Unretained(rc.get())));
+                        base::Bind(&InitOnIOThread, rc.get()));
   test::PostTaskAndWait(io_thread_task_runner(),
                         FROM_HERE,
                         base::Bind(&RawChannel::Shutdown,

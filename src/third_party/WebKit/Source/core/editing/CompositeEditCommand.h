@@ -38,13 +38,14 @@ class Element;
 class HTMLElement;
 class Text;
 
-class EditCommandComposition : public UndoStep {
+class EditCommandComposition FINAL : public UndoStep {
 public:
     static PassRefPtr<EditCommandComposition> create(Document*, const VisibleSelection&, const VisibleSelection&, EditAction);
 
+    virtual bool belongsTo(const Frame&) const OVERRIDE;
     virtual void unapply() OVERRIDE;
     virtual void reapply() OVERRIDE;
-    EditAction editingAction() const OVERRIDE { return m_editAction; }
+    virtual EditAction editingAction() const OVERRIDE { return m_editAction; }
     void append(SimpleEditCommand*);
     bool wasCreateLinkCommand() const { return m_editAction == EditActionCreateLink; }
 
@@ -76,10 +77,8 @@ public:
     EditCommandComposition* composition() { return m_composition.get(); }
     EditCommandComposition* ensureComposition();
 
-    virtual bool isCreateLinkCommand() const;
     virtual bool isTypingCommand() const;
     virtual bool preservesTypingStyle() const;
-    virtual bool shouldRetainAutocorrectionIndicator() const;
     virtual void setShouldRetainAutocorrectionIndicator(bool);
     virtual bool shouldStopCaretBlinking() const { return false; }
 
@@ -96,8 +95,8 @@ protected:
     void applyStyle(const EditingStyle*, const Position& start, const Position& end, EditAction = EditActionChangeAttributes);
     void applyStyledElement(PassRefPtr<Element>);
     void removeStyledElement(PassRefPtr<Element>);
-    void deleteSelection(bool smartDelete = false, bool mergeBlocksAfterDelete = true, bool replace = false, bool expandForSpecialElements = true, bool sanitizeMarkup = true);
-    void deleteSelection(const VisibleSelection&, bool smartDelete = false, bool mergeBlocksAfterDelete = true, bool replace = false, bool expandForSpecialElements = true, bool sanitizeMarkup = true);
+    void deleteSelection(bool smartDelete = false, bool mergeBlocksAfterDelete = true, bool expandForSpecialElements = true, bool sanitizeMarkup = true);
+    void deleteSelection(const VisibleSelection&, bool smartDelete = false, bool mergeBlocksAfterDelete = true, bool expandForSpecialElements = true, bool sanitizeMarkup = true);
     virtual void deleteTextFromNode(PassRefPtr<Text>, unsigned offset, unsigned count);
     bool isRemovableBlock(const Node*);
     void insertNodeAfter(PassRefPtr<Node>, PassRefPtr<Node> refChild);
@@ -105,7 +104,6 @@ protected:
     void insertNodeAtTabSpanPosition(PassRefPtr<Node>, const Position&);
     void insertNodeBefore(PassRefPtr<Node>, PassRefPtr<Node> refChild, ShouldAssumeContentIsAlwaysEditable = DoNotAssumeContentIsAlwaysEditable);
     void insertParagraphSeparator(bool useDefaultParagraphElement = false, bool pasteBlockqutoeIntoUnquotedArea = false);
-    void insertLineBreak();
     void insertTextIntoNode(PassRefPtr<Text>, unsigned offset, const String& text);
     void mergeIdenticalElements(PassRefPtr<Element>, PassRefPtr<Element>);
     void rebalanceWhitespace();
@@ -167,17 +165,12 @@ protected:
     Vector<RefPtr<EditCommand> > m_commands;
 
 private:
-    bool isCompositeEditCommand() const OVERRIDE { return true; }
+    virtual bool isCompositeEditCommand() const OVERRIDE FINAL { return true; }
 
     RefPtr<EditCommandComposition> m_composition;
 };
 
-inline CompositeEditCommand* toCompositeEditCommand(EditCommand* command)
-{
-    ASSERT(command);
-    ASSERT(command->isCompositeEditCommand());
-    return static_cast<CompositeEditCommand*>(command);
-}
+DEFINE_TYPE_CASTS(CompositeEditCommand, EditCommand, command, command->isCompositeEditCommand(), command.isCompositeEditCommand());
 
 } // namespace WebCore
 

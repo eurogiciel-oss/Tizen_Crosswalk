@@ -27,7 +27,6 @@
 <translation id="3549345495227188780">Bermula dengan OS Chromium</translation>
 <translation id="4330297532943865716">Pemasangan Chromium atau Chromium Frame yang bercanggah telah dijumpai pada sistem. Sila nyahpasang dan cuba lagi.</translation>
 <translation id="6953661834318318668">Bar Alat Chromium</translation>
-<translation id="2245147136185581459">Pengesan Portal Tawanan Chromium</translation>
 <translation id="4285930937574705105">Pemasangan gagal disebabkan ralat yang tidak dinyatakan. Jika Chromium sedang dijalankan, sila tutup dan cuba semula.</translation>
 <translation id="1396446129537741364">Chromium sedang cuba memaparkan kata laluan.</translation>
 <translation id="3555616473548901994">Selesai nyahpasang.</translation>
@@ -61,7 +60,6 @@
 <translation id="7771626876550251690">Dalam keadaan ini, alamat yang disenarai dalam sijil tidak sepadan dengan alamat tapak web yang cuba dicapai oleh penyemak imbas anda. Satu sebab mungkin berlakunya keadaan ini ialah komunikasi anda sedang dipintas oleh penyerang yang menyampaikan sijil untuk tapak web yang berlainan, yang akan mengakibatkan tiada padanan. Sebab lain yang mungkin ialah pelayan disediakan untuk mengembalikan sijil yang sama untuk berbilang tapak web, termasuk tapak yang anda cuba lawati, walaupun sijil tersebut tidak sah untuk semua tapak web itu. Chromium boleh menyatakan dengan yakin bahawa anda telah mancapai &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, tetapi tidak dapat mengesahkan bahawa tapak itu tapak yang sama seperti &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; yang anda ingin capai. Jika anda teruskan, Chromium tidak akan menyemak untuk mengesan sebarang nama tidak sepadan yang selanjutnya.</translation>
 <translation id="4330585738697551178">Modul ini diketahui bercanggah dengan Chromium.</translation>
 <translation id="3190315855212034486">Alamak! Chromium mengalami ranap sistem. Lancarkan semula sekarang?</translation>
-<translation id="3590194807845837023">Buka Profil dan Lancarkan Semula</translation>
 <translation id="6714487516757221107">Tiada pemasangan Chromium atau Chromium Frame dijumpai untuk dikemas kini.</translation>
 <translation id="3197823471738295152">Peranti anda telah dikemas kini.</translation>
 <translation id="8551886023433311834">Hampir terkini! Mulakan semula peranti anda untuk melengkapkan pengemaskinian.</translation>
@@ -153,6 +151,7 @@
 <translation id="6717134281241384636">Profil anda tidak boleh digunakan kerana profil anda dihasilkan dari versi Chromium yang lebih baharu.
 
 Beberapa ciri mungkin tidak tersedia. Sila nyatakan direktori profil yang berbeza atau gunakan versi Chromium yang lebih baharu.</translation>
+<translation id="8907580949721785412">Chromium cuba menunjukkan kata laluan. Taip kata laluan Windows anda untuk membenarkannya.</translation>
 <translation id="9013087743919948559">Tambah ke Chromium</translation>
 <translation id="6212496753309875659">Komputer ini telah mempunyai versi Chromium yang lebih baharu. Jika perisian tidak berfungsi, sila nyahpasang Chromium dan cuba lagi.</translation>
 <translation id="1298199220304005244">Dapatkan bantuan untuk menggunakan Chromium OS</translation>

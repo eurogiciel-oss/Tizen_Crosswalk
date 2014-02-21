@@ -4,47 +4,68 @@
 
 // These have to be sync'd with file_browser_private_apitest.cc
 var expectedVolume1 = {
+  volumeId: 'removable:mount_path1',
   mountPath: '/removable/mount_path1',
   sourcePath: 'device_path1',
   volumeType: 'removable',
   deviceType: 'usb',
-  isReadOnly: false
+  devicePath: 'system_path_prefix1',
+  deviceLabel: 'drive_label1',
+  isParentDevice: false,
+  isReadOnly: false,
+  profile: {profileId: "", displayName: "", isCurrentProfile: true}
 };
 
 var expectedVolume2 = {
+  volumeId: 'removable:mount_path2',
   mountPath: '/removable/mount_path2',
   sourcePath: 'device_path2',
   volumeType: 'removable',
   deviceType: 'mobile',
-  isReadOnly: true
+  devicePath: 'system_path_prefix2',
+  deviceLabel: 'drive_label2',
+  isParentDevice: true,
+  isReadOnly: true,
+  profile: {profileId: "", displayName: "", isCurrentProfile: true}
 };
 
 var expectedVolume3 = {
+  volumeId: 'removable:mount_path3',
   mountPath: '/removable/mount_path3',
   sourcePath: 'device_path3',
   volumeType: 'removable',
   deviceType: 'optical',
-  isReadOnly: false
+  devicePath: 'system_path_prefix3',
+  deviceLabel: 'drive_label3',
+  isParentDevice: true,
+  isReadOnly: false,
+  profile: {profileId: "", displayName: "", isCurrentProfile: true}
 };
 
 var expectedDownloadsVolume = {
-  mountPath: '/Downloads',
+  volumeId: /^downloads:Downloads[^\/]*$/,
+  mountPath: /^\/Downloads[^\/]*$/,
   volumeType: 'downloads',
-  isReadOnly: false
+  isReadOnly: false,
+  profile: {profileId: "", displayName: "", isCurrentProfile: true}
 };
 
 var expectedDriveVolume = {
+  volumeId: 'drive:drive',
   mountPath: '/drive',
   sourcePath: '/special/drive',
   volumeType: 'drive',
-  isReadOnly: false
+  isReadOnly: false,
+  profile: {profileId: "", displayName: "", isCurrentProfile: true}
 };
 
 var expectedArchiveVolume = {
+  volumeId: 'archive:archive_mount_path',
   mountPath: '/archive/archive_mount_path',
   sourcePath: 'archive_path',
   volumeType: 'archive',
-  isReadOnly: false
+  isReadOnly: true,
+  profile: {profileId: "", displayName: "", isCurrentProfile: true}
 };
 
 // List of expected mount points.
@@ -61,7 +82,16 @@ var expectedVolumeList = [
 
 function validateObject(received, expected, name) {
   for (var key in expected) {
-    if (received[key] != expected[key]) {
+    if (expected[key] instanceof RegExp) {
+      if (!expected[key].test(received[key])) {
+        console.warn('Expected "' + key + '" ' + name + ' property to match: ' +
+                     expected[key] + ', but got: "' + received[key] + '".');
+        return false;
+      }
+    } else if (expected[key] instanceof Object) {
+      if (!validateObject(received[key], expected[key], name + "." + key))
+        return false;
+    } else if (received[key] != expected[key]) {
       console.warn('Expected "' + key + '" ' + name + ' property to be: "' +
                   expected[key] + '"' + ', but got: "' + received[key] +
                   '" instead.');

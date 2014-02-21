@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/platform_file.h"
 #include "third_party/WebKit/public/platform/WebFileError.h"
@@ -110,7 +111,7 @@ GetFileSystemTypeString(FileSystemType type);
 // Returns false if the |type_string| is invalid.
 WEBKIT_STORAGE_COMMON_EXPORT bool GetFileSystemPublicType(
     std::string type_string,
-    WebKit::WebFileSystemType* type);
+    blink::WebFileSystemType* type);
 
 // Encodes |file_path| to a string.
 // Following conditions should be held:
@@ -128,8 +129,8 @@ WEBKIT_STORAGE_COMMON_EXPORT base::FilePath StringToFilePath(
     const std::string& file_path_string);
 
 // File error conversion
-WEBKIT_STORAGE_COMMON_EXPORT WebKit::WebFileError
-PlatformFileErrorToWebFileError(base::PlatformFileError error_code);
+WEBKIT_STORAGE_COMMON_EXPORT blink::WebFileError
+FileErrorToWebFileError(base::File::Error error_code);
 
 // Generate a file system name for the given arguments. Should only be used by
 // platform apps.
@@ -163,9 +164,9 @@ WEBKIT_STORAGE_COMMON_EXPORT std::string GetExternalFileSystemRootURIString(
     const GURL& origin_url,
     const std::string& mount_name);
 
-// Translates the net::Error to base::PlatformFileError.
-WEBKIT_STORAGE_COMMON_EXPORT base::PlatformFileError
-NetErrorToPlatformFileError(int error);
+// Translates the net::Error to base::File::Error.
+WEBKIT_STORAGE_COMMON_EXPORT base::File::Error
+NetErrorToFileError(int error);
 
 #if defined(OS_CHROMEOS)
 // Returns the filesystem info that can be specified by |origin_url|.

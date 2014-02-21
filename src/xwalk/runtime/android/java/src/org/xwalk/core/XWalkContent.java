@@ -28,7 +28,8 @@ import org.chromium.content.browser.ContentViewRenderView;
 import org.chromium.content.browser.ContentViewStatics;
 import org.chromium.content.browser.LoadUrlParams;
 import org.chromium.content.browser.NavigationHistory;
-import org.chromium.ui.WindowAndroid;
+import org.chromium.media.MediaPlayerBridge;
+import org.chromium.ui.base.WindowAndroid;
 
 @JNINamespace("xwalk")
 /**
@@ -46,6 +47,7 @@ public class XWalkContent extends FrameLayout {
     private XWalkWebContentsDelegateAdapter mXWalkContentsDelegateAdapter;
     private XWalkSettings mSettings;
     private XWalkGeolocationPermissions mGeolocationPermissions;
+    private XWalkLaunchScreenManager mLaunchScreenManager;
 
     int mXWalkContent;
     int mWebContents;
@@ -62,8 +64,11 @@ public class XWalkContent extends FrameLayout {
             mContentsClientBridge);
         mIoThreadClient = new XWalkIoThreadClientImpl();
 
+        // Initialize mWindow which is needed by content
+        mWindow = new WindowAndroid(xwView.getActivity().getApplicationContext());
+
         // Initialize ContentViewRenderView
-        mContentViewRenderView = new ContentViewRenderView(context) {
+        mContentViewRenderView = new ContentViewRenderView(context, mWindow) {
             protected void onReadyToRender() {
                 if (mPendingUrl != null) {
                     doLoadUrl(mPendingUrl);
@@ -73,6 +78,8 @@ public class XWalkContent extends FrameLayout {
                 mReadyToLoad = true;
             }
         };
+        mLaunchScreenManager = new XWalkLaunchScreenManager(context, mXWalkView);
+        mContentViewRenderView.registerFirstRenderedFrameListener(mLaunchScreenManager);
         addView(mContentViewRenderView,
                 new FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
@@ -81,9 +88,6 @@ public class XWalkContent extends FrameLayout {
         mXWalkContent = nativeInit(mXWalkContentsDelegateAdapter, mContentsClientBridge);
         mWebContents = nativeGetWebContents(mXWalkContent, mIoThreadClient,
                 mContentsClientBridge.getInterceptNavigationDelegate());
-
-        // Initialize mWindow which is needed by content
-        mWindow = new WindowAndroid(xwView.getActivity());
 
         // Initialize ContentView.
         mContentView = ContentView.newInstance(getContext(), mWebContents, mWindow);
@@ -99,7 +103,7 @@ public class XWalkContent extends FrameLayout {
         mContentViewCore = mContentView.getContentViewCore();
         mContentsClientBridge.installWebContentsObserver(mContentViewCore);
 
-        mContentView.setDownloadDelegate(mContentsClientBridge);
+        mContentView.getContentViewCore().setDownloadDelegate(mContentsClientBridge);
 
         // Set the third argument isAccessFromFileURLsGrantedByDefault to false, so that
         // the members mAllowUniversalAccessFromFileURLs and mAllowFileAccessFromFileURLs
@@ -112,13 +116,16 @@ public class XWalkContent extends FrameLayout {
 
         SharedPreferences sharedPreferences = new InMemorySharedPreferences();
         mGeolocationPermissions = new XWalkGeolocationPermissions(sharedPreferences);
+
+        MediaPlayerBridge.setResourceLoadingFilter(
+                new XWalkMediaPlayerResourceLoadingFilter());
     }
 
     void doLoadUrl(String url) {
         //TODO(Xingnan): Configure appropriate parameters here.
         // Handle the same url loading by parameters.
         if (TextUtils.equals(url, mContentView.getUrl())) {
-            mContentView.reload();
+            mContentView.getContentViewCore().reload(true);
         } else {
             LoadUrlParams params = new LoadUrlParams(url);
             params.setOverrideUserAgent(LoadUrlParams.UA_OVERRIDE_TRUE);
@@ -140,7 +147,7 @@ public class XWalkContent extends FrameLayout {
 
     public void reload() {
         if (mReadyToLoad) {
-            mContentView.reload();
+            mContentView.getContentViewCore().reload(true);
         }
     }
 
@@ -198,7 +205,7 @@ public class XWalkContent extends FrameLayout {
     }
 
     public void clearHistory() {
-        mContentView.clearHistory();
+        mContentView.getContentViewCore().clearHistory();
     }
 
     public boolean canGoBack() {
@@ -218,7 +225,7 @@ public class XWalkContent extends FrameLayout {
     }
 
     public void stopLoading() {
-        mContentView.stopLoading();
+        mContentView.getContentViewCore().stopLoading();
     }
 
     // TODO(Guangzhen): ContentViewStatics will be removed in upstream,
@@ -331,6 +338,14 @@ public class XWalkContent extends FrameLayout {
         if (url != null && !url.isEmpty()) {
             loadUrl(url);
         }
+    }
+
+    @CalledByNative
+    public void onGetUrlAndLaunchScreenFromManifest(String url, String readyWhen) {
+        if (url == null || url.isEmpty()) return;
+        mLaunchScreenManager.displayLaunchScreen(readyWhen);
+        mContentsClientBridge.registerPageLoadListener(mLaunchScreenManager);
+        loadUrl(url);
     }
 
     public void destroy() {

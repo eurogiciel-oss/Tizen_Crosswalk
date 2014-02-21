@@ -22,7 +22,8 @@
 #define CSSValue_h
 
 #include "core/dom/ExceptionCode.h"
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
+#include "wtf/HashMap.h"
 #include "wtf/ListHashSet.h"
 #include "wtf/RefCounted.h"
 #include "wtf/RefPtr.h"
@@ -97,14 +98,13 @@ public:
     bool isCalcValue() const {return m_classType == CalculationClass; }
     bool isFilterValue() const { return m_classType == CSSFilterClass; }
     bool isArrayFunctionValue() const { return m_classType == CSSArrayFunctionValueClass; }
-    bool isMixFunctionValue() const { return m_classType == CSSMixFunctionValueClass; }
-    bool isShaderValue() const { return m_classType == CSSShaderClass; }
     bool isVariableValue() const { return m_classType == VariableClass; }
     bool isGridTemplateValue() const { return m_classType == GridTemplateClass; }
     bool isSVGColor() const { return m_classType == SVGColorClass || m_classType == SVGPaintClass; }
     bool isSVGPaint() const { return m_classType == SVGPaintClass; }
     bool isSVGDocumentValue() const { return m_classType == CSSSVGDocumentClass; }
     bool isUnicodeRangeValue() const { return m_classType == UnicodeRangeClass; }
+    bool isGridLineNamesValue() const { return m_classType == GridLineNamesClass; }
 
     bool isCSSOMSafe() const { return m_isCSSOMSafe; }
     bool isSubtypeExposedToCSSOM() const
@@ -113,8 +113,6 @@ public:
     }
 
     PassRefPtr<CSSValue> cloneForCSSOM() const;
-
-    void addSubresourceStyleURLs(ListHashSet<KURL>&, const StyleSheetContents*) const;
 
     bool hasFailedOrCanceledSubresources() const;
 
@@ -156,7 +154,6 @@ protected:
         UnicodeRangeClass,
         LineBoxContainClass,
         CalculationClass,
-        CSSShaderClass,
         VariableClass,
         GridTemplateClass,
 
@@ -170,8 +167,8 @@ protected:
         ImageSetClass,
         CSSFilterClass,
         CSSArrayFunctionValueClass,
-        CSSMixFunctionValueClass,
         CSSTransformClass,
+        GridLineNamesClass,
         // Do not append non-list class types here.
     };
 

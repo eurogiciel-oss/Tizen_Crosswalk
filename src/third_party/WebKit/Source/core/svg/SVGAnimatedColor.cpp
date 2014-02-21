@@ -35,29 +35,31 @@ SVGAnimatedColorAnimator::SVGAnimatedColorAnimator(SVGAnimationElement* animatio
 
 PassOwnPtr<SVGAnimatedType> SVGAnimatedColorAnimator::constructFromString(const String& string)
 {
-    OwnPtr<SVGAnimatedType> animtedType = SVGAnimatedType::createColor(new Color);
-    animtedType->color() = string.isEmpty() ? Color() : SVGColor::colorFromRGBColorString(string);
+    StyleColor styleColor = string.isEmpty() ? StyleColor::currentColor() : SVGColor::colorFromRGBColorString(string);
+    OwnPtr<SVGAnimatedType> animtedType = SVGAnimatedType::createColor(new StyleColor(styleColor));
     return animtedType.release();
+}
+
+static inline Color fallbackColorForCurrentColor(SVGElement* targetElement)
+{
+    ASSERT(targetElement);
+    if (RenderObject* targetRenderer = targetElement->renderer())
+        return targetRenderer->style()->visitedDependentColor(CSSPropertyColor);
+    else
+        return Color::transparent;
 }
 
 void SVGAnimatedColorAnimator::addAnimatedTypes(SVGAnimatedType* from, SVGAnimatedType* to)
 {
     ASSERT(from->type() == AnimatedColor);
     ASSERT(from->type() == to->type());
-    to->color() = ColorDistance::addColors(from->color(), to->color());
+    Color fallbackColor = fallbackColorForCurrentColor(m_contextElement);
+    Color fromColor = from->color().resolve(fallbackColor);
+    Color toColor = to->color().resolve(fallbackColor);
+    to->color() = ColorDistance::addColors(fromColor, toColor);
 }
 
-static inline void adjustForCurrentColor(SVGElement* targetElement, Color& color)
-{
-    ASSERT(targetElement);
-
-    if (RenderObject* targetRenderer = targetElement->renderer())
-        color = targetRenderer->style()->visitedDependentColor(CSSPropertyColor);
-    else
-        color = Color();
-}
-
-static Color parseColorFromString(SVGAnimationElement*, const String& string)
+static StyleColor parseColorFromString(SVGAnimationElement*, const String& string)
 {
     return SVGColor::colorFromRGBColorString(string);
 }
@@ -67,20 +69,21 @@ void SVGAnimatedColorAnimator::calculateAnimatedValue(float percentage, unsigned
     ASSERT(m_animationElement);
     ASSERT(m_contextElement);
 
-    Color fromColor = m_animationElement->animationMode() == ToAnimation ? animated->color() : from->color();
-    Color toColor = to->color();
-    const Color& toAtEndOfDurationColor = toAtEndOfDuration->color();
-    Color& animatedColor = animated->color();
+    StyleColor fromStyleColor = m_animationElement->animationMode() == ToAnimation ? animated->color() : from->color();
+    StyleColor toStyleColor = to->color();
+    StyleColor toAtEndOfDurationStyleColor = toAtEndOfDuration->color();
+    StyleColor& animatedStyleColor = animated->color();
 
     // Apply CSS inheritance rules.
-    m_animationElement->adjustForInheritance<Color>(parseColorFromString, m_animationElement->fromPropertyValueType(), fromColor, m_contextElement);
-    m_animationElement->adjustForInheritance<Color>(parseColorFromString, m_animationElement->toPropertyValueType(), toColor, m_contextElement);
+    m_animationElement->adjustForInheritance<StyleColor>(parseColorFromString, m_animationElement->fromPropertyValueType(), fromStyleColor, m_contextElement);
+    m_animationElement->adjustForInheritance<StyleColor>(parseColorFromString, m_animationElement->toPropertyValueType(), toStyleColor, m_contextElement);
 
-    // Apply <animateColor> rules.
-    if (m_animationElement->fromPropertyValueType() == CurrentColorValue)
-        adjustForCurrentColor(m_contextElement, fromColor);
-    if (m_animationElement->toPropertyValueType() == CurrentColorValue)
-        adjustForCurrentColor(m_contextElement, toColor);
+    // Apply currentColor rules.
+    Color fallbackColor = fallbackColorForCurrentColor(m_contextElement);
+    Color fromColor = fromStyleColor.resolve(fallbackColor);
+    Color toColor = toStyleColor.resolve(fallbackColor);
+    Color toAtEndOfDurationColor = toAtEndOfDurationStyleColor.resolve(fallbackColor);
+    Color animatedColor = animatedStyleColor.resolve(fallbackColor);
 
     float animatedRed = animatedColor.red();
     m_animationElement->animateAdditiveNumber(percentage, repeatCount, fromColor.red(), toColor.red(), toAtEndOfDurationColor.red(), animatedRed);
@@ -94,19 +97,20 @@ void SVGAnimatedColorAnimator::calculateAnimatedValue(float percentage, unsigned
     float animatedAlpha = animatedColor.alpha();
     m_animationElement->animateAdditiveNumber(percentage, repeatCount, fromColor.alpha(), toColor.alpha(), toAtEndOfDurationColor.alpha(), animatedAlpha);
 
-    animatedColor = ColorDistance::clampColor(static_cast<int>(roundf(animatedRed)), static_cast<int>(roundf(animatedGreen)), static_cast<int>(roundf(animatedBlue)), static_cast<int>(roundf(animatedAlpha)));
+    animatedStyleColor = StyleColor(makeRGBA(roundf(animatedRed), roundf(animatedGreen), roundf(animatedBlue), roundf(animatedAlpha)));
 }
 
 float SVGAnimatedColorAnimator::calculateDistance(const String& fromString, const String& toString)
 {
+    // FIXME: currentColor should be resolved
     ASSERT(m_contextElement);
-    Color from = SVGColor::colorFromRGBColorString(fromString);
-    if (!from.isValid())
+    StyleColor from = SVGColor::colorFromRGBColorString(fromString);
+    if (from.isCurrentColor())
         return -1;
-    Color to = SVGColor::colorFromRGBColorString(toString);
-    if (!to.isValid())
+    StyleColor to = SVGColor::colorFromRGBColorString(toString);
+    if (to.isCurrentColor())
         return -1;
-    return ColorDistance(from, to).distance();
+    return ColorDistance::distance(from.color(), to.color());
 }
 
 }

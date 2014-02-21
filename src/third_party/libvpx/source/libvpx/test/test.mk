@@ -7,6 +7,8 @@ LIBVPX_TEST_SRCS-yes += codec_factory.h
 LIBVPX_TEST_SRCS-yes += test_libvpx.cc
 LIBVPX_TEST_SRCS-yes += util.h
 LIBVPX_TEST_SRCS-yes += video_source.h
+LIBVPX_TEST_SRCS-yes += test_vectors.h
+LIBVPX_TEST_SRCS-yes += test_vectors.cc
 
 ##
 ## BLACK BOX TESTS
@@ -32,6 +34,8 @@ LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += ../md5_utils.h ../md5_utils.c
 LIBVPX_TEST_SRCS-yes                   += decode_test_driver.cc
 LIBVPX_TEST_SRCS-yes                   += decode_test_driver.h
 LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += ivf_video_source.h
+LIBVPX_TEST_SRCS-$(CONFIG_VP9_DECODER) += external_frame_buffer_test.cc
+LIBVPX_TEST_SRCS-$(CONFIG_VP9_DECODER) += lru_frame_buffer_test.cc
 
 ## WebM Parsing
 NESTEGG_SRCS                           += ../nestegg/halloc/halloc.h
@@ -44,6 +48,10 @@ LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += $(NESTEGG_SRCS)
 LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += webm_video_source.h
 
 LIBVPX_TEST_SRCS-$(CONFIG_DECODERS)    += test_vector_test.cc
+# Currently we only support decoder perf tests for vp9
+ifeq ($(CONFIG_DECODE_PERF_TESTS)$(CONFIG_VP9_DECODER), yesyes)
+LIBVPX_TEST_SRCS-yes                   += decode_perf_test.cc
+endif
 
 ##
 ## WHITE BOX TESTS
@@ -84,6 +92,7 @@ LIBVPX_TEST_SRCS-yes                   += vp9_boolcoder_test.cc
 
 # IDCT test currently depends on FDCT function
 LIBVPX_TEST_SRCS-yes                   += idct8x8_test.cc
+LIBVPX_TEST_SRCS-yes                   += partial_idct_test.cc
 LIBVPX_TEST_SRCS-yes                   += superframe_test.cc
 LIBVPX_TEST_SRCS-yes                   += tile_independence_test.cc
 endif
@@ -96,6 +105,7 @@ LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += fdct8x8_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += dct16x16_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += variance_test.cc
 LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += dct32x32_test.cc
+LIBVPX_TEST_SRCS-$(CONFIG_VP9_ENCODER) += svc_test.cc
 
 endif # VP9
 
@@ -170,6 +180,7 @@ LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1438.ivf
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1439.ivf
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1440.ivf
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1443.ivf
+LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-06-smallsize.ivf
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-00-comprehensive-001.ivf.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-00-comprehensive-002.ivf.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-00-comprehensive-003.ivf.md5
@@ -231,6 +242,7 @@ LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1438.ivf.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1439.ivf.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1440.ivf.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-05-sharpness-1443.ivf.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP8_DECODER) += vp80-06-smallsize.ivf.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-00-quantizer-00.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-00-quantizer-00.webm.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-00-quantizer-01.webm
@@ -501,6 +513,8 @@ LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-02-size-66x64.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-02-size-66x64.webm.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-02-size-66x66.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-02-size-66x66.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-02-size-lf-1920x1080.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-02-size-lf-1920x1080.webm.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-03-size-196x196.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-03-size-196x196.webm.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-03-size-196x198.webm
@@ -645,5 +659,59 @@ LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x4_frame_parallel.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x4_frame_parallel.webm.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x4.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x4.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x8_frame_parallel.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x8_frame_parallel.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x8.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile_1x8.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile-4x4.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile-4x4.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile-4x1.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-08-tile-4x1.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-09-subpixel-00.ivf
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-09-subpixel-00.ivf.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-09-aq2.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-09-aq2.webm.md5
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-09-lf_deltas.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp90-2-09-lf_deltas.webm.md5
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp91-2-04-yv444.webm
 LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += vp91-2-04-yv444.webm.md5
+
+ifeq ($(CONFIG_DECODE_PERF_TESTS),yes)
+# BBB VP9 streams
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-bbb_426x240_tile_1x1_180kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-bbb_640x360_tile_1x2_337kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-bbb_854x480_tile_1x2_651kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-bbb_1280x720_tile_1x4_1310kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-bbb_1920x1080_tile_1x1_2581kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-bbb_1920x1080_tile_1x4_2586kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-bbb_1920x1080_tile_1x4_fpm_2304kbps.webm
+#Sintel VP9 streams
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-sintel_426x182_tile_1x1_171kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-sintel_640x272_tile_1x2_318kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-sintel_854x364_tile_1x2_621kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-sintel_1280x546_tile_1x4_1257kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-sintel_1920x818_tile_1x4_fpm_2279kbps.webm
+# TOS VP9 streams
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-tos_426x178_tile_1x1_181kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-tos_640x266_tile_1x2_336kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-tos_854x356_tile_1x2_656kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-tos_1280x534_tile_1x4_1306kbps.webm
+LIBVPX_TEST_DATA-$(CONFIG_VP9_DECODER) += \
+  vp90-2-tos_1920x800_tile_1x4_fpm_2335kbps.webm
+endif  # CONFIG_DECODE_PERF_TESTS

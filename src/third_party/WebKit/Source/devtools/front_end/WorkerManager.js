@@ -35,6 +35,7 @@
 WebInspector.WorkerManager = function()
 {
     this._workerIdToWindow = {};
+    this._reset();
     InspectorBackend.registerWorkerDispatcher(new WebInspector.WorkerDispatcher(this));
 }
 
@@ -102,7 +103,7 @@ WebInspector.WorkerManager._calculateWorkerInspectorTitle = function()
     
     /**
      * @param {?Protocol.Error} error
-     * @param {RuntimeAgent.RemoteObject} result
+     * @param {!RuntimeAgent.RemoteObject} result
      * @param {boolean=} wasThrown
      */
     function evalCallback(error, result, wasThrown)
@@ -116,24 +117,38 @@ WebInspector.WorkerManager._calculateWorkerInspectorTitle = function()
 }
 
 WebInspector.WorkerManager.Events = {
-    WorkerAdded: "worker-added",
-    WorkerRemoved: "worker-removed",
-    WorkersCleared: "workers-cleared",
+    WorkerAdded: "WorkerAdded",
+    WorkerRemoved: "WorkerRemoved",
+    WorkersCleared: "WorkersCleared",
+    WorkerSelectionChanged: "WorkerSelectionChanged",
 }
 
 WebInspector.WorkerManager.prototype = {
+
+    _reset: function()
+    {
+        /** @type {!Object.<number, string>} */
+        this._threadUrlByThreadId = {0: WebInspector.UIString("Thread: Main")};
+        this._threadsList = [0];
+        this._selectedThreadId = 0;
+    },
+
     _workerCreated: function(workerId, url, inspectorConnected)
-     {
+    {
         if (inspectorConnected)
             this._openInspectorWindow(workerId, true);
+        this._threadsList.push(workerId);
+        this._threadUrlByThreadId[workerId] = url;
         this.dispatchEventToListeners(WebInspector.WorkerManager.Events.WorkerAdded, {workerId: workerId, url: url, inspectorConnected: inspectorConnected});
      },
 
     _workerTerminated: function(workerId)
-     {
+    {
         this.closeWorkerInspector(workerId);
+        this._threadsList.remove(workerId);
+        delete this._threadUrlByThreadId[workerId];
         this.dispatchEventToListeners(WebInspector.WorkerManager.Events.WorkerRemoved, workerId);
-     },
+    },
 
     _sendMessageToWorkerInspector: function(workerId, message)
     {
@@ -165,6 +180,7 @@ WebInspector.WorkerManager.prototype = {
         if (workerIsPaused)
             url += "&workerPaused=true";
         url = url.replace("docked=true&", "");
+        url = url.replace("can_dock=true&", "");
         url += hash;
         var width = WebInspector.settings.workerInspectorWidth.get();
         var height = WebInspector.settings.workerInspectorHeight.get();
@@ -175,8 +191,7 @@ WebInspector.WorkerManager.prototype = {
         workerInspectorWindow.addEventListener("beforeunload", this._workerInspectorClosing.bind(this, workerId), true);
 
         // Listen to beforeunload in detached state and to the InspectorClosing event in case of attached inspector.
-        window.addEventListener("beforeunload", this._pageInspectorClosing.bind(this), true);
-        WebInspector.notifications.addEventListener(WebInspector.Events.InspectorClosing, this._pageInspectorClosing, this);
+        window.addEventListener("unload", this._pageInspectorClosing.bind(this), true);
     },
 
     closeWorkerInspector: function(workerId)
@@ -190,6 +205,8 @@ WebInspector.WorkerManager.prototype = {
     {
         for (var workerId in this._workerIdToWindow)
             this.closeWorkerInspector(workerId);
+
+        this._reset();
         this.dispatchEventToListeners(WebInspector.WorkerManager.Events.WorkersCleared);
     },
 
@@ -224,6 +241,39 @@ WebInspector.WorkerManager.prototype = {
         var screen = new WebInspector.WorkerTerminatedScreen();
         WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.GlobalObjectCleared, screen.hide, screen);
         screen.showModal();
+    },
+
+    /**
+     * @return {!Array.<number>}
+     */
+    threadsList: function()
+    {
+        return this._threadsList;
+    },
+
+    /**
+     * @param {number} threadId
+     * @return {string}
+     */
+    threadUrl: function(threadId)
+    {
+        return this._threadUrlByThreadId[threadId];
+    },
+
+    /**
+     * @param {number} threadId
+     */
+    setSelectedThreadId: function(threadId)
+    {
+        this._selectedThreadId = threadId;
+    },
+
+    /**
+     * @return {number}
+     */
+    selectedThreadId: function()
+    {
+        return this._selectedThreadId;
     },
 
     __proto__: WebInspector.Object.prototype
@@ -280,7 +330,7 @@ WebInspector.WorkerTerminatedScreen = function()
 {
     WebInspector.HelpScreen.call(this, WebInspector.UIString("Inspected worker terminated"));
     var p = this.contentElement.createChild("p");
-    p.addStyleClass("help-section");
+    p.classList.add("help-section");
     p.textContent = WebInspector.UIString("Inspected worker has terminated. Once it restarts we will attach to it automatically.");
 }
 

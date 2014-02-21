@@ -17,10 +17,10 @@
         '../../skia/skia.gyp:skia',
         '../base/strings/ui_strings.gyp:ui_strings',
         '../compositor/compositor.gyp:compositor',
-        '../events/events.gyp:events',
         '../gfx/gfx.gyp:gfx',
+        '../gfx/gfx.gyp:gfx_geometry',
+        '../resources/ui_resources.gyp:ui_resources',
         '../ui.gyp:ui',
-        '../ui.gyp:ui_resources',
       ],
       'defines': [
         'APP_LIST_IMPLEMENTATION',
@@ -31,17 +31,20 @@
         'app_list_export.h',
         'app_list_folder_item.cc',
         'app_list_folder_item.h',
+        'app_list_item.cc',
+        'app_list_item.h',
+        'app_list_item_observer.h',
         'app_list_item_list.cc',
         'app_list_item_list.h',
         'app_list_item_list_observer.h',
-        'app_list_item_model.cc',
-        'app_list_item_model.h',
-        'app_list_item_model_observer.h',
         'app_list_menu.cc',
         'app_list_menu.h',
         'app_list_model.cc',
         'app_list_model.h',
         'app_list_model_observer.h',
+        'app_list_switches.cc',
+        'app_list_switches.h',
+        'app_list_view_delegate.cc',
         'app_list_view_delegate.h',
         'cocoa/app_list_pager_view.h',
         'cocoa/app_list_pager_view.mm',
@@ -78,6 +81,9 @@
         'search_result.h',
         'signin_delegate.cc',
         'signin_delegate.h',
+        'speech_ui_model.cc',
+        'speech_ui_model.h',
+        'speech_ui_model_observer.h',
         'views/apps_container_view.cc',
         'views/apps_container_view.h',
         'views/app_list_background.cc',
@@ -93,6 +99,7 @@
         'views/app_list_menu_views.h',
         'views/app_list_view.cc',
         'views/app_list_view.h',
+        'views/app_list_view_observer.h',
         'views/apps_grid_view.cc',
         'views/apps_grid_view.h',
         'views/apps_grid_view_delegate.h',
@@ -122,6 +129,8 @@
         'views/search_result_view_delegate.h',
         'views/signin_view.cc',
         'views/signin_view.h',
+        'views/speech_view.cc',
+        'views/speech_view.h',
       ],
       'conditions': [
         ['use_aura==1', {
@@ -133,8 +142,10 @@
           'dependencies': [
             '../../content/content.gyp:content',
             '../../content/content.gyp:content_browser',
+            '../events/events.gyp:events',
             '../views/controls/webview/webview.gyp:webview',
             '../views/views.gyp:views',
+            '../wm/wm.gyp:wm_public',
           ],
         }, {  # toolkit_views==0
           'sources/': [
@@ -143,10 +154,7 @@
         }],
         ['OS=="mac"', {
           'dependencies': [
-            '../ui.gyp:ui_cocoa_third_party_toolkits',
-          ],
-          'include_dirs': [
-            '../../third_party/GTM',
+            '../../third_party/google_toolbox_for_mac/google_toolbox_for_mac.gyp:google_toolbox_for_mac',
           ],
           'link_settings': {
             'libraries': [
@@ -163,29 +171,40 @@
       'msvs_disabled_warnings': [ 4267, ],
     },
     {
+      'target_name': 'app_list_test_support',
+      'type': 'static_library',
+      'dependencies': [
+        '../../base/base.gyp:base',
+        '../gfx/gfx.gyp:gfx',
+        '../gfx/gfx.gyp:gfx_geometry',
+        'app_list',
+      ],
+      'sources': [
+        'test/app_list_test_model.cc',
+        'test/app_list_test_model.h',
+        'test/app_list_test_view_delegate.cc',
+        'test/app_list_test_view_delegate.h',
+      ],
+    },
+    {
       'target_name': 'app_list_unittests',
       'type': 'executable',
       'dependencies': [
         '../../base/base.gyp:base',
         '../../base/base.gyp:test_support_base',
-        # TODO: Remove this dependency. See comment for views_unittests.
-        '../../chrome/chrome_resources.gyp:packed_resources',
         '../../skia/skia.gyp:skia',
         '../../testing/gtest.gyp:gtest',
         '../compositor/compositor.gyp:compositor',
+        '../resources/ui_resources.gyp:ui_resources',
+        '../resources/ui_resources.gyp:ui_test_pak',
         '../ui.gyp:ui',
-        '../ui.gyp:ui_resources',
-        '../ui_unittests.gyp:run_ui_unittests',
-        '../ui_unittests.gyp:ui_test_support',
         'app_list',
+        'app_list_test_support',
       ],
       'sources': [
+        'app_list_item_list_unittest.cc',
         'app_list_model_unittest.cc',
         'pagination_model_unittest.cc',
-        'test/app_list_test_model.cc',
-        'test/app_list_test_model.h',
-        'test/app_list_test_view_delegate.cc',
-        'test/app_list_test_view_delegate.h',
         'cocoa/app_list_view_controller_unittest.mm',
         'cocoa/app_list_window_controller_unittest.mm',
         'cocoa/apps_grid_controller_unittest.mm',
@@ -194,6 +213,8 @@
         'cocoa/signin_view_controller_unittest.mm',
         'cocoa/test/apps_grid_controller_test_helper.h',
         'cocoa/test/apps_grid_controller_test_helper.mm',
+        'test/run_all_unittests.cc',
+        'views/app_list_main_view_unittest.cc',
         'views/apps_grid_view_unittest.cc',
         'views/test/apps_grid_view_test_api.cc',
         'views/test/apps_grid_view_test_api.h',
@@ -226,7 +247,7 @@
             ['exclude', 'cocoa/'],
           ],
         }],
-        ['use_glib == 1 or OS == "ios"', {
+        ['desktop_linux == 1 or chromeos == 1 or OS == "ios"', {
           'dependencies': [
             '../base/strings/ui_strings.gyp:ui_unittest_strings',
           ],
@@ -238,8 +259,8 @@
             # The following two dependencies provide the missing
             # symbol HeapProfilerStart in Linux component builds.
             # They probably can be removed after http://crbug.com/263316
+            '../../webkit/child/webkit_child.gyp:webkit_child',
             '../../webkit/glue/webkit_glue.gyp:glue',
-            '../../webkit/glue/webkit_glue.gyp:glue_child',
           ],
         }],
         ['OS=="win" and win_use_allocator_shim==1', {

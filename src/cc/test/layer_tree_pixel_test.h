@@ -15,6 +15,10 @@
 
 class SkBitmap;
 
+namespace gpu {
+class GLInProcessContext;
+}
+
 namespace cc {
 class CopyOutputRequest;
 class CopyOutputResult;
@@ -31,6 +35,7 @@ class LayerTreePixelTest : public LayerTreeTest {
 
   virtual scoped_ptr<OutputSurface> CreateOutputSurface(bool fallback) OVERRIDE;
   virtual scoped_refptr<ContextProvider> OffscreenContextProvider() OVERRIDE;
+  virtual void CommitCompleteOnThread(LayerTreeHostImpl* impl) OVERRIDE;
 
   virtual scoped_ptr<CopyOutputRequest> CreateCopyOutputRequest();
 
@@ -43,14 +48,14 @@ class LayerTreePixelTest : public LayerTreeTest {
 
   void TryEndTest();
 
-  scoped_refptr<SolidColorLayer> CreateSolidColorLayer(gfx::Rect rect,
+  scoped_refptr<SolidColorLayer> CreateSolidColorLayer(const gfx::Rect& rect,
                                                        SkColor color);
   scoped_refptr<SolidColorLayer> CreateSolidColorLayerWithBorder(
-      gfx::Rect rect,
+      const gfx::Rect& rect,
       SkColor color,
       int border_width,
       SkColor border_color);
-  scoped_refptr<TextureLayer> CreateTextureLayer(gfx::Rect rect,
+  scoped_refptr<TextureLayer> CreateTextureLayer(const gfx::Rect& rect,
                                                  const SkBitmap& bitmap);
 
   enum PixelTestType {
@@ -78,11 +83,10 @@ class LayerTreePixelTest : public LayerTreeTest {
       TextureMailbox* texture_mailbox,
       scoped_ptr<SingleReleaseCallback>* release_callback);
 
-  void ReleaseTextureMailbox(
-      scoped_ptr<WebKit::WebGraphicsContext3D> context3d,
-      uint32 texture,
-      uint32 sync_point,
-      bool lost_resource);
+  void ReleaseTextureMailbox(scoped_ptr<gpu::GLInProcessContext> context,
+                             uint32 texture,
+                             uint32 sync_point,
+                             bool lost_resource);
 
   // Common CSS colors defined for tests to use.
   enum Colors {

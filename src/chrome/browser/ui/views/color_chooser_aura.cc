@@ -18,9 +18,8 @@ ColorChooserAura::ColorChooserAura(content::WebContents* web_contents,
                                    SkColor initial_color)
     : web_contents_(web_contents) {
   view_ = new views::ColorChooserView(this, initial_color);
-  Browser* browser = chrome::FindBrowserWithWebContents(web_contents);
   widget_ = views::Widget::CreateWindowWithParent(
-      view_, browser->window()->GetNativeWindow());
+      view_, web_contents->GetView()->GetTopLevelNativeWindow());
   widget_->Show();
 }
 

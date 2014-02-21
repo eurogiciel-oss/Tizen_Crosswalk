@@ -18,8 +18,9 @@
 // The maximum number of steps in a step search given the largest
 // allowed initial step
 #define MAX_MVSEARCH_STEPS 11
-// Max full pel mv specified in 1 pel units
-#define MAX_FULL_PEL_VAL ((1 << (MAX_MVSEARCH_STEPS)) - 1)
+// Max full pel mv specified in the unit of full pixel
+// Enable the use of motion vector in range [-1023, 1023].
+#define MAX_FULL_PEL_VAL ((1 << (MAX_MVSEARCH_STEPS - 1)) - 1)
 // Maximum size of the first step in full pel units
 #define MAX_FIRST_STEP (1 << (MAX_MVSEARCH_STEPS-1))
 // Allowed motion vector pixel distance outside image border
@@ -27,7 +28,7 @@
 #define BORDER_MV_PIXELS_B16 (16 + VP9_INTERP_EXTEND)
 
 
-void vp9_clamp_mv_min_max(MACROBLOCK *x, MV *mv);
+void vp9_set_mv_search_range(MACROBLOCK *x, MV *mv);
 int vp9_mv_bit_cost(const MV *mv, const MV *ref,
                     const int *mvjcost, int *mvcost[2], int weight);
 void vp9_init_dsmotion_compensation(MACROBLOCK *x, int stride);
@@ -102,30 +103,30 @@ extern fractional_mv_step_comp_fp vp9_find_best_sub_pixel_comp_iterative;
 extern fractional_mv_step_comp_fp vp9_find_best_sub_pixel_comp_tree;
 
 typedef int (*vp9_full_search_fn_t)(MACROBLOCK *x,
-                                    int_mv *ref_mv, int sad_per_bit,
+                                    MV *ref_mv, int sad_per_bit,
                                     int distance, vp9_variance_fn_ptr_t *fn_ptr,
                                     int *mvjcost, int *mvcost[2],
-                                    int_mv *center_mv, int n);
+                                    const MV *center_mv, int n);
 
 typedef int (*vp9_refining_search_fn_t)(MACROBLOCK *x,
-                                        int_mv *ref_mv, int sad_per_bit,
+                                        MV *ref_mv, int sad_per_bit,
                                         int distance,
                                         vp9_variance_fn_ptr_t *fn_ptr,
                                         int *mvjcost, int *mvcost[2],
-                                        int_mv *center_mv);
+                                        const MV *center_mv);
 
 typedef int (*vp9_diamond_search_fn_t)(MACROBLOCK *x,
-                                       int_mv *ref_mv, int_mv *best_mv,
+                                       MV *ref_mv, MV *best_mv,
                                        int search_param, int sad_per_bit,
                                        int *num00,
                                        vp9_variance_fn_ptr_t *fn_ptr,
                                        int *mvjcost, int *mvcost[2],
-                                       int_mv *center_mv);
+                                       const MV *center_mv);
 
 int vp9_refining_search_8p_c(MACROBLOCK *x,
-                             int_mv *ref_mv, int error_per_bit,
+                             MV *ref_mv, int error_per_bit,
                              int search_range, vp9_variance_fn_ptr_t *fn_ptr,
                              int *mvjcost, int *mvcost[2],
-                             int_mv *center_mv, const uint8_t *second_pred,
+                             const MV *center_mv, const uint8_t *second_pred,
                              int w, int h);
 #endif  // VP9_ENCODER_VP9_MCOMP_H_

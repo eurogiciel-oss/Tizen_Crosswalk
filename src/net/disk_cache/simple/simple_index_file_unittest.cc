@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "base/file_util.h"
+#include "base/files/file.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/hash.h"
 #include "base/logging.h"
@@ -86,7 +87,7 @@ class WrappedSimpleIndexFile : public SimpleIndexFile {
   }
 
   bool CreateIndexFileDirectory() const {
-    return file_util::CreateDirectory(index_file_.DirName());
+    return base::CreateDirectory(index_file_.DirName());
   }
 };
 
@@ -178,13 +179,13 @@ TEST_F(SimpleIndexFileTest, LegacyIsIndexFileStale) {
 
   const base::Time past_time = base::Time::Now() -
       base::TimeDelta::FromSeconds(10);
-  EXPECT_TRUE(file_util::TouchFile(index_path, past_time, past_time));
-  EXPECT_TRUE(file_util::TouchFile(cache_path, past_time, past_time));
+  EXPECT_TRUE(base::TouchFile(index_path, past_time, past_time));
+  EXPECT_TRUE(base::TouchFile(cache_path, past_time, past_time));
   ASSERT_TRUE(simple_util::GetMTime(cache_path, &cache_mtime));
   EXPECT_FALSE(
       WrappedSimpleIndexFile::LegacyIsIndexFileStale(cache_mtime, index_path));
   const base::Time even_older = past_time - base::TimeDelta::FromSeconds(10);
-  EXPECT_TRUE(file_util::TouchFile(index_path, even_older, even_older));
+  EXPECT_TRUE(base::TouchFile(index_path, even_older, even_older));
   EXPECT_TRUE(
       WrappedSimpleIndexFile::LegacyIsIndexFileStale(cache_mtime, index_path));
 }
@@ -269,19 +270,16 @@ TEST_F(SimpleIndexFileTest, SimpleCacheUpgrade) {
   const base::FilePath cache_path = cache_dir.path();
 
   // Write an old fake index file.
-  base::PlatformFileError error;
-  base::PlatformFile file = base::CreatePlatformFile(
-      cache_path.AppendASCII("index"),
-      base::PLATFORM_FILE_CREATE | base::PLATFORM_FILE_WRITE,
-      NULL,
-      &error);
+  base::File file(cache_path.AppendASCII("index"),
+                  base::File::FLAG_CREATE | base::File::FLAG_WRITE);
+  ASSERT_TRUE(file.IsValid());
   disk_cache::FakeIndexData file_contents;
   file_contents.initial_magic_number = disk_cache::kSimpleInitialMagicNumber;
   file_contents.version = 5;
-  int bytes_written = base::WritePlatformFile(
-      file, 0, reinterpret_cast<char*>(&file_contents), sizeof(file_contents));
-  ASSERT_TRUE(base::ClosePlatformFile(file));
+  int bytes_written = file.Write(0, reinterpret_cast<char*>(&file_contents),
+                                 sizeof(file_contents));
   ASSERT_EQ((int)sizeof(file_contents), bytes_written);
+  file.Close();
 
   // Write the index file. The format is incorrect, but for transitioning from
   // v5 it does not matter.

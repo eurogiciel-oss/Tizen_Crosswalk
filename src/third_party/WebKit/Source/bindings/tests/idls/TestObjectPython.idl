@@ -30,7 +30,34 @@
 
 enum TestEnum {"", "EnumValue1", "EnumValue2", "EnumValue3"};
 
+callback VoidCallbackFunction = void ();
+callback AnyCallbackFunctionOptionalAnyArg = any (optional any optionalAnyArg);
+
 interface TestObjectPython {
+    // Constants
+    const unsigned short CONST_VALUE_0 = 0;
+    const unsigned short CONST_VALUE_1 = 1;
+    const unsigned short CONST_VALUE_2 = 2;
+    const unsigned short CONST_VALUE_4 = 4;
+    const unsigned short CONST_VALUE_8 = 8;
+    const short CONST_VALUE_9 = -1;
+    const DOMString CONST_VALUE_10 = "my constant string";
+    const unsigned short CONST_VALUE_11 = 0xffffffff;
+    const unsigned short CONST_VALUE_12 = 0x01;
+    const unsigned short CONST_VALUE_13 = 0X20;
+    const unsigned short CONST_VALUE_14 = 0x1abc;
+    const unsigned short CONST_VALUE_15 = 010;
+    const unsigned short CONST_VALUE_16 = -010;
+    const unsigned short CONST_VALUE_16 = -0x1A;
+    const unsigned short CONST_VALUE_17 = -0X1a;
+
+    // Extended attributes
+    [DeprecateAs=Constant] const short DEPRECATED_CONSTANT = 1;
+    [RuntimeEnabled=FeatureName] const short FEATURE_ENABLED_CONST = 1;
+    [Reflect=CONST_IMPL] const short CONST_JAVASCRIPT = 1;
+
+
+    // Attributes
     // TestInterfaceEmpty is used as a stub interface type, for testing behavior
     // that should not depend on particular type (beyond "interface or not").
     // read only
@@ -52,7 +79,14 @@ interface TestObjectPython {
     attribute unsigned long unsignedLongAttribute;
     attribute unsigned long long unsignedLongLongAttribute;
     attribute unsigned short unsignedShortAttribute;
-    // Special names (start with acronym)
+    // Interface type
+    attribute TestInterfaceEmpty testInterfaceEmptyAttribute;
+    // Self-reference
+    attribute TestObjectPython testObjectPythonAttribute;
+    // Callback function type
+    attribute VoidCallbackFunction voidCallbackFunctionAttribute;
+    attribute AnyCallbackFunctionOptionalAnyArg anyCallbackFunctionOptionalAnyArgAttribute;
+    // Names that begin with an acronym
     attribute long cssAttribute;
     attribute long imeAttribute;
     attribute long svgAttribute;
@@ -61,8 +95,9 @@ interface TestObjectPython {
     attribute NodeFilter nodeFilterAttribute;
     attribute SerializedScriptValue serializedScriptValueAttribute;
     attribute any anyAttribute;
-    // Special type conversions
+    // Custom type conversions
     attribute Promise promiseAttribute;
+    attribute Window windowAttribute;
     // DOM Node types
     attribute Document documentAttribute;
     attribute DocumentFragment documentFragmentAttribute;
@@ -75,13 +110,12 @@ interface TestObjectPython {
     attribute ArrayBuffer arrayBufferAttribute;
     attribute Float32Array float32ArrayAttribute;
     attribute Uint8Array uint8ArrayAttribute;
-    // Usual case for is_keep_alive_for_gc
-    attribute TestInterfaceEmpty testInterfaceEmptyAttribute;
     // Exceptions for is_keep_alive_for_gc
-    attribute TestInterfaceEmpty self;
-    readonly attribute Window readonlyWindowAttribute;  // FIXME: support [ImplementedAs] on interface
-    attribute HTMLCollection htmlCollectionAttribute;
-    attribute HTMLElement htmlElementAttribute;
+    readonly attribute TestInterfaceEmpty self;
+    readonly attribute EventTarget readonlyEventTargetAttribute;
+    readonly attribute Window readonlyWindowAttribute;
+    readonly attribute HTMLCollection htmlCollectionAttribute;
+    readonly attribute HTMLElement htmlElementAttribute;
     // Arrays
     attribute DOMString[] stringArrayAttribute;
     attribute TestInterfaceEmpty[] testInterfaceEmptyArrayAttribute;
@@ -89,65 +123,63 @@ interface TestObjectPython {
     // Nullable attributes
     attribute DOMString? nullableStringAttribute;
     attribute long? nullableLongAttribute;
+    attribute TestInterface? nullableTestInterfaceAttribute;
     // Enumerations
     attribute TestEnum testEnumAttribute;
     // Static attributes
     static attribute DOMString staticStringAttribute;
     static attribute long staticLongAttribute;
     // Constructors
-    // attribute attribute TestSubObjConstructor TestSubObj;
     attribute TestObjectAConstructor testObjectAConstructorAttribute;
-    // Special types
+    // Exceptional type
     attribute EventHandler eventHandlerAttribute;
 
     // Extended attributes
-    [ActivityLogging=AccessForAllWorlds] attribute long activityLoggingAccessForAllWorldsLongAttribute;
+    [ActivityLogging=ForAllWorlds] attribute long activityLoggingAccessForAllWorldsLongAttribute;
     [ActivityLogging=GetterForAllWorlds] attribute long activityLoggingGetterForAllWorldsLongAttribute;
     [ActivityLogging=SetterForAllWorlds] attribute long activityLoggingSetterForAllWorldsLongAttribute;
     [CachedAttribute=isValueDirty] attribute any cachedAttributeAnyAttribute;
     [CallWith=ExecutionContext] attribute any callWithExecutionContextAnyAttribute;
-    [CheckSecurityForNode] readonly attribute Document checkSecurityForNodeReadonlyDocumentAttribute;  // All uses are read only
-    [Conditional=Condition] attribute long conditionalLongAttribute;
-    [Conditional=Condition1&Condition2] attribute long conditionalAndLongAttribute;
-    [Conditional=Condition1|Condition2] attribute long conditionalOrLongAttribute;
-    [Custom] attribute long customLongAttribute;
-    [CustomGetter] attribute long customGetterLongAttribute;
-    [CustomSetter] attribute long customSetterLongAttribute;
-    [Conditional=Condition, Custom] attribute long customLongAttribute;
+    [CheckSecurity=Node] readonly attribute Document checkSecurityForNodeReadonlyDocumentAttribute;  // All uses are read only
+    [Conditional=CONDITION] attribute long conditionalLongAttribute;
+    [Conditional=CONDITION_1&CONDITION_2] attribute long conditionalAndLongAttribute;
+    [Conditional=CONDITION_1|CONDITION_2] attribute long conditionalOrLongAttribute;
+    [Custom] attribute object customObjectAttribute;
+    [Custom=Getter] attribute long customGetterLongAttribute;
+    [Custom=Getter] readonly attribute object customGetterReadonlyObjectAttribute;
+    [Custom=Setter] attribute long customSetterLongAttribute;
+    [Conditional=CONDITION, Custom] attribute long customLongAttribute;
     [CustomElementCallbacks] readonly attribute long customElementsCallbacksReadonlyLongAttribute;
     [DeprecateAs=LongAttribute] attribute long deprecatedLongAttribute;
-    // FIXME: move to TestActiveDOMObject.idl (=> TestCheckSecurity) once
-    // methods are implemented
-    [DoNotCheckSecurity] attribute long doNotCheckSecurityLongAttribute;
-    [DoNotCheckSecurity] readonly attribute long doNotCheckSecurityReadonlyLongAttribute;  // Separate read only attribute to check attribute configuration
-    [DoNotCheckSecurityOnGetter] attribute long doNotCheckSecurityOnGetterLongAttribute;
-    [DoNotCheckSecurityOnSetter] attribute long doNotCheckSecurityOnSetterLongAttribute;
     [EnforceRange] attribute long enforceRangeLongAttribute;
-    [GetterRaisesException] attribute long getterRaisesExceptionLongAttribute;
+    [ExposeJSAccessors] attribute long exposeJSAccessorsLongAttribute;
+    [RaisesException=Getter] attribute long getterRaisesExceptionLongAttribute;
     [ImplementedAs=implementedAsName] attribute long implementedAsLongAttribute;
     [Custom, ImplementedAs=implementedAsNameWithCustom] attribute long customImplementedAsLongAttribute;
-    [CustomGetter, ImplementedAs=implementedAsNameWithCustomGetter] attribute long customGetterImplementedAsLongAttribute;
-    [CustomSetter, ImplementedAs=implementedAsNameWithCustomGetter] attribute long customSetterImplementedAsLongAttribute;
-    [KeepAttributeAliveForGC] attribute DocumentFragment documentFragmentAttribute;
+    attribute TestInterfacePython testInterfacePythonAttribute;  // interface type that itself has [ImplementedAs] (not self; self-reference test at TestInterfacePython)
+    [Custom=Getter, ImplementedAs=implementedAsNameWithCustomGetter] attribute long customGetterImplementedAsLongAttribute;
+    [Custom=Setter, ImplementedAs=implementedAsNameWithCustomGetter] attribute long customSetterImplementedAsLongAttribute;
     [MeasureAs=TestFeature] attribute long measureAsLongAttribute;
     [NotEnumerable] attribute long notEnumerableLongAttribute;
     [PerContextEnabled=FeatureName] attribute long perContextEnabledLongAttribute;
     [PerWorldBindings] attribute long perWorldBindingsLongAttribute;
     [PerWorldBindings] readonly attribute long perWorldBindingsReadonlyLongAttribute;  // Separate read only attribute to check attribute configuration
-    [ActivityLogging=AccessForAllWorlds, PerWorldBindings] attribute long activityLoggingAccessPerWorldBindingsLongAttribute;
-    [ActivityLogging=AccessForIsolatedWorlds, PerWorldBindings] attribute long activityLoggingAccessForIsolatedWorldsPerWorldBindingsLongAttribute;
+    [ActivityLogging=ForAllWorlds, PerWorldBindings] attribute long activityLoggingAccessPerWorldBindingsLongAttribute;
+    [ActivityLogging=ForIsolatedWorlds, PerWorldBindings] attribute long activityLoggingAccessForIsolatedWorldsPerWorldBindingsLongAttribute;
     [ActivityLogging=GetterForAllWorlds, PerWorldBindings] attribute long activityLoggingGetterPerWorldBindingsLongAttribute;
     [ActivityLogging=GetterForIsolatedWorlds, PerWorldBindings] attribute long activityLoggingGetterForIsolatedWorldsPerWorldBindingsLongAttribute;
+    [PutForwards=href] readonly attribute TestNode location;
+    [PutForwards=hrefThrows] readonly attribute TestNode locationWithException;
     [RaisesException] attribute long raisesExceptionLongAttribute;
     [Reflect] attribute TestInterface reflectTestInterfaceAttribute;
     [Reflect=reflectedNameAttribute] attribute TestInterface reflectReflectedNameAttributeTestAttribute;
-    // [Reflect] special types: special getters, special setters, or range
-    // checking for unsigned
+    // [Reflect] exceptional types: exceptional getters, exceptional setters,
+    // or range checking for unsigned
     [Reflect] attribute boolean reflectBooleanAttribute;
     [Reflect] attribute long reflectLongAttribute;
     [Reflect] attribute unsigned short reflectUnsignedShortAttribute;
     [Reflect] attribute unsigned long reflectUnsignedLongAttribute;
-    // [Reflect] special names
+    // [Reflect] exceptional names
     [Reflect] attribute DOMString id;
     [Reflect] attribute DOMString name;
     [Reflect] attribute DOMString class;
@@ -156,9 +188,9 @@ interface TestObjectPython {
     [Reflect=class] attribute DOMString reflectedClass;
     [Replaceable] readonly attribute long replaceableReadonlyLongAttribute;
     [RuntimeEnabled=FeatureName] attribute long runtimeEnabledLongAttribute;
-    [Conditional=Condition, RuntimeEnabled=FeatureName] attribute long conditionalEnabledAtRuntimeLongAttribute;
+    [Conditional=CONDITION, RuntimeEnabled=FeatureName] attribute long conditionalRuntimeEnabledLongAttribute;
     [SetterCallWith=ActiveWindow&FirstWindow] attribute DOMString setterCallWithActiveWindowAndFirstWindowStringAttribute;
-    [SetterRaisesException] attribute long setterRaisesExceptionLongAttribute;
+    [RaisesException=Setter] attribute long setterRaisesExceptionLongAttribute;
     [StrictTypeChecking] attribute float strictTypeCheckingFloatAttribute;  // nop for non-interface types
     [StrictTypeChecking] attribute TestInterface strictTypeCheckingTestInterfaceAttribute;
     [TreatNullAs=NullString] attribute DOMString treatNullAsNullStringStringAttribute;
@@ -167,9 +199,12 @@ interface TestObjectPython {
     [Reflect, URL] attribute DOMString urlStringAttribute;
     [Reflect=ReflectUrlAttribute, URL] attribute DOMString urlStringAttribute;
     [Unforgeable] attribute long unforgeableLongAttribute;
+    [Reflect="ReflectUrlAttributeAsAString"] attribute DOMString anotherStringAttribute;
+
 
     // Methods
     void voidMethod();
+    static void staticVoidMethod();
 
     // Types
     // Basic types
@@ -206,9 +241,13 @@ interface TestObjectPython {
     TestInterfaceEmpty testInterfaceEmptyMethod();
     void voidMethodTestInterfaceEmptyArg(TestInterfaceEmpty testInterfaceEmptyArg);
     void voidMethodLongArgTestInterfaceEmptyArg(long longArg, TestInterfaceEmpty testInterfaceEmptyArg);
-    // Special type conversions
+    // Callback function type
+    VoidCallbackFunction voidCallbackFunctionMethod();
+    AnyCallbackFunctionOptionalAnyArg anyCallbackFunctionOptionalAnyArgMethod();
+    void voidMethodVoidCallbackFunctionArg(VoidCallbackFunction voidCallbackFunctionArg);
+    void voidMethodAnyCallbackFunctionOptionalAnyArg(AnyCallbackFunctionOptionalAnyArg anyCallbackFunctionOptionalAnyArgArg);
+    // Custom type conversions
     CompareHow compareHowMethod();
-    MediaQueryListListener mediaQueryListListenerMethod();
     any anyMethod();
     void voidMethodMediaQueryListListenerArg(MediaQueryListListener mediaQueryListListenerArg);
     void voidMethodCompareHowArg(CompareHow compareHowArg);
@@ -247,10 +286,14 @@ interface TestObjectPython {
     // Nullable types
     // Currently only used on interface type arguments
     void voidMethodNullableStringArg(TestInterfaceEmpty? nullableTestInterfaceEmptyArg);
+    // Callback interface types
+    void voidMethodTestCallbackInterfaceArg(TestCallbackInterface testCallbackInterfaceArg);
+    void voidMethodOptionalTestCallbackInterfaceArg(optional TestCallbackInterface optionalTestCallbackInterfaceArg);
+    void voidMethodNullableTestCallbackInterfaceArg(TestCallbackInterface? testCallbackInterfaceArg);
     // Enumerations
     TestEnum testEnumMethod();
     void voidMethodTestEnumArg(TestEnum testEnumTypeArg);
-    // Special types
+    // Exceptional types
     Dictionary dictionaryMethod();
     NodeFilter nodeFilterMethod();
     Promise promiseMethod();
@@ -261,6 +304,7 @@ interface TestObjectPython {
     void voidMethodPromiseArg(Promise promiseArg);
     void voidMethodSerializedScriptValueArg(SerializedScriptValue serializedScriptValueArg);
     void voidMethodXPathNSResolverArg(XPathNSResolver xPathNSResolverArg);
+    void voidMethodSequenceDictionaryArg(sequence<Dictionary> sequenceDictionaryArg);
 
     // Arguments
     void voidMethodStringArgLongArg(DOMString stringArg, long longArg);
@@ -271,20 +315,52 @@ interface TestObjectPython {
     DOMString stringMethodOptionalLongArg(optional long optionalLongArg);
     TestInterfaceEmpty testInterfaceEmptyMethodOptionalLongArg(optional long optionalLongArg);
     long longMethodOptionalLongArg(optional long optionalLongArg);
-    // Optional arguments: special case
-    void voidMethodOptionalDictionaryArg(optional Dictionary optionalDictionaryArg);
-
     void voidMethodLongArgOptionalLongArg(long longArg, optional long optionalLongArg);
     void voidMethodLongArgOptionalLongArgOptionalLongArg(long longArg, optional long optionalLongArg1, optional long optionalLongArg2);
     void voidMethodLongArgOptionalTestInterfaceEmptyArg(long longArg, optional TestInterfaceEmpty optionalTestInterfaceEmpty);
     void voidMethodTestInterfaceEmptyArgOptionalLongArg(TestInterfaceEmpty optionalTestInterfaceEmpty, optional long longArg);
+    // Optional arguments: exceptional case
+    void voidMethodOptionalDictionaryArg(optional Dictionary optionalDictionaryArg);
+
     // Variadic operations
     void voidMethodVariadicStringArg(DOMString... variadicStringArgs);
     void voidMethodStringArgVariadicStringArg(DOMString stringArg, DOMString... variadicStringArgs);
     void voidMethodVariadicTestInterfaceEmptyArg(TestInterfaceEmpty... variadicTestInterfaceEmptyArgs);
     void voidMethodTestInterfaceEmptyArgVariadicTestInterfaceEmptyArg(TestInterfaceEmpty testInterfaceEmptyArg, TestInterfaceEmpty... variadicTestInterfaceEmptyArgs);
 
-    // Extended attributes
+    // Overloaded methods
+    void overloadedMethodA(long longArg);
+    void overloadedMethodA(long longArg1, long longArg2);
+    void overloadedMethodB(long longArg);
+    void overloadedMethodB(long longArg1, optional long longArg2);
+    void overloadedMethodC(long longArg);
+    void overloadedMethodC(long longArg, long... longArgs);
+    void overloadedMethodD(long longArg);
+    void overloadedMethodD(TestInterfaceEmpty testInterfaceEmptyArg);
+    void overloadedMethodE(long longArg);
+    void overloadedMethodE(long[] longArrayArg);
+    void overloadedMethodF(long longArg);
+    void overloadedMethodF(TestInterfaceEmpty? testInterfaceEmptyNullableArg);
+    void overloadedMethodG();
+    void overloadedMethodG([StrictTypeChecking] DOMString strictTypeCheckingStringArg);
+    void overloadedMethodH();
+    void overloadedMethodH(TestCallbackInterface testCallbackInterfaceArg);
+
+    [PerWorldBindings] void overloadedPerWorldBindingsMethod();
+    [PerWorldBindings] void overloadedPerWorldBindingsMethod(long longArg);
+
+    static void overloadedStaticMethod(long longArg);
+    static void overloadedStaticMethod(long longArg1, long longArg2);
+
+    // Exceptional methods for EventListener
+    void addEventListener(DOMString type,
+                          EventListener listener,
+                          optional boolean useCapture);
+    void removeEventListener(DOMString type,
+                             EventListener listener,
+                             optional boolean useCapture);
+
+    // Extended attributes for arguments
     // [Clamp]
     void voidMethodClampUnsignedShortArg([Clamp] unsigned short clampUnsignedShortArg);
     void voidMethodClampUnsignedLongArg([Clamp] unsigned long clampUnsignedLongArg);
@@ -298,4 +374,47 @@ interface TestObjectPython {
     // [TreatNullAs], [TreatUndefinedAs]
     void voidMethodTreatNullAsNullStringStringArg([TreatNullAs=NullString] DOMString treatNullAsNullStringStringArg);
     void voidMethodTreatNullAsNullStringTreatUndefinedAsNullStringStringArg([TreatNullAs=NullString, TreatUndefinedAs=NullString] DOMString treatNullAsNullStringStringArg);
+
+    // Extended attributes for methods
+    [ActivityLogging=ForAllWorlds] void activityLoggingAccessForAllWorldsMethod();
+    [CallWith=ScriptState] void callWithScriptStateVoidMethod();
+    [CallWith=ScriptState] long callWithScriptStateLongMethod();
+    [CallWith=ExecutionContext] void callWithExecutionContextVoidMethod();
+    [CallWith=ScriptState&ExecutionContext] void callWithScriptStateExecutionContextVoidMethod();
+    [CallWith=ScriptState&ScriptArguments] void callWithScriptStateScriptArgumentsVoidMethod();
+    [CallWith=ScriptState&ScriptArguments] void callWithScriptStateScriptArgumentsVoidMethodOptionalBooleanArg(optional boolean optionalBooleanArg);
+    [CallWith=ActiveWindow] void callWithActiveWindow();
+    [CallWith=ActiveWindow&FirstWindow] void callWithActiveWindowScriptWindow();
+    [CheckSecurity=Node] void checkSecurityForNodeVoidMethod();
+    [Conditional=CONDITION] void conditionalConditionVoidMethod();
+    [Conditional=CONDITION_1&CONDITION_2] void conditionalCondition1AndCondition2VoidMethod();
+    [Conditional=CONDITION] static void conditionalConditionStaticVoidMethod();
+    [Custom] void customVoidMethod();
+    [Conditional=CONDITION, Custom] void conditionalConditionCustomVoidMethod();
+    [CustomElementCallbacks] void customElementCallbacksVoidMethod();
+    [DeprecateAs=voidMethod] void deprecatedVoidMethod();
+    [DoNotCheckSignature] void doNotCheckSignatureVoidMethod();
+    [ImplementedAs=implementedAsMethodName] void implementedAsVoidMethod();
+    [MeasureAs=TestFeature] void measureAsVoidMethod();
+    [NotEnumerable] void notEnumerableVoidMethod();
+    [PerContextEnabled=FeatureName] void perContextEnabledVoidMethod();
+    [PerWorldBindings] void perWorldBindingsVoidMethod();
+    [ActivityLogging=ForAllWorlds, PerWorldBindings] void activityLoggingForAllWorldsPerWorldBindingsVoidMethod();
+    [ActivityLogging=ForIsolatedWorlds, PerWorldBindings] void activityLoggingForIsolatedWorldsPerWorldBindingsVoidMethod();
+    [PerWorldBindings] void perWorldBindingsVoidMethodTestInterfaceEmptyArg(TestInterfaceEmpty testInterfaceEmptyArg);
+    [RaisesException] void raisesExceptionVoidMethod();
+    [RaisesException] DOMString raisesExceptionStringMethod();
+    [RaisesException] void raisesExceptionVoidMethodOptionalLongArg(optional long optionalLongArg);
+    [RaisesException] void raisesExceptionVoidMethodTestCallbackInterfaceArg(TestCallbackInterface testCallbackInterfaceArg);
+    [RaisesException] void raisesExceptionVoidMethodOptionalTestCallbackInterfaceArg(optional TestCallbackInterface optionalTestCallbackInterfaceArg);
+    [RaisesException] TestInterfaceEmpty raisesExceptionTestInterfaceEmptyVoidMethod();
+    [ReadOnly] void readOnlyVoidMethod();
+    [NotEnumerable, ReadOnly] void notEnumerableReadOnlyVoidMethod();
+    [RuntimeEnabled=FeatureName] void runtimeEnabledVoidMethod();
+    [PerWorldBindings, RuntimeEnabled=FeatureName] void perWorldBindingsRuntimeEnabledVoidMethod();
+    [StrictTypeChecking] void strictTypeCheckingVoidMethodTestInterfaceEmptyArg(TestInterfaceEmpty testInterfaceEmptyArg);
+    [StrictTypeChecking] void strictTypeCheckingVoidMethodNullableTestInterfaceEmptyArg(TestInterfaceEmpty? testInterfaceEmptyArg);
+    [TreatReturnedNullStringAs=Null] DOMString treatReturnedNullStringAsNullStringMethod();
+    [TreatReturnedNullStringAs=Undefined] DOMString treatReturnedNullStringAsUndefinedStringMethod();
+    [Unforgeable] void unforgeableVoidMethod();
 };

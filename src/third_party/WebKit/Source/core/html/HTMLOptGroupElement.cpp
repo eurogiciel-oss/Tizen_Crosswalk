@@ -35,17 +35,16 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-inline HTMLOptGroupElement::HTMLOptGroupElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+inline HTMLOptGroupElement::HTMLOptGroupElement(Document& document)
+    : HTMLElement(optgroupTag, document)
 {
-    ASSERT(hasTagName(optgroupTag));
     setHasCustomStyleCallbacks();
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<HTMLOptGroupElement> HTMLOptGroupElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<HTMLOptGroupElement> HTMLOptGroupElement::create(Document& document)
 {
-    return adoptRef(new HTMLOptGroupElement(tagName, document));
+    return adoptRef(new HTMLOptGroupElement(document));
 }
 
 bool HTMLOptGroupElement::isDisabledFormControl() const
@@ -91,12 +90,8 @@ void HTMLOptGroupElement::recalcSelectOptions()
 
 void HTMLOptGroupElement::attach(const AttachContext& context)
 {
+    updateNonRenderStyle();
     HTMLElement::attach(context);
-    // If after attaching nothing called styleForRenderer() on this node we
-    // manually cache the value. This happens if our parent doesn't have a
-    // renderer like <optgroup> or if it doesn't allow children like <select>.
-    if (!m_style && parentNode()->renderStyle())
-        updateNonRenderStyle();
 }
 
 void HTMLOptGroupElement::detach(const AttachContext& context)
@@ -117,10 +112,13 @@ RenderStyle* HTMLOptGroupElement::nonRendererStyle() const
 
 PassRefPtr<RenderStyle> HTMLOptGroupElement::customStyleForRenderer()
 {
-    // styleForRenderer is called whenever a new style should be associated
-    // with an Element so now is a good time to update our cached style.
-    updateNonRenderStyle();
     return m_style;
+}
+
+void HTMLOptGroupElement::willRecalcStyle(StyleRecalcChange change)
+{
+    if (!needsAttach() && (needsStyleRecalc() || change >= Inherit))
+        updateNonRenderStyle();
 }
 
 String HTMLOptGroupElement::groupLabelText() const

@@ -61,18 +61,15 @@ protected:
     virtual void layout() OVERRIDE FINAL;
 
 private:
-    virtual const char* renderName() const { return "RenderEmbeddedObject"; }
+    virtual const char* renderName() const OVERRIDE { return "RenderEmbeddedObject"; }
     virtual bool isEmbeddedObject() const OVERRIDE FINAL { return true; }
 
     void paintSnapshotImage(PaintInfo&, const LayoutPoint&, Image*);
     virtual void paintContents(PaintInfo&, const LayoutPoint&) OVERRIDE FINAL;
 
-    virtual bool requiresLayer() const OVERRIDE FINAL;
+    virtual LayerType layerTypeRequired() const OVERRIDE FINAL;
 
-    virtual void viewCleared() OVERRIDE FINAL;
-
-    virtual bool scroll(ScrollDirection, ScrollGranularity, float multiplier, Node** stopNode) OVERRIDE FINAL;
-    virtual bool logicalScroll(ScrollLogicalDirection, ScrollGranularity, float multiplier, Node** stopNode) OVERRIDE FINAL;
+    virtual bool scroll(ScrollDirection, ScrollGranularity, float multiplier) OVERRIDE FINAL;
 
     bool getReplacementTextGeometry(const LayoutPoint& accumulatedOffset, FloatRect& contentRect, Path&, FloatRect& replacementTextRect, Font&, TextRun&, float& textWidth) const;
 

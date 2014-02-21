@@ -45,13 +45,13 @@ color
 direction
 font
 font-family
+font-kerning
 font-size
 font-style
 font-variant
 font-weight
 text-rendering
 -webkit-font-feature-settings
--webkit-font-kerning
 -webkit-font-smoothing
 -webkit-font-variant-ligatures
 -webkit-locale
@@ -136,6 +136,7 @@ font-stretch
 height
 image-rendering
 isolation
+justify-self
 left
 letter-spacing
 list-style
@@ -183,6 +184,7 @@ position
 quotes
 resize
 right
+scroll-behavior
 size
 src
 speak

@@ -1,33 +1,29 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.android_webview.test;
 
 import android.test.suitebuilder.annotation.SmallTest;
-import android.util.Log;
 import android.util.Pair;
 
-import org.chromium.android_webview.AndroidProtocolHandler;
 import org.chromium.android_webview.AwContents;
 import org.chromium.android_webview.InterceptedRequestData;
 import org.chromium.android_webview.test.util.CommonResources;
-import org.chromium.android_webview.test.util.JSUtils;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.TestFileUtil;
 import org.chromium.content.browser.test.util.CallbackHelper;
-import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnPageFinishedHelper;
-import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnPageStartedHelper;
 import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnReceivedErrorHelper;
 import org.chromium.net.test.util.TestWebServer;
 
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
-import java.util.Random;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Tests for the WebViewClient.shouldInterceptRequest() method.
@@ -43,11 +39,15 @@ public class AwContentsClientShouldInterceptRequestTest extends AwTestBase {
                 = new ConcurrentHashMap<String, InterceptedRequestData>();
             // This is read from the IO thread, so needs to be marked volatile.
             private volatile InterceptedRequestData mShouldInterceptRequestReturnValue = null;
+            private String mUrlToWaitFor;
             void setReturnValue(InterceptedRequestData value) {
                 mShouldInterceptRequestReturnValue = value;
             }
             void setReturnValueForUrl(String url, InterceptedRequestData value) {
                 mReturnValuesByUrls.put(url, value);
+            }
+            public void setUrlToWaitFor(String url) {
+                mUrlToWaitFor = url;
             }
             public List<String> getUrls() {
                 assert getCallCount() > 0;
@@ -59,8 +59,10 @@ public class AwContentsClientShouldInterceptRequestTest extends AwTestBase {
                 return mShouldInterceptRequestReturnValue;
             }
             public void notifyCalled(String url) {
-                mShouldInterceptRequestUrls.add(url);
-                notifyCalled();
+                if (mUrlToWaitFor == null || mUrlToWaitFor.equals(url)) {
+                    mShouldInterceptRequestUrls.add(url);
+                    notifyCalled();
+                }
             }
         }
 
@@ -255,6 +257,70 @@ public class AwContentsClientShouldInterceptRequestTest extends AwTestBase {
         mContentsClient.getOnPageFinishedHelper().waitForCallback(onPageFinishedCallCount);
     }
 
+    private static class SlowInterceptedRequestData extends InterceptedRequestData {
+        private CallbackHelper mReadStartedCallbackHelper = new CallbackHelper();
+        private CountDownLatch mLatch = new CountDownLatch(1);
+
+        public SlowInterceptedRequestData(String mimeType, String encoding, InputStream data) {
+            super(mimeType, encoding, data);
+        }
+
+        @Override
+        public InputStream getData() {
+            mReadStartedCallbackHelper.notifyCalled();
+            try {
+                mLatch.await();
+            } catch (InterruptedException e) {
+                // ignore
+            }
+            return super.getData();
+        }
+
+        public void unblockReads() {
+            mLatch.countDown();
+        }
+
+        public CallbackHelper getReadStartedCallbackHelper() {
+            return mReadStartedCallbackHelper;
+        }
+    }
+
+    @SmallTest
+    @Feature({"AndroidWebView"})
+    public void testDoesNotCrashOnSlowStream() throws Throwable {
+        final String aboutPageUrl = addAboutPageToTestServer(mWebServer);
+        final String aboutPageData = makePageWithTitle("some title");
+        final String encoding = "UTF-8";
+        final SlowInterceptedRequestData slowInterceptedRequestData =
+            new SlowInterceptedRequestData("text/html", encoding,
+                    new ByteArrayInputStream(aboutPageData.getBytes(encoding)));
+
+        mShouldInterceptRequestHelper.setReturnValue(slowInterceptedRequestData);
+        int callCount = slowInterceptedRequestData.getReadStartedCallbackHelper().getCallCount();
+        loadUrlAsync(mAwContents, aboutPageUrl);
+        slowInterceptedRequestData.getReadStartedCallbackHelper().waitForCallback(callCount);
+
+        // Now the AwContents is "stuck" waiting for the SlowInputStream to finish reading so we
+        // delete it to make sure that the dangling 'read' task doesn't cause a crash. Unfortunately
+        // this will not always lead to a crash but it should happen often enough for us to notice.
+
+        runTestOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                getActivity().removeAllViews();
+            }
+        });
+        destroyAwContentsOnMainSync(mAwContents);
+        pollOnUiThread(new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return AwContents.getNativeInstanceCount() == 0;
+            }
+        });
+
+        slowInterceptedRequestData.unblockReads();
+    }
+
     @SmallTest
     @Feature({"AndroidWebView"})
     public void testHttpStatusField() throws Throwable {
@@ -391,10 +457,13 @@ public class AwContentsClientShouldInterceptRequestTest extends AwTestBase {
                     "<iframe src=\"" + aboutPageUrl + "\"/>"));
 
         int callCount = mShouldInterceptRequestHelper.getCallCount();
+        // These callbacks can race with favicon.ico callback.
+        mShouldInterceptRequestHelper.setUrlToWaitFor(aboutPageUrl);
         loadUrlSync(mAwContents, mContentsClient.getOnPageFinishedHelper(), pageWithIframe);
-        mShouldInterceptRequestHelper.waitForCallback(callCount, 2);
-        assertEquals(2, mShouldInterceptRequestHelper.getUrls().size());
-        assertEquals(aboutPageUrl, mShouldInterceptRequestHelper.getUrls().get(1));
+
+        mShouldInterceptRequestHelper.waitForCallback(callCount, 1);
+        assertEquals(1, mShouldInterceptRequestHelper.getUrls().size());
+        assertEquals(aboutPageUrl, mShouldInterceptRequestHelper.getUrls().get(0));
     }
 
     private void calledForUrlTemplate(final String url) throws Exception {

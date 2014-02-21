@@ -35,15 +35,18 @@
 #include "core/dom/ActiveDOMObject.h"
 #include "core/events/EventTarget.h"
 #include "core/fileapi/FileReaderLoaderClient.h"
-#include "core/platform/graphics/SourceBufferPrivate.h"
 #include "platform/AsyncMethodRunner.h"
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
 #include "wtf/OwnPtr.h"
 #include "wtf/PassOwnPtr.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/RefCounted.h"
 #include "wtf/RefPtr.h"
 #include "wtf/text/WTFString.h"
+
+namespace blink {
+class WebSourceBuffer;
+}
 
 namespace WebCore {
 
@@ -54,14 +57,18 @@ class MediaSource;
 class Stream;
 class TimeRanges;
 
-class SourceBuffer : public RefCounted<SourceBuffer>, public ActiveDOMObject, public EventTargetWithInlineData, public ScriptWrappable, public FileReaderLoaderClient {
+class SourceBuffer FINAL : public RefCounted<SourceBuffer>, public ActiveDOMObject, public EventTargetWithInlineData, public ScriptWrappable, public FileReaderLoaderClient {
     REFCOUNTED_EVENT_TARGET(SourceBuffer);
 public:
-    static PassRefPtr<SourceBuffer> create(PassOwnPtr<SourceBufferPrivate>, MediaSource*, GenericEventQueue*);
+    static PassRefPtr<SourceBuffer> create(PassOwnPtr<blink::WebSourceBuffer>, MediaSource*, GenericEventQueue*);
+    static const AtomicString& segmentsKeyword();
+    static const AtomicString& sequenceKeyword();
 
     virtual ~SourceBuffer();
 
     // SourceBuffer.idl methods
+    const AtomicString& mode() const { return m_mode; }
+    void setMode(const AtomicString&, ExceptionState&);
     bool updating() const { return m_updating; }
     PassRefPtr<TimeRanges> buffered(ExceptionState&) const;
     double timestampOffset() const;
@@ -91,7 +98,7 @@ public:
     virtual const AtomicString& interfaceName() const OVERRIDE;
 
 private:
-    SourceBuffer(PassOwnPtr<SourceBufferPrivate>, MediaSource*, GenericEventQueue*);
+    SourceBuffer(PassOwnPtr<blink::WebSourceBuffer>, MediaSource*, GenericEventQueue*);
 
     bool isRemoved() const;
     void scheduleEvent(const AtomicString& eventName);
@@ -112,10 +119,11 @@ private:
     virtual void didFinishLoading() OVERRIDE;
     virtual void didFail(FileError::ErrorCode) OVERRIDE;
 
-    OwnPtr<SourceBufferPrivate> m_private;
+    OwnPtr<blink::WebSourceBuffer> m_webSourceBuffer;
     MediaSource* m_source;
     GenericEventQueue* m_asyncEventQueue;
 
+    AtomicString m_mode;
     bool m_updating;
     double m_timestampOffset;
     double m_appendWindowStart;

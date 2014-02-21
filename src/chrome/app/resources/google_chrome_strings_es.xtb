@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="es">
+<translation id="3234920859344197194">Este sitio utiliza el complemento Chrome Frame, que dejará de recibir actualizaciones de seguridad y estabilidad dentro de poco. Desinstala este complemento e instala un navegador más moderno.</translation>
 <translation id="8914504000324227558">Volver a iniciar Chrome</translation>
 <translation id="8000275528373650868">Google Chrome está disponible para Windows Vista o Windows XP con SP2 o superior.</translation>
 <translation id="8485767968786176057">En este caso, la dirección que aparece en el certificado no coincide con la dirección del sitio web a la que ha intentado acceder el navegador. Una posible causa de este problema es que alguna persona esté interceptando tus comunicaciones y presentando un certificado de un sitio web diferente. Otra posible causa es que el servidor esté configurado para mostrar el mismo certificado para varios sitios web, incluido el que intentas visitar, aunque el certificado no sea válido para todos esos sitios. Google Chrome puede confirmarte que has accedido a &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, pero no puede garantizar que ese dominio corresponda al mismo sitio que el dominio &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; al que querías acceder. Si continúas, Chrome no comprobará otros errores de falta de coincidencia de nombres.</translation>
@@ -27,7 +28,6 @@ Es posible que algunas funciones no estén disponibles y que no se guarden los c
 <translation id="4891791193823137474">Permitir que Google Chrome se ejecute en segundo plano</translation>
 <translation id="2896252579017640304">Iniciar aplicaciones de Chrome</translation>
 <translation id="2370289711218562573">Google Chrome está importando Favoritos/Marcadores.</translation>
-<translation id="8762286861469007470">Detector de portales cautivos de Chrome</translation>
 <translation id="2721687379934343312">En los equipos Mac, las contraseñas se guardan en tu llavero y otros usuarios de Chrome que compartan esta cuenta de OS X pueden acceder a ellas o sincronizarlas.</translation>
 <translation id="1761870329818521071">No se puede instalar la misma versión de Google Chrome Frame que se está ejecutando en este momento. Cierra Google Chrome Frame y vuelve a intentarlo.</translation>
 <translation id="6014844626092547096">Has iniciado sesión en Chrome. El administrador ha inhabilitado la sincronización.</translation>
@@ -63,10 +63,10 @@ Es posible que algunas funciones no estén disponibles y que no se guarden los c
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Se ha guardado la información de facturación en Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome está utilizando el micrófono.</translation>
-<translation id="3590194807845837023">Desbloquear perfil y volver a iniciar</translation>
 <translation id="4053720452172726777">Personaliza y controla Google Chrome</translation>
 <translation id="6423071462708908582">Has intentado acceder a &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, pero el servidor ha presentado un certificado caducado. No disponemos de información que indique si el certificado se ha visto vulnerado desde que caducó. Esto significa que Google Chrome no puede garantizar que estés estableciendo una comunicación con &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; y no con un hacker. Actualmente, el reloj de tu ordenador marca las <ph name="CURRENT_TIME"/>. ¿Esta información es correcta? Si no lo es, debes corregir el error y actualizar la página.</translation>
 <translation id="3197823471738295152">El dispositivo está actualizado.</translation>
+<translation id="8286862437124483331">Google Chrome está intentando mostrar contraseñas. Para permitirlo, escribe tu contraseña de Windows.</translation>
 <translation id="3889417619312448367">Desinstalar Google Chrome</translation>
 <translation id="1434626383986940139">Aplicaciones de Chrome Canary</translation>
 <translation id="8551886023433311834">El dispositivo está casi actualizado. Reinícialo para completar la actualización.</translation>
@@ -188,7 +188,6 @@ Si decides iniciar sesión de todas formas, se fusionará la información de Chr
 <translation id="7396375882099008034">Configura tu cortafuegos o tu antivirus para permitir el acceso de
         Chrome a la red.</translation>
 <translation id="9102715433345326100">Este archivo es malicioso y Chrome lo ha bloqueado.</translation>
-<translation id="3170677364322086041">Este sitio utiliza el complemento Chrome Frame que se ha retirado y ya no recibe actualizaciones de seguridad y estabilidad. Desinstálalo e instala un navegador actual.</translation>
 <translation id="8205111949707227942">Opcional: Ayúdanos a mejorar Google Chrome OS enviando estadísticas de uso e informes sobre fallos.</translation>
 <translation id="7253415505590551024">Actualmente hay descargas en curso. ¿Quieres salir de Google Chrome y cancelarlas?</translation>
 <translation id="7196020411877309443">¿Por qué aparece este mensaje?</translation>
@@ -205,6 +204,7 @@ Si decides iniciar sesión de todas formas, se fusionará la información de Chr
           Configuración de LAN
           y desactiva la opción Usar un servidor proxy para la LAN.</translation>
 <translation id="7825851276765848807">La instalación no se ha podido realizar a causa de un error no especificado. Vuelve a descargar Google Chrome.</translation>
+<translation id="4919523385405675060">Este sitio utiliza el complemento Chrome Frame, que dejará de recibir actualizaciones de seguridad y estabilidad dentro de poco. Desinstala este complemento y descarga un navegador compatible.</translation>
 <translation id="1061257178446858647">Has iniciado sesión en Chrome. Tus marcadores, tu historial y otras opciones de configuración se sincronizarán con tu cuenta de Google.</translation>
 <translation id="3335672657969596251">Google Chrome no es compatible con <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Cierra la sesión y vuelve a iniciarla para que se aplique el cambio.</translation>

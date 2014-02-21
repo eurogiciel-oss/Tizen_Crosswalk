@@ -50,7 +50,7 @@
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/point.h"
 
-using content::UserMetricsAction;
+using base::UserMetricsAction;
 using content::WebContents;
 
 namespace {
@@ -1775,8 +1775,8 @@ bool TabStripGtk::CompleteDrop(const guchar* data, bool is_plain_text) {
   if (is_plain_text) {
     AutocompleteMatch match;
     AutocompleteClassifierFactory::GetForProfile(model_->profile())->Classify(
-        UTF8ToUTF16(reinterpret_cast<const char*>(data)), false, false, &match,
-        NULL);
+        base::UTF8ToUTF16(reinterpret_cast<const char*>(data)),
+        false, false, &match, NULL);
     url = match.destination_url;
   } else {
     std::string url_string(reinterpret_cast<const char*>(data));
@@ -2185,7 +2185,7 @@ void TabStripGtk::OnNewTabClicked(GtkWidget* widget) {
       content::RecordAction(UserMetricsAction("NewTab_Button"));
       UMA_HISTOGRAM_ENUMERATION("Tab.NewTab", TabStripModel::NEW_TAB_BUTTON,
                                 TabStripModel::NEW_TAB_ENUM_COUNT);
-      model_->delegate()->AddBlankTabAt(-1, true);
+      model_->delegate()->AddTabAt(GURL(), -1, true);
       break;
     case 2: {
       // On middle-click, try to parse the PRIMARY selection as a URL and load

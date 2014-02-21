@@ -63,7 +63,7 @@ namespace internal {
 
 const char* OS::LocalTimezone(double time) {
   if (std::isnan(time)) return "";
-  time_t tv = static_cast<time_t>(floor(time/msPerSecond));
+  time_t tv = static_cast<time_t>(std::floor(time/msPerSecond));
   struct tm* t = localtime(&tv);
   if (NULL == t) return "";
   return t->tm_zone;
@@ -182,7 +182,7 @@ void OS::LogSharedLibraryAddresses(Isolate* isolate) {
     // There may be no filename in this line.  Skip to next.
     if (start_of_path == NULL) continue;
     buffer[bytes_read] = 0;
-    LOG(isolate SharedLibraryEvent(start_of_path, start, end));
+    LOG(isolate, SharedLibraryEvent(start_of_path, start, end));
   }
   close(fd);
 }

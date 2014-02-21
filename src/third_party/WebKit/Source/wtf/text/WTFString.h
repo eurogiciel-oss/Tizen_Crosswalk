@@ -79,6 +79,12 @@ enum TrailingZerosTruncatingPolicy {
     TruncateTrailingZeros
 };
 
+enum UTF8ConversionMode {
+    LenientUTF8Conversion,
+    StrictUTF8Conversion,
+    StrictUTF8ConversionReplacingUnpairedSurrogatesWithFFFD
+};
+
 template<bool isSpecialCharacter(UChar), typename CharacterType>
 bool isAllSpecialCharacters(const CharacterType*, size_t);
 
@@ -183,14 +189,7 @@ public:
 
     CString ascii() const;
     CString latin1() const;
-
-    typedef enum {
-        LenientConversion,
-        StrictConversion,
-        StrictConversionReplacingUnpairedSurrogatesWithFFFD,
-    } ConversionMode;
-
-    CString utf8(ConversionMode = LenientConversion) const;
+    CString utf8(UTF8ConversionMode = LenientUTF8Conversion) const;
 
     UChar operator[](unsigned index) const
     {
@@ -622,7 +621,7 @@ template<size_t inlineCapacity>
 inline void String::appendTo(Vector<UChar, inlineCapacity>& result, unsigned pos, unsigned len) const
 {
     unsigned numberOfCharactersToCopy = std::min(len, length() - pos);
-    if (numberOfCharactersToCopy <= 0)
+    if (!numberOfCharactersToCopy)
         return;
     result.reserveCapacity(result.size() + numberOfCharactersToCopy);
     if (is8Bit()) {
@@ -639,7 +638,7 @@ template<typename BufferType>
 inline void String::appendTo(BufferType& result, unsigned pos, unsigned len) const
 {
     unsigned numberOfCharactersToCopy = std::min(len, length() - pos);
-    if (numberOfCharactersToCopy <= 0)
+    if (!numberOfCharactersToCopy)
         return;
     if (is8Bit())
         result.append(m_impl->characters8() + pos, numberOfCharactersToCopy);
@@ -651,7 +650,7 @@ template<size_t inlineCapacity>
 inline void String::prependTo(Vector<UChar, inlineCapacity>& result, unsigned pos, unsigned len) const
 {
     unsigned numberOfCharactersToCopy = std::min(len, length() - pos);
-    if (numberOfCharactersToCopy <= 0)
+    if (!numberOfCharactersToCopy)
         return;
     if (is8Bit()) {
         size_t oldSize = result.size();
@@ -680,6 +679,8 @@ WTF_EXPORT const String& emptyString();
 
 using WTF::CString;
 using WTF::KeepTrailingZeros;
+using WTF::StrictUTF8Conversion;
+using WTF::StrictUTF8ConversionReplacingUnpairedSurrogatesWithFFFD;
 using WTF::String;
 using WTF::emptyString;
 using WTF::append;

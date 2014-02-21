@@ -5,6 +5,7 @@
 """Defines a set of constants shared by test runners and other scripts."""
 
 import collections
+import logging
 import os
 import subprocess
 import sys
@@ -83,6 +84,12 @@ PACKAGE_INFO = {
         '/data/local/tmp/content-browser-tests-command-line',
         None,
         None),
+    'chromedriver_webview_shell': PackageInfo(
+        'org.chromium.chromedriver_webview_shell',
+        'org.chromium.chromedriver_webview_shell.Main',
+        None,
+        None,
+        None),
 }
 
 
@@ -118,13 +125,15 @@ DEVICE_PERF_OUTPUT_DIR = (
 
 SCREENSHOTS_DIR = os.path.join(DIR_SOURCE_ROOT, 'out_screenshots')
 
-ANDROID_SDK_VERSION = 18
+ANDROID_SDK_VERSION = 19
 ANDROID_SDK_ROOT = os.path.join(DIR_SOURCE_ROOT,
                                 'third_party/android_tools/sdk')
 ANDROID_NDK_ROOT = os.path.join(DIR_SOURCE_ROOT,
                                 'third_party/android_tools/ndk')
 
-EMULATOR_SDK_ROOT = os.path.join(DIR_SOURCE_ROOT, 'android_emulator_sdk')
+EMULATOR_SDK_ROOT = os.environ.get('ANDROID_EMULATOR_SDK_ROOT',
+                                   os.path.join(DIR_SOURCE_ROOT,
+                                                'android_emulator_sdk'))
 
 UPSTREAM_FLAKINESS_SERVER = 'test-results.appspot.com'
 
@@ -152,7 +161,18 @@ def GetOutDirectory(build_type=None):
       GetBuildType() if build_type is None else build_type))
 
 
-def _GetADBPath():
+def _Memoize(func):
+  def Wrapper():
+    try:
+      return func._result
+    except AttributeError:
+      func._result = func()
+      return func._result
+  return Wrapper
+
+
+@_Memoize
+def GetAdbPath():
   if os.environ.get('ANDROID_SDK_ROOT'):
     return 'adb'
   # If envsetup.sh hasn't been sourced and there's no adb in the path,
@@ -162,11 +182,9 @@ def _GetADBPath():
       subprocess.call(['adb', 'version'], stdout=devnull, stderr=devnull)
     return 'adb'
   except OSError:
-    print >> sys.stderr, 'No adb found in $PATH, fallback to checked in binary.'
+    logging.debug('No adb found in $PATH, fallback to checked in binary.')
     return os.path.join(ANDROID_SDK_ROOT, 'platform-tools', 'adb')
 
-
-ADB_PATH = _GetADBPath()
 
 # Exit codes
 ERROR_EXIT_CODE = 1

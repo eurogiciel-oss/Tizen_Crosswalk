@@ -46,8 +46,9 @@ class RenderWidgetHostBrowserTest : public ContentBrowserTest {
   base::FilePath test_dir_;
 };
 
-// Disabled on Windows and CrOS because it is flaky: crbug.com/272379.
-#if defined(OS_WIN) || defined(OS_CHROMEOS)
+// Disabled on Ozone due to flake: crbug.com/315392.
+// Disabled on Aura since this is not possible with ubercomp.
+#if defined(USE_AURA) || defined(USE_OZONE)
 #define MAYBE_GetSnapshotFromRendererTest DISABLED_GetSnapshotFromRendererTest
 #else
 #define MAYBE_GetSnapshotFromRendererTest GetSnapshotFromRendererTest

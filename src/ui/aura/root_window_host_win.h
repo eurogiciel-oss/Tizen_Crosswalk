@@ -6,18 +6,17 @@
 #define UI_AURA_ROOT_WINDOW_HOST_WIN_H_
 
 #include "base/compiler_specific.h"
-#include "ui/aura/root_window_host.h"
-#include "ui/base/ui_export.h"
+#include "ui/aura/aura_export.h"
+#include "ui/aura/window_tree_host.h"
 #include "ui/gfx/win/window_impl.h"
 
 namespace aura {
 
-class RootWindowHostWin : public RootWindowHost, public gfx::WindowImpl {
+class WindowTreeHostWin : public WindowTreeHost, public gfx::WindowImpl {
  public:
-  RootWindowHostWin(const gfx::Rect& bounds);
-  virtual ~RootWindowHostWin();
-  // RootWindowHost:
-  virtual void SetDelegate(RootWindowHostDelegate* delegate) OVERRIDE;
+  WindowTreeHostWin(const gfx::Rect& bounds);
+  virtual ~WindowTreeHostWin();
+  // WindowTreeHost:
   virtual RootWindow* GetRootWindow() OVERRIDE;
   virtual gfx::AcceleratedWidget GetAcceleratedWidget() OVERRIDE;
   virtual void Show() OVERRIDE;
@@ -36,13 +35,12 @@ class RootWindowHostWin : public RootWindowHost, public gfx::WindowImpl {
   virtual void UnConfineCursor() OVERRIDE;
   virtual void OnCursorVisibilityChanged(bool show) OVERRIDE;
   virtual void MoveCursorTo(const gfx::Point& location) OVERRIDE;
-  virtual void SetFocusWhenShown(bool focus_when_shown) OVERRIDE;
   virtual void PostNativeEvent(const base::NativeEvent& native_event) OVERRIDE;
   virtual void OnDeviceScaleFactorChanged(float device_scale_factor) OVERRIDE;
   virtual void PrepareForShutdown() OVERRIDE;
 
  private:
-  BEGIN_MSG_MAP_EX(RootWindowHostWin)
+  BEGIN_MSG_MAP_EX(WindowTreeHostWin)
     // Range handlers must go first!
     MESSAGE_RANGE_HANDLER_EX(WM_MOUSEFIRST, WM_MOUSELAST, OnMouseRange)
     MESSAGE_RANGE_HANDLER_EX(WM_NCMOUSEMOVE, WM_NCXBUTTONDBLCLK, OnMouseRange)
@@ -75,20 +73,18 @@ class RootWindowHostWin : public RootWindowHost, public gfx::WindowImpl {
   void OnPaint(HDC dc);
   void OnSize(UINT param, const CSize& size);
 
-  RootWindowHostDelegate* delegate_;
-
   bool fullscreen_;
   bool has_capture_;
   RECT saved_window_rect_;
   DWORD saved_window_style_;
   DWORD saved_window_ex_style_;
 
-  DISALLOW_COPY_AND_ASSIGN(RootWindowHostWin);
+  DISALLOW_COPY_AND_ASSIGN(WindowTreeHostWin);
 };
 
 namespace test {
 
-// Set true to let RootWindowHostWin use a popup window
+// Set true to let WindowTreeHostWin use a popup window
 // with no frame/title so that the window size and test's
 // expectations matches.
 AURA_EXPORT void SetUsePopupAsRootWindowForTest(bool use);

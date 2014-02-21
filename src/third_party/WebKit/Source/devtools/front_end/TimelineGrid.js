@@ -83,6 +83,9 @@ WebInspector.TimelineGrid.prototype = {
         this._dividersLabelBarElement.removeChildren();
     },
 
+    /**
+     * @return {boolean}
+     */
     updateDividers: function(calculator)
     {
         const minGridSlicePx = 64; // minimal distance between grid lines.
@@ -187,18 +190,18 @@ WebInspector.TimelineGrid.prototype = {
 
     hideEventDividers: function()
     {
-        this._eventDividersElement.addStyleClass("hidden");
+        this._eventDividersElement.classList.add("hidden");
     },
 
     showEventDividers: function()
     {
-        this._eventDividersElement.removeStyleClass("hidden");
+        this._eventDividersElement.classList.remove("hidden");
     },
 
     hideCurtains: function()
     {
-        this._leftCurtainElement.addStyleClass("hidden");
-        this._rightCurtainElement.addStyleClass("hidden");
+        this._leftCurtainElement.classList.add("hidden");
+        this._rightCurtainElement.classList.add("hidden");
     },
 
     /**
@@ -208,9 +211,9 @@ WebInspector.TimelineGrid.prototype = {
     showCurtains: function(gapOffset, gapWidth)
     {
         this._leftCurtainElement.style.width = gapOffset + "px";
-        this._leftCurtainElement.removeStyleClass("hidden");
+        this._leftCurtainElement.classList.remove("hidden");
         this._rightCurtainElement.style.left = (gapOffset + gapWidth) + "px";
-        this._rightCurtainElement.removeStyleClass("hidden");
+        this._rightCurtainElement.classList.remove("hidden");
     },
 
     setScrollAndDividerTop: function(scrollTop, dividersTop)
@@ -227,11 +230,18 @@ WebInspector.TimelineGrid.prototype = {
 WebInspector.TimelineGrid.Calculator = function() { }
 
 WebInspector.TimelineGrid.Calculator.prototype = {
-    /** @param {number} time */
-    computePosition: function(time) { },
+    /**
+     * @param {number} time
+     * @return {number}
+     */
+    computePosition: function(time) { return 0; },
 
-    /** @param {number} time */
-    formatTime: function(time) { },
+    /**
+     * @param {number} time
+     * @param {boolean=} hires
+     * @return {string}
+     */
+    formatTime: function(time, hires) { },
 
     /** @return {number} */
     minimumBoundary: function() { },

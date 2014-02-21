@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="pl">
+<translation id="3234920859344197194">Ta witryna korzysta z wtyczki Chrome Frame, której zabezpieczenia i stabilność wkrótce nie będą już aktualizowane. Odinstaluj wtyczkę i zacznij korzystać z nowoczesnej przeglądarki.</translation>
 <translation id="8914504000324227558">Uruchom Chrome ponownie</translation>
 <translation id="8000275528373650868">Google Chrome wymaga systemu Windows Vista bądź Windows XP z dodatkiem SP2 lub nowszym.</translation>
 <translation id="8485767968786176057">W tym przypadku adres z certyfikatu nie pasuje do adresu strony, którą chcesz otworzyć w przeglądarce. Jedna z możliwych przyczyn to przechwycenie komunikacji przez intruza, który przedstawił certyfikat innej strony. Inna jest taka, że serwer zwraca ten sam certyfikat przy wielu stronach (również tej, którą próbujesz odwiedzić), mimo że jest on ważny tylko dla jednej. W tej chwili masz dostęp do &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, ale Google Chrome nie jest w stanie stwierdzić, czy to ta sama strona co &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, na którą chcesz wejść. Jeśli przejdziesz dalej, przeglądarka nie będzie sprawdzać innych niezgodności nazw.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">Zezwalaj przeglądarce Google Chrome na działanie w tle</translation>
 <translation id="2896252579017640304">Uruchom aplikacje Chrome</translation>
 <translation id="2370289711218562573">Google Chrome rozpoczął importowanie Ulubionych/Zakładek.</translation>
-<translation id="8762286861469007470">Detektor portalu przechwytującego Chrome</translation>
 <translation id="2721687379934343312">Na komputerach z systemem Mac hasła są zapisane w pęku kluczy. Inni użytkownicy Chrome udostępniający to konto systemu OS X mogą uzyskiwać do nich dostęp i je synchronizować.</translation>
 <translation id="1761870329818521071">Nie można zainstalować tej samej wersji wtyczki Google Chrome Frame, która jest obecnie uruchomiona. Zamknij wtyczkę Google Chrome Frame i spróbuj ponownie.</translation>
 <translation id="6014844626092547096">Jesteś zalogowany w Chrome. Administrator wyłączył synchronizację.</translation>
@@ -57,10 +57,10 @@
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Szczegóły płatności zostały zapisane w Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome używa Twojego mikrofonu.</translation>
-<translation id="3590194807845837023">Odblokuj profil i uruchom ponownie</translation>
 <translation id="4053720452172726777">Dostosowywanie i kontrolowanie Google Chrome</translation>
 <translation id="6423071462708908582">Próbujesz wejść na &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, ale serwer przedstawił nieważny certyfikat. Nie ma informacji na temat przejęcia tego certyfikatu po utracie ważności. To oznacza, że Google Chrome nie może zagwarantować, że komunikujesz się z &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, a nie z intruzem. Zegar komputera jest obecnie ustawiony na <ph name="CURRENT_TIME"/>. Czy wygląda to właściwie? Jeśli nie, popraw błąd i odśwież stronę.</translation>
 <translation id="3197823471738295152">Urządzenie używa aktualnej wersji oprogramowania.</translation>
+<translation id="8286862437124483331">Google Chrome próbuje pokazać hasła. Podaj swoje hasło do Windows, by na to zezwolić.</translation>
 <translation id="3889417619312448367">Odinstaluj Google Chrome</translation>
 <translation id="1434626383986940139">Aplikacje Chrome w wersji poglądowej</translation>
 <translation id="8551886023433311834">Aktualizacja jest już prawie ukończona. Wystarczy tylko uruchomić ponownie urządzenie.</translation>
@@ -181,7 +181,6 @@ Jeśli jednak zalogujesz się teraz, informacje Chrome, takie jak zakładki, his
 <translation id="7396375882099008034">Zezwalaj Chrome na korzystanie z sieci w ustawieniach zapory sieciowej
         lub oprogramowania antywirusowego.</translation>
 <translation id="9102715433345326100">Ten plik jest złośliwy i został zablokowany przez Chrome.</translation>
-<translation id="3170677364322086041">Ta witryna korzysta z wycofanej wtyczki Chrome Frame, której zabezpieczenia i stabilność nie są już aktualizowane. Odinstaluj wtyczkę i zacznij korzystać z nowej wersji przeglądarki.</translation>
 <translation id="8205111949707227942">Opcjonalnie: pomóż nam udoskonalać system operacyjny Chrome poprzez automatyczne wysyłanie do Google statystyk użytkowania i raportów o awariach.</translation>
 <translation id="7253415505590551024">Trwa pobieranie plików. Czy chcesz wyjść z Google Chrome i anulować pobieranie?</translation>
 <translation id="7196020411877309443">Dlaczego wyświetla mi się to okienko?</translation>
@@ -198,6 +197,7 @@ Jeśli jednak zalogujesz się teraz, informacje Chrome, takie jak zakładki, his
           Ustawienia sieci LAN
           i usuń zaznaczenie „Użyj serwera proxy dla sieci LAN”.</translation>
 <translation id="7825851276765848807">Instalacja nie powiodła się z powodu nieokreślonego błędu. Pobierz Google Chrome ponownie.</translation>
+<translation id="4919523385405675060">Ta witryna korzysta z wtyczki Chrome Frame, której zabezpieczenia i stabilność wkrótce nie będą już aktualizowane. Odinstaluj wtyczkę i pobierz zgodną przeglądarkę.</translation>
 <translation id="1061257178446858647">Jesteś teraz zalogowany(a) w Chrome. Zakładki, historia i inne ustawienia będą synchronizowane z Twoim kontem Google.</translation>
 <translation id="3335672657969596251">Google Chrome nie obsługuje systemu <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Wyloguj się i zaloguj ponownie, by zmiana zaczęła obowiązywać.</translation>

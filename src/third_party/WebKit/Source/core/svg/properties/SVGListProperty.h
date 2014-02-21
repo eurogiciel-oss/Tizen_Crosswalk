@@ -20,6 +20,7 @@
 #ifndef SVGListProperty_h
 #define SVGListProperty_h
 
+#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
 #include "core/dom/ExceptionCode.h"
 #include "core/svg/properties/SVGPropertyTearOff.h"
@@ -49,10 +50,10 @@ public:
     typedef SVGAnimatedListPropertyTearOff<PropertyType> AnimatedListPropertyTearOff;
     typedef typename SVGAnimatedListPropertyTearOff<PropertyType>::ListWrapperCache ListWrapperCache;
 
-    bool canAlterList(ExceptionState& es) const
+    bool canAlterList(ExceptionState& exceptionState) const
     {
         if (m_role == AnimValRole) {
-            es.throwUninformativeAndGenericDOMException(NoModificationAllowedError);
+            exceptionState.throwDOMException(NoModificationAllowedError, ExceptionMessages::readOnly("the property is an animation value"));
             return false;
         }
 
@@ -97,18 +98,18 @@ public:
     }
 
     // SVGList::clear()
-    void clearValues(ExceptionState& es)
+    void clearValues(ExceptionState& exceptionState)
     {
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return;
 
         m_values->clear();
         commitChange();
     }
 
-    void clearValuesAndWrappers(ExceptionState& es)
+    void clearValuesAndWrappers(ExceptionState& exceptionState)
     {
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return;
 
         detachListWrappers(0);
@@ -123,9 +124,9 @@ public:
     }
 
     // SVGList::initialize()
-    ListItemType initializeValues(const ListItemType& newItem, ExceptionState& es)
+    ListItemType initializeValues(const ListItemType& newItem, ExceptionState& exceptionState)
     {
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return ListItemType();
 
         // Spec: If the inserted item is already in a list, it is removed from its previous list before it is inserted into this list.
@@ -139,15 +140,15 @@ public:
         return newItem;
     }
 
-    PassListItemTearOff initializeValuesAndWrappers(PassListItemTearOff passNewItem, ExceptionState& es)
+    PassListItemTearOff initializeValuesAndWrappers(PassListItemTearOff passNewItem, ExceptionState& exceptionState)
     {
         ASSERT(m_wrappers);
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return 0;
 
         // Not specified, but FF/Opera do it this way, and it's just sane.
         if (!passNewItem) {
-            es.throwUninformativeAndGenericTypeError();
+            exceptionState.throwTypeError("The PassListItemType provided is invalid.");
             return 0;
         }
 
@@ -169,29 +170,29 @@ public:
     }
 
     // SVGList::getItem()
-    bool canGetItem(unsigned index, ExceptionState& es)
+    bool canGetItem(unsigned index, ExceptionState& exceptionState)
     {
         if (index >= m_values->size()) {
-            es.throwUninformativeAndGenericDOMException(IndexSizeError);
+            exceptionState.throwDOMException(IndexSizeError, ExceptionMessages::indexExceedsMaximumBound("index", index, m_values->size()));
             return false;
         }
 
         return true;
     }
 
-    ListItemType getItemValues(unsigned index, ExceptionState& es)
+    ListItemType getItemValues(unsigned index, ExceptionState& exceptionState)
     {
-        if (!canGetItem(index, es))
+        if (!canGetItem(index, exceptionState))
             return ListItemType();
 
         // Spec: Returns the specified item from the list. The returned item is the item itself and not a copy.
         return m_values->at(index);
     }
 
-    PassListItemTearOff getItemValuesAndWrappers(AnimatedListPropertyTearOff* animatedList, unsigned index, ExceptionState& es)
+    PassListItemTearOff getItemValuesAndWrappers(AnimatedListPropertyTearOff* animatedList, unsigned index, ExceptionState& exceptionState)
     {
         ASSERT(m_wrappers);
-        if (!canGetItem(index, es))
+        if (!canGetItem(index, exceptionState))
             return 0;
 
         // Spec: Returns the specified item from the list. The returned item is the item itself and not a copy.
@@ -210,9 +211,9 @@ public:
     }
 
     // SVGList::insertItemBefore()
-    ListItemType insertItemBeforeValues(const ListItemType& newItem, unsigned index, ExceptionState& es)
+    ListItemType insertItemBeforeValues(const ListItemType& newItem, unsigned index, ExceptionState& exceptionState)
     {
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return ListItemType();
 
         // Spec: If the index is greater than or equal to numberOfItems, then the new item is appended to the end of the list.
@@ -233,15 +234,15 @@ public:
         return newItem;
     }
 
-    PassListItemTearOff insertItemBeforeValuesAndWrappers(PassListItemTearOff passNewItem, unsigned index, ExceptionState& es)
+    PassListItemTearOff insertItemBeforeValuesAndWrappers(PassListItemTearOff passNewItem, unsigned index, ExceptionState& exceptionState)
     {
         ASSERT(m_wrappers);
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return 0;
 
         // Not specified, but FF/Opera do it this way, and it's just sane.
         if (!passNewItem) {
-            es.throwUninformativeAndGenericTypeError();
+            exceptionState.throwTypeError("The PassListItemType provided is invalid.");
             return 0;
         }
 
@@ -268,22 +269,22 @@ public:
     }
 
     // SVGList::replaceItem()
-    bool canReplaceItem(unsigned index, ExceptionState& es)
+    bool canReplaceItem(unsigned index, ExceptionState& exceptionState)
     {
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return false;
 
         if (index >= m_values->size()) {
-            es.throwUninformativeAndGenericDOMException(IndexSizeError);
+            exceptionState.throwDOMException(IndexSizeError, ExceptionMessages::indexExceedsMaximumBound("index", index, m_values->size()));
             return false;
         }
 
         return true;
     }
 
-    ListItemType replaceItemValues(const ListItemType& newItem, unsigned index, ExceptionState& es)
+    ListItemType replaceItemValues(const ListItemType& newItem, unsigned index, ExceptionState& exceptionState)
     {
-        if (!canReplaceItem(index, es))
+        if (!canReplaceItem(index, exceptionState))
             return ListItemType();
 
         // Spec: If newItem is already in a list, it is removed from its previous list before it is inserted into this list.
@@ -295,7 +296,7 @@ public:
 
         if (m_values->isEmpty()) {
             // 'newItem' already lived in our list, we removed it, and now we're empty, which means there's nothing to replace.
-            es.throwUninformativeAndGenericDOMException(IndexSizeError);
+            exceptionState.throwDOMException(IndexSizeError, "The new item lived in this list, and has been removed.");
             return ListItemType();
         }
 
@@ -306,15 +307,15 @@ public:
         return newItem;
     }
 
-    PassListItemTearOff replaceItemValuesAndWrappers(PassListItemTearOff passNewItem, unsigned index, ExceptionState& es)
+    PassListItemTearOff replaceItemValuesAndWrappers(PassListItemTearOff passNewItem, unsigned index, ExceptionState& exceptionState)
     {
         ASSERT(m_wrappers);
-        if (!canReplaceItem(index, es))
+        if (!canReplaceItem(index, exceptionState))
             return 0;
 
         // Not specified, but FF/Opera do it this way, and it's just sane.
         if (!passNewItem) {
-            es.throwUninformativeAndGenericTypeError();
+            exceptionState.throwTypeError("The PassListItemType provided is invalid.");
             return 0;
         }
 
@@ -329,7 +330,7 @@ public:
         if (m_values->isEmpty()) {
             ASSERT(m_wrappers->isEmpty());
             // 'passNewItem' already lived in our list, we removed it, and now we're empty, which means there's nothing to replace.
-            es.throwUninformativeAndGenericDOMException(IndexSizeError);
+            exceptionState.throwDOMException(IndexSizeError, "The new item lived in this list, and has been removed.");
             return 0;
         }
 
@@ -347,22 +348,22 @@ public:
     }
 
     // SVGList::removeItem()
-    bool canRemoveItem(unsigned index, ExceptionState& es)
+    bool canRemoveItem(unsigned index, ExceptionState& exceptionState)
     {
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return false;
 
         if (index >= m_values->size()) {
-            es.throwUninformativeAndGenericDOMException(IndexSizeError);
+            exceptionState.throwDOMException(IndexSizeError, ExceptionMessages::indexExceedsMaximumBound("index", index, m_values->size()));
             return false;
         }
 
         return true;
     }
 
-    ListItemType removeItemValues(unsigned index, ExceptionState& es)
+    ListItemType removeItemValues(unsigned index, ExceptionState& exceptionState)
     {
-        if (!canRemoveItem(index, es))
+        if (!canRemoveItem(index, exceptionState))
             return ListItemType();
 
         ListItemType oldItem = m_values->at(index);
@@ -372,10 +373,10 @@ public:
         return oldItem;
     }
 
-    PassListItemTearOff removeItemValuesAndWrappers(AnimatedListPropertyTearOff* animatedList, unsigned index, ExceptionState& es)
+    PassListItemTearOff removeItemValuesAndWrappers(AnimatedListPropertyTearOff* animatedList, unsigned index, ExceptionState& exceptionState)
     {
         ASSERT(m_wrappers);
-        if (!canRemoveItem(index, es))
+        if (!canRemoveItem(index, exceptionState))
             return 0;
 
         ASSERT(m_values->size() == m_wrappers->size());
@@ -394,9 +395,9 @@ public:
     }
 
     // SVGList::appendItem()
-    ListItemType appendItemValues(const ListItemType& newItem, ExceptionState& es)
+    ListItemType appendItemValues(const ListItemType& newItem, ExceptionState& exceptionState)
     {
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return ListItemType();
 
         // Spec: If newItem is already in a list, it is removed from its previous list before it is inserted into this list.
@@ -409,15 +410,15 @@ public:
         return newItem;
     }
 
-    PassListItemTearOff appendItemValuesAndWrappers(PassListItemTearOff passNewItem, ExceptionState& es)
+    PassListItemTearOff appendItemValuesAndWrappers(PassListItemTearOff passNewItem, ExceptionState& exceptionState)
     {
         ASSERT(m_wrappers);
-        if (!canAlterList(es))
+        if (!canAlterList(exceptionState))
             return 0;
 
         // Not specified, but FF/Opera do it this way, and it's just sane.
         if (!passNewItem) {
-            es.throwUninformativeAndGenericTypeError();
+            exceptionState.throwTypeError("The PassListItemType provided is invalid.");
             return 0;
         }
 

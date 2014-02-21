@@ -31,7 +31,7 @@
 #ifndef WebPermissionClient_h
 #define WebPermissionClient_h
 
-namespace WebKit {
+namespace blink {
 
 class WebDocument;
 class WebFrame;
@@ -91,15 +91,15 @@ public:
     virtual bool allowWriteToClipboard(WebFrame*, bool defaultValue) { return defaultValue; }
 
     // Controls whether enabling Web Components API for this frame.
-    virtual bool allowWebComponents(const WebDocument&, bool defaultValue) { return defaultValue; }
+    virtual bool allowWebComponents(WebFrame*, bool defaultValue) { return defaultValue; }
 
-    // Controls whether to enable MutationEvents for this document.
+    // Controls whether to enable MutationEvents for this frame.
     // The common use case of this method is actually to selectively disable MutationEvents,
     // but it's been named for consistency with the rest of the interface.
-    virtual bool allowMutationEvents(const WebDocument&, bool defaultValue) { return defaultValue; }
+    virtual bool allowMutationEvents(WebFrame*, bool defaultValue) { return defaultValue; }
 
     // Controls whether pushState and related History APIs are enabled for this frame.
-    virtual bool allowPushState(const WebDocument&) { return true; }
+    virtual bool allowPushState(WebFrame*) { return true; }
 
     // Controls whether WebGL extension WEBGL_debug_renderer_info is allowed for this frame.
     virtual bool allowWebGLDebugRendererInfo(WebFrame*) { return false; }
@@ -114,6 +114,6 @@ protected:
     ~WebPermissionClient() { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

@@ -115,8 +115,8 @@ void FakeSpeechRecognitionManager::AbortAllSessionsForRenderView(
 
 bool FakeSpeechRecognitionManager::HasAudioInputDevices() { return true; }
 
-string16 FakeSpeechRecognitionManager::GetAudioInputDeviceModel() {
-  return string16();
+base::string16 FakeSpeechRecognitionManager::GetAudioInputDeviceModel() {
+  return base::string16();
 }
 
 int FakeSpeechRecognitionManager::GetSession(int render_process_id,
@@ -147,7 +147,7 @@ void FakeSpeechRecognitionManager::SetFakeRecognitionResult() {
   listener_->OnAudioEnd(session_id_);
   SpeechRecognitionResult result;
   result.hypotheses.push_back(SpeechRecognitionHypothesis(
-      ASCIIToUTF16(kTestResult), 1.0));
+      base::ASCIIToUTF16(kTestResult), 1.0));
   SpeechRecognitionResults results;
   results.push_back(result);
   listener_->OnRecognitionResults(session_id_, results);

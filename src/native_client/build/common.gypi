@@ -45,15 +45,15 @@
     'msvs_debug_link_incremental%': '2',
 
     # NOTE: adapted from them chrome common.gypi file for arm
-    'armv7%': 0,
+    'arm_version%': 7,
 
-    # Set Neon compilation flags (only meaningful if armv7==1).
+    # Set Neon compilation flags (only meaningful if arm_version==7).
     'arm_neon%': 1,
 
     # Set Thumb compilation flags.
     'arm_thumb%': 0,
 
-    # Set ARM fpu compilation flags (only meaningful if armv7==1 and
+    # Set ARM fpu compilation flags (only meaningful if arm_version==7 and
     # arm_neon==0).
     'arm_fpu%': 'vfpv3',
 
@@ -138,17 +138,6 @@
     'nacl_validator_ragel%': 1,
 
     'linux2%': 0,
-      'conditions': [
-        ['OS=="win"', {
-          'python_exe': [
-            'call <(DEPTH)/native_client/tools/win_py.cmd'
-          ],
-        }, {
-          'python_exe': [
-             'python'
-          ],
-        }],
-      ],
   },
 
   'target_defaults': {
@@ -332,7 +321,7 @@
                           '-mthumb',
                       ]
                   }],
-                  ['armv7==1', {
+                  ['arm_version==7', {
                       'cflags': [
                           '-march=armv7-a',
                           '-mtune=cortex-a9',
@@ -408,73 +397,6 @@
             '-lpthread',
           ],
         },
-        'scons_variable_settings': {
-          'LIBPATH': ['$LIB_DIR'],
-          # Linking of large files uses lots of RAM, so serialize links
-          # using the handy flock command from util-linux.
-          'FLOCK_LINK': ['flock', '$TOP_BUILDDIR/linker.lock', '$LINK'],
-          'FLOCK_SHLINK': ['flock', '$TOP_BUILDDIR/linker.lock', '$SHLINK'],
-          'FLOCK_LDMODULE': ['flock', '$TOP_BUILDDIR/linker.lock', '$LDMODULE'],
-
-          # We have several cases where archives depend on each other in
-          # a cyclic fashion.  Since the GNU linker does only a single
-          # pass over the archives we surround the libraries with
-          # --start-group and --end-group (aka -( and -) ). That causes
-          # ld to loop over the group until no more undefined symbols
-          # are found. In an ideal world we would only make groups from
-          # those libraries which we knew to be in cycles. However,
-          # that's tough with SCons, so we bodge it by making all the
-          # archives a group by redefining the linking command here.
-          #
-          # TODO:  investigate whether we still have cycles that
-          # require --{start,end}-group.  There has been a lot of
-          # refactoring since this was first coded, which might have
-          # eliminated the circular dependencies.
-          #
-          # Note:  $_LIBDIRFLAGS comes before ${LINK,SHLINK,LDMODULE}FLAGS
-          # so that we prefer our own built libraries (e.g. -lpng) to
-          # system versions of libraries that pkg-config might turn up.
-          # TODO(sgk): investigate handling this not by re-ordering the
-          # flags this way, but by adding a hook to use the SCons
-          # ParseFlags() option on the output from pkg-config.
-          'LINKCOM': [['$FLOCK_LINK', '-o', '$TARGET', '$_LIBDIRFLAGS',
-                       '$LINKFLAGS', '$SOURCES', '-Wl,--start-group',
-                       '$_LIBFLAGS', '-Wl,--end-group']],
-          'SHLINKCOM': [['$FLOCK_SHLINK', '-o', '$TARGET', '$_LIBDIRFLAGS',
-                         '$SHLINKFLAGS', '$SOURCES', '-Wl,--start-group',
-                         '$_LIBFLAGS', '-Wl,--end-group']],
-          'LDMODULECOM': [['$FLOCK_LDMODULE', '-o', '$TARGET', '$_LIBDIRFLAGS',
-                           '$LDMODULEFLAGS', '$SOURCES', '-Wl,--start-group',
-                           '$_LIBFLAGS', '-Wl,--end-group']],
-          'IMPLICIT_COMMAND_DEPENDENCIES': 0,
-          # -rpath is only used when building with shared libraries.
-          'conditions': [
-            [ 'component=="shared_library"', {
-              'RPATH': '$LIB_DIR',
-            }],
-          ],
-        },
-        'scons_import_variables': [
-          'AS',
-          'CC',
-          'CXX',
-          'LINK',
-        ],
-        'scons_propagate_variables': [
-          'AS',
-          'CC',
-          'CCACHE_DIR',
-          'CXX',
-          'DISTCC_DIR',
-          'DISTCC_HOSTS',
-          'HOME',
-          'INCLUDE_SERVER_ARGS',
-          'INCLUDE_SERVER_PORT',
-          'LINK',
-          'CHROME_BUILD_TYPE',
-          'CHROMIUM_BUILD',
-          'OFFICIAL_BUILD',
-        ],
         'configurations': {
           'Debug': {
             'variables': {
@@ -514,19 +436,6 @@
                 ],
               }],
             ],
-          },
-        },
-        'variants': {
-          'coverage': {
-            'cflags': ['-fprofile-arcs', '-ftest-coverage'],
-            'ldflags': ['-fprofile-arcs'],
-          },
-          'profile': {
-            'cflags': ['-pg', '-g'],
-            'ldflags': ['-pg'],
-          },
-          'symbols': {
-            'cflags': ['-g'],
           },
         },
       },
@@ -698,7 +607,7 @@
                   '$(IntDir)/$(InputName).obj',
                 ],
                 'action': [
-                   '<@(python_exe)',
+                   'python',
                    '<(DEPTH)/native_client/tools/win_as.py',
                    # target architecture: Win32 or x64
                    '-a', '$(PlatformName)',

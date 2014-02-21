@@ -42,7 +42,9 @@
 #include "ui/gfx/rect_conversions.h"
 #include "ui/gfx/skia_util.h"
 #include "ui/gfx/text_elider.h"
+#include "ui/views/border.h"
 #include "ui/views/controls/button/image_button.h"
+#include "ui/views/rect_based_targeting_utils.h"
 #include "ui/views/widget/tooltip_manager.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/window/non_client_view.h"
@@ -281,21 +283,6 @@ void DrawIconCenter(gfx::Canvas* canvas,
                      icon_height, filter, paint);
 }
 
-// Draws the icon image at the bottom right corner of |bounds|.
-void DrawIconBottomRight(gfx::Canvas* canvas,
-                         const gfx::ImageSkia& image,
-                         int image_offset,
-                         int icon_width,
-                         int icon_height,
-                         const gfx::Rect& bounds,
-                         bool filter,
-                         const SkPaint& paint) {
-  int dst_x = bounds.x() + bounds.width() - icon_width;
-  int dst_y = bounds.y() + bounds.height() - icon_height;
-  DrawIconAtLocation(canvas, image, image_offset, dst_x, dst_y, icon_width,
-                     icon_height, filter, paint);
-}
-
 chrome::HostDesktopType GetHostDesktopType(views::View* view) {
   // Widget is NULL when tabs are detached.
   views::Widget* widget = view->GetWidget();
@@ -355,21 +342,26 @@ class Tab::TabCloseButton : public views::ImageButton {
   virtual ~TabCloseButton() {}
 
   // Overridden from views::View.
-  virtual View* GetEventHandlerForPoint(const gfx::Point& point) OVERRIDE {
-    // Ignore the padding set on the button.
-    gfx::Rect rect = GetContentsBounds();
-    rect.set_x(GetMirroredXForRect(rect));
+  virtual View* GetEventHandlerForRect(const gfx::Rect& rect) OVERRIDE {
+    if (!views::UsePointBasedTargeting(rect))
+      return View::GetEventHandlerForRect(rect);
 
+    // Ignore the padding set on the button.
+    gfx::Rect contents_bounds = GetContentsBounds();
+    contents_bounds.set_x(GetMirroredXForRect(contents_bounds));
+
+    // TODO(tdanderson): Remove this ifdef if rect-based targeting
+    // is turned on by default.
 #if defined(USE_ASH)
     // Include the padding in hit-test for touch events.
     if (aura::Env::GetInstance()->is_touch_down())
-      rect = GetLocalBounds();
+      contents_bounds = GetLocalBounds();
 #elif defined(OS_WIN)
     // TODO(sky): Use local-bounds if a touch-point is active.
     // http://crbug.com/145258
 #endif
 
-    return rect.Contains(point) ? this : parent();
+    return contents_bounds.Intersects(rect) ? this : parent();
   }
 
   // Overridden from views::View.
@@ -433,11 +425,12 @@ class Tab::TabCloseButton : public views::ImageButton {
     // If the button is hidden behind another tab, the hit test mask is empty.
     // Otherwise set the hit test mask to be the contents bounds.
     path->reset();
-    if (tab_bounds.Contains(button_bounds)) {
+    if (tab_bounds.Intersects(button_bounds)) {
       // Include the padding in the hit test mask for touch events.
       if (source == HIT_TEST_SOURCE_TOUCH)
         button_bounds = GetLocalBounds();
 
+      // TODO: this isn't quite right, really need to intersect the two regions.
       path->addRect(RectToSkRect(button_bounds));
     }
   }
@@ -787,7 +780,7 @@ void Tab::Layout() {
   // The height of the content of the Tab is the largest of the favicon,
   // the title text and the close button graphic.
   int content_height = std::max(tab_icon_size(), font_height_);
-  close_button_->set_border(NULL);
+  close_button_->SetBorder(views::Border::NullBorder());
   gfx::Size close_button_size(close_button_->GetPreferredSize());
   content_height = std::max(content_height, close_button_size.height());
 
@@ -826,8 +819,8 @@ void Tab::Layout() {
     int left_border = kCloseButtonHorzFuzz;
     int right_border = width() - (lb.width() + close_button_size.width() +
         left_border);
-    close_button_->set_border(views::Border::CreateEmptyBorder(top_border,
-        left_border, bottom_border, right_border));
+    close_button_->SetBorder(views::Border::CreateEmptyBorder(
+        top_border, left_border, bottom_border, right_border));
     close_button_->SetPosition(gfx::Point(lb.width(), 0));
     close_button_->SizeToPreferredSize();
     close_button_->SetVisible(true);
@@ -934,23 +927,11 @@ void Tab::GetHitTestMask(HitTestSource source, gfx::Path* path) const {
   }
 }
 
-bool Tab::GetTooltipText(const gfx::Point& p, string16* tooltip) const {
-  // TODO(miu): Rectify inconsistent tooltip behavior.  http://crbug.com/310947
-
-  if (data_.media_state != TAB_MEDIA_STATE_NONE) {
-    *tooltip = chrome::AssembleTabTooltipText(data_.title, data_.media_state);
-    return true;
-  }
-
-  if (data_.title.empty())
-    return false;
-
-  // Only show the tooltip if the title is truncated.
-  if (font_->GetStringWidth(data_.title) > GetTitleBounds().width()) {
-    *tooltip = data_.title;
-    return true;
-  }
-  return false;
+bool Tab::GetTooltipText(const gfx::Point& p, base::string16* tooltip) const {
+  // Note: Anything that affects the tooltip text should be accounted for when
+  // calling TooltipTextChanged() from Tab::DataChanged().
+  *tooltip = chrome::AssembleTabTooltipText(data_.title, data_.media_state);
+  return !tooltip->empty();
 }
 
 bool Tab::GetTooltipTextOrigin(const gfx::Point& p, gfx::Point* origin) const {
@@ -1136,6 +1117,9 @@ void Tab::MaybeAdjustLeftForMiniTab(gfx::Rect* bounds) const {
 }
 
 void Tab::DataChanged(const TabRendererData& old) {
+  if (data().media_state != old.media_state || data().title != old.title)
+    TooltipTextChanged();
+
   if (data().blocked == old.blocked)
     return;
 
@@ -1521,7 +1505,7 @@ void Tab::PaintMediaIndicator(gfx::Canvas* canvas) {
 
 void Tab::PaintTitle(gfx::Canvas* canvas, SkColor title_color) {
   // Paint the Title.
-  string16 title = data().title;
+  base::string16 title = data().title;
   if (title.empty()) {
     title = data().loading ?
         l10n_util::GetStringUTF16(IDS_TAB_LOADING_TITLE) :

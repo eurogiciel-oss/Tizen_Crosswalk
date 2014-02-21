@@ -43,13 +43,12 @@
 #include "core/html/parser/HTMLParserIdioms.h"
 #include "core/frame/ContentSecurityPolicy.h"
 #include "core/frame/Frame.h"
-#include "core/platform/MIMETypeRegistry.h"
 #include "core/svg/SVGScriptElement.h"
-#include "weborigin/SecurityOrigin.h"
+#include "platform/MIMETypeRegistry.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #include "wtf/StdLibExtras.h"
 #include "wtf/text/StringBuilder.h"
 #include "wtf/text/StringHash.h"
-#include "wtf/text/TextPosition.h"
 
 namespace WebCore {
 
@@ -159,7 +158,7 @@ bool ScriptLoader::isScriptTypeSupported(LegacyTypeSupport supportLegacyTypes) c
         type = "text/" + language.lower();
         if (MIMETypeRegistry::isSupportedJavaScriptMIMEType(type) || isLegacySupportedJavaScriptLanguage(language))
             return true;
-    } else if (MIMETypeRegistry::isSupportedJavaScriptMIMEType(type.stripWhiteSpace().lower()) || (supportLegacyTypes == AllowLegacyTypeInTypeAttribute && isLegacySupportedJavaScriptLanguage(type))) {
+    } else if (MIMETypeRegistry::isSupportedJavaScriptMIMEType(type.stripWhiteSpace()) || (supportLegacyTypes == AllowLegacyTypeInTypeAttribute && isLegacySupportedJavaScriptLanguage(type))) {
         return true;
     }
 
@@ -264,7 +263,7 @@ bool ScriptLoader::fetchScript(const String& sourceUrl)
         String crossOriginMode = m_element->fastGetAttribute(HTMLNames::crossoriginAttr);
         if (!crossOriginMode.isNull()) {
             StoredCredentials allowCredentials = equalIgnoringCase(crossOriginMode, "use-credentials") ? AllowStoredCredentials : DoNotAllowStoredCredentials;
-            request.setPotentiallyCrossOriginEnabled(elementDocument->securityOrigin(), allowCredentials);
+            request.setCrossOriginAccessControl(elementDocument->securityOrigin(), allowCredentials);
         }
         request.setCharset(scriptCharset());
 
@@ -276,9 +275,8 @@ bool ScriptLoader::fetchScript(const String& sourceUrl)
         m_isExternalScript = true;
     }
 
-    if (m_resource) {
+    if (m_resource)
         return true;
-    }
 
     dispatchErrorEvent();
     return false;
@@ -378,11 +376,11 @@ void ScriptLoader::notifyFinished(Resource* resource)
     ASSERT_UNUSED(resource, resource == m_resource);
     if (!m_resource)
         return;
-    if (!elementDocument->fetcher()->canAccess(m_resource.get())) {
+    if (m_resource->errorOccurred()) {
         dispatchErrorEvent();
+        contextDocument->scriptRunner()->notifyScriptLoadError(this, m_willExecuteInOrder ? ScriptRunner::IN_ORDER_EXECUTION : ScriptRunner::ASYNC_EXECUTION);
         return;
     }
-
     if (m_willExecuteInOrder)
         contextDocument->scriptRunner()->notifyScriptReady(this, ScriptRunner::IN_ORDER_EXECUTION);
     else

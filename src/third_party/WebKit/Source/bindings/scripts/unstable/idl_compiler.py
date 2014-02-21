@@ -38,21 +38,14 @@ For details, see bug http://crbug.com/239771
 
 import optparse
 import os
-import pickle
-import posixpath
-import shlex
+import cPickle as pickle
 import sys
 
 import code_generator_v8
 import idl_reader
 
-module_path, _ = os.path.split(__file__)
-source_path = os.path.normpath(os.path.join(module_path, os.pardir, os.pardir, os.pardir))
-
-
 def parse_options():
     parser = optparse.OptionParser()
-    parser.add_option('--additional-idl-files')
     # FIXME: The --dump-json-and-pickle option is only for debugging and will
     # be removed once we complete migrating all IDL files from the Perl flow to
     # the Python flow.
@@ -60,7 +53,7 @@ def parse_options():
     parser.add_option('--idl-attributes-file')
     parser.add_option('--include', dest='idl_directories', action='append')
     parser.add_option('--output-directory')
-    parser.add_option('--interface-dependencies-file')
+    parser.add_option('--interfaces-info-file')
     parser.add_option('--verbose', action='store_true', default=False)
     parser.add_option('--write-file-only-if-changed', type='int')
     # ensure output comes last, so command line easy to parse via regexes
@@ -69,23 +62,10 @@ def parse_options():
     options, args = parser.parse_args()
     if options.output_directory is None:
         parser.error('Must specify output directory using --output-directory.')
-    if options.additional_idl_files is None:
-        options.additional_idl_files = []
-    else:
-        # additional_idl_files is passed as a string with varied (shell-style)
-        # quoting, hence needs parsing.
-        options.additional_idl_files = shlex.split(options.additional_idl_files)
     if len(args) != 1:
         parser.error('Must specify exactly 1 input file as argument, but %d given.' % len(args))
     options.idl_filename = os.path.realpath(args[0])
     return options
-
-
-def get_relative_dir_posix(filename):
-    """Returns directory of a local file relative to Source, in POSIX format."""
-    relative_path_local = os.path.relpath(filename, source_path)
-    relative_dir_local = os.path.dirname(relative_path_local)
-    return relative_dir_local.replace(os.path.sep, posixpath.sep)
 
 
 def write_json_and_pickle(definitions, interface_name, output_directory):
@@ -109,20 +89,20 @@ def main():
     verbose = options.verbose
     if verbose:
         print idl_filename
-    relative_dir_posix = get_relative_dir_posix(idl_filename)
 
-    reader = idl_reader.IdlReader(options.interface_dependencies_file, options.additional_idl_files, options.idl_attributes_file, output_directory, verbose)
+    interfaces_info_filename = options.interfaces_info_file
+    if interfaces_info_filename:
+        with open(interfaces_info_filename) as interfaces_info_file:
+            interfaces_info = pickle.load(interfaces_info_file)
+    else:
+        interfaces_info = None
+
+    reader = idl_reader.IdlReader(interfaces_info, options.idl_attributes_file, output_directory, verbose)
     definitions = reader.read_idl_definitions(idl_filename)
-    code_generator = code_generator_v8.CodeGeneratorV8(definitions, interface_name, options.output_directory, relative_dir_posix, options.idl_directories, verbose)
-    if not definitions:
-        # We generate dummy .h and .cpp files just to tell build scripts
-        # that outputs have been created.
-        code_generator.write_dummy_header_and_cpp()
-        return
     if options.dump_json_and_pickle:
         write_json_and_pickle(definitions, interface_name, output_directory)
         return
-    code_generator.write_header_and_cpp()
+    code_generator_v8.write_header_and_cpp(definitions, interface_name, interfaces_info, options.output_directory, options.idl_directories, verbose)
 
 
 if __name__ == '__main__':

@@ -52,8 +52,10 @@ void CSSSelector::createRareData()
     ASSERT(m_match != Tag);
     if (m_hasRareData)
         return;
-    // Move the value to the rare data stucture.
-    m_data.m_rareData = RareData::create(adoptRef(m_data.m_value)).leakRef();
+    AtomicString value(m_data.m_value);
+    if (m_data.m_value)
+        m_data.m_value->deref();
+    m_data.m_rareData = RareData::create(value).leakRef();
     m_hasRareData = true;
 }
 
@@ -93,12 +95,15 @@ inline unsigned CSSSelector::specificityForOneSelector() const
     switch (m_match) {
     case Id:
         return 0x10000;
+    case PseudoClass:
+        if (pseudoType() == PseudoHost || pseudoType() == PseudoAncestor)
+            return 0;
+        // fall through.
     case Exact:
     case Class:
     case Set:
     case List:
     case Hyphen:
-    case PseudoClass:
     case PseudoElement:
     case Contain:
     case Begin:
@@ -180,12 +185,6 @@ PseudoId CSSSelector::pseudoId(PseudoType type)
         return SCROLLBAR_TRACK_PIECE;
     case PseudoResizer:
         return RESIZER;
-    case PseudoFullScreen:
-        return FULL_SCREEN;
-    case PseudoFullScreenDocument:
-        return FULL_SCREEN_DOCUMENT;
-    case PseudoFullScreenAncestor:
-        return FULL_SCREEN_ANCESTOR;
     case PseudoUnknown:
     case PseudoEmpty:
     case PseudoFirstChild:
@@ -247,12 +246,14 @@ PseudoId CSSSelector::pseudoId(PseudoType type)
     case PseudoCue:
     case PseudoFutureCue:
     case PseudoPastCue:
-    case PseudoSeamlessDocument:
     case PseudoDistributed:
-    case PseudoPart:
     case PseudoUnresolved:
     case PseudoContent:
     case PseudoHost:
+    case PseudoAncestor:
+    case PseudoFullScreen:
+    case PseudoFullScreenDocument:
+    case PseudoFullScreenAncestor:
         return NOPSEUDO;
     case PseudoNotParsed:
         ASSERT_NOT_REACHED();
@@ -336,16 +337,16 @@ static HashMap<StringImpl*, CSSSelector::PseudoType>* nameToPseudoTypeMap()
     DEFINE_STATIC_LOCAL(AtomicString, cueWithoutParen, ("cue", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, futureCue, ("future", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, pastCue, ("past", AtomicString::ConstructFromLiteral));
-    DEFINE_STATIC_LOCAL(AtomicString, seamlessDocument, ("-webkit-seamless-document", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, distributed, ("-webkit-distributed(", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, inRange, ("in-range", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, outOfRange, ("out-of-range", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, scope, ("scope", AtomicString::ConstructFromLiteral));
-    DEFINE_STATIC_LOCAL(AtomicString, part, ("part(", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, unresolved, ("unresolved", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, content, ("content", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, host, ("host", AtomicString::ConstructFromLiteral));
     DEFINE_STATIC_LOCAL(AtomicString, hostWithParams, ("host(", AtomicString::ConstructFromLiteral));
+    DEFINE_STATIC_LOCAL(AtomicString, ancestor, ("ancestor", AtomicString::ConstructFromLiteral));
+    DEFINE_STATIC_LOCAL(AtomicString, ancestorWithParams, ("ancestor(", AtomicString::ConstructFromLiteral));
 
     static HashMap<StringImpl*, CSSSelector::PseudoType>* nameToPseudoType = 0;
     if (!nameToPseudoType) {
@@ -421,17 +422,17 @@ static HashMap<StringImpl*, CSSSelector::PseudoType>* nameToPseudoTypeMap()
         nameToPseudoType->set(cueWithoutParen.impl(), CSSSelector::PseudoWebKitCustomElement);
         nameToPseudoType->set(futureCue.impl(), CSSSelector::PseudoFutureCue);
         nameToPseudoType->set(pastCue.impl(), CSSSelector::PseudoPastCue);
-        nameToPseudoType->set(seamlessDocument.impl(), CSSSelector::PseudoSeamlessDocument);
         nameToPseudoType->set(distributed.impl(), CSSSelector::PseudoDistributed);
         nameToPseudoType->set(inRange.impl(), CSSSelector::PseudoInRange);
         nameToPseudoType->set(outOfRange.impl(), CSSSelector::PseudoOutOfRange);
         if (RuntimeEnabledFeatures::shadowDOMEnabled()) {
-            nameToPseudoType->set(part.impl(), CSSSelector::PseudoPart);
             nameToPseudoType->set(host.impl(), CSSSelector::PseudoHost);
             nameToPseudoType->set(hostWithParams.impl(), CSSSelector::PseudoHost);
+            nameToPseudoType->set(ancestor.impl(), CSSSelector::PseudoAncestor);
+            nameToPseudoType->set(ancestorWithParams.impl(), CSSSelector::PseudoAncestor);
             nameToPseudoType->set(content.impl(), CSSSelector::PseudoContent);
         }
-        if (RuntimeEnabledFeatures::customElementsEnabled() || RuntimeEnabledFeatures::embedderCustomElementsEnabled())
+        if (RuntimeEnabledFeatures::customElementsEnabled())
             nameToPseudoType->set(unresolved.impl(), CSSSelector::PseudoUnresolved);
     }
     return nameToPseudoType;
@@ -449,7 +450,7 @@ CSSSelector::PseudoType CSSSelector::parsePseudoType(const AtomicString& name)
 
     if (name.startsWith("-webkit-"))
         return PseudoWebKitCustomElement;
-    if (name.startsWith("x-") || name.startsWith("cue"))
+    if (name.startsWith("cue"))
         return PseudoUserAgentCustomElement;
 
     return PseudoUnknown;
@@ -485,7 +486,6 @@ void CSSSelector::extractPseudoType() const
     case PseudoSelection:
     case PseudoUserAgentCustomElement:
     case PseudoWebKitCustomElement:
-    case PseudoPart:
     case PseudoContent:
         element = true;
         break;
@@ -544,12 +544,12 @@ void CSSSelector::extractPseudoType() const
     case PseudoFullScreen:
     case PseudoFullScreenDocument:
     case PseudoFullScreenAncestor:
-    case PseudoSeamlessDocument:
     case PseudoInRange:
     case PseudoOutOfRange:
     case PseudoFutureCue:
     case PseudoPastCue:
     case PseudoHost:
+    case PseudoAncestor:
     case PseudoUnresolved:
         break;
     case PseudoFirstPage:
@@ -649,7 +649,8 @@ String CSSSelector::selectorText(const String& rightSide) const
                 str.append(')');
                 break;
             }
-            case PseudoHost: {
+            case PseudoHost:
+            case PseudoAncestor: {
                 if (cs->selectorList()) {
                     const CSSSelector* firstSubSelector = cs->selectorList()->first();
                     for (const CSSSelector* subSelector = firstSubSelector; subSelector; subSelector = CSSSelectorList::next(subSelector)) {
@@ -668,17 +669,9 @@ String CSSSelector::selectorText(const String& rightSide) const
             str.appendLiteral("::");
             str.append(cs->value());
 
-            switch (cs->pseudoType()) {
-            case PseudoPart:
-                str.append(cs->argument());
-                str.append(')');
-                break;
-            case PseudoContent:
+            if (cs->pseudoType() == PseudoContent) {
                 if (cs->relation() == CSSSelector::SubSelector && cs->tagHistory())
                     return cs->tagHistory()->selectorText() + str.toString() + rightSide;
-                break;
-            default:
-                break;
             }
         } else if (cs->isAttributeSelector()) {
             str.append('[');
@@ -769,12 +762,6 @@ void CSSSelector::setSelectorList(PassOwnPtr<CSSSelectorList> selectorList)
     m_data.m_rareData->m_selectorList = selectorList;
 }
 
-void CSSSelector::setMatchUserAgentOnly()
-{
-    createRareData();
-    m_data.m_rareData->m_matchUserAgentOnly = true;
-}
-
 static bool validateSubSelector(const CSSSelector* selector)
 {
     switch (selector->m_match) {
@@ -815,6 +802,7 @@ static bool validateSubSelector(const CSSSelector* selector)
     case CSSSelector::PseudoLastOfType:
     case CSSSelector::PseudoOnlyOfType:
     case CSSSelector::PseudoHost:
+    case CSSSelector::PseudoAncestor:
         return true;
     default:
         return false;
@@ -858,20 +846,17 @@ bool CSSSelector::matchNth(int count) const
     return m_data.m_rareData->matchNth(count);
 }
 
-CSSSelector::RareData::RareData(PassRefPtr<StringImpl> value)
-    : m_value(value.leakRef())
+CSSSelector::RareData::RareData(const AtomicString& value)
+    : m_value(value)
     , m_a(0)
     , m_b(0)
     , m_attribute(anyQName())
     , m_argument(nullAtom)
-    , m_matchUserAgentOnly(0)
 {
 }
 
 CSSSelector::RareData::~RareData()
 {
-    if (m_value)
-        m_value->deref();
 }
 
 // a helper function for parsing nth-arguments

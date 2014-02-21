@@ -28,7 +28,7 @@ namespace WebCore {
 
 class SVGPathElement;
 
-class SVGPathSegListPropertyTearOff : public SVGListProperty<SVGPathSegList> {
+class SVGPathSegListPropertyTearOff FINAL : public SVGListProperty<SVGPathSegList> {
 public:
     typedef SVGListProperty<SVGPathSegList> Base;
     typedef SVGAnimatedListPropertyTearOff<SVGPathSegList> AnimatedListPropertyTearOff;
@@ -42,7 +42,7 @@ public:
     }
 
     SVGPathElement* contextElement() const;
-    SVGAnimatedProperty* animatedProperty() const { return m_animatedProperty.get(); }
+    SVGAnimatedProperty* animatedProperty() const { return m_animatedProperty; }
 
     int findItem(const ListItemType& item) const
     {
@@ -71,47 +71,47 @@ public:
     // SVGList API
     void clear(ExceptionState&);
 
-    PassListItemType initialize(PassListItemType passNewItem, ExceptionState& es)
+    PassListItemType initialize(PassListItemType passNewItem, ExceptionState& exceptionState)
     {
         // Not specified, but FF/Opera do it this way, and it's just sane.
         if (!passNewItem) {
-            es.throwUninformativeAndGenericTypeError();
+            exceptionState.throwTypeError("The PassListItemType provided is invalid.");
             return 0;
         }
 
         clearContextAndRoles();
         ListItemType newItem = passNewItem;
-        return Base::initializeValues(newItem, es);
+        return Base::initializeValues(newItem, exceptionState);
     }
 
     PassListItemType getItem(unsigned index, ExceptionState&);
 
-    PassListItemType insertItemBefore(PassListItemType passNewItem, unsigned index, ExceptionState& es)
+    PassListItemType insertItemBefore(PassListItemType passNewItem, unsigned index, ExceptionState& exceptionState)
     {
         // Not specified, but FF/Opera do it this way, and it's just sane.
         if (!passNewItem) {
-            es.throwUninformativeAndGenericTypeError();
+            exceptionState.throwTypeError("The PassListItemType provided is invalid.");
             return 0;
         }
 
         ListItemType newItem = passNewItem;
-        return Base::insertItemBeforeValues(newItem, index, es);
+        return Base::insertItemBeforeValues(newItem, index, exceptionState);
     }
 
     PassListItemType replaceItem(PassListItemType, unsigned index, ExceptionState&);
 
     PassListItemType removeItem(unsigned index, ExceptionState&);
 
-    PassListItemType appendItem(PassListItemType passNewItem, ExceptionState& es)
+    PassListItemType appendItem(PassListItemType passNewItem, ExceptionState& exceptionState)
     {
         // Not specified, but FF/Opera do it this way, and it's just sane.
         if (!passNewItem) {
-            es.throwUninformativeAndGenericTypeError();
+            exceptionState.throwTypeError("The PassListItemType provided is invalid.");
             return 0;
         }
 
         ListItemType newItem = passNewItem;
-        return Base::appendItemValues(newItem, es);
+        return Base::appendItemValues(newItem, exceptionState);
     }
 
 private:
@@ -126,36 +126,27 @@ private:
 
     using Base::m_role;
 
-    virtual bool isReadOnly() const
-    {
-        if (m_role == AnimValRole)
-            return true;
-        if (m_animatedProperty && m_animatedProperty->isReadOnly())
-            return true;
-        return false;
-    }
-
-    virtual void commitChange()
+    virtual void commitChange() OVERRIDE
     {
         ASSERT(m_values);
         m_values->commitChange(m_animatedProperty->contextElement(), ListModificationUnknown);
     }
 
-    virtual void commitChange(ListModification listModification)
+    virtual void commitChange(ListModification listModification) OVERRIDE
     {
         ASSERT(m_values);
         m_values->commitChange(m_animatedProperty->contextElement(), listModification);
     }
 
     virtual bool processIncomingListItemValue(const ListItemType& newItem, unsigned* indexToModify) OVERRIDE;
-    virtual bool processIncomingListItemWrapper(RefPtr<ListItemTearOff>&, unsigned*)
+    virtual bool processIncomingListItemWrapper(RefPtr<ListItemTearOff>&, unsigned*) OVERRIDE
     {
         ASSERT_NOT_REACHED();
         return true;
     }
 
 private:
-    RefPtr<AnimatedListPropertyTearOff> m_animatedProperty;
+    AnimatedListPropertyTearOff* m_animatedProperty;
     SVGPathSegRole m_pathSegRole;
 };
 

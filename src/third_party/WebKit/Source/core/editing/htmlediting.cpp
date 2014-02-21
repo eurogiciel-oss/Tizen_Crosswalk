@@ -48,14 +48,12 @@
 #include "core/html/HTMLLIElement.h"
 #include "core/html/HTMLOListElement.h"
 #include "core/html/HTMLParagraphElement.h"
-#include "core/html/HTMLTableElement.h"
 #include "core/html/HTMLUListElement.h"
 #include "core/frame/Frame.h"
 #include "core/rendering/RenderObject.h"
 #include "wtf/Assertions.h"
 #include "wtf/StdLibExtras.h"
 #include "wtf/text/StringBuilder.h"
-#include "wtf/unicode/CharacterNames.h"
 
 using namespace std;
 
@@ -160,7 +158,7 @@ bool isEditablePosition(const Position& p, EditableType editableType, EUpdateSty
     else
         ASSERT(updateStyle == DoNotUpdateStyle);
 
-    if (node->renderer() && node->renderer()->isTable())
+    if (isTableElement(node))
         node = node->parentNode();
 
     return node->rendererIsEditable(editableType);
@@ -179,7 +177,7 @@ bool isRichlyEditablePosition(const Position& p, EditableType editableType)
     if (!node)
         return false;
 
-    if (node->renderer() && node->renderer()->isTable())
+    if (isTableElement(node))
         node = node->parentNode();
 
     return node->rendererIsRichlyEditable(editableType);
@@ -191,7 +189,7 @@ Element* editableRootForPosition(const Position& p, EditableType editableType)
     if (!node)
         return 0;
 
-    if (node->renderer() && node->renderer()->isTable())
+    if (isTableElement(node))
         node = node->parentNode();
 
     return node->rootEditableElement(editableType);
@@ -311,12 +309,12 @@ VisiblePosition lastEditablePositionBeforePositionInRoot(const Position& positio
 // Whether or not content before and after this node will collapse onto the same line as it.
 bool isBlock(const Node* node)
 {
-    return node && node->renderer() && !node->renderer()->isInline() && !node->renderer()->isRubyText();
+    return node && node->isElementNode() && node->renderer() && !node->renderer()->isInline() && !node->renderer()->isRubyText();
 }
 
 bool isInline(const Node* node)
 {
-    return node && node->renderer() && node->renderer()->isInline();
+    return node && node->isElementNode() && node->renderer() && node->renderer()->isInline();
 }
 
 // FIXME: Deploy this in all of the places where enclosingBlockFlow/enclosingBlockFlowOrTableElement are used.
@@ -326,7 +324,7 @@ bool isInline(const Node* node)
 Element* enclosingBlock(Node* node, EditingBoundaryCrossingRule rule)
 {
     Node* enclosingNode = enclosingNodeOfType(firstPositionInOrBeforeNode(node), isBlock, rule);
-    return enclosingNode && enclosingNode->isElementNode() ? toElement(enclosingNode) : 0;
+    return toElement(enclosingNode);
 }
 
 TextDirection directionOfEnclosingBlock(const Position& position)
@@ -434,7 +432,7 @@ static Node* firstInSpecialElement(const Position& pos)
         if (isSpecialElement(n)) {
             VisiblePosition vPos = VisiblePosition(pos, DOWNSTREAM);
             VisiblePosition firstInElement = VisiblePosition(firstPositionInOrBeforeNode(n), DOWNSTREAM);
-            if (isTableElement(n) && vPos == firstInElement.next())
+            if (isRenderedTable(n) && vPos == firstInElement.next())
                 return n;
             if (vPos == firstInElement)
                 return n;
@@ -449,7 +447,7 @@ static Node* lastInSpecialElement(const Position& pos)
         if (isSpecialElement(n)) {
             VisiblePosition vPos = VisiblePosition(pos, DOWNSTREAM);
             VisiblePosition lastInElement = VisiblePosition(lastPositionInOrAfterNode(n), DOWNSTREAM);
-            if (isTableElement(n) && vPos == lastInElement.previous())
+            if (isRenderedTable(n) && vPos == lastInElement.previous())
                 return n;
             if (vPos == lastInElement)
                 return n;
@@ -486,7 +484,7 @@ Position positionAfterContainingSpecialElement(const Position& pos, Node **conta
 Node* isFirstPositionAfterTable(const VisiblePosition& visiblePosition)
 {
     Position upstream(visiblePosition.deepEquivalent().upstream());
-    if (upstream.deprecatedNode() && upstream.deprecatedNode()->renderer() && upstream.deprecatedNode()->renderer()->isTable() && upstream.atLastEditingPositionForNode())
+    if (isRenderedTable(upstream.deprecatedNode()) && upstream.atLastEditingPositionForNode())
         return upstream.deprecatedNode();
 
     return 0;
@@ -495,7 +493,7 @@ Node* isFirstPositionAfterTable(const VisiblePosition& visiblePosition)
 Node* isLastPositionBeforeTable(const VisiblePosition& visiblePosition)
 {
     Position downstream(visiblePosition.deepEquivalent().downstream());
-    if (downstream.deprecatedNode() && downstream.deprecatedNode()->renderer() && downstream.deprecatedNode()->renderer()->isTable() && downstream.atFirstEditingPositionForNode())
+    if (isRenderedTable(downstream.deprecatedNode()) && downstream.atFirstEditingPositionForNode())
         return downstream.deprecatedNode();
 
     return 0;
@@ -526,12 +524,12 @@ VisiblePosition visiblePositionAfterNode(Node* node)
 // Create a range object with two visible positions, start and end.
 // create(Document*, const Position&, const Position&); will use deprecatedEditingOffset
 // Use this function instead of create a regular range object (avoiding editing offset).
-PassRefPtr<Range> createRange(Document& document, const VisiblePosition& start, const VisiblePosition& end, ExceptionState& es)
+PassRefPtr<Range> createRange(Document& document, const VisiblePosition& start, const VisiblePosition& end, ExceptionState& exceptionState)
 {
     RefPtr<Range> selectedRange = Range::create(document);
-    selectedRange->setStart(start.deepEquivalent().containerNode(), start.deepEquivalent().computeOffsetInContainerNode(), es);
-    if (!es.hadException())
-        selectedRange->setEnd(end.deepEquivalent().containerNode(), end.deepEquivalent().computeOffsetInContainerNode(), es);
+    selectedRange->setStart(start.deepEquivalent().containerNode(), start.deepEquivalent().computeOffsetInContainerNode(), exceptionState);
+    if (!exceptionState.hadException())
+        selectedRange->setEnd(end.deepEquivalent().containerNode(), end.deepEquivalent().computeOffsetInContainerNode(), exceptionState);
     return selectedRange.release();
 }
 
@@ -605,12 +603,12 @@ static bool hasARenderedDescendant(Node* node, Node* excludedNode)
 {
     for (Node* n = node->firstChild(); n;) {
         if (n == excludedNode) {
-            n = NodeTraversal::nextSkippingChildren(n, node);
+            n = NodeTraversal::nextSkippingChildren(*n, node);
             continue;
         }
         if (n->renderer())
             return true;
-        n = NodeTraversal::next(n, node);
+        n = NodeTraversal::next(*n, node);
     }
     return false;
 }
@@ -681,30 +679,6 @@ Node* enclosingListChild(Node *node)
     return 0;
 }
 
-static HTMLElement* embeddedSublist(Node* listItem)
-{
-    // Check the DOM so that we'll find collapsed sublists without renderers.
-    for (Node* n = listItem->firstChild(); n; n = n->nextSibling()) {
-        if (isListElement(n))
-            return toHTMLElement(n);
-    }
-
-    return 0;
-}
-
-static Node* appendedSublist(Node* listItem)
-{
-    // Check the DOM so that we'll find collapsed sublists without renderers.
-    for (Node* n = listItem->nextSibling(); n; n = n->nextSibling()) {
-        if (isListElement(n))
-            return toHTMLElement(n);
-        if (isListItem(listItem))
-            return 0;
-    }
-
-    return 0;
-}
-
 // FIXME: This method should not need to call isStartOfParagraph/isEndOfParagraph
 Node* enclosingEmptyListItem(const VisiblePosition& visiblePos)
 {
@@ -717,9 +691,6 @@ Node* enclosingEmptyListItem(const VisiblePosition& visiblePos)
     VisiblePosition lastInListChild(lastPositionInOrAfterNode(listChildNode));
 
     if (firstInListChild != visiblePos || lastInListChild != visiblePos)
-        return 0;
-
-    if (embeddedSublist(listChildNode) || appendedSublist(listChildNode))
         return 0;
 
     return listChildNode;
@@ -752,14 +723,21 @@ bool canMergeLists(Element* firstList, Element* secondList)
     // Make sure there is no visible content between this li and the previous list
 }
 
-// FIXME: do not require renderer, so that this can be used within fragments, or rename to isRenderedTable()
-bool isTableElement(Node* n)
+bool isTableElement(const Node* node)
 {
-    if (!n || !n->isElementNode())
+    if (!node || !node->isElementNode())
         return false;
 
-    RenderObject* renderer = n->renderer();
-    return (renderer && (renderer->style()->display() == TABLE || renderer->style()->display() == INLINE_TABLE));
+    return node->hasTagName(tableTag);
+}
+
+bool isRenderedTable(const Node* node)
+{
+    if (!node || !node->isElementNode())
+        return false;
+
+    RenderObject* renderer = node->renderer();
+    return (renderer && renderer->isTable());
 }
 
 bool isTableCell(const Node* node)
@@ -839,12 +817,12 @@ PassRefPtr<HTMLElement> createListItemElement(Document& document)
 
 PassRefPtr<HTMLElement> createHTMLElement(Document& document, const QualifiedName& name)
 {
-    return HTMLElementFactory::createHTMLElement(name, &document, 0, false);
+    return createHTMLElement(document, name.localName());
 }
 
 PassRefPtr<HTMLElement> createHTMLElement(Document& document, const AtomicString& tagName)
 {
-    return createHTMLElement(document, QualifiedName(nullAtom, tagName, xhtmlNamespaceURI));
+    return HTMLElementFactory::createHTMLElement(tagName, document, 0, false);
 }
 
 bool isTabSpanNode(const Node *node)
@@ -860,20 +838,6 @@ bool isTabSpanTextNode(const Node *node)
 Node* tabSpanNode(const Node *node)
 {
     return isTabSpanTextNode(node) ? node->parentNode() : 0;
-}
-
-Position positionOutsideTabSpan(const Position& pos)
-{
-    Node* node = pos.containerNode();
-    if (isTabSpanTextNode(node))
-        node = tabSpanNode(node);
-    else if (!isTabSpanNode(node))
-        return pos;
-
-    if (node && VisiblePosition(pos) == lastPositionInNode(node))
-        return positionInParentAfterNode(node);
-
-    return positionInParentBeforeNode(node);
 }
 
 PassRefPtr<Element> createTabSpanElement(Document& document, PassRefPtr<Node> prpTabTextNode)
@@ -1125,7 +1089,7 @@ bool isNonTableCellHTMLBlockElement(const Node* node)
     return node->hasTagName(listingTag)
         || node->hasTagName(olTag)
         || node->hasTagName(preTag)
-        || isHTMLTableElement(node)
+        || node->hasTagName(tableTag)
         || node->hasTagName(ulTag)
         || node->hasTagName(xmpTag)
         || node->hasTagName(h1Tag)

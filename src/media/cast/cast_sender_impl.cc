@@ -7,22 +7,10 @@
 #include "base/callback.h"
 #include "base/logging.h"
 #include "base/message_loop/message_loop.h"
+#include "media/base/video_frame.h"
 
 namespace media {
 namespace cast {
-
-// static
-void FrameInput::DeleteAudioFrame(const PcmAudioFrame* frame) {
-  delete frame;
-}
-
-// static
-void FrameInput::DeleteVideoFrame(const I420VideoFrame* video_frame) {
-  delete [] video_frame->y_plane.data;
-  delete [] video_frame->u_plane.data;
-  delete [] video_frame->v_plane.data;
-  delete video_frame;
-}
 
 // The LocalFrameInput class posts all incoming frames; audio and video to the
 // main cast thread for processing.
@@ -36,36 +24,20 @@ class LocalFrameInput : public FrameInput {
        audio_sender_(audio_sender),
        video_sender_(video_sender) {}
 
-  virtual void InsertRawVideoFrame(const I420VideoFrame* video_frame,
-                                   const base::TimeTicks& capture_time,
-                                   const base::Closure callback) OVERRIDE {
+  virtual void InsertRawVideoFrame(
+      const scoped_refptr<media::VideoFrame>& video_frame,
+      const base::TimeTicks& capture_time) OVERRIDE {
     cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
         base::Bind(&VideoSender::InsertRawVideoFrame, video_sender_,
-            video_frame, capture_time, callback));
+            video_frame, capture_time));
   }
 
-  virtual void InsertCodedVideoFrame(const EncodedVideoFrame* video_frame,
-                                     const base::TimeTicks& capture_time,
-                                     const base::Closure callback) OVERRIDE {
+  virtual void InsertAudio(const AudioBus* audio_bus,
+                           const base::TimeTicks& recorded_time,
+                           const base::Closure& done_callback) OVERRIDE {
     cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
-        base::Bind(&VideoSender::InsertCodedVideoFrame, video_sender_,
-            video_frame, capture_time, callback));
-  }
-
-  virtual void InsertRawAudioFrame(const PcmAudioFrame* audio_frame,
-                                   const base::TimeTicks& recorded_time,
-                                   const base::Closure callback) OVERRIDE {
-    cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
-        base::Bind(&AudioSender::InsertRawAudioFrame, audio_sender_,
-            audio_frame, recorded_time, callback));
-  }
-
-  virtual void InsertCodedAudioFrame(const EncodedAudioFrame* audio_frame,
-                                     const base::TimeTicks& recorded_time,
-                                     const base::Closure callback) OVERRIDE {
-    cast_environment_->PostTask(CastEnvironment::MAIN, FROM_HERE,
-        base::Bind(&AudioSender::InsertCodedAudioFrame, audio_sender_,
-            audio_frame, recorded_time, callback));
+        base::Bind(&AudioSender::InsertAudio, audio_sender_,
+                   audio_bus, recorded_time, done_callback));
   }
 
  protected:
@@ -105,7 +77,7 @@ class LocalFrameInput : public FrameInput {
 //    separate video cameras, each MUST be identified as a different
 //    SSRC.
 
-class LocalCastSenderPacketReceiver : public PacketReceiver {
+class LocalCastSenderPacketReceiver : public transport::PacketReceiver {
  public:
   LocalCastSenderPacketReceiver(scoped_refptr<CastEnvironment> cast_environment,
                                 base::WeakPtr<AudioSender> audio_sender,
@@ -165,25 +137,21 @@ CastSender* CastSender::CreateCastSender(
     scoped_refptr<CastEnvironment> cast_environment,
     const AudioSenderConfig& audio_config,
     const VideoSenderConfig& video_config,
-    VideoEncoderController* const video_encoder_controller,
-    PacketSender* const packet_sender) {
-  return new CastSenderImpl(cast_environment,
-                            audio_config,
-                            video_config,
-                            video_encoder_controller,
-                            packet_sender);
+    const scoped_refptr<GpuVideoAcceleratorFactories>& gpu_factories,
+    transport::CastTransportSender* const transport_sender) {
+  return new CastSenderImpl(cast_environment, audio_config, video_config,
+                            gpu_factories, transport_sender);
 }
 
 CastSenderImpl::CastSenderImpl(
     scoped_refptr<CastEnvironment> cast_environment,
     const AudioSenderConfig& audio_config,
     const VideoSenderConfig& video_config,
-    VideoEncoderController* const video_encoder_controller,
-    PacketSender* const packet_sender)
-    : pacer_(cast_environment, packet_sender),
-      audio_sender_(cast_environment, audio_config, &pacer_),
-      video_sender_(cast_environment, video_config, video_encoder_controller,
-                    &pacer_),
+    const scoped_refptr<GpuVideoAcceleratorFactories>& gpu_factories,
+    transport::CastTransportSender* const transport_sender)
+    : audio_sender_(cast_environment, audio_config, transport_sender),
+      video_sender_(cast_environment, video_config, gpu_factories,
+                    transport_sender),
       frame_input_(new LocalFrameInput(cast_environment,
                                        audio_sender_.AsWeakPtr(),
                                        video_sender_.AsWeakPtr())),
@@ -198,7 +166,7 @@ scoped_refptr<FrameInput> CastSenderImpl::frame_input() {
   return frame_input_;
 }
 
-scoped_refptr<PacketReceiver> CastSenderImpl::packet_receiver() {
+scoped_refptr<transport::PacketReceiver> CastSenderImpl::packet_receiver() {
   return packet_receiver_;
 }
 

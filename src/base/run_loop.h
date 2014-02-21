@@ -15,6 +15,10 @@ namespace base {
 class MessagePumpForUI;
 #endif
 
+#if defined(USE_AURA)
+class MessagePumpDispatcher;
+#endif
+
 #if defined(OS_IOS)
 class MessagePumpUIApplication;
 #endif
@@ -27,15 +31,13 @@ class MessagePumpUIApplication;
 class BASE_EXPORT RunLoop {
  public:
   RunLoop();
-#if !defined(OS_MACOSX) && !defined(OS_ANDROID) && \
-    !defined(USE_GTK_MESSAGE_PUMP)
-  explicit RunLoop(MessageLoop::Dispatcher* dispatcher);
+#if defined(USE_AURA)
+  explicit RunLoop(MessagePumpDispatcher* dispatcher);
 #endif
   ~RunLoop();
 
-#if !defined(OS_MACOSX) && !defined(OS_ANDROID) && \
-    !defined(USE_GTK_MESSAGE_PUMP)
-  void set_dispatcher(MessageLoop::Dispatcher* dispatcher) {
+#if defined(USE_AURA)
+  void set_dispatcher(MessagePumpDispatcher* dispatcher) {
     dispatcher_ = dispatcher;
   }
 #endif
@@ -97,9 +99,8 @@ class BASE_EXPORT RunLoop {
   // Parent RunLoop or NULL if this is the top-most RunLoop.
   RunLoop* previous_run_loop_;
 
-#if !defined(OS_MACOSX) && !defined(OS_ANDROID) && \
-    !defined(USE_GTK_MESSAGE_PUMP)
-  MessageLoop::Dispatcher* dispatcher_;
+#if defined(USE_AURA)
+  MessagePumpDispatcher* dispatcher_;
 #endif
 
   // Used to count how many nested Run() invocations are on the stack.

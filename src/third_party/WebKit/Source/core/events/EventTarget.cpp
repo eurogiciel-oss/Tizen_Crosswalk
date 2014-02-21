@@ -34,7 +34,6 @@
 
 #include "RuntimeEnabledFeatures.h"
 #include "bindings/v8/DOMWrapperWorld.h"
-#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
 #include "core/events/Event.h"
 #include "core/dom/ExceptionCode.h"
@@ -84,7 +83,12 @@ inline DOMWindow* EventTarget::executingWindow()
 
 bool EventTarget::addEventListener(const AtomicString& eventType, PassRefPtr<EventListener> listener, bool useCapture)
 {
-    return ensureEventTargetData().eventListenerMap.add(eventType, listener, useCapture);
+    EventListener* eventListener = listener.get();
+    if (ensureEventTargetData().eventListenerMap.add(eventType, listener, useCapture)) {
+        InspectorInstrumentation::didAddEventListener(this, eventType, eventListener, useCapture);
+        return true;
+    }
+    return false;
 }
 
 bool EventTarget::removeEventListener(const AtomicString& eventType, EventListener* listener, bool useCapture)
@@ -97,6 +101,7 @@ bool EventTarget::removeEventListener(const AtomicString& eventType, EventListen
 
     if (!d->eventListenerMap.remove(eventType, listener, useCapture, indexOfRemovedListener))
         return false;
+    InspectorInstrumentation::didRemoveEventListener(this, eventType, listener, useCapture);
 
     // Notify firing events planning to invoke the listener at 'index' that
     // they have one less listener to invoke.
@@ -155,18 +160,18 @@ bool EventTarget::clearAttributeEventListener(const AtomicString& eventType, DOM
     return removeEventListener(eventType, listener, false);
 }
 
-bool EventTarget::dispatchEvent(PassRefPtr<Event> event, ExceptionState& es)
+bool EventTarget::dispatchEvent(PassRefPtr<Event> event, ExceptionState& exceptionState)
 {
     if (!event) {
-        es.throwDOMException(InvalidStateError, ExceptionMessages::failedToExecute("dispatchEvent", "EventTarget", "The event provided is null."));
+        exceptionState.throwDOMException(InvalidStateError, "The event provided is null.");
         return false;
     }
     if (event->type().isEmpty()) {
-        es.throwDOMException(InvalidStateError, ExceptionMessages::failedToExecute("dispatchEvent", "EventTarget", "The event provided is uninitialized."));
+        exceptionState.throwDOMException(InvalidStateError, "The event provided is uninitialized.");
         return false;
     }
     if (event->isBeingDispatched()) {
-        es.throwDOMException(InvalidStateError, ExceptionMessages::failedToExecute("dispatchEvent", "EventTarget", "The event is already being dispatched."));
+        exceptionState.throwDOMException(InvalidStateError, "The event is already being dispatched.");
         return false;
     }
 
@@ -190,7 +195,7 @@ void EventTarget::uncaughtExceptionInEventHandler()
 {
 }
 
-static AtomicString legacyType(const Event* event)
+static const AtomicString& legacyType(const Event* event)
 {
     if (event->type() == EventTypeNames::transitionend)
         return EventTypeNames::webkitTransitionEnd;
@@ -207,7 +212,7 @@ static AtomicString legacyType(const Event* event)
     if (event->type() == EventTypeNames::wheel)
         return EventTypeNames::mousewheel;
 
-    return emptyString();
+    return emptyAtom;
 }
 
 void EventTarget::countLegacyEvents(const AtomicString& legacyTypeName, EventListenerVector* listenersVector, EventListenerVector* legacyListenersVector)
@@ -243,11 +248,11 @@ void EventTarget::countLegacyEvents(const AtomicString& legacyTypeName, EventLis
         if (DOMWindow* executingWindow = this->executingWindow()) {
             if (legacyListenersVector) {
                 if (listenersVector)
-                    UseCounter::count(executingWindow, prefixedAndUnprefixedFeature);
+                    UseCounter::count(executingWindow->document(), prefixedAndUnprefixedFeature);
                 else
-                    UseCounter::count(executingWindow, prefixedFeature);
+                    UseCounter::count(executingWindow->document(), prefixedFeature);
             } else if (listenersVector) {
-                UseCounter::count(executingWindow, unprefixedFeature);
+                UseCounter::count(executingWindow->document(), unprefixedFeature);
             }
         }
     }
@@ -298,8 +303,12 @@ void EventTarget::fireEventListeners(Event* event, EventTargetData* d, EventList
     if (event->type() == EventTypeNames::beforeunload) {
         if (DOMWindow* executingWindow = this->executingWindow()) {
             if (executingWindow->top())
-                UseCounter::count(executingWindow, UseCounter::SubFrameBeforeUnloadFired);
+                UseCounter::count(executingWindow->document(), UseCounter::SubFrameBeforeUnloadFired);
+            UseCounter::count(executingWindow->document(), UseCounter::DocumentBeforeUnloadFired);
         }
+    } else if (event->type() == EventTypeNames::unload) {
+        if (DOMWindow* executingWindow = this->executingWindow())
+            UseCounter::count(executingWindow->document(), UseCounter::DocumentUnloadFired);
     }
 
     bool userEventWasHandled = false;
@@ -324,7 +333,7 @@ void EventTarget::fireEventListeners(Event* event, EventTargetData* d, EventList
         if (!context)
             break;
 
-        InspectorInstrumentationCookie cookie = InspectorInstrumentation::willHandleEvent(context, event);
+        InspectorInstrumentationCookie cookie = InspectorInstrumentation::willHandleEvent(this, event->type(), registeredListener.listener.get(), registeredListener.useCapture);
         // To match Mozilla, the AT_TARGET phase fires both capturing and bubbling
         // event listeners, even though that violates some versions of the DOM spec.
         registeredListener.listener->handleEvent(context, event);
@@ -354,12 +363,19 @@ const EventListenerVector& EventTarget::getEventListeners(const AtomicString& ev
     return *listenerVector;
 }
 
+Vector<AtomicString> EventTarget::eventTypes()
+{
+    EventTargetData* d = eventTargetData();
+    return d ? d->eventListenerMap.eventTypes() : Vector<AtomicString>();
+}
+
 void EventTarget::removeAllEventListeners()
 {
     EventTargetData* d = eventTargetData();
     if (!d)
         return;
     d->eventListenerMap.clear();
+    InspectorInstrumentation::didRemoveAllEventListeners(this);
 
     // Notify firing events planning to invoke the listener at 'index' that
     // they have one less listener to invoke.

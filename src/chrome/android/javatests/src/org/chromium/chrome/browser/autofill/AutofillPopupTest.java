@@ -4,6 +4,11 @@
 
 package org.chromium.chrome.browser.autofill;
 
+import android.test.suitebuilder.annotation.MediumTest;
+import android.text.TextUtils;
+import android.view.View;
+
+import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.UrlUtils;
 import org.chromium.chrome.R;
@@ -17,11 +22,6 @@ import org.chromium.content.browser.test.util.TestCallbackHelperContainer;
 import org.chromium.content.browser.test.util.TestInputMethodManagerWrapper;
 import org.chromium.content.browser.test.util.TouchCommon;
 import org.chromium.ui.autofill.AutofillPopup;
-
-import android.test.FlakyTest;
-import android.test.suitebuilder.annotation.MediumTest;
-import android.text.TextUtils;
-import android.view.View;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -70,12 +70,12 @@ public class AutofillPopupTest extends ChromiumTestShellTestBase {
         mHelper = new AutofillTestHelper();
     }
 
-    /*
-     * @MediumTest
-     * @Feature({"autofill"})
-     * Bug 312896
+    /**
+     * Tests that bringing up an Autofill and clicking on the first entry fills out the expected
+     * Autofill information.
      */
-    @FlakyTest
+    @MediumTest
+    @Feature({"autofill"})
     public void testClickAutofillPopupSuggestion()
             throws InterruptedException, ExecutionException, TimeoutException {
         // The TestInputMethodManagerWrapper intercepts showSoftInput so that a keyboard is never
@@ -89,16 +89,22 @@ public class AutofillPopupTest extends ChromiumTestShellTestBase {
         AutofillProfile profile = new AutofillProfile(
                 "" /* guid */, ORIGIN, FIRST_NAME + " " + LAST_NAME, COMPANY_NAME, ADDRESS_LINE1,
                 ADDRESS_LINE2, CITY, STATE, ZIP_CODE, COUNTRY, PHONE_NUMBER, EMAIL);
-        String profileOneGUID = mHelper.setProfile(profile);
+        mHelper.setProfile(profile);
         assertEquals(1, mHelper.getNumberOfProfiles());
 
         // Click the input field for the first name.
         final TestCallbackHelperContainer viewClient = new TestCallbackHelperContainer(view);
+        assertTrue(DOMUtils.waitForNonZeroNodeBounds(view, viewClient, "fn"));
         DOMUtils.clickNode(this, view, viewClient, "fn");
 
         waitForKeyboardShowRequest(immw, 1);
 
-        view.getContentViewCore().getInputConnectionForTest().setComposingText("J", 1);
+        ThreadUtils.runOnUiThreadBlocking(new Runnable() {
+            @Override
+            public void run() {
+                view.getContentViewCore().getInputConnectionForTest().setComposingText("J", 1);
+            }
+        });
 
         waitForAnchorViewAdd(view);
         View anchorView = view.findViewById(R.id.autofill_popup_window);
@@ -173,9 +179,12 @@ public class AutofillPopupTest extends ChromiumTestShellTestBase {
                         try {
                             return TextUtils.equals(FIRST_NAME,
                                     DOMUtils.getNodeValue(view, viewClient, "fn"));
-                        } catch (Exception e) {
+                        } catch (InterruptedException e) {
+                            return false;
+                        } catch (TimeoutException e) {
                             return false;
                         }
+
                     }
                 }));
     }

@@ -29,28 +29,30 @@
 
 #include "core/dom/Document.h"
 #include "core/frame/Frame.h"
+#include "core/frame/FrameHost.h"
+#include "core/frame/Settings.h"
 #include "core/loader/FrameLoadRequest.h"
 #include "core/page/Chrome.h"
 #include "core/page/ChromeClient.h"
 #include "core/page/Page.h"
-#include "core/page/Settings.h"
 #include "core/page/WindowFeatures.h"
 #include "platform/network/ResourceRequest.h"
-#include "weborigin/KURL.h"
-#include "weborigin/SecurityOrigin.h"
-#include "weborigin/SecurityPolicy.h"
+#include "platform/weborigin/KURL.h"
+#include "platform/weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityPolicy.h"
 
 namespace WebCore {
 
-static Frame* createWindow(Frame* openerFrame, Frame* lookupFrame, const FrameLoadRequest& request, const WindowFeatures& features, bool& created)
+static Frame* createWindow(Frame* openerFrame, Frame* lookupFrame, const FrameLoadRequest& request, const WindowFeatures& features, NavigationPolicy policy, ShouldSendReferrer shouldSendReferrer, bool& created)
 {
     ASSERT(!features.dialog || request.frameName().isEmpty());
 
-    if (!request.frameName().isEmpty() && request.frameName() != "_blank") {
+    if (!request.frameName().isEmpty() && request.frameName() != "_blank" && policy == NavigationPolicyIgnore) {
         if (Frame* frame = lookupFrame->loader().findFrameForNavigation(request.frameName(), openerFrame->document())) {
             if (request.frameName() != "_self") {
-                if (Page* page = frame->page())
-                    page->chrome().focus();
+                // FIXME: Why does this call directly to chrome instead of FocusController?
+                if (FrameHost* host = frame->host())
+                    host->chrome().focus();
             }
             created = false;
             return frame;
@@ -73,9 +75,10 @@ static Frame* createWindow(Frame* openerFrame, Frame* lookupFrame, const FrameLo
     if (!oldPage)
         return 0;
 
-    Page* page = oldPage->chrome().client().createWindow(openerFrame, request, features);
+    Page* page = oldPage->chrome().client().createWindow(openerFrame, request, features, policy, shouldSendReferrer);
     if (!page)
         return 0;
+    FrameHost* host = &page->frameHost();
 
     Frame* frame = page->mainFrame();
 
@@ -84,14 +87,14 @@ static Frame* createWindow(Frame* openerFrame, Frame* lookupFrame, const FrameLo
     if (request.frameName() != "_blank")
         frame->tree().setName(request.frameName());
 
-    page->chrome().setWindowFeatures(features);
+    host->chrome().setWindowFeatures(features);
 
     // 'x' and 'y' specify the location of the window, while 'width' and 'height'
     // specify the size of the viewport. We can only resize the window, so adjust
     // for the difference between the window size and the viewport size.
 
-    FloatRect windowRect = page->chrome().windowRect();
-    FloatSize viewportSize = page->chrome().pageRect().size();
+    FloatRect windowRect = host->chrome().windowRect();
+    FloatSize viewportSize = host->chrome().pageRect().size();
 
     if (features.xSet)
         windowRect.setX(features.x);
@@ -103,10 +106,10 @@ static Frame* createWindow(Frame* openerFrame, Frame* lookupFrame, const FrameLo
         windowRect.setHeight(features.height + (windowRect.height() - viewportSize.height()));
 
     // Ensure non-NaN values, minimum size as well as being within valid screen area.
-    FloatRect newWindowRect = DOMWindow::adjustWindowRect(page, windowRect);
+    FloatRect newWindowRect = DOMWindow::adjustWindowRect(frame, windowRect);
 
-    page->chrome().setWindowRect(newWindowRect);
-    page->chrome().show();
+    host->chrome().setWindowRect(newWindowRect);
+    host->chrome().show(policy);
 
     created = true;
     return frame;
@@ -125,16 +128,16 @@ Frame* createWindow(const String& urlString, const AtomicString& frameName, cons
     }
 
     // For whatever reason, Firefox uses the first frame to determine the outgoingReferrer. We replicate that behavior here.
-    String referrer = SecurityPolicy::generateReferrerHeader(firstFrame->document()->referrerPolicy(), completedURL, firstFrame->loader().outgoingReferrer());
+    String referrer = SecurityPolicy::generateReferrerHeader(firstFrame->document()->referrerPolicy(), completedURL, firstFrame->document()->outgoingReferrer());
 
-    ResourceRequest request(completedURL, referrer);
-    FrameLoader::addHTTPOriginIfNeeded(request, firstFrame->loader().outgoingOrigin());
-    FrameLoadRequest frameRequest(activeWindow->document()->securityOrigin(), request, frameName);
+    ResourceRequest request(completedURL, AtomicString(referrer));
+    FrameLoader::addHTTPOriginIfNeeded(request, AtomicString(firstFrame->document()->outgoingOrigin()));
+    FrameLoadRequest frameRequest(activeWindow->document(), request, frameName);
 
     // We pass the opener frame for the lookupFrame in case the active frame is different from
     // the opener frame, and the name references a frame relative to the opener frame.
     bool created;
-    Frame* newFrame = createWindow(activeFrame, openerFrame, frameRequest, windowFeatures, created);
+    Frame* newFrame = createWindow(activeFrame, openerFrame, frameRequest, windowFeatures, NavigationPolicyIgnore, MaybeSendReferrer, created);
     if (!newFrame)
         return 0;
 
@@ -148,12 +151,41 @@ Frame* createWindow(const String& urlString, const AtomicString& frameName, cons
         function(newFrame->domWindow(), functionContext);
 
     if (created) {
-        FrameLoadRequest request(activeWindow->document()->securityOrigin(), ResourceRequest(completedURL, referrer));
+        FrameLoadRequest request(activeWindow->document(), ResourceRequest(completedURL, AtomicString(referrer)));
         newFrame->loader().load(request);
     } else if (!urlString.isEmpty()) {
-        newFrame->navigationScheduler().scheduleLocationChange(activeWindow->document()->securityOrigin(), completedURL.string(), referrer, false);
+        newFrame->navigationScheduler().scheduleLocationChange(activeWindow->document(), completedURL.string(), referrer, false);
     }
     return newFrame;
+}
+
+void createWindowForRequest(const FrameLoadRequest& request, Frame* openerFrame, NavigationPolicy policy, ShouldSendReferrer shouldSendReferrer)
+{
+    if (openerFrame->document()->pageDismissalEventBeingDispatched() != Document::NoDismissal)
+        return;
+
+    if (openerFrame->document() && openerFrame->document()->isSandboxed(SandboxPopups))
+        return;
+
+    if (!DOMWindow::allowPopUp(openerFrame))
+        return;
+
+    if (policy == NavigationPolicyCurrentTab)
+        policy = NavigationPolicyNewForegroundTab;
+
+    WindowFeatures features;
+    bool created;
+    Frame* newFrame = createWindow(openerFrame, openerFrame, request, features, policy, shouldSendReferrer, created);
+    if (!newFrame)
+        return;
+    newFrame->page()->setOpenedByDOM();
+    if (shouldSendReferrer == MaybeSendReferrer) {
+        newFrame->loader().setOpener(openerFrame);
+        newFrame->document()->setReferrerPolicy(openerFrame->document()->referrerPolicy());
+    }
+    FrameLoadRequest newRequest(0, request.resourceRequest());
+    newRequest.setFormState(request.formState());
+    newFrame->loader().load(newRequest);
 }
 
 } // namespace WebCore

@@ -25,9 +25,11 @@
 #include "HTMLNames.h"
 #include "RuntimeEnabledFeatures.h"
 #include "bindings/v8/ExceptionState.h"
-#include "core/css/CSSParser.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/CSSStyleSheet.h"
+#include "core/css/InlineVariablesIterator.h"
 #include "core/css/StylePropertySet.h"
+#include "core/css/VariablesIterator.h"
 #include "core/dom/Element.h"
 #include "core/dom/MutationObserverInterestGroup.h"
 #include "core/dom/MutationRecord.h"
@@ -42,8 +44,9 @@ namespace {
 class StyleAttributeMutationScope {
     WTF_MAKE_NONCOPYABLE(StyleAttributeMutationScope);
 public:
-    StyleAttributeMutationScope(PropertySetCSSStyleDeclaration* decl)
+    StyleAttributeMutationScope(AbstractPropertySetCSSStyleDeclaration* decl)
     {
+        InspectorInstrumentation::willMutateStyle(decl);
         ++s_scopeCount;
 
         if (s_scopeCount != 1) {
@@ -83,13 +86,15 @@ public:
             m_mutationRecipients->enqueueMutationRecord(m_mutation);
 
         s_shouldDeliver = false;
-        if (!s_shouldNotifyInspector) {
-            s_currentDecl = 0;
-            return;
-        }
+
         // We have to clear internal state before calling Inspector's code.
-        PropertySetCSSStyleDeclaration* localCopyStyleDecl = s_currentDecl;
+        AbstractPropertySetCSSStyleDeclaration* localCopyStyleDecl = s_currentDecl;
         s_currentDecl = 0;
+        InspectorInstrumentation::didMutateStyle(localCopyStyleDecl, localCopyStyleDecl->parentElement());
+
+        if (!s_shouldNotifyInspector)
+            return;
+
         s_shouldNotifyInspector = false;
         if (localCopyStyleDecl->parentElement())
             InspectorInstrumentation::didInvalidateStyleAttr(localCopyStyleDecl->parentElement());
@@ -107,7 +112,7 @@ public:
 
 private:
     static unsigned s_scopeCount;
-    static PropertySetCSSStyleDeclaration* s_currentDecl;
+    static AbstractPropertySetCSSStyleDeclaration* s_currentDecl;
     static bool s_shouldNotifyInspector;
     static bool s_shouldDeliver;
 
@@ -116,7 +121,7 @@ private:
 };
 
 unsigned StyleAttributeMutationScope::s_scopeCount = 0;
-PropertySetCSSStyleDeclaration* StyleAttributeMutationScope::s_currentDecl = 0;
+AbstractPropertySetCSSStyleDeclaration* StyleAttributeMutationScope::s_currentDecl = 0;
 bool StyleAttributeMutationScope::s_shouldNotifyInspector = false;
 bool StyleAttributeMutationScope::s_shouldDeliver = false;
 
@@ -132,80 +137,80 @@ void PropertySetCSSStyleDeclaration::deref()
     m_propertySet->deref();
 }
 
-unsigned PropertySetCSSStyleDeclaration::length() const
+unsigned AbstractPropertySetCSSStyleDeclaration::length() const
 {
-    return m_propertySet->propertyCount();
+    return propertySet()->propertyCount();
 }
 
-String PropertySetCSSStyleDeclaration::item(unsigned i) const
+String AbstractPropertySetCSSStyleDeclaration::item(unsigned i) const
 {
-    if (i >= m_propertySet->propertyCount())
+    if (i >= propertySet()->propertyCount())
         return "";
-    return m_propertySet->propertyAt(i).cssName();
+    return propertySet()->propertyAt(i).cssName();
 }
 
-String PropertySetCSSStyleDeclaration::cssText() const
+String AbstractPropertySetCSSStyleDeclaration::cssText() const
 {
-    return m_propertySet->asText();
+    return propertySet()->asText();
 }
 
-void PropertySetCSSStyleDeclaration::setCSSText(const String& text, ExceptionState& es)
+void AbstractPropertySetCSSStyleDeclaration::setCSSText(const String& text, ExceptionState& exceptionState)
 {
     StyleAttributeMutationScope mutationScope(this);
     willMutate();
 
-    // FIXME: Detect syntax errors and set es.
-    m_propertySet->parseDeclaration(text, contextStyleSheet());
+    // FIXME: Detect syntax errors and set exceptionState.
+    propertySet()->parseDeclaration(text, contextStyleSheet());
 
     didMutate(PropertyChanged);
 
     mutationScope.enqueueMutationRecord();
 }
 
-PassRefPtr<CSSValue> PropertySetCSSStyleDeclaration::getPropertyCSSValue(const String& propertyName)
+PassRefPtr<CSSValue> AbstractPropertySetCSSStyleDeclaration::getPropertyCSSValue(const String& propertyName)
 {
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return 0;
-    return cloneAndCacheForCSSOM(m_propertySet->getPropertyCSSValue(propertyID).get());
+    return cloneAndCacheForCSSOM(propertySet()->getPropertyCSSValue(propertyID).get());
 }
 
-String PropertySetCSSStyleDeclaration::getPropertyValue(const String &propertyName)
+String AbstractPropertySetCSSStyleDeclaration::getPropertyValue(const String &propertyName)
 {
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return String();
-    return m_propertySet->getPropertyValue(propertyID);
+    return propertySet()->getPropertyValue(propertyID);
 }
 
-String PropertySetCSSStyleDeclaration::getPropertyPriority(const String& propertyName)
+String AbstractPropertySetCSSStyleDeclaration::getPropertyPriority(const String& propertyName)
 {
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return String();
-    return m_propertySet->propertyIsImportant(propertyID) ? "important" : "";
+    return propertySet()->propertyIsImportant(propertyID) ? "important" : "";
 }
 
-String PropertySetCSSStyleDeclaration::getPropertyShorthand(const String& propertyName)
+String AbstractPropertySetCSSStyleDeclaration::getPropertyShorthand(const String& propertyName)
 {
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return String();
-    CSSPropertyID shorthandID = m_propertySet->getPropertyShorthand(propertyID);
+    CSSPropertyID shorthandID = propertySet()->getPropertyShorthand(propertyID);
     if (!shorthandID)
         return String();
     return getPropertyNameString(shorthandID);
 }
 
-bool PropertySetCSSStyleDeclaration::isPropertyImplicit(const String& propertyName)
+bool AbstractPropertySetCSSStyleDeclaration::isPropertyImplicit(const String& propertyName)
 {
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return false;
-    return m_propertySet->isPropertyImplicit(propertyID);
+    return propertySet()->isPropertyImplicit(propertyID);
 }
 
-void PropertySetCSSStyleDeclaration::setProperty(const String& propertyName, const String& value, const String& priority, ExceptionState& es)
+void AbstractPropertySetCSSStyleDeclaration::setProperty(const String& propertyName, const String& value, const String& priority, ExceptionState& exceptionState)
 {
     StyleAttributeMutationScope mutationScope(this);
     CSSPropertyID propertyID = cssPropertyID(propertyName);
@@ -216,7 +221,7 @@ void PropertySetCSSStyleDeclaration::setProperty(const String& propertyName, con
 
     willMutate();
 
-    bool changed = m_propertySet->setProperty(propertyID, value, important, contextStyleSheet());
+    bool changed = propertySet()->setProperty(propertyID, value, important, contextStyleSheet());
 
     didMutate(changed ? PropertyChanged : NoChanges);
 
@@ -227,7 +232,7 @@ void PropertySetCSSStyleDeclaration::setProperty(const String& propertyName, con
     }
 }
 
-String PropertySetCSSStyleDeclaration::removeProperty(const String& propertyName, ExceptionState& es)
+String AbstractPropertySetCSSStyleDeclaration::removeProperty(const String& propertyName, ExceptionState& exceptionState)
 {
     StyleAttributeMutationScope mutationScope(this);
     CSSPropertyID propertyID = cssPropertyID(propertyName);
@@ -237,7 +242,7 @@ String PropertySetCSSStyleDeclaration::removeProperty(const String& propertyName
     willMutate();
 
     String result;
-    bool changed = m_propertySet->removeProperty(propertyID, &result);
+    bool changed = propertySet()->removeProperty(propertyID, &result);
 
     didMutate(changed ? PropertyChanged : NoChanges);
 
@@ -246,22 +251,22 @@ String PropertySetCSSStyleDeclaration::removeProperty(const String& propertyName
     return result;
 }
 
-PassRefPtr<CSSValue> PropertySetCSSStyleDeclaration::getPropertyCSSValueInternal(CSSPropertyID propertyID)
+PassRefPtr<CSSValue> AbstractPropertySetCSSStyleDeclaration::getPropertyCSSValueInternal(CSSPropertyID propertyID)
 {
-    return m_propertySet->getPropertyCSSValue(propertyID);
+    return propertySet()->getPropertyCSSValue(propertyID);
 }
 
-String PropertySetCSSStyleDeclaration::getPropertyValueInternal(CSSPropertyID propertyID)
+String AbstractPropertySetCSSStyleDeclaration::getPropertyValueInternal(CSSPropertyID propertyID)
 {
-    return m_propertySet->getPropertyValue(propertyID);
+    return propertySet()->getPropertyValue(propertyID);
 }
 
-void PropertySetCSSStyleDeclaration::setPropertyInternal(CSSPropertyID propertyID, const String& value, bool important, ExceptionState& es)
+void AbstractPropertySetCSSStyleDeclaration::setPropertyInternal(CSSPropertyID propertyID, const String& value, bool important, ExceptionState&)
 {
     StyleAttributeMutationScope mutationScope(this);
     willMutate();
 
-    bool changed = m_propertySet->setProperty(propertyID, value, important, contextStyleSheet());
+    bool changed = propertySet()->setProperty(propertyID, value, important, contextStyleSheet());
 
     didMutate(changed ? PropertyChanged : NoChanges);
 
@@ -269,60 +274,60 @@ void PropertySetCSSStyleDeclaration::setPropertyInternal(CSSPropertyID propertyI
         mutationScope.enqueueMutationRecord();
 }
 
-unsigned PropertySetCSSStyleDeclaration::variableCount() const
+unsigned AbstractPropertySetCSSStyleDeclaration::variableCount() const
 {
     ASSERT(RuntimeEnabledFeatures::cssVariablesEnabled());
-    return m_propertySet->variableCount();
+    return propertySet()->variableCount();
 }
 
-String PropertySetCSSStyleDeclaration::variableValue(const AtomicString& name) const
+String AbstractPropertySetCSSStyleDeclaration::variableValue(const AtomicString& name) const
 {
     ASSERT(RuntimeEnabledFeatures::cssVariablesEnabled());
-    return m_propertySet->variableValue(name);
+    return propertySet()->variableValue(name);
 }
 
-bool PropertySetCSSStyleDeclaration::setVariableValue(const AtomicString& name, const String& value, ExceptionState&)
+bool AbstractPropertySetCSSStyleDeclaration::setVariableValue(const AtomicString& name, const String& value, ExceptionState&)
 {
     ASSERT(RuntimeEnabledFeatures::cssVariablesEnabled());
     StyleAttributeMutationScope mutationScope(this);
     willMutate();
-    bool changed = m_propertySet->setVariableValue(name, value);
-    didMutate(changed ? PropertyChanged : NoChanges);
-    if (changed)
-        mutationScope.enqueueMutationRecord();
-    return changed;
-}
-
-bool PropertySetCSSStyleDeclaration::removeVariable(const AtomicString& name)
-{
-    ASSERT(RuntimeEnabledFeatures::cssVariablesEnabled());
-    StyleAttributeMutationScope mutationScope(this);
-    willMutate();
-    bool changed = m_propertySet->removeVariable(name);
+    bool changed = propertySet()->setVariableValue(name, value);
     didMutate(changed ? PropertyChanged : NoChanges);
     if (changed)
         mutationScope.enqueueMutationRecord();
     return changed;
 }
 
-bool PropertySetCSSStyleDeclaration::clearVariables(ExceptionState&)
+bool AbstractPropertySetCSSStyleDeclaration::removeVariable(const AtomicString& name)
 {
     ASSERT(RuntimeEnabledFeatures::cssVariablesEnabled());
     StyleAttributeMutationScope mutationScope(this);
     willMutate();
-    bool changed = m_propertySet->clearVariables();
+    bool changed = propertySet()->removeVariable(name);
     didMutate(changed ? PropertyChanged : NoChanges);
     if (changed)
         mutationScope.enqueueMutationRecord();
     return changed;
 }
 
-PassRefPtr<CSSVariablesIterator> PropertySetCSSStyleDeclaration::variablesIterator() const
+bool AbstractPropertySetCSSStyleDeclaration::clearVariables(ExceptionState&)
 {
-    return m_propertySet->variablesIterator();
+    ASSERT(RuntimeEnabledFeatures::cssVariablesEnabled());
+    StyleAttributeMutationScope mutationScope(this);
+    willMutate();
+    bool changed = propertySet()->clearVariables();
+    didMutate(changed ? PropertyChanged : NoChanges);
+    if (changed)
+        mutationScope.enqueueMutationRecord();
+    return changed;
 }
 
-CSSValue* PropertySetCSSStyleDeclaration::cloneAndCacheForCSSOM(CSSValue* internalValue)
+PassRefPtr<CSSVariablesIterator> AbstractPropertySetCSSStyleDeclaration::variablesIterator() const
+{
+    return propertySet()->variablesIterator();
+}
+
+CSSValue* AbstractPropertySetCSSStyleDeclaration::cloneAndCacheForCSSOM(CSSValue* internalValue)
 {
     if (!internalValue)
         return 0;
@@ -338,24 +343,24 @@ CSSValue* PropertySetCSSStyleDeclaration::cloneAndCacheForCSSOM(CSSValue* intern
     return clonedValue.get();
 }
 
-StyleSheetContents* PropertySetCSSStyleDeclaration::contextStyleSheet() const
+StyleSheetContents* AbstractPropertySetCSSStyleDeclaration::contextStyleSheet() const
 {
     CSSStyleSheet* cssStyleSheet = parentStyleSheet();
     return cssStyleSheet ? cssStyleSheet->contents() : 0;
 }
 
-PassRefPtr<MutableStylePropertySet> PropertySetCSSStyleDeclaration::copyProperties() const
+PassRefPtr<MutableStylePropertySet> AbstractPropertySetCSSStyleDeclaration::copyProperties() const
 {
-    return m_propertySet->mutableCopy();
+    return propertySet()->mutableCopy();
 }
 
-bool PropertySetCSSStyleDeclaration::cssPropertyMatches(CSSPropertyID propertyID, const CSSValue* propertyValue) const
+bool AbstractPropertySetCSSStyleDeclaration::cssPropertyMatches(CSSPropertyID propertyID, const CSSValue* propertyValue) const
 {
-    return m_propertySet->propertyMatches(propertyID, propertyValue);
+    return propertySet()->propertyMatches(propertyID, propertyValue);
 }
 
-StyleRuleCSSStyleDeclaration::StyleRuleCSSStyleDeclaration(MutableStylePropertySet* propertySet, CSSRule* parentRule)
-    : PropertySetCSSStyleDeclaration(propertySet)
+StyleRuleCSSStyleDeclaration::StyleRuleCSSStyleDeclaration(MutableStylePropertySet* propertySetArg, CSSRule* parentRule)
+    : PropertySetCSSStyleDeclaration(propertySetArg)
     , m_refCount(1)
     , m_parentRule(parentRule)
 {
@@ -408,6 +413,11 @@ void StyleRuleCSSStyleDeclaration::reattach(MutableStylePropertySet* propertySet
     m_propertySet->ref();
 }
 
+MutableStylePropertySet* InlineCSSStyleDeclaration::propertySet() const
+{
+    return m_parentElement->ensureMutableInlineStyle();
+}
+
 void InlineCSSStyleDeclaration::didMutate(MutationType type)
 {
     if (type == NoChanges)
@@ -418,6 +428,7 @@ void InlineCSSStyleDeclaration::didMutate(MutationType type)
     if (!m_parentElement)
         return;
 
+    m_parentElement->clearMutableInlineStyleIfEmpty();
     m_parentElement->setNeedsStyleRecalc(LocalStyleChange);
     m_parentElement->invalidateStyleAttribute();
     StyleAttributeMutationScope(this).didInvalidateStyleAttr();
@@ -427,5 +438,21 @@ CSSStyleSheet* InlineCSSStyleDeclaration::parentStyleSheet() const
 {
     return m_parentElement ? m_parentElement->document().elementSheet() : 0;
 }
+
+void InlineCSSStyleDeclaration::ref()
+{
+    m_parentElement->ref();
+}
+
+void InlineCSSStyleDeclaration::deref()
+{
+    m_parentElement->deref();
+}
+
+PassRefPtr<CSSVariablesIterator> InlineCSSStyleDeclaration::variablesIterator() const
+{
+    return InlineVariablesIterator::create(m_parentElement);
+}
+
 
 } // namespace WebCore

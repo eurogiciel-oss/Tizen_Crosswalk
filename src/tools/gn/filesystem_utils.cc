@@ -11,6 +11,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "tools/gn/location.h"
+#include "tools/gn/settings.h"
 #include "tools/gn/source_dir.h"
 
 namespace {
@@ -196,7 +197,7 @@ const char* GetExtensionForOutputType(Target::OutputType type,
 
 std::string FilePathToUTF8(const base::FilePath::StringType& str) {
 #if defined(OS_WIN)
-  return WideToUTF8(str);
+  return base::WideToUTF8(str);
 #else
   return str;
 #endif
@@ -204,7 +205,7 @@ std::string FilePathToUTF8(const base::FilePath::StringType& str) {
 
 base::FilePath UTF8ToFilePath(const base::StringPiece& sp) {
 #if defined(OS_WIN)
-  return base::FilePath(UTF8ToWide(sp));
+  return base::FilePath(base::UTF8ToWide(sp));
 #else
   return base::FilePath(sp.as_string());
 #endif
@@ -286,9 +287,9 @@ bool EnsureStringIsInOutputDir(const SourceDir& dir,
   const std::string& dir_str = dir.value();
   if (str.compare(0, dir_str.length() - 1, dir_str, 0, dir_str.length() - 1)
       != 0) {
-    *err = Err(originating, "File not inside output directory.",
+    *err = Err(originating, "File is not inside output directory.",
         "The given file should be in the output directory. Normally you would "
-        "specify\n\"$target_output_dir/foo\" or "
+        "specify\n\"$target_out_dir/foo\" or "
         "\"$target_gen_dir/foo\". I interpreted this as\n\""
         + str + "\".");
     return false;
@@ -545,4 +546,88 @@ std::string RebaseSourceAbsolutePath(const std::string& input,
     ret.push_back('.');
 
   return ret;
+}
+
+std::string DirectoryWithNoLastSlash(const SourceDir& dir) {
+  std::string ret;
+
+  if (dir.value().empty()) {
+    // Just keep input the same.
+  } else if (dir.value() == "/") {
+    ret.assign("/.");
+  } else if (dir.value() == "//") {
+    ret.assign("//.");
+  } else {
+    ret.assign(dir.value());
+    ret.resize(ret.size() - 1);
+  }
+  return ret;
+}
+
+SourceDir GetToolchainOutputDir(const Settings* settings) {
+  const OutputFile& toolchain_subdir = settings->toolchain_output_subdir();
+
+  std::string result = settings->build_settings()->build_dir().value();
+  if (!toolchain_subdir.value().empty())
+    result.append(toolchain_subdir.value());
+
+  return SourceDir(SourceDir::SWAP_IN, &result);
+}
+
+SourceDir GetToolchainGenDir(const Settings* settings) {
+  const OutputFile& toolchain_subdir = settings->toolchain_output_subdir();
+
+  std::string result = settings->build_settings()->build_dir().value();
+  if (!toolchain_subdir.value().empty())
+    result.append(toolchain_subdir.value());
+
+  result.append("gen/");
+  return SourceDir(SourceDir::SWAP_IN, &result);
+}
+
+SourceDir GetOutputDirForSourceDir(const Settings* settings,
+                                   const SourceDir& source_dir) {
+  SourceDir toolchain = GetToolchainOutputDir(settings);
+
+  std::string ret;
+  toolchain.SwapValue(&ret);
+  ret.append("obj/");
+
+  // The source dir should be source-absolute, so we trim off the two leading
+  // slashes to append to the toolchain object directory.
+  DCHECK(source_dir.is_source_absolute());
+  ret.append(&source_dir.value()[2], source_dir.value().size() - 2);
+
+  return SourceDir(SourceDir::SWAP_IN, &ret);
+}
+
+SourceDir GetGenDirForSourceDir(const Settings* settings,
+                                const SourceDir& source_dir) {
+  SourceDir toolchain = GetToolchainGenDir(settings);
+
+  std::string ret;
+  toolchain.SwapValue(&ret);
+
+  // The source dir should be source-absolute, so we trim off the two leading
+  // slashes to append to the toolchain object directory.
+  DCHECK(source_dir.is_source_absolute());
+  ret.append(&source_dir.value()[2], source_dir.value().size() - 2);
+
+  return SourceDir(SourceDir::SWAP_IN, &ret);
+}
+
+SourceDir GetTargetOutputDir(const Target* target) {
+  return GetOutputDirForSourceDir(target->settings(), target->label().dir());
+}
+
+SourceDir GetTargetGenDir(const Target* target) {
+  return GetGenDirForSourceDir(target->settings(), target->label().dir());
+}
+
+SourceDir GetCurrentOutputDir(const Scope* scope) {
+  return GetOutputDirForSourceDir(scope->settings(), scope->GetSourceDir());
+}
+
+SourceDir GetCurrentGenDir(const Scope* scope) {
+  return GetGenDirForSourceDir(scope->settings(), scope->GetSourceDir());
 }

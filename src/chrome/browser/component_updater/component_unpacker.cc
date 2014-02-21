@@ -24,6 +24,8 @@
 
 using crypto::SecureHash;
 
+namespace component_updater {
+
 namespace {
 
 // This class makes sure that the CRX digital signature is valid
@@ -122,7 +124,7 @@ ComponentUnpacker::ComponentUnpacker(const std::vector<uint8>& pk_hash,
   }
   // First, validate the CRX header and signature. As of today
   // this is SHA1 with RSA 1024.
-  ScopedStdioHandle file(file_util::OpenFile(path, "rb"));
+  ScopedStdioHandle file(base::OpenFile(path, "rb"));
   if (!file.get()) {
     error_ = kInvalidFile;
     return;
@@ -146,8 +148,8 @@ ComponentUnpacker::ComponentUnpacker(const std::vector<uint8>& pk_hash,
     error_ = kInvalidId;
     return;
   }
-  if (!file_util::CreateNewTempDirectory(FILE_PATH_LITERAL(""),
-                                         &unpack_path_)) {
+  if (!base::CreateNewTempDirectory(base::FilePath::StringType(),
+                                    &unpack_path_)) {
     error_ = kUnzipPathError;
     return;
   }
@@ -155,8 +157,8 @@ ComponentUnpacker::ComponentUnpacker(const std::vector<uint8>& pk_hash,
     // We want a different temp directory for the delta files; we'll put the
     // patch output into unpack_path_.
     base::FilePath unpack_diff_path;
-    if (!file_util::CreateNewTempDirectory(FILE_PATH_LITERAL(""),
-                                           &unpack_diff_path)) {
+    if (!base::CreateNewTempDirectory(base::FilePath::StringType(),
+                                      &unpack_diff_path)) {
       error_ = kUnzipPathError;
       return;
     }
@@ -208,3 +210,6 @@ ComponentUnpacker::~ComponentUnpacker() {
   if (!unpack_path_.empty())
     base::DeleteFile(unpack_path_, true);
 }
+
+}  // namespace component_updater
+

@@ -92,14 +92,12 @@
 #include "core/html/HTMLMetaElement.h"
 #include "core/loader/DocumentLoader.h"
 #include "core/loader/FrameLoader.h"
-#include "public/platform/WebURL.h"
 #include "public/platform/WebVector.h"
-#include "weborigin/KURL.h"
 #include "wtf/text/TextEncoding.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 // Maximum length of data buffer which is used to temporary save generated
 // html content data. This is a soft limit which might be passed if a very large
@@ -147,7 +145,7 @@ String WebPageSerializerImpl::preActionBeforeSerializeOpenTag(
                     *needSkip = true;
                 }
             }
-        } else if (isHTMLHtmlElement(element)) {
+        } else if (element->hasTagName(HTMLNames::htmlTag)) {
             // Check something before processing the open tag of HEAD element.
             // First we add doc type declaration if original document has it.
             if (!param->haveSeenDocType) {
@@ -526,4 +524,4 @@ bool WebPageSerializerImpl::serialize()
     return didSerialization;
 }
 
-}  // namespace WebKit
+}  // namespace blink

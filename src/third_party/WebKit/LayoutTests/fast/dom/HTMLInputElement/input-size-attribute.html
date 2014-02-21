@@ -1,7 +1,7 @@
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body>
 
@@ -23,7 +23,7 @@ shouldBe("input.removeAttribute('size'); input.size", "20");
 shouldBe("input.setAttribute('size', '0'); input.size", "20");
 shouldBe("input.setAttribute('size', '10'); input.size", "10");
 
-shouldThrow("input.size = 0", "'IndexSizeError: Index or size was negative, or greater than the allowed value.'");
+shouldThrow("input.size = 0", '"IndexSizeError: Failed to set the \'size\' property on \'HTMLInputElement\': The value provided is 0, which is an invalid size."');
 
 </script>
 </body>

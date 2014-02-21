@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2012 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 import cStringIO
 import hashlib
@@ -12,15 +12,14 @@ import sys
 import tempfile
 import unittest
 
-import auto_stub
-
 ROOT_DIR = unicode(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT_DIR)
+sys.path.insert(0, os.path.join(ROOT_DIR, 'third_party'))
 
+from depot_tools import auto_stub
 import isolate
 from utils import file_path
-# Create shortcuts.
-from isolate import KEY_TOUCHED, KEY_TRACKED, KEY_UNTRACKED
+from utils import tools
 
 
 ALGO = hashlib.sha1
@@ -61,13 +60,13 @@ class IsolateTest(IsolateBase):
     expected = {
       'algo': 'sha-1',
       'child_isolated_files': [],
+      'config_variables': {},
       'command': [],
+      'extra_variables': {},
       'files': {},
       'isolate_file': 'fake.isolate',
-      'variables': {
-        'OS': isolate.get_flavor(),
-      },
-      'version': '1.0',
+      'path_variables': {},
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     saved_state = isolate.SavedState.load(values, self.cwd)
     self.assertEqual(expected, saved_state.flatten())
@@ -77,865 +76,61 @@ class IsolateTest(IsolateBase):
     # not read.
     open(os.path.join(self.cwd, 'fake.isolate'), 'wb').close()
     values = {
-      'isolate_file': 'fake.isolate',
-      'variables': {
-        'foo': 42,
+      'config_variables': {
         'OS': isolate.get_flavor(),
       },
+      'extra_variables': {
+        'foo': 42,
+      },
+      'isolate_file': 'fake.isolate',
     }
     expected = {
       'algo': 'sha-1',
       'child_isolated_files': [],
       'command': [],
-      'files': {},
-      'isolate_file': 'fake.isolate',
-      'variables': {
-        'foo': 42,
+      'config_variables': {
         'OS': isolate.get_flavor(),
       },
-      'version': '1.0',
+      'extra_variables': {
+        'foo': 42,
+      },
+      'files': {},
+      'isolate_file': 'fake.isolate',
+      'path_variables': {},
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     saved_state = isolate.SavedState.load(values, self.cwd)
     self.assertEqual(expected, saved_state.flatten())
 
-  def test_unknown_key(self):
-    try:
-      isolate.verify_variables({'foo': [],})
-      self.fail()
-    except AssertionError:
-      pass
-
-  def test_unknown_var(self):
-    try:
-      isolate.verify_condition({'variables': {'foo': [],}}, {})
-      self.fail()
-    except AssertionError:
-      pass
-
-  def test_union(self):
-    value1 = {
-      'a': set(['A']),
-      'b': ['B', 'C'],
-      'c': 'C',
-    }
-    value2 = {
-      'a': set(['B', 'C']),
-      'b': [],
-      'd': set(),
-    }
-    expected = {
-      'a': set(['A', 'B', 'C']),
-      'b': ['B', 'C'],
-      'c': 'C',
-      'd': set(),
-    }
-    self.assertEqual(expected, isolate.union(value1, value2))
-
-  def test_eval_content(self):
-    try:
-      # Intrinsics are not available.
-      isolate.eval_content('map(str, [1, 2])')
-      self.fail()
-    except NameError:
-      pass
-
-  def test_load_isolate_as_config_empty(self):
-    self.assertEqual({}, isolate.load_isolate_as_config(
-        self.cwd, {}, None).flatten())
-
-  def test_load_isolate_as_config(self):
-    value = {
-      'conditions': [
-        ['OS=="amiga" or OS=="atari" or OS=="coleco" or OS=="dendy"', {
-          'variables': {
-            KEY_TRACKED: ['a'],
-            KEY_UNTRACKED: ['b'],
-            KEY_TOUCHED: ['touched'],
-          },
-        }],
-        ['OS=="atari"', {
-          'variables': {
-            KEY_TRACKED: ['c', 'x'],
-            KEY_UNTRACKED: ['d'],
-            KEY_TOUCHED: ['touched_a'],
-            'command': ['echo', 'Hello World'],
-            'read_only': True,
-          },
-        }],
-        ['OS=="amiga" or OS=="coleco" or OS=="dendy"', {
-          'variables': {
-            KEY_TRACKED: ['e', 'x'],
-            KEY_UNTRACKED: ['f'],
-            KEY_TOUCHED: ['touched_e'],
-            'command': ['echo', 'You should get an Atari'],
-          },
-        }],
-        ['OS=="amiga"', {
-          'variables': {
-            KEY_TRACKED: ['g'],
-            'read_only': False,
-          },
-        }],
-        ['OS=="amiga" or OS=="atari" or OS=="dendy"', {
-          'variables': {
-            KEY_UNTRACKED: ['h'],
-          },
-        }],
-      ],
-    }
-    expected = {
-      ('amiga',): {
-        'command': ['echo', 'You should get an Atari'],
-        KEY_TOUCHED: ['touched', 'touched_e'],
-        KEY_TRACKED: ['a', 'e', 'g', 'x'],
-        KEY_UNTRACKED: ['b', 'f', 'h'],
-        'read_only': False,
-      },
-      ('atari',): {
-        'command': ['echo', 'Hello World'],
-        KEY_TOUCHED: ['touched', 'touched_a'],
-        KEY_TRACKED: ['a', 'c', 'x'],
-        KEY_UNTRACKED: ['b', 'd', 'h'],
-        'read_only': True,
-      },
-      ('coleco',): {
-        'command': ['echo', 'You should get an Atari'],
-        KEY_TOUCHED: ['touched', 'touched_e'],
-        KEY_TRACKED: ['a', 'e', 'x'],
-        KEY_UNTRACKED: ['b', 'f'],
-      },
-      ('dendy',): {
-        'command': ['echo', 'You should get an Atari'],
-        KEY_TOUCHED: ['touched', 'touched_e'],
-        KEY_TRACKED: ['a', 'e', 'x'],
-        KEY_UNTRACKED: ['b', 'f', 'h'],
-      },
-    }
-    self.assertEqual(
-        expected, isolate.load_isolate_as_config(
-            self.cwd, value, None).flatten())
-
-  def test_load_isolate_as_config_duplicate_command(self):
-    value = {
-      'variables': {
-        'command': ['rm', '-rf', '/'],
-      },
-      'conditions': [
-        ['OS=="atari"', {
-          'variables': {
-            'command': ['echo', 'Hello World'],
-          },
-        }],
-      ],
-    }
-    try:
-      isolate.load_isolate_as_config(self.cwd, value, None)
-      self.fail()
-    except AssertionError:
-      pass
-
-  def test_invert_map(self):
-    value = {
-      ('amiga',): {
-        'command': ['echo', 'You should get an Atari'],
-        KEY_TOUCHED: ['touched', 'touched_e'],
-        KEY_TRACKED: ['a', 'e', 'g', 'x'],
-        KEY_UNTRACKED: ['b', 'f', 'h'],
-        'read_only': False,
-      },
-      ('atari',): {
-        'command': ['echo', 'Hello World'],
-        KEY_TOUCHED: ['touched', 'touched_a'],
-        KEY_TRACKED: ['a', 'c', 'x'],
-        KEY_UNTRACKED: ['b', 'd', 'h'],
-        'read_only': True,
-      },
-      ('coleco',): {
-        'command': ['echo', 'You should get an Atari'],
-        KEY_TOUCHED: ['touched', 'touched_e'],
-        KEY_TRACKED: ['a', 'e', 'x'],
-        KEY_UNTRACKED: ['b', 'f'],
-      },
-      ('dendy',): {
-        'command': ['echo', 'You should get an Atari'],
-        KEY_TOUCHED: ['touched', 'touched_e'],
-        KEY_TRACKED: ['a', 'e', 'x'],
-        KEY_UNTRACKED: ['b', 'f', 'h'],
-      },
-    }
-    amiga, atari, coleco, dendy = (
-        set([(os,)]) for os in ('amiga', 'atari', 'coleco', 'dendy'))
-    expected_values = {
-      'command': {
-        ('echo', 'Hello World'): atari,
-        ('echo', 'You should get an Atari'): amiga | coleco | dendy,
-      },
-      KEY_TRACKED: {
-        'a': amiga | atari | coleco | dendy,
-        'c': atari,
-        'e': amiga | coleco | dendy,
-        'g': amiga,
-        'x': amiga | atari | coleco | dendy,
-      },
-      KEY_UNTRACKED: {
-        'b': amiga | atari | coleco | dendy,
-        'd': atari,
-        'f': amiga | coleco | dendy,
-        'h': amiga | atari | dendy,
-      },
-      KEY_TOUCHED: {
-        'touched': amiga | atari | coleco | dendy,
-        'touched_a': atari,
-        'touched_e': amiga | coleco | dendy,
-      },
-      'read_only': {
-        False: amiga,
-        True: atari,
-      },
-    }
-    actual_values = isolate.invert_map(value)
-    self.assertEqual(expected_values, actual_values)
-
-  def test_reduce_inputs(self):
-    amiga, atari, coleco, dendy = (
-        set([(os,)]) for os in ('amiga', 'atari', 'coleco', 'dendy'))
-    values = {
-      'command': {
-        ('echo', 'Hello World'): atari,
-        ('echo', 'You should get an Atari'): amiga | coleco | dendy,
-      },
-      KEY_TRACKED: {
-        'a': amiga | atari | coleco | dendy,
-        'c': atari,
-        'e': amiga | coleco | dendy,
-        'g': amiga,
-        'x': amiga | atari | coleco | dendy,
-      },
-      KEY_UNTRACKED: {
-        'b': amiga | atari | coleco | dendy,
-        'd': atari,
-        'f': amiga | coleco | dendy,
-        'h': amiga | atari | dendy,
-      },
-      KEY_TOUCHED: {
-        'touched': amiga | atari | coleco | dendy,
-        'touched_a': atari,
-        'touched_e': amiga | coleco | dendy,
-      },
-      'read_only': {
-        False: amiga,
-        True: atari,
-      },
-    }
-    expected_values = {
-      'command': {
-        ('echo', 'Hello World'): atari,
-        ('echo', 'You should get an Atari'): amiga | coleco | dendy,
-      },
-      KEY_TRACKED: {
-        'a': amiga | atari | coleco | dendy,
-        'c': atari,
-        'e': amiga | coleco | dendy,
-        'g': amiga,
-        'x': amiga | atari | coleco | dendy,
-      },
-      KEY_UNTRACKED: {
-        'b': amiga | atari | coleco | dendy,
-        'd': atari,
-        'f': amiga | coleco | dendy,
-        'h': amiga | atari | dendy,
-      },
-      KEY_TOUCHED: {
-        'touched': amiga | atari | coleco | dendy,
-        'touched_a': atari,
-        'touched_e': amiga | coleco | dendy,
-      },
-      'read_only': {
-        False: amiga,
-        True: atari,
-      },
-    }
-    actual_values = isolate.reduce_inputs(values)
-    self.assertEqual(expected_values, actual_values)
-
-  def test_reduce_inputs_merge_subfolders_and_files(self):
-    linux, mac, win = (set([(os,)]) for os in ('linux', 'mac', 'win'))
-    values = {
-      KEY_TRACKED: {
-        'folder/tracked_file': win,
-        'folder_helper/tracked_file': win,
-      },
-      KEY_UNTRACKED: {
-        'folder/': linux | mac | win,
-        'folder/subfolder/': win,
-        'folder/untracked_file': linux | mac | win,
-        'folder_helper/': linux,
-      },
-      KEY_TOUCHED: {
-        'folder/touched_file': win,
-        'folder/helper_folder/deep_file': win,
-        'folder_helper/touched_file1': mac | win,
-        'folder_helper/touched_file2': linux,
-      },
-    }
-    expected_values = {
-      'command': {},
-      KEY_TRACKED: {
-        'folder_helper/tracked_file': win,
-      },
-      KEY_UNTRACKED: {
-        'folder/': linux | mac | win,
-        'folder_helper/': linux,
-      },
-      KEY_TOUCHED: {
-        'folder_helper/touched_file1': mac | win,
-      },
-      'read_only': {},
-    }
-    actual_values = isolate.reduce_inputs(values)
-    self.assertEqual(expected_values, actual_values)
-
-  def test_reduce_inputs_take_strongest_dependency(self):
-    amiga, atari, coleco, dendy = (
-        set([(os,)]) for os in ('amiga', 'atari', 'coleco', 'dendy'))
-    values = {
-      'command': {
-        ('echo', 'Hello World'): atari,
-        ('echo', 'You should get an Atari'): amiga | coleco | dendy,
-      },
-      KEY_TRACKED: {
-        'a': amiga | atari | coleco | dendy,
-        'b': amiga | atari | coleco,
-      },
-      KEY_UNTRACKED: {
-        'c': amiga | atari | coleco | dendy,
-        'd': amiga | coleco | dendy,
-      },
-      KEY_TOUCHED: {
-        'a': amiga | atari | coleco | dendy,
-        'b': atari | coleco | dendy,
-        'c': amiga | atari | coleco | dendy,
-        'd': atari | coleco | dendy,
-      },
-    }
-    expected_values = {
-      'command': {
-        ('echo', 'Hello World'): atari,
-        ('echo', 'You should get an Atari'): amiga | coleco | dendy,
-      },
-      KEY_TRACKED: {
-        'a': amiga | atari | coleco | dendy,
-        'b': amiga | atari | coleco,
-      },
-      KEY_UNTRACKED: {
-        'c': amiga | atari | coleco | dendy,
-        'd': amiga | coleco | dendy,
-      },
-      KEY_TOUCHED: {
-        'b': dendy,
-        'd': atari,
-      },
-      'read_only': {},
-    }
-    actual_values = isolate.reduce_inputs(values)
-    self.assertEqual(expected_values, actual_values)
-
-  def test_convert_map_to_isolate_dict(self):
-    amiga = ('amiga',)
-    atari = ('atari',)
-    coleco = ('coleco',)
-    dendy = ('dendy',)
-    values = {
-      'command': {
-        ('echo', 'Hello World'): (atari,),
-        ('echo', 'You should get an Atari'): (amiga, coleco, dendy),
-      },
-      KEY_TRACKED: {
-        'a': (amiga, atari, coleco, dendy),
-        'c': (atari,),
-        'e': (amiga, coleco, dendy),
-        'g': (amiga,),
-        'x': (amiga, atari, coleco, dendy),
-      },
-      KEY_UNTRACKED: {
-        'b': (amiga, atari, coleco, dendy),
-        'd': (atari,),
-        'f': (amiga, coleco, dendy),
-        'h': (amiga, atari, dendy),
-      },
-      KEY_TOUCHED: {
-        'touched': (amiga, atari, coleco, dendy),
-        'touched_a': (atari,),
-        'touched_e': (amiga, coleco, dendy),
-      },
-      'read_only': {
-        False: (amiga,),
-        True: (atari,),
-      },
-    }
-    expected_conditions = [
-      ['OS=="amiga"', {
-        'variables': {
-          KEY_TRACKED: ['g'],
-          'read_only': False,
-        },
-      }],
-      ['OS=="amiga" or OS=="atari" or OS=="coleco" or OS=="dendy"', {
-        'variables': {
-          KEY_TRACKED: ['a', 'x'],
-          KEY_UNTRACKED: ['b'],
-          KEY_TOUCHED: ['touched'],
-        },
-      }],
-      ['OS=="amiga" or OS=="atari" or OS=="dendy"', {
-        'variables': {
-          KEY_UNTRACKED: ['h'],
-        },
-      }],
-      ['OS=="amiga" or OS=="coleco" or OS=="dendy"', {
-        'variables': {
-          'command': ['echo', 'You should get an Atari'],
-          KEY_TRACKED: ['e'],
-          KEY_UNTRACKED: ['f'],
-          KEY_TOUCHED: ['touched_e'],
-        },
-      }],
-      ['OS=="atari"', {
-        'variables': {
-          'command': ['echo', 'Hello World'],
-          KEY_TRACKED: ['c'],
-          KEY_UNTRACKED: ['d'],
-          KEY_TOUCHED: ['touched_a'],
-          'read_only': True,
-        },
-      }],
-    ]
-    actual = isolate.convert_map_to_isolate_dict(values, ('OS',))
-    self.assertEqual(expected_conditions, sorted(actual.pop('conditions')))
-    self.assertFalse(actual)
-
-  def test_merge_two_empty(self):
-    # Flat stay flat. Pylint is confused about union() return type.
-    # pylint: disable=E1103
-    actual = isolate.union(
-        isolate.union(
-          isolate.Configs(None),
-          isolate.load_isolate_as_config(self.cwd, {}, None)),
-        isolate.load_isolate_as_config(self.cwd, {}, None)).flatten()
-    self.assertEqual({}, actual)
-
-  def test_merge_empty(self):
-    actual = isolate.convert_map_to_isolate_dict(
-        isolate.reduce_inputs(isolate.invert_map({})), ('dummy1', 'dummy2'))
-    self.assertEqual({'conditions': []}, actual)
-
-  def test_load_two_conditions(self):
-    linux = {
-      'conditions': [
-        ['OS=="linux"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_linux',
-              'file_common',
-            ],
-          },
-        }],
-      ],
-    }
-    mac = {
-      'conditions': [
-        ['OS=="mac"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_mac',
-              'file_common',
-            ],
-          },
-        }],
-      ],
-    }
-    expected = {
-      ('linux',): {
-        'isolate_dependency_tracked': ['file_common', 'file_linux'],
-      },
-      ('mac',): {
-        'isolate_dependency_tracked': ['file_common', 'file_mac'],
-      },
-    }
-    # Pylint is confused about union() return type.
-    # pylint: disable=E1103
-    configs = isolate.union(
-        isolate.union(
-          isolate.Configs(None),
-          isolate.load_isolate_as_config(self.cwd, linux, None)),
-        isolate.load_isolate_as_config(self.cwd, mac, None)).flatten()
-    self.assertEqual(expected, configs)
-
-  def test_load_three_conditions(self):
-    linux = {
-      'conditions': [
-        ['OS=="linux" and chromeos==1', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_linux',
-              'file_common',
-            ],
-          },
-        }],
-      ],
-    }
-    mac = {
-      'conditions': [
-        ['OS=="mac" and chromeos==0', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_mac',
-              'file_common',
-            ],
-          },
-        }],
-      ],
-    }
-    win = {
-      'conditions': [
-        ['OS=="win" and chromeos==0', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_win',
-              'file_common',
-            ],
-          },
-        }],
-      ],
-    }
-    expected = {
-      ('linux', 1): {
-        'isolate_dependency_tracked': ['file_common', 'file_linux'],
-      },
-      ('mac', 0): {
-        'isolate_dependency_tracked': ['file_common', 'file_mac'],
-      },
-      ('win', 0): {
-        'isolate_dependency_tracked': ['file_common', 'file_win'],
-      },
-    }
-    # Pylint is confused about union() return type.
-    # pylint: disable=E1103
-    configs = isolate.union(
-        isolate.union(
-          isolate.union(
-            isolate.Configs(None),
-            isolate.load_isolate_as_config(self.cwd, linux, None)),
-          isolate.load_isolate_as_config(self.cwd, mac, None)),
-        isolate.load_isolate_as_config(self.cwd, win, None)).flatten()
-    self.assertEqual(expected, configs)
-
-  def test_merge_three_conditions(self):
-    values = {
-      ('linux',): {
-        'isolate_dependency_tracked': ['file_common', 'file_linux'],
-      },
-      ('mac',): {
-        'isolate_dependency_tracked': ['file_common', 'file_mac'],
-      },
-      ('win',): {
-        'isolate_dependency_tracked': ['file_common', 'file_win'],
-      },
-    }
-    expected = {
-      'conditions': [
-        ['OS=="linux"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_linux',
-            ],
-          },
-        }],
-        ['OS=="linux" or OS=="mac" or OS=="win"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_common',
-            ],
-          },
-        }],
-        ['OS=="mac"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_mac',
-            ],
-          },
-        }],
-        ['OS=="win"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_win',
-            ],
-          },
-        }],
-      ],
-    }
-    actual = isolate.convert_map_to_isolate_dict(
-        isolate.reduce_inputs(isolate.invert_map(values)), ('OS',))
-    self.assertEqual(expected, actual)
-
-  def test_configs_comment(self):
-    # Pylint is confused with isolate.union() return type.
-    # pylint: disable=E1103
-    configs = isolate.union(
-        isolate.load_isolate_as_config(
-            self.cwd, {}, '# Yo dawg!\n# Chill out.\n'),
-        isolate.load_isolate_as_config(self.cwd, {}, None))
-    self.assertEqual('# Yo dawg!\n# Chill out.\n', configs.file_comment)
-
-    configs = isolate.union(
-        isolate.load_isolate_as_config(self.cwd, {}, None),
-        isolate.load_isolate_as_config(
-            self.cwd, {}, '# Yo dawg!\n# Chill out.\n'))
-    self.assertEqual('# Yo dawg!\n# Chill out.\n', configs.file_comment)
-
-    # Only keep the first one.
-    configs = isolate.union(
-        isolate.load_isolate_as_config(self.cwd, {}, '# Yo dawg!\n'),
-        isolate.load_isolate_as_config(self.cwd, {}, '# Chill out.\n'))
-    self.assertEqual('# Yo dawg!\n', configs.file_comment)
-
-  def test_load_with_includes(self):
-    included_isolate = {
-      'variables': {
-        'isolate_dependency_tracked': [
-          'file_common',
-        ],
-      },
-      'conditions': [
-        ['OS=="linux"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_linux',
-            ],
-          },
-        }, {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_non_linux',
-            ],
-          },
-        }],
-      ],
-    }
-    isolate.trace_inputs.write_json(
-        os.path.join(self.cwd, 'included.isolate'), included_isolate, True)
-    values = {
-      'includes': ['included.isolate'],
-      'variables': {
-        'isolate_dependency_tracked': [
-          'file_less_common',
-        ],
-      },
-      'conditions': [
-        ['OS=="mac"', {
-          'variables': {
-            'isolate_dependency_tracked': [
-              'file_mac',
-            ],
-          },
-        }],
-      ],
-    }
-    actual = isolate.load_isolate_as_config(self.cwd, values, None)
-
-    expected = {
-      ('linux',): {
-        'isolate_dependency_tracked': [
-          'file_common',
-          'file_less_common',
-          'file_linux',
-        ],
-      },
-      ('mac',): {
-        'isolate_dependency_tracked': [
-          'file_common',
-          'file_less_common',
-          'file_mac',
-          'file_non_linux',
-        ],
-      },
-      ('win',): {
-        'isolate_dependency_tracked': [
-          'file_common',
-          'file_less_common',
-          'file_non_linux',
-        ],
-      },
-    }
-    self.assertEqual(expected, actual.flatten())
-
-  def test_extract_comment(self):
-    self.assertEqual(
-        '# Foo\n# Bar\n', isolate.extract_comment('# Foo\n# Bar\n{}'))
-    self.assertEqual('', isolate.extract_comment('{}'))
-
-  def _test_pretty_print_impl(self, value, expected):
-    actual = cStringIO.StringIO()
-    isolate.pretty_print(value, actual)
-    self.assertEqual(expected, actual.getvalue())
-
-  def test_pretty_print_empty(self):
-    self._test_pretty_print_impl({}, '{\n}\n')
-
-  def test_pretty_print_mid_size(self):
-    value = {
-      'variables': {
-        'bar': [
-          'file1',
-          'file2',
-        ],
-      },
-      'conditions': [
-        ['OS=\"foo\"', {
-          'variables': {
-            isolate.KEY_UNTRACKED: [
-              'dir1',
-              'dir2',
-            ],
-            isolate.KEY_TRACKED: [
-              'file4',
-              'file3',
-            ],
-            'command': ['python', '-c', 'print "H\\i\'"'],
-            'read_only': True,
-            'relative_cwd': 'isol\'at\\e',
-          },
-        }],
-        ['OS=\"bar\"', {
-          'variables': {},
-        }, {
-          'variables': {},
-        }],
-      ],
-    }
-    expected = (
-        "{\n"
-        "  'variables': {\n"
-        "    'bar': [\n"
-        "      'file1',\n"
-        "      'file2',\n"
-        "    ],\n"
-        "  },\n"
-        "  'conditions': [\n"
-        "    ['OS=\"foo\"', {\n"
-        "      'variables': {\n"
-        "        'command': [\n"
-        "          'python',\n"
-        "          '-c',\n"
-        "          'print \"H\\i\'\"',\n"
-        "        ],\n"
-        "        'relative_cwd': 'isol\\'at\\\\e',\n"
-        "        'read_only': True\n"
-        "        'isolate_dependency_tracked': [\n"
-        "          'file4',\n"
-        "          'file3',\n"
-        "        ],\n"
-        "        'isolate_dependency_untracked': [\n"
-        "          'dir1',\n"
-        "          'dir2',\n"
-        "        ],\n"
-        "      },\n"
-        "    }],\n"
-        "    ['OS=\"bar\"', {\n"
-        "      'variables': {\n"
-        "      },\n"
-        "    }, {\n"
-        "      'variables': {\n"
-        "      },\n"
-        "    }],\n"
-        "  ],\n"
-        "}\n")
-    self._test_pretty_print_impl(value, expected)
-
-  def test_convert_old_to_new_bypass(self):
-    isolate_not_needing_conversion = {
-      'conditions': [
-        ['OS=="mac"', {'variables': {'foo': 'bar'}}],
-        ['condition shouldn\'t matter', {'variables': {'x': 'y'}}],
-      ],
-    }
-    self.assertEqual(
-        isolate_not_needing_conversion,
-        isolate.convert_old_to_new_format(isolate_not_needing_conversion))
-
-  def test_convert_old_to_new_else(self):
-    isolate_with_else_clauses = {
-      'conditions': [
-        ['OS=="mac"', {
-          'variables': {'foo': 'bar'},
-        }, {
-          'variables': {'x': 'y'},
-        }],
-        ['OS=="foo"', {
-        }, {
-          'variables': {'p': 'q'},
-        }],
-      ],
-    }
-    expected_output = {
-      'conditions': [
-        ['OS=="foo" or OS=="linux" or OS=="win"', {
-          'variables': {'x': 'y'},
-        }],
-        ['OS=="linux" or OS=="mac" or OS=="win"', {
-          'variables': {'p': 'q'},
-        }],
-        ['OS=="mac"', {
-          'variables': {'foo': 'bar'},
-        }],
-      ],
-    }
-    self.assertEqual(
-        expected_output,
-        isolate.convert_old_to_new_format(isolate_with_else_clauses))
-
-  def test_convert_old_to_new_default_variables(self):
-    isolate_with_default_variables = {
-      'conditions': [
-        ['OS=="abc"', {
-          'variables': {'foo': 'bar'},
-        }],
-      ],
-      'variables': {'p': 'q'},
-    }
-    expected_output = {
-      'conditions': [
-        ['OS=="abc"', {
-          'variables': {'foo': 'bar'},
-        }],
-        ['OS=="abc" or OS=="linux" or OS=="mac" or OS=="win"', {
-          'variables': {'p': 'q'},
-        }],
-      ],
-    }
-    self.assertEqual(
-        expected_output,
-        isolate.convert_old_to_new_format(isolate_with_default_variables))
-
   def test_variable_arg(self):
     parser = isolate.OptionParserIsolate()
     parser.require_isolated = False
-    expected = {
+    expected_path = {
       'Baz': 'sub=string',
-      'EXECUTABLE_SUFFIX': '.exe' if isolate.get_flavor() == 'win' else '',
+    }
+    expected_config = {
       'Foo': 'bar',
       'OS': isolate.get_flavor(),
     }
+    expected_extra = {
+      'biz': 'b uz=a',
+      'EXECUTABLE_SUFFIX': '.exe' if isolate.get_flavor() == 'win' else '',
+    }
 
     options, args = parser.parse_args(
-        ['-V', 'Foo', 'bar', '-V', 'Baz=sub=string'])
-    self.assertEqual(expected, options.variables)
+        ['--config-variable', 'Foo', 'bar',
+          '--path-variable', 'Baz=sub=string',
+          '--extra-variable', 'biz', 'b uz=a'])
+    self.assertEqual(expected_path, options.path_variables)
+    self.assertEqual(expected_config, options.config_variables)
+    self.assertEqual(expected_extra, options.extra_variables)
     self.assertEqual([], args)
 
   def test_variable_arg_fail(self):
     parser = isolate.OptionParserIsolate()
     self.mock(sys, 'stderr', cStringIO.StringIO())
-    self.assertRaises(SystemExit, parser.parse_args, ['-V', 'Foo'])
+    with self.assertRaises(SystemExit):
+      parser.parse_args(['--config-variable', 'Foo'])
 
   def test_blacklist(self):
     ok = [
@@ -951,7 +146,7 @@ class IsolateTest(IsolateBase):
       'foo.pyc',
       'bar.swp',
     ]
-    blacklist = isolate.trace_inputs.gen_blacklist(isolate.DEFAULT_BLACKLIST)
+    blacklist = tools.gen_blacklist(isolate.isolateserver.DEFAULT_BLACKLIST)
     for i in ok:
       self.assertFalse(blacklist(i), i)
     for i in blocked:
@@ -967,105 +162,11 @@ class IsolateTest(IsolateBase):
       'testserver.log',
       os.path.join('foo', 'testserver.log'),
     ]
-    blacklist = isolate.trace_inputs.gen_blacklist(isolate.DEFAULT_BLACKLIST)
+    blacklist = tools.gen_blacklist(isolate.isolateserver.DEFAULT_BLACKLIST)
     for i in ok:
       self.assertFalse(blacklist(i), i)
     for i in blocked:
       self.assertTrue(blacklist(i), i)
-
-  if sys.platform == 'darwin':
-    def test_expand_symlinks_path_case(self):
-      # Ensures that the resulting path case is fixed on case insensitive file
-      # system.
-      os.symlink('dest', os.path.join(self.cwd, 'link'))
-      os.mkdir(os.path.join(self.cwd, 'Dest'))
-      open(os.path.join(self.cwd, 'Dest', 'file.txt'), 'w').close()
-
-      result = isolate.expand_symlinks(unicode(self.cwd), 'link')
-      self.assertEqual((u'Dest', [u'link']), result)
-      result = isolate.expand_symlinks(unicode(self.cwd), 'link/File.txt')
-      self.assertEqual((u'Dest/file.txt', [u'link']), result)
-
-    def test_expand_directories_and_symlinks_path_case(self):
-      # Ensures that the resulting path case is fixed on case insensitive file
-      # system. A superset of test_expand_symlinks_path_case.
-      # Create *all* the paths with the wrong path case.
-      basedir = os.path.join(self.cwd, 'baseDir')
-      os.mkdir(basedir.lower())
-      subdir = os.path.join(basedir, 'subDir')
-      os.mkdir(subdir.lower())
-      open(os.path.join(subdir, 'Foo.txt'), 'w').close()
-      os.symlink('subDir', os.path.join(basedir, 'linkdir'))
-      actual = isolate.expand_directories_and_symlinks(
-          unicode(self.cwd), [u'baseDir/'], lambda _: None, True, False)
-      expected = [
-        u'basedir/linkdir',
-        u'basedir/subdir/Foo.txt',
-        u'basedir/subdir/Foo.txt',
-      ]
-      self.assertEqual(expected, actual)
-
-    def test_process_input_path_case_simple(self):
-      # Ensure the symlink dest is saved in the right path case.
-      subdir = os.path.join(self.cwd, 'subdir')
-      os.mkdir(subdir)
-      linkdir = os.path.join(self.cwd, 'linkdir')
-      os.symlink('subDir', linkdir)
-      actual = isolate.process_input(
-          unicode(linkdir.upper()), {}, True, 'mac', ALGO)
-      expected = {'l': u'subdir', 'm': 360, 't': int(os.stat(linkdir).st_mtime)}
-      self.assertEqual(expected, actual)
-
-    def test_process_input_path_case_complex(self):
-      # Ensure the symlink dest is saved in the right path case. This includes 2
-      # layers of symlinks.
-      basedir = os.path.join(self.cwd, 'basebir')
-      os.mkdir(basedir)
-
-      linkeddir2 = os.path.join(self.cwd, 'linkeddir2')
-      os.mkdir(linkeddir2)
-
-      linkeddir1 = os.path.join(basedir, 'linkeddir1')
-      os.symlink('../linkedDir2', linkeddir1)
-
-      subsymlinkdir = os.path.join(basedir, 'symlinkdir')
-      os.symlink('linkedDir1', subsymlinkdir)
-
-      actual = isolate.process_input(
-          unicode(subsymlinkdir.upper()), {}, True, 'mac', ALGO)
-      expected = {
-        'l': u'linkeddir1', 'm': 360, 't': int(os.stat(subsymlinkdir).st_mtime),
-      }
-      self.assertEqual(expected, actual)
-
-      actual = isolate.process_input(
-          unicode(linkeddir1.upper()), {}, True, 'mac', ALGO)
-      expected = {
-        'l': u'../linkeddir2', 'm': 360, 't': int(os.stat(linkeddir1).st_mtime),
-      }
-      self.assertEqual(expected, actual)
-
-  if sys.platform != 'win32':
-    def test_symlink_input_absolute_path(self):
-      # A symlink is outside of the checkout, it should be treated as a normal
-      # directory.
-      # .../src
-      # .../src/out -> .../tmp/foo
-      # .../tmp
-      # .../tmp/foo
-      src = os.path.join(self.cwd, u'src')
-      src_out = os.path.join(src, 'out')
-      tmp = os.path.join(self.cwd, 'tmp')
-      tmp_foo = os.path.join(tmp, 'foo')
-      os.mkdir(src)
-      os.mkdir(tmp)
-      os.mkdir(tmp_foo)
-      # The problem was that it's an absolute path, so it must be considered a
-      # normal directory.
-      os.symlink(tmp, src_out)
-      open(os.path.join(tmp_foo, 'bar.txt'), 'w').close()
-      actual = isolate.expand_symlinks(src, u'out/foo/bar.txt')
-      self.assertEqual((u'out/foo/bar.txt', []), actual)
 
 
 class IsolateLoad(IsolateBase):
@@ -1086,7 +187,9 @@ class IsolateLoad(IsolateBase):
       isolated = os.path.join(self.directory, 'foo.isolated')
       outdir = os.path.join(self.directory, 'outdir')
       isolate = isolate_file
-      variables = {'foo': 'bar', 'OS': OS, 'chromeos': chromeos_value}
+      path_variables = {}
+      config_variables = {'OS': OS, 'chromeos': chromeos_value}
+      extra_variables = {'foo': 'bar'}
       ignore_broken_items = False
     return Options()
 
@@ -1124,7 +227,7 @@ class IsolateLoad(IsolateBase):
       },
     }
     options = self._get_option(isolate_file)
-    isolate.trace_inputs.write_json(options.isolated, input_data, False)
+    tools.write_json(options.isolated, input_data, False)
 
     # A CompleteState object contains two parts:
     # - Result instance stored in complete_state.isolated, corresponding to the
@@ -1154,7 +257,7 @@ class IsolateLoad(IsolateBase):
       },
       'os': isolate.get_flavor(),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_isolated)
     self.assertEqual(expected_isolated, actual_isolated)
@@ -1163,6 +266,13 @@ class IsolateLoad(IsolateBase):
       'algo': 'sha-1',
       'child_isolated_files': [],
       'command': ['python', 'touch_root.py'],
+      'config_variables': {
+        'OS': isolate.get_flavor(),
+        'chromeos': options.config_variables['chromeos'],
+      },
+      'extra_variables': {
+        'foo': 'bar',
+      },
       'files': {
         os.path.join(u'tests', 'isolate', 'touch_root.py'): {
           'm': 488,
@@ -1175,16 +285,12 @@ class IsolateLoad(IsolateBase):
           's': _size('isolate.py'),
         },
       },
-      'isolate_file': isolate.safe_relpath(
+      'isolate_file': file_path.safe_relpath(
           file_path.get_native_path_case(isolate_file),
           os.path.dirname(options.isolated)),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'variables': {
-        'foo': 'bar',
-        'OS': isolate.get_flavor(),
-        'chromeos': options.variables['chromeos'],
-      },
-      'version': '1.0',
+      'path_variables': {},
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_saved_state)
     self._cleanup_saved_state(actual_saved_state)
@@ -1197,7 +303,7 @@ class IsolateLoad(IsolateBase):
         ROOT_DIR, 'tests', 'isolate', 'touch_root.isolate')
     options = self._get_option(isolate_file)
     chromeos_value = int(isolate.get_flavor() == 'linux')
-    options.variables['chromeos'] = chromeos_value
+    options.config_variables['chromeos'] = chromeos_value
     complete_state = isolate.load_complete_state(
         options, self.cwd, os.path.join('tests', 'isolate'), False)
     actual_isolated = complete_state.saved_state.to_isolated()
@@ -1215,7 +321,7 @@ class IsolateLoad(IsolateBase):
       },
       'os': isolate.get_flavor(),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_isolated)
     self.assertEqual(expected_isolated, actual_isolated)
@@ -1224,6 +330,13 @@ class IsolateLoad(IsolateBase):
       'algo': 'sha-1',
       'child_isolated_files': [],
       'command': ['python', 'touch_root.py'],
+      'config_variables': {
+        'OS': isolate.get_flavor(),
+        'chromeos': chromeos_value,
+      },
+      'extra_variables': {
+        'foo': 'bar',
+      },
       'files': {
         os.path.join(u'tests', 'isolate', 'touch_root.py'): {
           'm': 488,
@@ -1231,16 +344,12 @@ class IsolateLoad(IsolateBase):
           's': _size('tests', 'isolate', 'touch_root.py'),
         },
       },
-      'isolate_file': isolate.safe_relpath(
+      'isolate_file': file_path.safe_relpath(
           file_path.get_native_path_case(isolate_file),
           os.path.dirname(options.isolated)),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'variables': {
-        'foo': 'bar',
-        'OS': isolate.get_flavor(),
-        'chromeos': chromeos_value,
-      },
-      'version': '1.0',
+      'path_variables': {},
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_saved_state)
     self._cleanup_saved_state(actual_saved_state)
@@ -1253,10 +362,14 @@ class IsolateLoad(IsolateBase):
         ROOT_DIR, 'tests', 'isolate', 'touch_root.isolate')
     options = self._get_option(isolate_file)
     chromeos_value = int(isolate.get_flavor() == 'linux')
-    options.variables['chromeos'] = chromeos_value
-    options.variables['BAZ'] = os.path.join('tests', 'isolate')
+    options.config_variables['chromeos'] = chromeos_value
+    # Path variables are keyed on the directory containing the .isolate file.
+    options.path_variables['TEST_ISOLATE'] = '.'
+    # Note that options.isolated is in self.directory, which is a temporary
+    # directory.
     complete_state = isolate.load_complete_state(
-        options, self.cwd, '<(BAZ)', False)
+        options, os.path.join(ROOT_DIR, 'tests', 'isolate'),
+        '<(TEST_ISOLATE)', False)
     actual_isolated = complete_state.saved_state.to_isolated()
     actual_saved_state = complete_state.saved_state.flatten()
 
@@ -1272,15 +385,27 @@ class IsolateLoad(IsolateBase):
       },
       'os': isolate.get_flavor(),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_isolated)
     self.assertEqual(expected_isolated, actual_isolated)
 
+    # It is important to note:
+    # - the root directory is ROOT_DIR.
+    # - relative_cwd is tests/isolate.
+    # - TEST_ISOLATE is based of relative_cwd, so it represents tests/isolate.
+    # - anything outside TEST_ISOLATE was not included in the 'files' section.
     expected_saved_state = {
       'algo': 'sha-1',
       'child_isolated_files': [],
       'command': ['python', 'touch_root.py'],
+      'config_variables': {
+        'OS': isolate.get_flavor(),
+        'chromeos': chromeos_value,
+      },
+      'extra_variables': {
+        'foo': 'bar',
+      },
       'files': {
         os.path.join(u'tests', 'isolate', 'touch_root.py'): {
           'm': 488,
@@ -1288,17 +413,14 @@ class IsolateLoad(IsolateBase):
           's': _size('tests', 'isolate', 'touch_root.py'),
         },
       },
-      'isolate_file': isolate.safe_relpath(
+      'isolate_file': file_path.safe_relpath(
           file_path.get_native_path_case(isolate_file),
           os.path.dirname(options.isolated)),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'variables': {
-        'foo': 'bar',
-        'BAZ': os.path.join('tests', 'isolate'),
-        'OS': isolate.get_flavor(),
-        'chromeos': chromeos_value,
+      'path_variables': {
+        'TEST_ISOLATE': '.',
       },
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_saved_state)
     self._cleanup_saved_state(actual_saved_state)
@@ -1308,7 +430,7 @@ class IsolateLoad(IsolateBase):
     isolate_file = os.path.join(
         ROOT_DIR, 'tests', 'isolate', 'touch_root.isolate')
     options = self._get_option(isolate_file)
-    options.variables['PRODUCT_DIR'] = os.path.join(u'tests', u'isolate')
+    options.path_variables['PRODUCT_DIR'] = os.path.join(u'tests', u'isolate')
     native_cwd = file_path.get_native_path_case(unicode(self.cwd))
     try:
       isolate.load_complete_state(options, self.cwd, None, False)
@@ -1324,8 +446,8 @@ class IsolateLoad(IsolateBase):
         ROOT_DIR, 'tests', 'isolate', 'touch_root.isolate')
     options = self._get_option(isolate_file)
     chromeos_value = int(isolate.get_flavor() == 'linux')
-    options.variables['chromeos'] = chromeos_value
-    options.variables['PRODUCT_DIR'] = os.path.join('tests', 'isolate')
+    options.config_variables['chromeos'] = chromeos_value
+    options.path_variables['PRODUCT_DIR'] = os.path.join('tests', 'isolate')
     complete_state = isolate.load_complete_state(options, ROOT_DIR, None, False)
     actual_isolated = complete_state.saved_state.to_isolated()
     actual_saved_state = complete_state.saved_state.flatten()
@@ -1347,7 +469,7 @@ class IsolateLoad(IsolateBase):
       },
       'os': isolate.get_flavor(),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_isolated)
     self.assertEqual(expected_isolated, actual_isolated)
@@ -1356,6 +478,13 @@ class IsolateLoad(IsolateBase):
       'algo': 'sha-1',
       'child_isolated_files': [],
       'command': ['python', 'touch_root.py'],
+      'config_variables': {
+        'OS': isolate.get_flavor(),
+        'chromeos': chromeos_value,
+      },
+      'extra_variables': {
+        'foo': 'bar',
+      },
       'files': {
         u'isolate.py': {
           'm': 488,
@@ -1368,17 +497,14 @@ class IsolateLoad(IsolateBase):
           's': _size('tests', 'isolate', 'touch_root.py'),
         },
       },
-      'isolate_file': isolate.safe_relpath(
+      'isolate_file': file_path.safe_relpath(
           file_path.get_native_path_case(isolate_file),
           os.path.dirname(options.isolated)),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'variables': {
-        'foo': 'bar',
+      'path_variables': {
         'PRODUCT_DIR': '.',
-        'OS': isolate.get_flavor(),
-        'chromeos': chromeos_value,
       },
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_saved_state)
     self._cleanup_saved_state(actual_saved_state)
@@ -1401,7 +527,7 @@ class IsolateLoad(IsolateBase):
     options = self._get_option(isolate_file)
     chromeos_value = int(isolate.get_flavor() == 'linux')
     # Any directory outside ROOT_DIR/tests/isolate.
-    options.variables['PRODUCT_DIR'] = os.path.join('third_party')
+    options.path_variables['PRODUCT_DIR'] = os.path.join('third_party')
     complete_state = isolate.load_complete_state(options, ROOT_DIR, None, False)
     actual_isolated = complete_state.saved_state.to_isolated()
     actual_saved_state = complete_state.saved_state.flatten()
@@ -1432,7 +558,7 @@ class IsolateLoad(IsolateBase):
       },
       'os': isolate.get_flavor(),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_isolated)
     self.assertEqual(expected_isolated, actual_isolated)
@@ -1441,6 +567,13 @@ class IsolateLoad(IsolateBase):
       'algo': 'sha-1',
       'child_isolated_files': [],
       'command': [],
+      'config_variables': {
+        'OS': isolate.get_flavor(),
+        'chromeos': chromeos_value,
+      },
+      'extra_variables': {
+        'foo': 'bar',
+      },
       'files': {
         os.path.join(u'tests', 'isolate', 'files1', 'subdir', '42.txt'): {
           'm': 416,
@@ -1463,17 +596,14 @@ class IsolateLoad(IsolateBase):
           's': _size('tests', 'isolate', 'no_run.isolate'),
         },
       },
-      'isolate_file': isolate.safe_relpath(
+      'isolate_file': file_path.safe_relpath(
           file_path.get_native_path_case(isolate_file),
           os.path.dirname(options.isolated)),
       'relative_cwd': os.path.join(u'tests', 'isolate'),
-      'variables': {
-        'foo': 'bar',
+      'path_variables': {
         'PRODUCT_DIR': os.path.join(u'..', '..', 'third_party'),
-        'OS': isolate.get_flavor(),
-        'chromeos': chromeos_value,
       },
-      'version': '1.0',
+      'version': isolate.isolateserver.ISOLATED_FILE_VERSION,
     }
     self._cleanup_isolated(expected_saved_state)
     self._cleanup_saved_state(actual_saved_state)
@@ -1485,17 +615,19 @@ class IsolateLoad(IsolateBase):
     isolate_file = os.path.join(
         ROOT_DIR, 'tests', 'isolate', 'split.isolate')
     options = self._get_option(isolate_file)
-    options.variables = {
-      'OS': isolate.get_flavor(),
+    options.path_variables = {
       'DEPTH': '.',
       'PRODUCT_DIR': os.path.join('files1'),
+    }
+    options.config_variables = {
+      'OS': isolate.get_flavor(),
     }
     complete_state = isolate.load_complete_state(
         options, os.path.join(ROOT_DIR, 'tests', 'isolate'), None, False)
     # By saving the files, it forces splitting the data up.
     complete_state.save_files()
 
-    actual_isolated_master = isolate.trace_inputs.read_json(
+    actual_isolated_master = tools.read_json(
         os.path.join(self.directory, 'foo.isolated'))
     expected_isolated_master = {
       u'algo': u'sha-1',
@@ -1513,12 +645,12 @@ class IsolateLoad(IsolateBase):
       ],
       u'os': unicode(isolate.get_flavor()),
       u'relative_cwd': u'.',
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     self._cleanup_isolated(expected_isolated_master)
     self.assertEqual(expected_isolated_master, actual_isolated_master)
 
-    actual_isolated_0 = isolate.trace_inputs.read_json(
+    actual_isolated_0 = tools.read_json(
         os.path.join(self.directory, 'foo.0.isolated'))
     expected_isolated_0 = {
       u'algo': u'sha-1',
@@ -1531,12 +663,12 @@ class IsolateLoad(IsolateBase):
         },
       },
       u'os': unicode(isolate.get_flavor()),
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     self._cleanup_isolated(expected_isolated_0)
     self.assertEqual(expected_isolated_0, actual_isolated_0)
 
-    actual_isolated_1 = isolate.trace_inputs.read_json(
+    actual_isolated_1 = tools.read_json(
         os.path.join(self.directory, 'foo.1.isolated'))
     expected_isolated_1 = {
       u'algo': u'sha-1',
@@ -1549,12 +681,12 @@ class IsolateLoad(IsolateBase):
         },
       },
       u'os': unicode(isolate.get_flavor()),
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     self._cleanup_isolated(expected_isolated_1)
     self.assertEqual(expected_isolated_1, actual_isolated_1)
 
-    actual_saved_state = isolate.trace_inputs.read_json(
+    actual_saved_state = tools.read_json(
         isolate.isolatedfile_to_state(options.isolated))
     isolated_base = unicode(os.path.basename(options.isolated))
     expected_saved_state = {
@@ -1564,6 +696,12 @@ class IsolateLoad(IsolateBase):
         isolated_base[:-len('.isolated')] + '.1.isolated',
       ],
       u'command': [u'python', u'split.py'],
+      u'config_variables': {
+        u'OS': unicode(isolate.get_flavor()),
+      },
+      u'extra_variables': {
+        u'foo': u'bar',
+      },
       u'files': {
         os.path.join(u'files1', 'subdir', '42.txt'): {
           u'm': 416,
@@ -1583,16 +721,15 @@ class IsolateLoad(IsolateBase):
           u's': _size('tests', 'isolate', 'test', 'data', 'foo.txt'),
         },
       },
-      u'isolate_file': isolate.safe_relpath(
+      u'isolate_file': file_path.safe_relpath(
           file_path.get_native_path_case(isolate_file),
           unicode(os.path.dirname(options.isolated))),
       u'relative_cwd': u'.',
-      u'variables': {
-        u'OS': unicode(isolate.get_flavor()),
+      u'path_variables': {
         u'DEPTH': u'.',
         u'PRODUCT_DIR': u'files1',
       },
-      u'version': u'1.0',
+      u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
     }
     self._cleanup_isolated(expected_saved_state)
     self._cleanup_saved_state(actual_saved_state)
@@ -1614,6 +751,149 @@ class IsolateCommand(IsolateBase):
     out.saved_state.isolate_file = u'blah.isolate'
     out.saved_state.relative_cwd = u''
     return out
+
+  def test_CMDcheck_empty(self):
+    isolate_file = os.path.join(self.cwd, 'x.isolate')
+    isolated_file = os.path.join(self.cwd, 'x.isolated')
+    with open(isolate_file, 'wb') as f:
+      f.write('# Foo\n{\n}')
+
+    self.mock(sys, 'stdout', cStringIO.StringIO())
+    cmd = ['-i', isolate_file, '-s', isolated_file]
+    with self.assertRaises(isolate.isolateserver.ConfigError):
+      isolate.CMDcheck(isolate.OptionParserIsolate(), cmd)
+
+  def test_CMDcheck_stale_version(self):
+    isolate_file = os.path.join(self.cwd, 'x.isolate')
+    isolated_file = os.path.join(self.cwd, 'x.isolated')
+    with open(isolate_file, 'wb') as f:
+      f.write(
+          '# Foo\n'
+          '{'
+          '  \'conditions\':['
+          '    [\'OS=="dendy"\', {'
+          '      \'variables\': {'
+          '        \'command\': [\'foo\'],'
+          '      },'
+          '    }],'
+          '  ],'
+          '}')
+
+    self.mock(sys, 'stdout', cStringIO.StringIO())
+    cmd = [
+        '-i', isolate_file,
+        '-s', isolated_file,
+        '--config-variable', 'OS=dendy',
+    ]
+    self.assertEqual(0, isolate.CMDcheck(isolate.OptionParserIsolate(), cmd))
+
+    with open(isolate_file, 'rb') as f:
+      actual = f.read()
+    expected = (
+        '# Foo\n{  \'conditions\':[    [\'OS=="dendy"\', {      '
+        '\'variables\': {        \'command\': [\'foo\'],      },    }],  ],}')
+    self.assertEqual(expected, actual)
+
+    with open(isolated_file, 'rb') as f:
+      actual_isolated = f.read()
+    expected_isolated = (
+        '{"algo":"sha-1","command":["foo"],"files":{},"os":"dendy",'
+        '"relative_cwd":".","version":"%s"}'
+    ) % isolate.isolateserver.ISOLATED_FILE_VERSION
+    self.assertEqual(expected_isolated, actual_isolated)
+    isolated_data = json.loads(actual_isolated)
+
+    with open(isolated_file + '.state', 'rb') as f:
+      actual_isolated_state = f.read()
+    expected_isolated_state = (
+        '{"algo":"sha-1","child_isolated_files":[],"command":["foo"],'
+        '"config_variables":{"OS":"dendy"},'
+        '"extra_variables":{"EXECUTABLE_SUFFIX":""},"files":{},'
+        '"isolate_file":"x.isolate","path_variables":{},'
+        '"relative_cwd":".","version":"%s"}'
+    ) % isolate.isolateserver.ISOLATED_FILE_VERSION
+    self.assertEqual(expected_isolated_state, actual_isolated_state)
+    isolated_state_data = json.loads(actual_isolated_state)
+
+    # Now edit the .isolated.state file to break the version number and make
+    # sure it doesn't crash.
+    with open(isolated_file + '.state', 'wb') as f:
+      isolated_state_data['version'] = '100.42'
+      json.dump(isolated_state_data, f)
+    self.assertEqual(0, isolate.CMDcheck(isolate.OptionParserIsolate(), cmd))
+
+    # Now edit the .isolated file to break the version number and make
+    # sure it doesn't crash.
+    with open(isolated_file, 'wb') as f:
+      isolated_data['version'] = '100.42'
+      json.dump(isolated_data, f)
+    self.assertEqual(0, isolate.CMDcheck(isolate.OptionParserIsolate(), cmd))
+
+    # Make sure the files were regenerated.
+    with open(isolated_file, 'rb') as f:
+      actual_isolated = f.read()
+    self.assertEqual(expected_isolated, actual_isolated)
+    with open(isolated_file + '.state', 'rb') as f:
+      actual_isolated_state = f.read()
+    self.assertEqual(expected_isolated_state, actual_isolated_state)
+
+  def test_CMDcheck_new_variables(self):
+    # Test bug #61.
+    isolate_file = os.path.join(self.cwd, 'x.isolate')
+    isolated_file = os.path.join(self.cwd, 'x.isolated')
+    cmd = [
+        '-i', isolate_file,
+        '-s', isolated_file,
+        '--config-variable', 'OS=dendy',
+    ]
+    with open(isolate_file, 'wb') as f:
+      f.write(
+          '# Foo\n'
+          '{'
+          '  \'conditions\':['
+          '    [\'OS=="dendy"\', {'
+          '      \'variables\': {'
+          '        \'command\': [\'foo\'],'
+          '        \'isolate_dependency_tracked\': [\'foo\'],'
+          '      },'
+          '    }],'
+          '  ],'
+          '}')
+    with open(os.path.join(self.cwd, 'foo'), 'wb') as f:
+      f.write('yeah')
+
+    self.mock(sys, 'stdout', cStringIO.StringIO())
+    self.assertEqual(0, isolate.CMDcheck(isolate.OptionParserIsolate(), cmd))
+
+    # Now add a new config variable.
+    with open(isolate_file, 'wb') as f:
+      f.write(
+          '# Foo\n'
+          '{'
+          '  \'conditions\':['
+          '    [\'OS=="dendy"\', {'
+          '      \'variables\': {'
+          '        \'command\': [\'foo\'],'
+          '        \'isolate_dependency_tracked\': [\'foo\'],'
+          '      },'
+          '    }],'
+          '    [\'foo=="baz"\', {'
+          '      \'variables\': {'
+          '        \'isolate_dependency_tracked\': [\'bar\'],'
+          '      },'
+          '    }],'
+          '  ],'
+          '}')
+    with open(os.path.join(self.cwd, 'bar'), 'wb') as f:
+      f.write('yeah right!')
+
+    # The configuration is OS=dendy and foo=bar. So it should load both
+    # configurations.
+    self.assertEqual(
+        0,
+        isolate.CMDcheck(
+            isolate.OptionParserIsolate(),
+            cmd + ['--config-variable', 'foo=bar']))
 
   def test_CMDrewrite(self):
     isolate_file = os.path.join(self.cwd, 'x.isolate')
@@ -1643,8 +923,8 @@ class IsolateCommand(IsolateBase):
       isolated_file = os.path.join(self.cwd, 'foo.isolated')
       cmd = [
         '-i', isolate_file,
-        '-V', 'OS', 'win',
-        '-V', 'chromeos', '0',
+        '--config-variable', 'OS', 'win',
+        '--config-variable', 'chromeos', '0',
         '-s', isolated_file,
       ]
       self.assertEqual(0, isolate.CMDcheck(isolate.OptionParserIsolate(), cmd))
@@ -1671,7 +951,7 @@ class IsolateCommand(IsolateBase):
         u'files': files,
         u'os': u'win',
         u'relative_cwd': u'.',
-        u'version': u'1.0',
+        u'version': unicode(isolate.isolateserver.ISOLATED_FILE_VERSION),
       }
       self.assertEqual(expected, actual)
 

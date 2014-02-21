@@ -23,63 +23,71 @@
 
 #include "core/svg/SVGAnimatedTransformList.h"
 #include "core/svg/SVGElement.h"
+#include "core/svg/SVGRectTearOff.h"
 #include "core/svg/SVGTests.h"
-#include "core/svg/SVGTransformable.h"
 
 namespace WebCore {
 
 class AffineTransform;
 class Path;
 
-class SVGGraphicsElement : public SVGElement, public SVGTransformable, public SVGTests {
+class SVGGraphicsElement : public SVGElement, public SVGTests {
 public:
     virtual ~SVGGraphicsElement();
 
-    virtual AffineTransform getCTM(StyleUpdateStrategy = AllowStyleUpdate);
-    virtual AffineTransform getScreenCTM(StyleUpdateStrategy = AllowStyleUpdate);
-    virtual SVGElement* nearestViewportElement() const;
-    virtual SVGElement* farthestViewportElement() const;
+    enum StyleUpdateStrategy { AllowStyleUpdate, DisallowStyleUpdate };
 
-    virtual AffineTransform localCoordinateSpaceTransform(SVGLocatable::CTMScope mode) const { return SVGTransformable::localCoordinateSpaceTransform(mode); }
+    AffineTransform getCTM(StyleUpdateStrategy = AllowStyleUpdate);
+    AffineTransform getScreenCTM(StyleUpdateStrategy = AllowStyleUpdate);
+    AffineTransform getTransformToElement(SVGElement*, ExceptionState&);
+    SVGElement* nearestViewportElement() const;
+    SVGElement* farthestViewportElement() const;
+
+    virtual AffineTransform localCoordinateSpaceTransform(SVGElement::CTMScope) const OVERRIDE { return animatedLocalTransform(); }
     virtual AffineTransform animatedLocalTransform() const;
-    virtual AffineTransform* supplementalTransform();
+    virtual AffineTransform* supplementalTransform() OVERRIDE;
 
-    virtual SVGRect getBBox();
-    SVGRect getStrokeBBox();
+    virtual FloatRect getBBox();
+    FloatRect getStrokeBBox();
+
+    PassRefPtr<SVGRectTearOff> getBBoxFromJavascript();
+    PassRefPtr<SVGRectTearOff> getStrokeBBoxFromJavascript();
 
     // "base class" methods for all the elements which render as paths
     virtual void toClipPath(Path&);
-    virtual RenderObject* createRenderer(RenderStyle*);
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
+
+    virtual bool isValid() const OVERRIDE FINAL { return SVGTests::isValid(); }
 
 protected:
     SVGGraphicsElement(const QualifiedName&, Document&, ConstructionType = CreateSVGElement);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual void svgAttributeChanged(const QualifiedName&);
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGGraphicsElement)
         DECLARE_ANIMATED_TRANSFORM_LIST(Transform, transform)
     END_DECLARE_ANIMATED_PROPERTIES
 
 private:
-    virtual bool isSVGGraphicsElement() const OVERRIDE { return true; }
+    virtual bool isSVGGraphicsElement() const OVERRIDE FINAL { return true; }
 
     // SVGTests
-    virtual void synchronizeRequiredFeatures() { SVGTests::synchronizeRequiredFeatures(this); }
-    virtual void synchronizeRequiredExtensions() { SVGTests::synchronizeRequiredExtensions(this); }
-    virtual void synchronizeSystemLanguage() { SVGTests::synchronizeSystemLanguage(this); }
+    virtual void synchronizeRequiredFeatures() OVERRIDE FINAL { SVGTests::synchronizeRequiredFeatures(this); }
+    virtual void synchronizeRequiredExtensions() OVERRIDE FINAL { SVGTests::synchronizeRequiredExtensions(this); }
+    virtual void synchronizeSystemLanguage() OVERRIDE FINAL { SVGTests::synchronizeSystemLanguage(this); }
 
     // Used by <animateMotion>
     OwnPtr<AffineTransform> m_supplementalTransform;
 };
 
-inline SVGGraphicsElement* toSVGGraphicsElement(Node* node)
+inline bool isSVGGraphicsElement(const Node& node)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(!node || node->isSVGElement());
-    ASSERT_WITH_SECURITY_IMPLICATION(!node || toSVGElement(node)->isSVGGraphicsElement());
-    return static_cast<SVGGraphicsElement*>(node);
+    return node.isSVGElement() && toSVGElement(node).isSVGGraphicsElement();
 }
+
+DEFINE_NODE_TYPE_CASTS_WITH_FUNCTION(SVGGraphicsElement);
 
 } // namespace WebCore
 

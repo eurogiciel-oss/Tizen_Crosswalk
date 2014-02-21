@@ -16,7 +16,7 @@
 namespace ppapi {
 namespace proxy {
 
-class InterfaceList {
+class PPAPI_PROXY_EXPORT InterfaceList {
  public:
   InterfaceList();
   ~InterfaceList();
@@ -33,13 +33,7 @@ class InterfaceList {
   // plugin process. A real security check is required for all IPC messages.
   // This check just allows us to return NULL for interfaces you "shouldn't" be
   // using to keep honest plugins honest.
-  static PPAPI_PROXY_EXPORT void SetProcessGlobalPermissions(
-      const PpapiPermissions& permissions);
-
-  // Looks up the ID for the given interface name. Returns API_ID_NONE if
-  // the interface string is not found.
-  ApiID GetIDForPPBInterface(const std::string& name) const;
-  ApiID GetIDForPPPInterface(const std::string& name) const;
+  static void SetProcessGlobalPermissions(const PpapiPermissions& permissions);
 
   // Looks up the factory function for the given ID. Returns NULL if not
   // supported.
@@ -51,19 +45,18 @@ class InterfaceList {
   const void* GetInterfaceForPPP(const std::string& name) const;
 
  private:
+  friend class InterfaceListTest;
+
   struct InterfaceInfo {
     InterfaceInfo()
-        : id(API_ID_NONE),
-          iface(NULL),
+        : iface(NULL),
           required_permission(PERMISSION_NONE) {
     }
-    InterfaceInfo(ApiID in_id, const void* in_interface, Permission in_perm)
-        : id(in_id),
-          iface(in_interface),
+    InterfaceInfo(const void* in_interface, Permission in_perm)
+        : iface(in_interface),
           required_permission(in_perm) {
     }
 
-    ApiID id;
     const void* iface;
 
     // Permission required to return non-null for this interface. This will
@@ -79,14 +72,8 @@ class InterfaceList {
   // Permissions is the type of permission required to access the corresponding
   // interface. Currently this must be just one unique permission (rather than
   // a bitfield).
-  void AddPPB(const char* name, ApiID id, const void* iface,
-              Permission permission);
-  void AddPPP(const char* name, ApiID id, const void* iface);
-
-  // Old-style add functions. These should be removed when the rest of the
-  // proxies are converted over to using the new system.
-  void AddPPB(const InterfaceProxy::Info* info, Permission perm);
-  void AddPPP(const InterfaceProxy::Info* info);
+  void AddPPB(const char* name, const void* iface, Permission permission);
+  void AddPPP(const char* name, const void* iface);
 
   PpapiPermissions permissions_;
 

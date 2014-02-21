@@ -26,7 +26,7 @@
 #ifndef ScrollbarGroup_h
 #define ScrollbarGroup_h
 
-#include "core/platform/ScrollableArea.h"
+#include "platform/scroll/ScrollableArea.h"
 
 #include "wtf/RefPtr.h"
 
@@ -34,14 +34,14 @@ namespace WebCore {
 class FrameView;
 }
 
-namespace WebKit {
+namespace blink {
 
 class WebPluginScrollbarImpl;
 
-class ScrollbarGroup : public WebCore::ScrollableArea {
+class ScrollbarGroup FINAL : public WebCore::ScrollableArea {
 public:
     ScrollbarGroup(WebCore::FrameView*, const WebCore::IntRect& frameRect);
-    ~ScrollbarGroup();
+    virtual ~ScrollbarGroup();
 
     void scrollbarCreated(WebPluginScrollbarImpl*);
     void scrollbarDestroyed(WebPluginScrollbarImpl*);
@@ -85,6 +85,6 @@ private:
     WebPluginScrollbarImpl* m_verticalScrollbar;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

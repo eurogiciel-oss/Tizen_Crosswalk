@@ -21,7 +21,7 @@
 #include "ui/gfx/size.h"
 
 namespace base {
-class MessageLoopProxy;
+class SingleThreadTaskRunner;
 class TimeDelta;
 }
 
@@ -30,10 +30,12 @@ namespace media {
 class Clock;
 class FilterCollection;
 class MediaLog;
+class TextRenderer;
+class TextTrackConfig;
 class VideoRenderer;
 
 // Pipeline runs the media pipeline.  Filters are created and called on the
-// message loop injected into this object. Pipeline works like a state
+// task runner injected into this object. Pipeline works like a state
 // machine to perform asynchronous initialization, pausing, seeking and playing.
 //
 // Here's a state diagram that describes the lifetime of this object.
@@ -68,8 +70,8 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   // Buffering states the pipeline transitions between during playback.
   // kHaveMetadata:
   //   Indicates that the following things are known:
-  //   content duration, natural size, start time, and whether the content has
-  //   audio and/or video in supported formats.
+  //   content duration, container video size, start time, and whether the
+  //   content has audio and/or video in supported formats.
   // kPrerollCompleted:
   //   All renderers have buffered enough data to satisfy preroll and are ready
   //   to start playback.
@@ -80,8 +82,8 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
 
   typedef base::Callback<void(BufferingState)> BufferingStateCB;
 
-  // Constructs a media pipeline that will execute on |message_loop|.
-  Pipeline(const scoped_refptr<base::MessageLoopProxy>& message_loop,
+  // Constructs a media pipeline that will execute on |task_runner|.
+  Pipeline(const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
            MediaLog* media_log);
   virtual ~Pipeline();
 
@@ -176,10 +178,9 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   // determined or can not be determined, this value is 0.
   int64 GetTotalBytes() const;
 
-  // Gets the natural size of the video output in pixel units.  If there is no
-  // video or the video has not been rendered yet, the width and height will
-  // be 0.
-  void GetNaturalVideoSize(gfx::Size* out_size) const;
+  // Get the video's initial natural size as reported by the container. Note
+  // that the natural size can change during playback.
+  gfx::Size GetInitialNaturalSize() const;
 
   // Return true if loading progress has been made since the last time this
   // method was called.
@@ -232,18 +233,19 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   // DemuxerHost implementaion.
   virtual void SetDuration(base::TimeDelta duration) OVERRIDE;
   virtual void OnDemuxerError(PipelineStatus error) OVERRIDE;
+  virtual void AddTextStream(DemuxerStream* text_stream,
+                             const TextTrackConfig& config) OVERRIDE;
+  virtual void RemoveTextStream(DemuxerStream* text_stream) OVERRIDE;
 
   // Initiates teardown sequence in response to a runtime error.
   //
   // Safe to call from any thread.
   void SetError(PipelineStatus error);
 
-  // Callback executed when the natural size of the video has changed.
-  void OnNaturalVideoSizeChanged(const gfx::Size& size);
-
   // Callbacks executed when a renderer has ended.
   void OnAudioRendererEnded();
   void OnVideoRendererEnded();
+  void OnTextRendererEnded();
 
   // Callback executed by filters to update statistics.
   void OnUpdateStatistics(const PipelineStatistics& stats);
@@ -258,8 +260,8 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   void OnVideoTimeUpdate(base::TimeDelta max_time);
 
   // The following "task" methods correspond to the public methods, but these
-  // methods are run as the result of posting a task to the PipelineInternal's
-  // message loop.
+  // methods are run as the result of posting a task to the Pipeline's
+  // task runner.
   void StartTask(scoped_ptr<FilterCollection> filter_collection,
                  const base::Closure& ended_cb,
                  const PipelineStatusCB& error_cb,
@@ -283,13 +285,21 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   // Carries out notifying filters that we are seeking to a new timestamp.
   void SeekTask(base::TimeDelta time, const PipelineStatusCB& seek_cb);
 
-  // Handles audio/video ended logic and running |ended_cb_|.
+  // Handles audio/video/text ended logic and running |ended_cb_|.
   void DoAudioRendererEnded();
   void DoVideoRendererEnded();
+  void DoTextRendererEnded();
   void RunEndedCallbackIfNeeded();
 
   // Carries out disabling the audio renderer.
   void AudioDisabledTask();
+
+  // Carries out adding a new text stream to the text renderer.
+  void AddTextStreamTask(DemuxerStream* text_stream,
+                         const TextTrackConfig& config);
+
+  // Carries out removing a text stream from the text renderer.
+  void RemoveTextStreamTask(DemuxerStream* text_stream);
 
   // Kicks off initialization for each media object, executing |done_cb| with
   // the result when completed.
@@ -337,8 +347,8 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
 
   void StartClockIfWaitingForTimeUpdate_Locked();
 
-  // Message loop used to execute pipeline tasks.
-  scoped_refptr<base::MessageLoopProxy> message_loop_;
+  // Task runner used to execute pipeline tasks.
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 
   // MediaLog to which to log events.
   scoped_refptr<MediaLog> media_log_;
@@ -360,16 +370,16 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   // Total size of the media.  Set by filters.
   int64 total_bytes_;
 
-  // Video's natural width and height.  Set by filters.
-  gfx::Size natural_size_;
+  // The initial natural size of the video as reported by the container.
+  gfx::Size initial_natural_size_;
 
   // Current volume level (from 0.0f to 1.0f).  This value is set immediately
-  // via SetVolume() and a task is dispatched on the message loop to notify the
+  // via SetVolume() and a task is dispatched on the task runner to notify the
   // filters.
   float volume_;
 
   // Current playback rate (>= 0.0f).  This value is set immediately via
-  // SetPlaybackRate() and a task is dispatched on the message loop to notify
+  // SetPlaybackRate() and a task is dispatched on the task runner to notify
   // the filters.
   float playback_rate_;
 
@@ -392,7 +402,7 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   // reset the pipeline state, and restore this to PIPELINE_OK.
   PipelineStatus status_;
 
-  // Whether the media contains rendered audio and video streams.
+  // Whether the media contains rendered audio or video streams.
   // TODO(fischman,scherkus): replace these with checks for
   // {audio,video}_decoder_ once extraction of {Audio,Video}Decoder from the
   // Filter heirarchy is done.
@@ -400,14 +410,15 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   bool has_video_;
 
   // The following data members are only accessed by tasks posted to
-  // |message_loop_|.
+  // |task_runner_|.
 
   // Member that tracks the current state.
   State state_;
 
-  // Whether we've received the audio/video ended events.
+  // Whether we've received the audio/video/text ended events.
   bool audio_ended_;
   bool video_ended_;
+  bool text_ended_;
 
   // Set to true in DisableAudioRendererTask().
   bool audio_disabled_;
@@ -434,6 +445,7 @@ class MEDIA_EXPORT Pipeline : public DemuxerHost {
   // playback rate, and determining when playback has finished.
   scoped_ptr<AudioRenderer> audio_renderer_;
   scoped_ptr<VideoRenderer> video_renderer_;
+  scoped_ptr<TextRenderer> text_renderer_;
 
   PipelineStatistics statistics_;
 

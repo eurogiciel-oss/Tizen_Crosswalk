@@ -6,6 +6,7 @@
 
 #include "cc/base/math_util.h"
 #include "cc/layers/layer_impl.h"
+#include "cc/layers/layer_utils.h"
 #include "cc/layers/render_surface_impl.h"
 #include "cc/trees/damage_tracker.h"
 #include "cc/trees/layer_tree_host.h"
@@ -58,6 +59,9 @@ void DebugRectHistory::SaveDebugRectsForCurrentFrame(
 
   if (debug_state.show_non_occluding_rects)
     SaveNonOccludingRects(non_occluding_screen_space_rects);
+
+  if (debug_state.show_layer_animation_bounds_rects)
+    SaveLayerAnimationBoundsRects(render_surface_layer_list);
 }
 
 void DebugRectHistory::SavePaintRects(LayerImpl* layer) {
@@ -229,6 +233,33 @@ void DebugRectHistory::SaveNonFastScrollableRectsCallback(LayerImpl* layer) {
                                      MathUtil::MapClippedRect(
                                          layer->screen_space_transform(),
                                          scroll_rect)));
+  }
+}
+
+void DebugRectHistory::SaveLayerAnimationBoundsRects(
+    const LayerImplList& render_surface_layer_list) {
+  typedef LayerIterator<LayerImpl,
+                        LayerImplList,
+                        RenderSurfaceImpl,
+                        LayerIteratorActions::FrontToBack> LayerIteratorType;
+  LayerIteratorType end = LayerIteratorType::End(&render_surface_layer_list);
+  for (LayerIteratorType it =
+           LayerIteratorType::Begin(&render_surface_layer_list);
+       it != end; ++it) {
+    if (!it.represents_itself())
+      continue;
+
+    // TODO(avallee): Figure out if we should show something for a layer who's
+    // animating bounds but that we can't compute them.
+    gfx::BoxF inflated_bounds;
+    if (!LayerUtils::GetAnimationBounds(**it, &inflated_bounds))
+      continue;
+
+    debug_rects_.push_back(DebugRect(ANIMATION_BOUNDS_RECT_TYPE,
+                                     gfx::RectF(inflated_bounds.x(),
+                                                inflated_bounds.y(),
+                                                inflated_bounds.width(),
+                                                inflated_bounds.height())));
   }
 }
 

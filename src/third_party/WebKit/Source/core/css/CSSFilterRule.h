@@ -38,7 +38,7 @@ class CSSStyleDeclaration;
 class StyleRuleFilter;
 class StyleRuleCSSStyleDeclaration;
 
-class CSSFilterRule : public CSSRule {
+class CSSFilterRule FINAL : public CSSRule {
 public:
     static PassRefPtr<CSSFilterRule> create(StyleRuleFilter* rule, CSSStyleSheet* sheet) { return adoptRef(new CSSFilterRule(rule, sheet)); }
 
@@ -56,6 +56,8 @@ private:
     RefPtr<StyleRuleFilter> m_filterRule;
     mutable RefPtr<StyleRuleCSSStyleDeclaration> m_propertiesCSSOMWrapper;
 };
+
+DEFINE_CSS_RULE_TYPE_CASTS(CSSFilterRule, WEBKIT_FILTER_RULE);
 
 }
 

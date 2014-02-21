@@ -30,23 +30,21 @@ namespace WebCore {
 
 class HTMLFrameElement FINAL : public HTMLFrameElementBase {
 public:
-    static PassRefPtr<HTMLFrameElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<HTMLFrameElement> create(Document&);
 
     bool hasFrameBorder() const { return m_frameBorder; }
 
     bool noResize() const;
 
 private:
-    HTMLFrameElement(const QualifiedName&, Document&);
+    explicit HTMLFrameElement(Document&);
 
     virtual void attach(const AttachContext& = AttachContext()) OVERRIDE;
 
-    virtual bool rendererIsNeeded(const RenderStyle&);
-    virtual RenderObject* createRenderer(RenderStyle*);
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE;
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
 
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-
-    virtual bool allowFullScreen() const { return false; }
 
     bool m_frameBorder;
     bool m_frameBorderSet;

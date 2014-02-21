@@ -61,7 +61,6 @@
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/content_restriction.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/net/url_util.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/render_messages.h"
@@ -83,6 +82,7 @@
 #include "content/public/common/ssl_status.h"
 #include "content/public/common/url_utils.h"
 #include "extensions/browser/view_type_utils.h"
+#include "extensions/common/extension.h"
 #include "grit/generated_resources.h"
 #include "net/base/escape.h"
 #include "third_party/WebKit/public/web/WebContextMenuData.h"
@@ -107,11 +107,12 @@
 #endif  // defined(ENABLE_FULL_PRINTING)
 #endif  // defined(ENABLE_PRINTING)
 
-using WebKit::WebContextMenuData;
-using WebKit::WebMediaPlayerAction;
-using WebKit::WebPluginAction;
-using WebKit::WebString;
-using WebKit::WebURL;
+using base::UserMetricsAction;
+using blink::WebContextMenuData;
+using blink::WebMediaPlayerAction;
+using blink::WebPluginAction;
+using blink::WebString;
+using blink::WebURL;
 using content::BrowserContext;
 using content::ChildProcessSecurityPolicy;
 using content::DownloadManager;
@@ -121,7 +122,6 @@ using content::NavigationEntry;
 using content::OpenURLParams;
 using content::RenderViewHost;
 using content::SSLStatus;
-using content::UserMetricsAction;
 using content::WebContents;
 using extensions::Extension;
 using extensions::MenuItem;
@@ -370,9 +370,9 @@ void DevToolsInspectElementAt(RenderViewHost* rvh, int x, int y) {
 }
 
 // Helper function to escape "&" as "&&".
-void EscapeAmpersands(string16* text) {
-  const char16 ampersand[] = {'&', 0};
-  ReplaceChars(*text, ampersand, ASCIIToUTF16("&&"), text);
+void EscapeAmpersands(base::string16* text) {
+  const base::char16 ampersand[] = {'&', 0};
+  base::ReplaceChars(*text, ampersand, base::ASCIIToUTF16("&&"), text);
 }
 
 }  // namespace
@@ -403,7 +403,6 @@ RenderViewContextMenu::RenderViewContextMenu(
       menu_model_(this),
       extension_items_(profile_, this, &menu_model_,
                     base::Bind(MenuItemMatchesParams, params_)),
-      external_(false),
       speech_input_submenu_model_(this),
       protocol_handler_submenu_model_(this),
       protocol_handler_registry_(
@@ -513,9 +512,12 @@ void RenderViewContextMenu::AppendAllExtensionItems() {
       extensions::ExtensionSystem::Get(profile_)->extension_service();
   if (!service)
     return;  // In unit-tests, we may not have an ExtensionService.
-  MenuManager* menu_manager = service->menu_manager();
 
-  string16 printable_selection_text = PrintableSelectionText();
+  MenuManager* menu_manager = MenuManager::Get(profile_);
+  if (!menu_manager)
+    return;
+
+  base::string16 printable_selection_text = PrintableSelectionText();
   EscapeAmpersands(&printable_selection_text);
 
   // Get a list of extension id's that have context menu items, and sort by the
@@ -768,12 +770,12 @@ void RenderViewContextMenu::AppendPanelItems() {
 }
 
 void RenderViewContextMenu::AddMenuItem(int command_id,
-                                        const string16& title) {
+                                        const base::string16& title) {
   menu_model_.AddItem(command_id, title);
 }
 
 void RenderViewContextMenu::AddCheckItem(int command_id,
-                                         const string16& title) {
+                                         const base::string16& title) {
   menu_model_.AddCheckItem(command_id, title);
 }
 
@@ -782,7 +784,7 @@ void RenderViewContextMenu::AddSeparator() {
 }
 
 void RenderViewContextMenu::AddSubMenu(int command_id,
-                                       const string16& label,
+                                       const base::string16& label,
                                        ui::MenuModel* model) {
   menu_model_.AddSubMenu(command_id, label, model);
 }
@@ -790,7 +792,7 @@ void RenderViewContextMenu::AddSubMenu(int command_id,
 void RenderViewContextMenu::UpdateMenuItem(int command_id,
                                            bool enabled,
                                            bool hidden,
-                                           const string16& label) {
+                                           const base::string16& label) {
   // This function needs platform-specific implementation.
   NOTIMPLEMENTED();
 }
@@ -843,10 +845,8 @@ void RenderViewContextMenu::AppendLinkItems() {
       AppendProtocolHandlerSubMenu();
     }
 
-    if (!external_) {
-      menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD,
-                                      IDS_CONTENT_CONTEXT_OPENLINKOFFTHERECORD);
-    }
+    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD,
+                                    IDS_CONTENT_CONTEXT_OPENLINKOFFTHERECORD);
     menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_SAVELINKAS,
                                     IDS_CONTENT_CONTEXT_SAVELINKAS);
   }
@@ -956,8 +956,8 @@ void RenderViewContextMenu::AppendPageItems() {
   if (TranslateManager::IsTranslatableURL(params_.page_url)) {
     std::string locale = g_browser_process->GetApplicationLocale();
     locale = TranslateManager::GetLanguageCode(locale);
-    string16 language = l10n_util::GetDisplayNameForLocale(locale, locale,
-                                                           true);
+    base::string16 language =
+        l10n_util::GetDisplayNameForLocale(locale, locale, true);
     menu_model_.AddItem(
         IDC_CONTENT_CONTEXT_TRANSLATE,
         l10n_util::GetStringFUTF16(IDS_CONTENT_CONTEXT_TRANSLATE, language));
@@ -965,13 +965,8 @@ void RenderViewContextMenu::AppendPageItems() {
 
   menu_model_.AddItemWithStringId(IDC_VIEW_SOURCE,
                                   IDS_CONTENT_CONTEXT_VIEWPAGESOURCE);
-  // Only add View Page Info if there's a browser.  This is a temporary thing
-  // while View Page Info crashes Chrome Frame; see http://crbug.com/120901.
-  // TODO(grt) Remove this once page info is back for Chrome Frame.
-  if (!external_) {
-    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWPAGEINFO,
-                                    IDS_CONTENT_CONTEXT_VIEWPAGEINFO);
-  }
+  menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWPAGEINFO,
+                                  IDS_CONTENT_CONTEXT_VIEWPAGEINFO);
 }
 
 void RenderViewContextMenu::AppendFrameItems() {
@@ -983,13 +978,8 @@ void RenderViewContextMenu::AppendFrameItems() {
   //   IDS_CONTENT_CONTEXT_PRINTFRAME
   menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWFRAMESOURCE,
                                   IDS_CONTENT_CONTEXT_VIEWFRAMESOURCE);
-  // Only add View Frame Info if there's a browser.  This is a temporary thing
-  // while View Frame Info crashes Chrome Frame; see http://crbug.com/120901.
-  // TODO(grt) Remove this once frame info is back for Chrome Frame.
-  if (!external_) {
-    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWFRAMEINFO,
-                                    IDS_CONTENT_CONTEXT_VIEWFRAMEINFO);
-  }
+  menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWFRAMEINFO,
+                                  IDS_CONTENT_CONTEXT_VIEWFRAMEINFO);
 }
 
 void RenderViewContextMenu::AppendCopyItem() {
@@ -1012,8 +1002,8 @@ void RenderViewContextMenu::AppendSearchProvider() {
   if (params_.selection_text.empty())
     return;
 
-  ReplaceChars(params_.selection_text, AutocompleteMatch::kInvalidChars,
-               ASCIIToUTF16(" "), &params_.selection_text);
+  base::ReplaceChars(params_.selection_text, AutocompleteMatch::kInvalidChars,
+                     base::ASCIIToUTF16(" "), &params_.selection_text);
 
   AutocompleteMatch match;
   AutocompleteClassifierFactory::GetForProfile(profile_)->Classify(
@@ -1022,7 +1012,7 @@ void RenderViewContextMenu::AppendSearchProvider() {
   if (!selection_navigation_url_.is_valid())
     return;
 
-  string16 printable_selection_text = PrintableSelectionText();
+  base::string16 printable_selection_text = PrintableSelectionText();
   EscapeAmpersands(&printable_selection_text);
 
   if (AutocompleteMatch::IsSearchType(match.type)) {
@@ -1239,7 +1229,7 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
       if (!translate_tab_helper)
         return false;
       std::string original_lang =
-          translate_tab_helper->language_state().original_language();
+          translate_tab_helper->GetLanguageState().original_language();
       std::string target_lang = g_browser_process->GetApplicationLocale();
       target_lang = TranslateManager::GetLanguageCode(target_lang);
       // Note that we intentionally enable the menu even if the original and
@@ -1248,7 +1238,7 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
       // language.
       return ((params_.edit_flags & WebContextMenuData::CanTranslate) != 0) &&
              !original_lang.empty() &&  // Did we receive the page language yet?
-             !translate_tab_helper->language_state().IsPageTranslated() &&
+             !translate_tab_helper->GetLanguageState().IsPageTranslated() &&
              !source_web_contents_->GetInterstitialPage() &&
              // There are some application locales which can't be used as a
              // target language for translation.
@@ -1521,7 +1511,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
 #if defined(ENABLE_PLUGINS)
     if (context.request_id && !context.is_pepper_menu) {
       ChromePluginServiceFilter::GetInstance()->AuthorizeAllPlugins(
-        rvh->GetProcess()->GetID());
+        source_web_contents_, false, std::string());
     }
 #endif
     rvh->ExecuteCustomContextMenuCommand(action, context);
@@ -1730,9 +1720,7 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       break;
 
     case IDC_RELOAD:
-      // Prevent the modal "Resubmit form post" dialog from appearing in the
-      // context of an external context menu.
-      source_web_contents_->GetController().Reload(!external_);
+      source_web_contents_->GetController().Reload(true);
       break;
 
     case IDC_CONTENT_CONTEXT_RELOAD_PACKAGED_APP: {
@@ -1818,12 +1806,12 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       TranslateTabHelper* translate_tab_helper =
           TranslateTabHelper::FromWebContents(source_web_contents_);
       if (!translate_tab_helper ||
-          translate_tab_helper->language_state().IsPageTranslated() ||
-          translate_tab_helper->language_state().translation_pending()) {
+          translate_tab_helper->GetLanguageState().IsPageTranslated() ||
+          translate_tab_helper->GetLanguageState().translation_pending()) {
         return;
       }
       std::string original_lang =
-          translate_tab_helper->language_state().original_language();
+          translate_tab_helper->GetLanguageState().original_language();
       std::string target_lang = g_browser_process->GetApplicationLocale();
       target_lang = TranslateManager::GetLanguageCode(target_lang);
       // Since the user decided to translate for that language and site, clears
@@ -1928,7 +1916,8 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           SearchEngineTabHelper::FromWebContents(source_web_contents_);
       if (search_engine_tab_helper &&
           search_engine_tab_helper->delegate()) {
-        string16 keyword(TemplateURLService::GenerateKeyword(params_.page_url));
+        base::string16 keyword(
+            TemplateURLService::GenerateKeyword(params_.page_url));
         TemplateURLData data;
         data.short_name = keyword;
         data.SetKeyword(keyword);
@@ -2035,7 +2024,7 @@ bool RenderViewContextMenu::IsDevCommandEnabled(int id) const {
   return true;
 }
 
-string16 RenderViewContextMenu::PrintableSelectionText() {
+base::string16 RenderViewContextMenu::PrintableSelectionText() {
   return gfx::TruncateString(params_.selection_text,
                             kMaxSelectionTextLength);
 }

@@ -29,7 +29,6 @@
 #include "RuntimeEnabledFeatures.h"
 #include "bindings/v8/ScriptCallStackFactory.h"
 #include "bindings/v8/ScriptController.h"
-#include "bindings/v8/ScriptState.h"
 #include "core/dom/DOMStringList.h"
 #include "core/dom/Document.h"
 #include "core/events/SecurityPolicyViolationEvent.h"
@@ -40,23 +39,20 @@
 #include "core/inspector/ScriptCallStack.h"
 #include "core/loader/DocumentLoader.h"
 #include "core/loader/PingLoader.h"
-#include "core/page/UseCounter.h"
+#include "core/frame/UseCounter.h"
 #include "platform/JSONValues.h"
 #include "platform/NotImplemented.h"
 #include "platform/ParsingUtilities.h"
 #include "platform/network/FormData.h"
 #include "platform/network/ResourceResponse.h"
-#include "weborigin/KURL.h"
-#include "weborigin/KnownPorts.h"
-#include "weborigin/SchemeRegistry.h"
-#include "weborigin/SecurityOrigin.h"
-#include "wtf/HashSet.h"
+#include "platform/weborigin/KURL.h"
+#include "platform/weborigin/KnownPorts.h"
+#include "platform/weborigin/SchemeRegistry.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #include "wtf/SHA1.h"
 #include "wtf/StringHasher.h"
 #include "wtf/text/Base64.h"
 #include "wtf/text/StringBuilder.h"
-#include "wtf/text/TextPosition.h"
-#include "wtf/text/WTFString.h"
 
 namespace WTF {
 
@@ -95,6 +91,11 @@ bool isDirectiveValueCharacter(UChar c)
 bool isBase64EncodedCharacter(UChar c)
 {
     return isASCIIAlphanumeric(c) || c == '+' || c == '/';
+}
+
+bool isNonceCharacter(UChar c)
+{
+    return isBase64EncodedCharacter(c) || c == '=';
 }
 
 bool isSourceCharacter(UChar c)
@@ -147,9 +148,12 @@ static const char styleSrc[] = "style-src";
 
 // CSP 1.1 Directives
 static const char baseURI[] = "base-uri";
+static const char childSrc[] = "child-src";
 static const char formAction[] = "form-action";
+static const char frameAncestors[] = "frame-ancestors";
 static const char pluginTypes[] = "plugin-types";
 static const char reflectedXSS[] = "reflected-xss";
+static const char referrer[] = "referrer";
 
 bool isDirectiveName(const String& name)
 {
@@ -165,9 +169,12 @@ bool isDirectiveName(const String& name)
         || equalIgnoringCase(name, scriptSrc)
         || equalIgnoringCase(name, styleSrc)
         || equalIgnoringCase(name, baseURI)
+        || equalIgnoringCase(name, childSrc)
         || equalIgnoringCase(name, formAction)
+        || equalIgnoringCase(name, frameAncestors)
         || equalIgnoringCase(name, pluginTypes)
         || equalIgnoringCase(name, reflectedXSS)
+        || equalIgnoringCase(name, referrer)
     );
 }
 
@@ -184,6 +191,13 @@ UseCounter::Feature getUseCounterType(ContentSecurityPolicy::HeaderType type)
 }
 
 } // namespace
+
+static ReferrerPolicy mergeReferrerPolicies(ReferrerPolicy a, ReferrerPolicy b)
+{
+    if (a != b)
+        return ReferrerPolicyNever;
+    return a;
+}
 
 static bool isSourceListNone(const UChar* begin, const UChar* end)
 {
@@ -300,6 +314,8 @@ public:
     bool allowNonce(const String& nonce) const { return !nonce.isNull() && m_nonces.contains(nonce); }
     bool allowHash(const SourceHashValue& hashValue) const { return m_hashes.contains(hashValue); }
     uint8_t hashAlgorithmsUsed() const { return m_hashAlgorithmsUsed; }
+
+    bool isHashOrNoncePresent() const { return !m_nonces.isEmpty() || m_hashAlgorithmsUsed != ContentSecurityPolicy::HashAlgorithmsNone; }
 
 private:
     bool parseSource(const UChar* begin, const UChar* end, String& scheme, String& host, int& port, String& path, bool& hostHasWildcard, bool& portHasWildcard);
@@ -520,7 +536,7 @@ bool CSPSourceList::parseSource(const UChar* begin, const UChar* end, String& sc
 }
 
 // nonce-source      = "'nonce-" nonce-value "'"
-// nonce-value       = 1*( ALPHA / DIGIT / "+" / "/" )
+// nonce-value        = 1*( ALPHA / DIGIT / "+" / "/" / "=" )
 //
 bool CSPSourceList::parseNonce(const UChar* begin, const UChar* end, String& nonce)
 {
@@ -532,7 +548,7 @@ bool CSPSourceList::parseNonce(const UChar* begin, const UChar* end, String& non
     const UChar* position = begin + noncePrefix.length();
     const UChar* nonceBegin = position;
 
-    skipWhile<UChar, isBase64EncodedCharacter>(position, end);
+    skipWhile<UChar, isNonceCharacter>(position, end);
     ASSERT(nonceBegin <= position);
 
     if ((position + 1) != end  || *position != '\'' || !(position - nonceBegin))
@@ -845,6 +861,7 @@ public:
     bool allowEval() const { return m_sourceList.allowEval(); }
     bool allowNonce(const String& nonce) const { return m_sourceList.allowNonce(nonce.stripWhiteSpace()); }
     bool allowHash(const SourceHashValue& hashValue) const { return m_sourceList.allowHash(hashValue); }
+    bool isHashOrNoncePresent() const { return m_sourceList.isHashOrNoncePresent(); }
 
     uint8_t hashAlgorithmsUsed() const { return m_sourceList.hashAlgorithmsUsed(); }
 
@@ -855,12 +872,13 @@ private:
 class CSPDirectiveList {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static PassOwnPtr<CSPDirectiveList> create(ContentSecurityPolicy*, const UChar* begin, const UChar* end, ContentSecurityPolicy::HeaderType);
+    static PassOwnPtr<CSPDirectiveList> create(ContentSecurityPolicy*, const UChar* begin, const UChar* end, ContentSecurityPolicy::HeaderType, ContentSecurityPolicy::HeaderSource);
 
     void parse(const UChar* begin, const UChar* end);
 
     const String& header() const { return m_header; }
     ContentSecurityPolicy::HeaderType headerType() const { return m_headerType; }
+    ContentSecurityPolicy::HeaderSource headerSource() const { return m_headerSource; }
 
     bool allowJavaScriptURLs(const String& contextURL, const WTF::OrdinalNumber& contextLine, ContentSecurityPolicy::ReportingStatus) const;
     bool allowInlineEventHandlers(const String& contextURL, const WTF::OrdinalNumber& contextLine, ContentSecurityPolicy::ReportingStatus) const;
@@ -879,23 +897,28 @@ public:
     bool allowConnectToSource(const KURL&, ContentSecurityPolicy::ReportingStatus) const;
     bool allowFormAction(const KURL&, ContentSecurityPolicy::ReportingStatus) const;
     bool allowBaseURI(const KURL&, ContentSecurityPolicy::ReportingStatus) const;
+    bool allowAncestors(Frame*, ContentSecurityPolicy::ReportingStatus) const;
+    bool allowChildContextFromSource(const KURL&, ContentSecurityPolicy::ReportingStatus) const;
     bool allowScriptNonce(const String&) const;
     bool allowStyleNonce(const String&) const;
     bool allowScriptHash(const SourceHashValue&) const;
+    bool allowStyleHash(const SourceHashValue&) const;
 
-    void gatherReportURIs(DOMStringList&) const;
     const String& evalDisabledErrorMessage() const { return m_evalDisabledErrorMessage; }
     ReflectedXSSDisposition reflectedXSSDisposition() const { return m_reflectedXSSDisposition; }
+    ReferrerPolicy referrerPolicy() const { return m_referrerPolicy; }
+    bool didSetReferrerPolicy() const { return m_didSetReferrerPolicy; }
     bool isReportOnly() const { return m_reportOnly; }
     const Vector<KURL>& reportURIs() const { return m_reportURIs; }
 
 private:
-    CSPDirectiveList(ContentSecurityPolicy*, ContentSecurityPolicy::HeaderType);
+    CSPDirectiveList(ContentSecurityPolicy*, ContentSecurityPolicy::HeaderType, ContentSecurityPolicy::HeaderSource);
 
     bool parseDirective(const UChar* begin, const UChar* end, String& name, String& value);
     void parseReportURI(const String& name, const String& value);
     void parsePluginTypes(const String& name, const String& value);
     void parseReflectedXSS(const String& name, const String& value);
+    void parseReferrer(const String& name, const String& value);
     void addDirective(const String& name, const String& value);
     void applySandboxPolicy(const String& name, const String& sandboxPolicy);
 
@@ -903,6 +926,7 @@ private:
     void setCSPDirective(const String& name, const String& value, OwnPtr<CSPDirectiveType>&);
 
     SourceListDirective* operativeDirective(SourceListDirective*) const;
+    SourceListDirective* operativeDirective(SourceListDirective*, SourceListDirective* override) const;
     void reportViolation(const String& directiveText, const String& effectiveDirective, const String& consoleMessage, const KURL& blockedURL) const;
     void reportViolationWithLocation(const String& directiveText, const String& effectiveDirective, const String& consoleMessage, const KURL& blockedURL, const String& contextURL, const WTF::OrdinalNumber& contextLine) const;
     void reportViolationWithState(const String& directiveText, const String& effectiveDirective, const String& consoleMessage, const KURL& blockedURL, ScriptState*) const;
@@ -913,6 +937,7 @@ private:
     bool checkHash(SourceListDirective*, const SourceHashValue&) const;
     bool checkSource(SourceListDirective*, const KURL&) const;
     bool checkMediaType(MediaListDirective*, const String& type, const String& typeAttribute) const;
+    bool checkAncestors(SourceListDirective*, Frame*) const;
 
     void setEvalDisabledErrorMessage(const String& errorMessage) { m_evalDisabledErrorMessage = errorMessage; }
 
@@ -921,6 +946,7 @@ private:
 
     bool checkSourceAndReportViolation(SourceListDirective*, const KURL&, const String& effectiveDirective) const;
     bool checkMediaTypeAndReportViolation(MediaListDirective*, const String& type, const String& typeAttribute, const String& consoleMessage) const;
+    bool checkAncestorsAndReportViolation(SourceListDirective*, Frame*) const;
 
     bool denyIfEnforcingPolicy() const { return m_reportOnly; }
 
@@ -928,17 +954,23 @@ private:
 
     String m_header;
     ContentSecurityPolicy::HeaderType m_headerType;
+    ContentSecurityPolicy::HeaderSource m_headerSource;
 
     bool m_reportOnly;
     bool m_haveSandboxPolicy;
     ReflectedXSSDisposition m_reflectedXSSDisposition;
 
+    bool m_didSetReferrerPolicy;
+    ReferrerPolicy m_referrerPolicy;
+
     OwnPtr<MediaListDirective> m_pluginTypes;
     OwnPtr<SourceListDirective> m_baseURI;
+    OwnPtr<SourceListDirective> m_childSrc;
     OwnPtr<SourceListDirective> m_connectSrc;
     OwnPtr<SourceListDirective> m_defaultSrc;
     OwnPtr<SourceListDirective> m_fontSrc;
     OwnPtr<SourceListDirective> m_formAction;
+    OwnPtr<SourceListDirective> m_frameAncestors;
     OwnPtr<SourceListDirective> m_frameSrc;
     OwnPtr<SourceListDirective> m_imgSrc;
     OwnPtr<SourceListDirective> m_mediaSrc;
@@ -951,19 +983,22 @@ private:
     String m_evalDisabledErrorMessage;
 };
 
-CSPDirectiveList::CSPDirectiveList(ContentSecurityPolicy* policy, ContentSecurityPolicy::HeaderType type)
+CSPDirectiveList::CSPDirectiveList(ContentSecurityPolicy* policy, ContentSecurityPolicy::HeaderType type, ContentSecurityPolicy::HeaderSource source)
     : m_policy(policy)
     , m_headerType(type)
+    , m_headerSource(source)
     , m_reportOnly(false)
     , m_haveSandboxPolicy(false)
     , m_reflectedXSSDisposition(ReflectedXSSUnset)
+    , m_didSetReferrerPolicy(false)
+    , m_referrerPolicy(ReferrerPolicyDefault)
 {
     m_reportOnly = type == ContentSecurityPolicy::Report;
 }
 
-PassOwnPtr<CSPDirectiveList> CSPDirectiveList::create(ContentSecurityPolicy* policy, const UChar* begin, const UChar* end, ContentSecurityPolicy::HeaderType type)
+PassOwnPtr<CSPDirectiveList> CSPDirectiveList::create(ContentSecurityPolicy* policy, const UChar* begin, const UChar* end, ContentSecurityPolicy::HeaderType type, ContentSecurityPolicy::HeaderSource source)
 {
-    OwnPtr<CSPDirectiveList> directives = adoptPtr(new CSPDirectiveList(policy, type));
+    OwnPtr<CSPDirectiveList> directives = adoptPtr(new CSPDirectiveList(policy, type, source));
     directives->parse(begin, end);
 
     if (!directives->checkEval(directives->operativeDirective(directives->m_scriptSrc.get()))) {
@@ -1005,7 +1040,7 @@ bool CSPDirectiveList::checkEval(SourceListDirective* directive) const
 
 bool CSPDirectiveList::checkInline(SourceListDirective* directive) const
 {
-    return !directive || directive->allowInline();
+    return !directive || (directive->allowInline() && !directive->isHashOrNoncePresent());
 }
 
 bool CSPDirectiveList::checkNonce(SourceListDirective* directive, const String& nonce) const
@@ -1023,6 +1058,18 @@ bool CSPDirectiveList::checkSource(SourceListDirective* directive, const KURL& u
     return !directive || directive->allows(url);
 }
 
+bool CSPDirectiveList::checkAncestors(SourceListDirective* directive, Frame* frame) const
+{
+    if (!frame || !directive)
+        return true;
+
+    for (Frame* current = frame->tree().parent(); current; current = current->tree().parent()) {
+        if (!directive->allows(current->document()->url()))
+            return false;
+    }
+    return true;
+}
+
 bool CSPDirectiveList::checkMediaType(MediaListDirective* directive, const String& type, const String& typeAttribute) const
 {
     if (!directive)
@@ -1035,6 +1082,11 @@ bool CSPDirectiveList::checkMediaType(MediaListDirective* directive, const Strin
 SourceListDirective* CSPDirectiveList::operativeDirective(SourceListDirective* directive) const
 {
     return directive ? directive : m_defaultSrc.get();
+}
+
+SourceListDirective* CSPDirectiveList::operativeDirective(SourceListDirective* directive, SourceListDirective* override) const
+{
+    return directive ? directive : override;
 }
 
 bool CSPDirectiveList::checkEvalAndReportViolation(SourceListDirective* directive, const String& consoleMessage, ScriptState* state) const
@@ -1073,8 +1125,14 @@ bool CSPDirectiveList::checkInlineAndReportViolation(SourceListDirective* direct
         return true;
 
     String suffix = String();
-    if (directive == m_defaultSrc)
-        suffix = " Note that '" + String(isScript ? "script" : "style") + "-src' was not explicitly set, so 'default-src' is used as a fallback.";
+    if (directive->allowInline() && directive->isHashOrNoncePresent()) {
+        // If inline is allowed, but a hash or nonce is present, we ignore 'unsafe-inline'. Throw a reasonable error.
+        suffix = " Note that 'unsafe-inline' is ignored if either a hash or nonce value is present in the source list.";
+    } else {
+        suffix = " Either the 'unsafe-inline' keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution.";
+        if (directive == m_defaultSrc)
+            suffix = suffix + " Note also that '" + String(isScript ? "script" : "style") + "-src' was not explicitly set, so 'default-src' is used as a fallback.";
+    }
 
     reportViolationWithLocation(directive->text(), isScript ? scriptSrc : styleSrc, consoleMessage + "\"" + directive->text() + "\"." + suffix + "\n", KURL(), contextURL, contextLine);
 
@@ -1094,6 +1152,8 @@ bool CSPDirectiveList::checkSourceAndReportViolation(SourceListDirective* direct
     String prefix;
     if (baseURI == effectiveDirective)
         prefix = "Refused to set the document's base URI to '";
+    else if (childSrc == effectiveDirective)
+        prefix = "Refused to create a child context containing '";
     else if (connectSrc == effectiveDirective)
         prefix = "Refused to connect to '";
     else if (fontSrc == effectiveDirective)
@@ -1118,6 +1178,15 @@ bool CSPDirectiveList::checkSourceAndReportViolation(SourceListDirective* direct
         suffix = " Note that '" + effectiveDirective + "' was not explicitly set, so 'default-src' is used as a fallback.";
 
     reportViolation(directive->text(), effectiveDirective, prefix + url.elidedString() + "' because it violates the following Content Security Policy directive: \"" + directive->text() + "\"." + suffix + "\n", url);
+    return denyIfEnforcingPolicy();
+}
+
+bool CSPDirectiveList::checkAncestorsAndReportViolation(SourceListDirective* directive, Frame* frame) const
+{
+    if (checkAncestors(directive, frame))
+        return true;
+
+    reportViolation(directive->text(), "frame-ancestors", "Refused to display '" + frame->document()->url().elidedString() + " in a frame because an ancestor violates the following Content Security Policy directive: \"" + directive->text() + "\".", frame->document()->url());
     return denyIfEnforcingPolicy();
 }
 
@@ -1190,9 +1259,21 @@ bool CSPDirectiveList::allowChildFrameFromSource(const KURL& url, ContentSecurit
 {
     if (url.isBlankURL())
         return true;
+
+    // 'frame-src' is the only directive which overrides something other than the default sources.
+    // It overrides 'child-src', which overrides the default sources. So, we do this nested set
+    // of calls to 'operativeDirective()' to grab 'frame-src' if it exists, 'child-src' if it
+    // doesn't, and 'defaut-src' if neither are available.
+    //
+    // All of this only applies, of course, if we're in CSP 1.1. In CSP 1.0, 'frame-src'
+    // overrides 'default-src' directly.
+    SourceListDirective* whichDirective = m_policy->experimentalFeaturesEnabled() ?
+        operativeDirective(m_frameSrc.get(), operativeDirective(m_childSrc.get())) :
+        operativeDirective(m_frameSrc.get());
+
     return reportingStatus == ContentSecurityPolicy::SendReport ?
-        checkSourceAndReportViolation(operativeDirective(m_frameSrc.get()), url, frameSrc) :
-        checkSource(operativeDirective(m_frameSrc.get()), url);
+        checkSourceAndReportViolation(whichDirective, url, frameSrc) :
+        checkSource(whichDirective, url);
 }
 
 bool CSPDirectiveList::allowImageFromSource(const KURL& url, ContentSecurityPolicy::ReportingStatus reportingStatus) const
@@ -1230,12 +1311,6 @@ bool CSPDirectiveList::allowConnectToSource(const KURL& url, ContentSecurityPoli
         checkSource(operativeDirective(m_connectSrc.get()), url);
 }
 
-void CSPDirectiveList::gatherReportURIs(DOMStringList& list) const
-{
-    for (size_t i = 0; i < m_reportURIs.size(); ++i)
-        list.append(m_reportURIs[i].string());
-}
-
 bool CSPDirectiveList::allowFormAction(const KURL& url, ContentSecurityPolicy::ReportingStatus reportingStatus) const
 {
     return reportingStatus == ContentSecurityPolicy::SendReport ?
@@ -1248,6 +1323,20 @@ bool CSPDirectiveList::allowBaseURI(const KURL& url, ContentSecurityPolicy::Repo
     return reportingStatus == ContentSecurityPolicy::SendReport ?
         checkSourceAndReportViolation(m_baseURI.get(), url, baseURI) :
         checkSource(m_baseURI.get(), url);
+}
+
+bool CSPDirectiveList::allowAncestors(Frame* frame, ContentSecurityPolicy::ReportingStatus reportingStatus) const
+{
+    return reportingStatus == ContentSecurityPolicy::SendReport ?
+        checkAncestorsAndReportViolation(m_frameAncestors.get(), frame) :
+        checkAncestors(m_frameAncestors.get(), frame);
+}
+
+bool CSPDirectiveList::allowChildContextFromSource(const KURL& url, ContentSecurityPolicy::ReportingStatus reportingStatus) const
+{
+    return reportingStatus == ContentSecurityPolicy::SendReport ?
+        checkSourceAndReportViolation(operativeDirective(m_childSrc.get()), url, childSrc) :
+        checkSource(operativeDirective(m_childSrc.get()), url);
 }
 
 bool CSPDirectiveList::allowScriptNonce(const String& nonce) const
@@ -1263,6 +1352,11 @@ bool CSPDirectiveList::allowStyleNonce(const String& nonce) const
 bool CSPDirectiveList::allowScriptHash(const SourceHashValue& hashValue) const
 {
     return checkHash(operativeDirective(m_scriptSrc.get()), hashValue);
+}
+
+bool CSPDirectiveList::allowStyleHash(const SourceHashValue& hashValue) const
+{
+    return checkHash(operativeDirective(m_styleSrc.get()), hashValue);
 }
 
 // policy            = directive-list
@@ -1385,6 +1479,10 @@ void CSPDirectiveList::setCSPDirective(const String& name, const String& value, 
 
 void CSPDirectiveList::applySandboxPolicy(const String& name, const String& sandboxPolicy)
 {
+    if (m_reportOnly) {
+        m_policy->reportInvalidInReportOnly(name);
+        return;
+    }
     if (m_haveSandboxPolicy) {
         m_policy->reportDuplicateDirective(name);
         return;
@@ -1444,6 +1542,59 @@ void CSPDirectiveList::parseReflectedXSS(const String& name, const String& value
     m_policy->reportInvalidReflectedXSS(value);
 }
 
+void CSPDirectiveList::parseReferrer(const String& name, const String& value)
+{
+    if (m_didSetReferrerPolicy) {
+        m_policy->reportDuplicateDirective(name);
+        m_referrerPolicy = ReferrerPolicyNever;
+        return;
+    }
+
+    m_didSetReferrerPolicy = true;
+
+    if (value.isEmpty()) {
+        m_policy->reportInvalidReferrer(value);
+        m_referrerPolicy = ReferrerPolicyNever;
+        return;
+    }
+
+    Vector<UChar> characters;
+    value.appendTo(characters);
+
+    const UChar* position = characters.data();
+    const UChar* end = position + characters.size();
+
+    skipWhile<UChar, isASCIISpace>(position, end);
+    const UChar* begin = position;
+    skipWhile<UChar, isNotASCIISpace>(position, end);
+
+    // value1
+    //       ^
+    if (equalIgnoringCase("always", begin, position - begin)) {
+        m_referrerPolicy = ReferrerPolicyAlways;
+    } else if (equalIgnoringCase("default", begin, position - begin)) {
+        m_referrerPolicy = ReferrerPolicyDefault;
+    } else if (equalIgnoringCase("never", begin, position - begin)) {
+        m_referrerPolicy = ReferrerPolicyNever;
+    } else if (equalIgnoringCase("origin", begin, position - begin)) {
+        m_referrerPolicy = ReferrerPolicyOrigin;
+    } else {
+        m_referrerPolicy = ReferrerPolicyNever;
+        m_policy->reportInvalidReferrer(value);
+        return;
+    }
+
+    skipWhile<UChar, isASCIISpace>(position, end);
+    if (position == end)
+        return;
+
+    // value1 value2
+    //        ^
+    m_referrerPolicy = ReferrerPolicyNever;
+    m_policy->reportInvalidReferrer(value);
+
+}
+
 void CSPDirectiveList::addDirective(const String& name, const String& value)
 {
     ASSERT(!name.isEmpty());
@@ -1461,6 +1612,7 @@ void CSPDirectiveList::addDirective(const String& name, const String& value)
         setCSPDirective<SourceListDirective>(name, value, m_imgSrc);
     } else if (equalIgnoringCase(name, styleSrc)) {
         setCSPDirective<SourceListDirective>(name, value, m_styleSrc);
+        m_policy->usesStyleHashAlgorithms(m_styleSrc->hashAlgorithmsUsed());
     } else if (equalIgnoringCase(name, fontSrc)) {
         setCSPDirective<SourceListDirective>(name, value, m_fontSrc);
     } else if (equalIgnoringCase(name, mediaSrc)) {
@@ -1474,12 +1626,18 @@ void CSPDirectiveList::addDirective(const String& name, const String& value)
     } else if (m_policy->experimentalFeaturesEnabled()) {
         if (equalIgnoringCase(name, baseURI))
             setCSPDirective<SourceListDirective>(name, value, m_baseURI);
+        else if (equalIgnoringCase(name, childSrc))
+            setCSPDirective<SourceListDirective>(name, value, m_childSrc);
         else if (equalIgnoringCase(name, formAction))
             setCSPDirective<SourceListDirective>(name, value, m_formAction);
+        else if (equalIgnoringCase(name, frameAncestors))
+            setCSPDirective<SourceListDirective>(name, value, m_frameAncestors);
         else if (equalIgnoringCase(name, pluginTypes))
             setCSPDirective<MediaListDirective>(name, value, m_pluginTypes);
         else if (equalIgnoringCase(name, reflectedXSS))
             parseReflectedXSS(name, value);
+        else if (equalIgnoringCase(name, referrer))
+            parseReferrer(name, value);
         else
             m_policy->reportUnsupportedDirective(name);
     } else {
@@ -1490,7 +1648,8 @@ void CSPDirectiveList::addDirective(const String& name, const String& value)
 ContentSecurityPolicy::ContentSecurityPolicy(ExecutionContextClient* client)
     : m_client(client)
     , m_overrideInlineStyleAllowed(false)
-    , m_sourceHashAlgorithmsUsed(HashAlgorithmsNone)
+    , m_scriptHashAlgorithmsUsed(HashAlgorithmsNone)
+    , m_styleHashAlgorithmsUsed(HashAlgorithmsNone)
 {
 }
 
@@ -1502,15 +1661,15 @@ void ContentSecurityPolicy::copyStateFrom(const ContentSecurityPolicy* other)
 {
     ASSERT(m_policies.isEmpty());
     for (CSPDirectiveListVector::const_iterator iter = other->m_policies.begin(); iter != other->m_policies.end(); ++iter)
-        addPolicyFromHeaderValue((*iter)->header(), (*iter)->headerType());
+        addPolicyFromHeaderValue((*iter)->header(), (*iter)->headerType(), (*iter)->headerSource());
 }
 
 void ContentSecurityPolicy::didReceiveHeaders(const ContentSecurityPolicyResponseHeaders& headers)
 {
     if (!headers.contentSecurityPolicy().isEmpty())
-        didReceiveHeader(headers.contentSecurityPolicy(), ContentSecurityPolicy::Enforce);
+        didReceiveHeader(headers.contentSecurityPolicy(), ContentSecurityPolicy::Enforce, ContentSecurityPolicy::HeaderSourceHTTP);
     if (!headers.contentSecurityPolicyReportOnly().isEmpty())
-        didReceiveHeader(headers.contentSecurityPolicyReportOnly(), ContentSecurityPolicy::Report);
+        didReceiveHeader(headers.contentSecurityPolicyReportOnly(), ContentSecurityPolicy::Report, ContentSecurityPolicy::HeaderSourceHTTP);
 
     // FIXME: Remove this reporting (and the 'xWebKitCSP*' methods) after the next release branch.
     if (m_client->isDocument()) {
@@ -1522,17 +1681,28 @@ void ContentSecurityPolicy::didReceiveHeaders(const ContentSecurityPolicyRespons
     }
 }
 
-void ContentSecurityPolicy::didReceiveHeader(const String& header, HeaderType type)
+void ContentSecurityPolicy::didReceiveHeader(const String& header, HeaderType type, HeaderSource source)
 {
-    addPolicyFromHeaderValue(header, type);
+    addPolicyFromHeaderValue(header, type, source);
 }
 
-void ContentSecurityPolicy::addPolicyFromHeaderValue(const String& header, HeaderType type)
+void ContentSecurityPolicy::addPolicyFromHeaderValue(const String& header, HeaderType type, HeaderSource source)
 {
+    Document* document = 0;
     if (m_client->isDocument()) {
-        Document* document = static_cast<Document*>(m_client);
+        document = static_cast<Document*>(m_client);
         UseCounter::count(*document, getUseCounterType(type));
+
+        // CSP 1.1 defines report-only in a <meta> element as invalid. Measure for now, disable in experimental mode.
+        if (source == ContentSecurityPolicy::HeaderSourceMeta && type == ContentSecurityPolicy::Report) {
+            UseCounter::count(*document, UseCounter::ContentSecurityPolicyReportOnlyInMeta);
+            if (experimentalFeaturesEnabled()) {
+                reportReportOnlyInMeta(header);
+                return;
+            }
+        }
     }
+
 
     Vector<UChar> characters;
     header.appendTo(characters);
@@ -1549,7 +1719,7 @@ void ContentSecurityPolicy::addPolicyFromHeaderValue(const String& header, Heade
 
         // header1,header2 OR header1
         //        ^                  ^
-        OwnPtr<CSPDirectiveList> policy = CSPDirectiveList::create(this, begin, position, type);
+        OwnPtr<CSPDirectiveList> policy = CSPDirectiveList::create(this, begin, position, type, source);
 
         // We disable 'eval()' even in the case of report-only policies, and rely on the check in the V8Initializer::codeGenerationCheckCallbackInMainThread callback to determine whether the call should execute or not.
         if (!policy->allowEval(0, SuppressReport))
@@ -1562,6 +1732,9 @@ void ContentSecurityPolicy::addPolicyFromHeaderValue(const String& header, Heade
         skipExactly<UChar>(position, end, ',');
         begin = position;
     }
+
+    if (document && type != Report && didSetReferrerPolicy())
+        document->setReferrerPolicy(referrerPolicy());
 }
 
 void ContentSecurityPolicy::setOverrideAllowInlineStyle(bool value)
@@ -1642,6 +1815,16 @@ bool isAllowedByAllWithURL(const CSPDirectiveListVector& policies, const KURL& u
     return true;
 }
 
+template<bool (CSPDirectiveList::*allowed)(Frame*, ContentSecurityPolicy::ReportingStatus) const>
+bool isAllowedByAllWithFrame(const CSPDirectiveListVector& policies, Frame* frame, ContentSecurityPolicy::ReportingStatus reportingStatus)
+{
+    for (size_t i = 0; i < policies.size(); ++i) {
+        if (!(policies[i].get()->*allowed)(frame, reportingStatus))
+            return false;
+    }
+    return true;
+}
+
 bool ContentSecurityPolicy::allowJavaScriptURLs(const String& contextURL, const WTF::OrdinalNumber& contextLine, ContentSecurityPolicy::ReportingStatus reportingStatus) const
 {
     return isAllowedByAllWithContext<&CSPDirectiveList::allowJavaScriptURLs>(m_policies, contextURL, contextLine, reportingStatus);
@@ -1702,11 +1885,12 @@ bool ContentSecurityPolicy::allowStyleNonce(const String& nonce) const
     return isAllowedByAllWithNonce<&CSPDirectiveList::allowStyleNonce>(m_policies, nonce);
 }
 
+// TODO(jww) We don't currently have a WTF SHA256 implementation. Once we
+// have that, we should implement a proper check for sha256 hash values in
+// both allowScriptHash and allowStyleHash.
 bool ContentSecurityPolicy::allowScriptHash(const String& source) const
 {
-    // TODO(jww) We don't currently have a WTF SHA256 implementation. Once we
-    // have that, we should implement a proper check for sha256 hash values here.
-    if (HashAlgorithmsSha1 & m_sourceHashAlgorithmsUsed) {
+    if (HashAlgorithmsSha1 & m_scriptHashAlgorithmsUsed) {
         Vector<uint8_t, 20> digest;
         SHA1 sourceSha1;
         sourceSha1.addBytes(UTF8Encoding().normalizeAndEncode(source, WTF::EntitiesForUnencodables));
@@ -1719,9 +1903,29 @@ bool ContentSecurityPolicy::allowScriptHash(const String& source) const
     return false;
 }
 
+bool ContentSecurityPolicy::allowStyleHash(const String& source) const
+{
+    if (HashAlgorithmsSha1 & m_styleHashAlgorithmsUsed) {
+        Vector<uint8_t, 20> digest;
+        SHA1 sourceSha1;
+        sourceSha1.addBytes(UTF8Encoding().normalizeAndEncode(source, WTF::EntitiesForUnencodables));
+        sourceSha1.computeHash(digest);
+
+        if (isAllowedByAllWithHash<&CSPDirectiveList::allowStyleHash>(m_policies, SourceHashValue(HashAlgorithmsSha1, Vector<uint8_t>(digest))))
+            return true;
+    }
+
+    return false;
+}
+
 void ContentSecurityPolicy::usesScriptHashAlgorithms(uint8_t algorithms)
 {
-    m_sourceHashAlgorithmsUsed |= algorithms;
+    m_scriptHashAlgorithmsUsed |= algorithms;
+}
+
+void ContentSecurityPolicy::usesStyleHashAlgorithms(uint8_t algorithms)
+{
+    m_styleHashAlgorithmsUsed |= algorithms;
 }
 
 bool ContentSecurityPolicy::allowObjectFromSource(const KURL& url, ContentSecurityPolicy::ReportingStatus reportingStatus) const
@@ -1769,6 +1973,16 @@ bool ContentSecurityPolicy::allowBaseURI(const KURL& url, ContentSecurityPolicy:
     return isAllowedByAllWithURL<&CSPDirectiveList::allowBaseURI>(m_policies, url, reportingStatus);
 }
 
+bool ContentSecurityPolicy::allowAncestors(Frame* frame, ContentSecurityPolicy::ReportingStatus reportingStatus) const
+{
+    return isAllowedByAllWithFrame<&CSPDirectiveList::allowAncestors>(m_policies, frame, reportingStatus);
+}
+
+bool ContentSecurityPolicy::allowChildContextFromSource(const KURL& url, ContentSecurityPolicy::ReportingStatus reportingStatus) const
+{
+    return isAllowedByAllWithURL<&CSPDirectiveList::allowChildContextFromSource>(m_policies, url, reportingStatus);
+}
+
 bool ContentSecurityPolicy::isActive() const
 {
     return !m_policies.isEmpty();
@@ -1784,10 +1998,28 @@ ReflectedXSSDisposition ContentSecurityPolicy::reflectedXSSDisposition() const
     return disposition;
 }
 
-void ContentSecurityPolicy::gatherReportURIs(DOMStringList& list) const
+ReferrerPolicy ContentSecurityPolicy::referrerPolicy() const
 {
-    for (size_t i = 0; i < m_policies.size(); ++i)
-        m_policies[i]->gatherReportURIs(list);
+    ReferrerPolicy policy = ReferrerPolicyDefault;
+    bool first = true;
+    for (size_t i = 0; i < m_policies.size(); ++i) {
+        if (m_policies[i]->didSetReferrerPolicy()) {
+            if (first)
+                policy = m_policies[i]->referrerPolicy();
+            else
+                policy = mergeReferrerPolicies(policy, m_policies[i]->referrerPolicy());
+        }
+    }
+    return policy;
+}
+
+bool ContentSecurityPolicy::didSetReferrerPolicy() const
+{
+    for (size_t i = 0; i < m_policies.size(); ++i) {
+        if (m_policies[i]->didSetReferrerPolicy())
+            return true;
+    }
+    return false;
 }
 
 SecurityOrigin* ContentSecurityPolicy::securityOrigin() const
@@ -1908,6 +2140,21 @@ void ContentSecurityPolicy::reportViolation(const String& directiveText, const S
         PingLoader::sendViolationReport(frame, reportURIs[i], report, PingLoader::ContentSecurityPolicyViolationReport);
 
     didSendViolationReport(stringifiedReport);
+}
+
+void ContentSecurityPolicy::reportInvalidReferrer(const String& invalidValue) const
+{
+    logToConsole("The 'referrer' Content Security Policy directive has the invalid value \"" + invalidValue + "\". Valid values are \"always\", \"default\", \"never\", and \"origin\".");
+}
+
+void ContentSecurityPolicy::reportReportOnlyInMeta(const String& header) const
+{
+    logToConsole("The report-only Content Security Policy '" + header + "' was delivered via a <meta> element, which is disallowed. The policy has been ignored.");
+}
+
+void ContentSecurityPolicy::reportInvalidInReportOnly(const String& name) const
+{
+    logToConsole("The Content Security Policy directive '" + name + "' is ignored when delivered in a report-only policy.");
 }
 
 void ContentSecurityPolicy::reportUnsupportedDirective(const String& name) const

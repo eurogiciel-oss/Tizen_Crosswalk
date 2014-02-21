@@ -107,6 +107,11 @@
             },
           ],
         }],
+        ['chromeos==1 and disable_nacl==0 and disable_nacl_untrusted==0', {
+          'dependencies': [
+            '../chrome/third_party/chromevox/chromevox.gyp:chromevox_resources',
+          ],
+        }],
       ],
     },
     {
@@ -135,7 +140,7 @@
                 '<(additional_modules_input_path)',
                 '<@(_outputs)',
               ],
-              'message': 'Transforming additional modules list.',
+              'message': 'Transforming additional modules list',
             }
           ],
         }],
@@ -303,7 +308,7 @@
       'dependencies': [
         'chrome_unscaled_resources',
         'theme_resources_gen',
-        '<(DEPTH)/ui/ui.gyp:ui_resources',
+        '<(DEPTH)/ui/resources/ui_resources.gyp:ui_resources',
       ],
     },
     {
@@ -352,7 +357,7 @@
         '<(DEPTH)/components/component_strings.gyp:component_strings',
         '<(DEPTH)/net/net.gyp:net_resources',
         '<(DEPTH)/ui/base/strings/ui_strings.gyp:ui_strings',
-        '<(DEPTH)/ui/ui.gyp:ui_resources',
+        '<(DEPTH)/ui/resources/ui_resources.gyp:ui_resources',
       ],
       'actions': [
         {
@@ -370,15 +375,10 @@
         {
           'includes': ['chrome_repack_chrome_200_percent.gypi']
         },
-        {
-          'includes': ['chrome_repack_chrome_touch_100_percent.gypi']
-        },
       ],
       'conditions': [
         ['OS != "ios"', {
           'dependencies': [
-            # TODO(zork): Protect this with if use_aura==1
-            '<(DEPTH)/ash/ash_strings.gyp:ash_strings',
             '<(DEPTH)/content/content_resources.gyp:content_resources',
             '<(DEPTH)/device/bluetooth/bluetooth_strings.gyp:device_bluetooth_strings',
             '<(DEPTH)/webkit/webkit_resources.gyp:webkit_resources',
@@ -387,7 +387,13 @@
         }],
         ['use_ash==1', {
           'dependencies': [
+             '<(DEPTH)/ash/ash_strings.gyp:ash_strings',
              '<(DEPTH)/ash/ash.gyp:ash_resources',
+          ],
+        }],
+        ['enable_autofill_dialog==1 and OS!="android"', {
+          'dependencies': [
+            '<(DEPTH)/third_party/libaddressinput/libaddressinput.gyp:libaddressinput_strings',
           ],
         }],
         ['OS != "mac" and OS != "ios"', {
@@ -401,12 +407,6 @@
           # since the framework build phase will copy them into the framework
           # bundle directly.
           'copies': [
-            {
-              'destination': '<(PRODUCT_DIR)',
-              'files': [
-                '<(SHARED_INTERMEDIATE_DIR)/repack/chrome.pak'
-              ],
-            },
             {
               'destination': '<(PRODUCT_DIR)',
               'files': [
@@ -446,16 +446,6 @@
                   'destination': '<(PRODUCT_DIR)',
                   'files': [
                     '<(SHARED_INTERMEDIATE_DIR)/repack/chrome_200_percent.pak',
-                  ],
-                },
-              ],
-            }],
-            ['enable_touch_ui==1', {
-              'copies': [
-                {
-                  'destination': '<(PRODUCT_DIR)',
-                  'files': [
-                    '<(SHARED_INTERMEDIATE_DIR)/repack/chrome_touch_100_percent.pak',
                   ],
                 },
               ],

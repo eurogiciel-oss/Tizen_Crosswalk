@@ -14,26 +14,13 @@ import time
 
 from buildbot_lib import (
     BuildContext, BuildStatus, Command, EnsureDirectoryExists,
-    ParseStandardCommandLine, RemoveDirectory, RunBuild, SCons, Step, StepLink,
+    ParseStandardCommandLine, RemoveDirectory, RemoveGypBuildDirectories,
+    RemoveSconsBuildDirectories, RunBuild, SCons, Step, StepLink,
     StepText, TryToCleanContents)
 
 
 # Windows-specific environment manipulation
 def SetupWindowsEnvironment(context):
-  # Blow away path for now if on the bots (to be more hermetic).
-  if os.environ.get('BUILDBOT_SLAVENAME'):
-    paths = [
-        r'c:\b\depot_tools',
-        r'c:\b\depot_tools\python_bin',
-        r'c:\b\build_internal\tools',
-        r'e:\b\depot_tools',
-        r'e:\b\depot_tools\python_bin',
-        r'e:\b\build_internal\tools',
-        r'C:\WINDOWS\system32',
-        r'C:\WINDOWS\system32\WBEM',
-        ]
-    context.SetEnv('PATH', os.pathsep.join(paths))
-
   # Poke around looking for MSVC.  We should do something more principled in
   # the future.
 
@@ -193,30 +180,12 @@ def CommandGclientRunhooks(context):
   Command(context, cmd=[gclient, 'runhooks', '--force'])
 
 
-def RemoveGypBuildDirectories():
-  # Remove all directories on all platforms.  Overkill, but it allows for
-  # straight-line code.
-  # Windows
-  RemoveDirectory('build/Debug')
-  RemoveDirectory('build/Release')
-  RemoveDirectory('build/Debug-Win32')
-  RemoveDirectory('build/Release-Win32')
-  RemoveDirectory('build/Debug-x64')
-  RemoveDirectory('build/Release-x64')
-
-  # Linux and Mac
-  RemoveDirectory('../xcodebuild')
-  RemoveDirectory('../out')
-  RemoveDirectory('src/third_party/nacl_sdk/arm-newlib')
-
-
 def BuildScript(status, context):
   inside_toolchain = context['inside_toolchain']
 
   # Clean out build directories.
   with Step('clobber', status):
-    RemoveDirectory('scons-out')
-    RemoveDirectory('breakpad-out')
+    RemoveSconsBuildDirectories()
     RemoveGypBuildDirectories()
 
   with Step('cleanup_temp', status):

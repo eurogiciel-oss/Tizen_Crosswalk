@@ -24,6 +24,7 @@ import org.chromium.components.navigation_interception.InterceptNavigationDelega
 import org.chromium.components.navigation_interception.NavigationParams;
 import org.chromium.content.browser.ContentVideoViewClient;
 import org.chromium.content.browser.ContentViewDownloadDelegate;
+import org.chromium.content.browser.DownloadInfo;
 
 // Help bridge callback in XWalkContentsClient to XWalkViewClient and
 // WebChromeClient; Also handle the JNI conmmunication logic.
@@ -37,6 +38,7 @@ public class XWalkContentsClientBridge extends XWalkContentsClient
     private Bitmap mFavicon;
     private DownloadListener mDownloadListener;
     private InterceptNavigationDelegate mInterceptNavigationDelegate;
+    private PageLoadListener mPageLoadListener;
     private XWalkNavigationHandler mNavigationHandler;
 
     // The native peer of the object
@@ -84,6 +86,10 @@ public class XWalkContentsClientBridge extends XWalkContentsClient
 
     public void setNavigationHandler(XWalkNavigationHandler handler) {
         mNavigationHandler = handler;
+    }
+
+    void registerPageLoadListener(PageLoadListener listener) {
+        mPageLoadListener = listener;
     }
 
     public InterceptNavigationDelegate getInterceptNavigationDelegate() {
@@ -211,6 +217,7 @@ public class XWalkContentsClientBridge extends XWalkContentsClient
 
     @Override
     public void onPageFinished(String url) {
+        if (mPageLoadListener != null) mPageLoadListener.onPageFinished(url);
         if (mXWalkClient != null && mXWalkView != null) {
             mXWalkClient.onPageFinished(mXWalkView, url);
         }
@@ -409,11 +416,10 @@ public class XWalkContentsClientBridge extends XWalkContentsClient
     }
 
     // Implement ContentViewDownloadDelegate methods.
-    public void requestHttpGetDownload(String url, String userAgent, String contentDisposition,
-        String mimetype, String cookie, String referer, long contentLength) {
+    public void requestHttpGetDownload(DownloadInfo downloadInfo) {
         if (mDownloadListener != null) {
-            mDownloadListener.onDownloadStart(url, userAgent,
-                    contentDisposition, mimetype, contentLength);
+            mDownloadListener.onDownloadStart(downloadInfo.getUrl(), downloadInfo.getUserAgent(),
+            downloadInfo.getContentDisposition(), downloadInfo.getMimeType(), downloadInfo.getContentLength());
         }
     }
 

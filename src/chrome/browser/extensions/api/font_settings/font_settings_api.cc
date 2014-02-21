@@ -216,7 +216,7 @@ g_factory = LAZY_INSTANCE_INITIALIZER;
 
 // static
 ProfileKeyedAPIFactory<FontSettingsAPI>* FontSettingsAPI::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 bool FontSettingsClearFontFunction::RunImpl() {
@@ -382,7 +382,7 @@ bool SetFontPrefExtensionFunction::RunImpl() {
   base::DictionaryValue* details = NULL;
   EXTENSION_FUNCTION_VALIDATE(args_->GetDictionary(0, &details));
 
-  Value* value;
+  base::Value* value;
   EXTENSION_FUNCTION_VALIDATE(details->Get(GetKey(), &value));
 
   PreferenceAPI::Get(GetProfile())

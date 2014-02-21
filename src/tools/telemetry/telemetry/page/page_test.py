@@ -5,6 +5,7 @@ import logging
 
 from telemetry.page import test_expectations
 from telemetry.page.actions import all_page_actions
+from telemetry.page.actions import interact
 from telemetry.page.actions import navigate
 from telemetry.page.actions import page_action
 
@@ -20,7 +21,18 @@ def _GetActionFromData(action_data):
   return action(action_data)
 
 
-def GetCompoundActionFromPage(page, action_name):
+def GetSubactionFromData(page, subaction_data, interactive):
+  subaction_name = subaction_data['action']
+  if hasattr(page, subaction_name):
+    return GetCompoundActionFromPage(page, subaction_name, interactive)
+  else:
+    return [_GetActionFromData(subaction_data)]
+
+
+def GetCompoundActionFromPage(page, action_name, interactive=False):
+  if interactive:
+    return [interact.InteractAction()]
+
   if not action_name:
     return []
 
@@ -30,12 +42,8 @@ def GetCompoundActionFromPage(page, action_name):
 
   action_list = []
   for subaction_data in action_data_list:
-    subaction_name = subaction_data['action']
-    if hasattr(page, subaction_name):
-      subaction = GetCompoundActionFromPage(page, subaction_name)
-    else:
-      subaction = [_GetActionFromData(subaction_data)]
-    action_list += subaction * subaction_data.get('repeat', 1)
+    for _ in xrange(subaction_data.get('repeat', 1)):
+      action_list += GetSubactionFromData(page, subaction_data, interactive)
   return action_list
 
 
@@ -103,9 +111,25 @@ class PageTest(object):
   def close_tabs_before_run(self, close_tabs):
     self._close_tabs_before_run = close_tabs
 
-  def NeedsBrowserRestartAfterEachRun(self, browser):  # pylint: disable=W0613
-    """Override to specify browser restart after each run."""
+  def RestartBrowserBeforeEachPage(self):
+    """ Should the browser be restarted for the page?
+
+    This returns true if the test needs to unconditionally restart the
+    browser for each page. It may be called before the browser is started.
+    """
     return self._needs_browser_restart_after_each_run
+
+  def StopBrowserAfterPage(self, browser, page):  # pylint: disable=W0613
+    """Should the browser be stopped after the page is run?
+
+    This is called after a page is run to decide whether the browser needs to
+    be stopped to clean up its state. If it is stopped, then it will be
+    restarted to run the next page.
+
+    A test that overrides this can look at both the page and the browser to
+    decide whether it needs to stop the browser.
+    """
+    return False
 
   def AddCommandLineOptions(self, parser):
     """Override to expose command-line options for this test.
@@ -119,12 +143,32 @@ class PageTest(object):
     """Override to add test-specific options to the BrowserOptions object"""
     pass
 
-  def CustomizeBrowserOptionsForPage(self, page, options):
-    """Add options specific to the test and the given page."""
-    if not self.CanRunForPage(page):
-      return
-    for action in GetCompoundActionFromPage(page, self._action_name_to_run):
-      action.CustomizeBrowserOptions(options)
+  def CustomizeBrowserOptionsForPageSet(self, page_set, options):
+    """Set options required for this page set.
+
+    These options will be used every time the browser is started while running
+    this page set. They may, however, be further modified by
+    CustomizeBrowserOptionsForSinglePage or by the profiler.
+    """
+    for page in page_set:
+      if not self.CanRunForPage(page):
+        return
+      interactive = options and options.interactive
+      for action in GetCompoundActionFromPage(
+          page, self._action_name_to_run, interactive):
+        action.CustomizeBrowserOptionsForPageSet(options)
+
+  def CustomizeBrowserOptionsForSinglePage(self, page, options):
+    """Set options specific to the test and the given page.
+
+    This will be called with the current page when the browser is (re)started.
+    Changing options at this point only makes sense if the browser is being
+    restarted for each page.
+    """
+    interactive = options and options.interactive
+    for action in GetCompoundActionFromPage(
+        page, self._action_name_to_run, interactive):
+      action.CustomizeBrowserOptionsForSinglePage(options)
 
   def WillStartBrowser(self, browser):
     """Override to manipulate the browser environment before it launches."""
@@ -174,6 +218,14 @@ class PageTest(object):
     all waiting for completion has occurred."""
     pass
 
+  def WillRunActions(self, page, tab):
+    """Override to do operations before running the actions on the page."""
+    pass
+
+  def DidRunActions(self, page, tab):
+    """Override to do operations after running the actions on the page."""
+    pass
+
   def WillRunAction(self, page, tab, action):
     """Override to do operations before running the action on the page."""
     pass
@@ -204,8 +256,12 @@ class PageTest(object):
 
   def Run(self, options, page, tab, results):
     self.options = options
-    compound_action = GetCompoundActionFromPage(page, self._action_name_to_run)
+    interactive = options and options.interactive
+    compound_action = GetCompoundActionFromPage(
+        page, self._action_name_to_run, interactive)
+    self.WillRunActions(page, tab)
     self._RunCompoundAction(page, tab, compound_action)
+    self.DidRunActions(page, tab)
     try:
       self._test_method(page, tab, results)
     finally:

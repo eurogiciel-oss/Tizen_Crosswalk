@@ -35,7 +35,6 @@
 #include "core/dom/ScriptLoader.h"
 #include "core/dom/Text.h"
 #include "core/html/HTMLDataListElement.h"
-#include "core/html/HTMLOptGroupElement.h"
 #include "core/html/HTMLSelectElement.h"
 #include "core/html/parser/HTMLParserIdioms.h"
 #include "core/rendering/RenderTheme.h"
@@ -46,35 +45,29 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-HTMLOptionElement::HTMLOptionElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+HTMLOptionElement::HTMLOptionElement(Document& document)
+    : HTMLElement(optionTag, document)
     , m_disabled(false)
     , m_isSelected(false)
 {
-    ASSERT(hasTagName(optionTag));
     setHasCustomStyleCallbacks();
     ScriptWrappable::init(this);
 }
 
 PassRefPtr<HTMLOptionElement> HTMLOptionElement::create(Document& document)
 {
-    return adoptRef(new HTMLOptionElement(optionTag, document));
+    return adoptRef(new HTMLOptionElement(document));
 }
 
-PassRefPtr<HTMLOptionElement> HTMLOptionElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<HTMLOptionElement> HTMLOptionElement::createForJSConstructor(Document& document, const String& data, const AtomicString& value,
+    bool defaultSelected, bool selected, ExceptionState& exceptionState)
 {
-    return adoptRef(new HTMLOptionElement(tagName, document));
-}
-
-PassRefPtr<HTMLOptionElement> HTMLOptionElement::createForJSConstructor(Document& document, const String& data, const String& value,
-    bool defaultSelected, bool selected, ExceptionState& es)
-{
-    RefPtr<HTMLOptionElement> element = adoptRef(new HTMLOptionElement(optionTag, document));
+    RefPtr<HTMLOptionElement> element = adoptRef(new HTMLOptionElement(document));
 
     RefPtr<Text> text = Text::create(document, data.isNull() ? "" : data);
 
-    element->appendChild(text.release(), es);
-    if (es.hadException())
+    element->appendChild(text.release(), exceptionState);
+    if (exceptionState.hadException())
         return 0;
 
     if (!value.isNull())
@@ -88,12 +81,8 @@ PassRefPtr<HTMLOptionElement> HTMLOptionElement::createForJSConstructor(Document
 
 void HTMLOptionElement::attach(const AttachContext& context)
 {
+    updateNonRenderStyle();
     HTMLElement::attach(context);
-    // If after attaching nothing called styleForRenderer() on this node we
-    // manually cache the value. This happens if our parent doesn't have a
-    // renderer like <optgroup> or if it doesn't allow children like <select>.
-    if (!m_style && parentNode()->renderStyle())
-        updateNonRenderStyle();
 }
 
 void HTMLOptionElement::detach(const AttachContext& context)
@@ -126,7 +115,7 @@ String HTMLOptionElement::text() const
     return text.stripWhiteSpace(isHTMLSpace<UChar>).simplifyWhiteSpace(isHTMLSpace<UChar>);
 }
 
-void HTMLOptionElement::setText(const String &text, ExceptionState& es)
+void HTMLOptionElement::setText(const String &text, ExceptionState& exceptionState)
 {
     RefPtr<Node> protectFromMutationEvents(this);
 
@@ -143,7 +132,7 @@ void HTMLOptionElement::setText(const String &text, ExceptionState& es)
         toText(child)->setData(text);
     else {
         removeChildren();
-        appendChild(Text::create(document(), text), es);
+        appendChild(Text::create(document(), text), exceptionState);
     }
 
     if (selectIsMenuList && select->selectedIndex() != oldSelectedIndex)
@@ -152,8 +141,7 @@ void HTMLOptionElement::setText(const String &text, ExceptionState& es)
 
 void HTMLOptionElement::accessKeyAction(bool)
 {
-    HTMLSelectElement* select = ownerSelectElement();
-    if (select)
+    if (HTMLSelectElement* select = ownerSelectElement())
         select->accessKeySetSelectedIndex(index());
 }
 
@@ -208,12 +196,12 @@ String HTMLOptionElement::value() const
     return collectOptionInnerText().stripWhiteSpace(isHTMLSpace<UChar>).simplifyWhiteSpace(isHTMLSpace<UChar>);
 }
 
-void HTMLOptionElement::setValue(const String& value)
+void HTMLOptionElement::setValue(const AtomicString& value)
 {
     setAttribute(valueAttr, value);
 }
 
-bool HTMLOptionElement::selected()
+bool HTMLOptionElement::selected() const
 {
     if (HTMLSelectElement* select = ownerSelectElement()) {
         // If a stylesheet contains option:checked selectors, this function is
@@ -291,7 +279,7 @@ String HTMLOptionElement::label() const
     return collectOptionInnerText().stripWhiteSpace(isHTMLSpace<UChar>).simplifyWhiteSpace(isHTMLSpace<UChar>);
 }
 
-void HTMLOptionElement::setLabel(const String& label)
+void HTMLOptionElement::setLabel(const AtomicString& label)
 {
     setAttribute(labelAttr, label);
 }
@@ -308,10 +296,13 @@ RenderStyle* HTMLOptionElement::nonRendererStyle() const
 
 PassRefPtr<RenderStyle> HTMLOptionElement::customStyleForRenderer()
 {
-    // styleForRenderer is called whenever a new style should be associated
-    // with an Element so now is a good time to update our cached style.
-    updateNonRenderStyle();
     return m_style;
+}
+
+void HTMLOptionElement::willRecalcStyle(StyleRecalcChange change)
+{
+    if (!needsAttach() && (needsStyleRecalc() || change >= Inherit))
+        updateNonRenderStyle();
 }
 
 void HTMLOptionElement::didRecalcStyle(StyleRecalcChange)
@@ -327,7 +318,7 @@ void HTMLOptionElement::didRecalcStyle(StyleRecalcChange)
 String HTMLOptionElement::textIndentedToRespectGroupLabel() const
 {
     ContainerNode* parent = parentNode();
-    if (parent && isHTMLOptGroupElement(parent))
+    if (parent && parent->hasTagName(optgroupTag))
         return "    " + text();
     return text();
 }
@@ -337,7 +328,7 @@ bool HTMLOptionElement::isDisabledFormControl() const
     if (ownElementDisabled())
         return true;
     if (Element* parent = parentElement())
-        return isHTMLOptGroupElement(parent) && parent->isDisabledFormControl();
+        return parent->hasTagName(optgroupTag) && parent->isDisabledFormControl();
     return false;
 }
 
@@ -365,11 +356,19 @@ String HTMLOptionElement::collectOptionInnerText() const
             text.append(node->nodeValue());
         // Text nodes inside script elements are not part of the option text.
         if (node->isElementNode() && toScriptLoaderIfPossible(toElement(node)))
-            node = NodeTraversal::nextSkippingChildren(node, this);
+            node = NodeTraversal::nextSkippingChildren(*node, this);
         else
-            node = NodeTraversal::next(node, this);
+            node = NodeTraversal::next(*node, this);
     }
     return text.toString();
+}
+
+HTMLFormElement* HTMLOptionElement::form() const
+{
+    if (HTMLSelectElement* selectElement = ownerSelectElement())
+        return selectElement->formOwner();
+
+    return 0;
 }
 
 } // namespace WebCore

@@ -129,10 +129,9 @@ bool isValidHTTPToken(const String& characters)
 static const size_t maxInputSampleSize = 128;
 static String trimInputSample(const char* p, size_t length)
 {
-    String s = String(p, std::min<size_t>(length, maxInputSampleSize));
     if (length > maxInputSampleSize)
-        s.append(horizontalEllipsis);
-    return s;
+        return String(p, maxInputSampleSize) + horizontalEllipsis;
+    return String(p, length);
 }
 
 ContentDispositionType contentDispositionType(const String& contentDisposition)
@@ -266,7 +265,7 @@ String filenameFromHTTPContentDisposition(const String& value)
     return String();
 }
 
-String extractMIMETypeFromMediaType(const String& mediaType)
+AtomicString extractMIMETypeFromMediaType(const AtomicString& mediaType)
 {
     StringBuilder mimeType;
     unsigned length = mediaType.length();
@@ -298,7 +297,7 @@ String extractMIMETypeFromMediaType(const String& mediaType)
 
     if (mimeType.length() == length)
         return mediaType;
-    return mimeType.toString();
+    return mimeType.toAtomicString();
 }
 
 String extractCharsetFromMediaType(const String& mediaType)
@@ -607,15 +606,15 @@ size_t parseHTTPRequestLine(const char* data, size_t length, String& failureReas
     return end - data;
 }
 
-size_t parseHTTPHeader(const char* start, size_t length, String& failureReason, AtomicString& nameStr, String& valueStr)
+size_t parseHTTPHeader(const char* start, size_t length, String& failureReason, AtomicString& nameStr, AtomicString& valueStr)
 {
     const char* p = start;
     const char* end = start + length;
 
     Vector<char> name;
     Vector<char> value;
-    nameStr = AtomicString();
-    valueStr = String();
+    nameStr = nullAtom;
+    valueStr = nullAtom;
 
     for (; p < end; p++) {
         switch (*p) {
@@ -665,7 +664,7 @@ size_t parseHTTPHeader(const char* start, size_t length, String& failureReason, 
         return 0;
     }
     nameStr = AtomicString::fromUTF8(name.data(), name.size());
-    valueStr = String::fromUTF8(value.data(), value.size());
+    valueStr = AtomicString::fromUTF8(value.data(), value.size());
     if (nameStr.isNull()) {
         failureReason = "Invalid UTF-8 sequence in header name";
         return 0;

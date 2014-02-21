@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="resources/shadow-dom.js"></script>
 </head>
 <body>
@@ -71,7 +71,7 @@ testComposedShadowTree(
                                                           createDOM('content', {'id': 'g'}),
                                                           createDOM('div', {'id': 'h'}))))));
 
-debug('shadow fallback element reprojection');
+debug('Ignore shadow fallback elements');
 testComposedShadowTree(
     createDOM('div', {'id': 'a'},
               createDOM('div', {'id': 'b'}),

@@ -13,9 +13,41 @@
 #include "base/thread_task_runner_handle.h"
 #include "base/threading/thread.h"
 #include "jingle/notifier/listener/push_client.h"
+#include "sync/notifier/gcm_network_channel_delegate.h"
 #include "sync/notifier/invalidation_notifier.h"
+#include "sync/notifier/object_id_invalidation_map.h"
+#include "sync/notifier/sync_system_resources.h"
 
 namespace syncer {
+
+struct NonBlockingInvalidator::InitializeOptions {
+  InitializeOptions(
+      NetworkChannelCreator network_channel_creator,
+      const std::string& invalidator_client_id,
+      const UnackedInvalidationsMap& saved_invalidations,
+      const std::string& invalidation_bootstrap_data,
+      const WeakHandle<InvalidationStateTracker>&
+          invalidation_state_tracker,
+      const std::string& client_info,
+      scoped_refptr<net::URLRequestContextGetter> request_context_getter)
+      : network_channel_creator(network_channel_creator),
+        invalidator_client_id(invalidator_client_id),
+        saved_invalidations(saved_invalidations),
+        invalidation_bootstrap_data(invalidation_bootstrap_data),
+        invalidation_state_tracker(invalidation_state_tracker),
+        client_info(client_info),
+        request_context_getter(request_context_getter) {
+  }
+
+  NetworkChannelCreator network_channel_creator;
+  std::string invalidator_client_id;
+  UnackedInvalidationsMap saved_invalidations;
+  std::string invalidation_bootstrap_data;
+  WeakHandle<InvalidationStateTracker> invalidation_state_tracker;
+  std::string client_info;
+  scoped_refptr<net::URLRequestContextGetter> request_context_getter;
+};
+
 
 class NonBlockingInvalidator::Core
     : public base::RefCountedThreadSafe<NonBlockingInvalidator::Core>,
@@ -29,16 +61,9 @@ class NonBlockingInvalidator::Core
 
   // Helpers called on I/O thread.
   void Initialize(
-      const notifier::NotifierOptions& notifier_options,
-      const std::string& invalidator_client_id,
-      const InvalidationStateMap& initial_invalidation_state_map,
-      const std::string& invalidation_bootstrap_data,
-      const WeakHandle<InvalidationStateTracker>& invalidation_state_tracker,
-      const std::string& client_info);
+      const NonBlockingInvalidator::InitializeOptions& initialize_options);
   void Teardown();
   void UpdateRegisteredIds(const ObjectIdSet& ids);
-  void Acknowledge(const invalidation::ObjectId& id,
-                   const AckHandle& ack_handle);
   void UpdateCredentials(const std::string& email, const std::string& token);
 
   // InvalidationHandler implementation (all called on I/O thread by
@@ -71,26 +96,21 @@ NonBlockingInvalidator::Core::~Core() {
 }
 
 void NonBlockingInvalidator::Core::Initialize(
-    const notifier::NotifierOptions& notifier_options,
-    const std::string& invalidator_client_id,
-    const InvalidationStateMap& initial_invalidation_state_map,
-    const std::string& invalidation_bootstrap_data,
-    const WeakHandle<InvalidationStateTracker>& invalidation_state_tracker,
-    const std::string& client_info) {
-  DCHECK(notifier_options.request_context_getter.get());
-  DCHECK_EQ(notifier::NOTIFICATION_SERVER,
-            notifier_options.notification_method);
-  network_task_runner_ = notifier_options.request_context_getter->
-      GetNetworkTaskRunner();
+    const NonBlockingInvalidator::InitializeOptions& initialize_options) {
+  DCHECK(initialize_options.request_context_getter.get());
+  network_task_runner_ =
+      initialize_options.request_context_getter->GetNetworkTaskRunner();
   DCHECK(network_task_runner_->BelongsToCurrentThread());
+  scoped_ptr<SyncNetworkChannel> network_channel =
+      initialize_options.network_channel_creator.Run();
   invalidation_notifier_.reset(
       new InvalidationNotifier(
-          notifier::PushClient::CreateDefaultOnIOThread(notifier_options),
-          invalidator_client_id,
-          initial_invalidation_state_map,
-          invalidation_bootstrap_data,
-          invalidation_state_tracker,
-          client_info));
+          network_channel.Pass(),
+          initialize_options.invalidator_client_id,
+          initialize_options.saved_invalidations,
+          initialize_options.invalidation_bootstrap_data,
+          initialize_options.invalidation_state_tracker,
+          initialize_options.client_info));
   invalidation_notifier_->RegisterHandler(this);
 }
 
@@ -104,12 +124,6 @@ void NonBlockingInvalidator::Core::Teardown() {
 void NonBlockingInvalidator::Core::UpdateRegisteredIds(const ObjectIdSet& ids) {
   DCHECK(network_task_runner_->BelongsToCurrentThread());
   invalidation_notifier_->UpdateRegisteredIds(this, ids);
-}
-
-void NonBlockingInvalidator::Core::Acknowledge(const invalidation::ObjectId& id,
-                                               const AckHandle& ack_handle) {
-  DCHECK(network_task_runner_->BelongsToCurrentThread());
-  invalidation_notifier_->Acknowledge(id, ack_handle);
 }
 
 void NonBlockingInvalidator::Core::UpdateCredentials(const std::string& email,
@@ -134,30 +148,34 @@ void NonBlockingInvalidator::Core::OnIncomingInvalidation(
 }
 
 NonBlockingInvalidator::NonBlockingInvalidator(
-    const notifier::NotifierOptions& notifier_options,
+    NetworkChannelCreator network_channel_creator,
     const std::string& invalidator_client_id,
-    const InvalidationStateMap& initial_invalidation_state_map,
+    const UnackedInvalidationsMap& saved_invalidations,
     const std::string& invalidation_bootstrap_data,
     const WeakHandle<InvalidationStateTracker>&
         invalidation_state_tracker,
-    const std::string& client_info)
+    const std::string& client_info,
+    const scoped_refptr<net::URLRequestContextGetter>& request_context_getter)
     : parent_task_runner_(base::ThreadTaskRunnerHandle::Get()),
-      network_task_runner_(
-          notifier_options.request_context_getter->GetNetworkTaskRunner()),
+      network_task_runner_(request_context_getter->GetNetworkTaskRunner()),
       weak_ptr_factory_(this) {
   core_ = new Core(MakeWeakHandle(weak_ptr_factory_.GetWeakPtr()));
+
+  InitializeOptions initialize_options(
+      network_channel_creator,
+      invalidator_client_id,
+      saved_invalidations,
+      invalidation_bootstrap_data,
+      invalidation_state_tracker,
+      client_info,
+      request_context_getter);
 
   if (!network_task_runner_->PostTask(
           FROM_HERE,
           base::Bind(
               &NonBlockingInvalidator::Core::Initialize,
               core_.get(),
-              notifier_options,
-              invalidator_client_id,
-              initial_invalidation_state_map,
-              invalidation_bootstrap_data,
-              invalidation_state_tracker,
-              client_info))) {
+              initialize_options))) {
     NOTREACHED();
   }
 }
@@ -196,20 +214,6 @@ void NonBlockingInvalidator::UnregisterHandler(InvalidationHandler* handler) {
   registrar_.UnregisterHandler(handler);
 }
 
-void NonBlockingInvalidator::Acknowledge(const invalidation::ObjectId& id,
-                                         const AckHandle& ack_handle) {
-  DCHECK(parent_task_runner_->BelongsToCurrentThread());
-  if (!network_task_runner_->PostTask(
-          FROM_HERE,
-          base::Bind(
-              &NonBlockingInvalidator::Core::Acknowledge,
-              core_.get(),
-              id,
-              ack_handle))) {
-    NOTREACHED();
-  }
-}
-
 InvalidatorState NonBlockingInvalidator::GetInvalidatorState() const {
   DCHECK(parent_task_runner_->BelongsToCurrentThread());
   return registrar_.GetInvalidatorState();
@@ -235,6 +239,21 @@ void NonBlockingInvalidator::OnIncomingInvalidation(
         const ObjectIdInvalidationMap& invalidation_map) {
   DCHECK(parent_task_runner_->BelongsToCurrentThread());
   registrar_.DispatchInvalidationsToHandlers(invalidation_map);
+}
+
+NetworkChannelCreator
+    NonBlockingInvalidator::MakePushClientChannelCreator(
+        const notifier::NotifierOptions& notifier_options) {
+  return base::Bind(SyncNetworkChannel::CreatePushClientChannel,
+      notifier_options);
+}
+
+NetworkChannelCreator NonBlockingInvalidator::MakeGCMNetworkChannelCreator(
+    scoped_refptr<net::URLRequestContextGetter> request_context_getter,
+    scoped_ptr<GCMNetworkChannelDelegate> delegate) {
+  return base::Bind(&SyncNetworkChannel::CreateGCMNetworkChannel,
+                    request_context_getter,
+                    base::Passed(&delegate));
 }
 
 }  // namespace syncer

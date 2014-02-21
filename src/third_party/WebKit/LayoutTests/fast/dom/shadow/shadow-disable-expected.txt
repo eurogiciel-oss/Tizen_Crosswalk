@@ -13,38 +13,40 @@ SECTION
 PASS element.createShadowRoot() is not null
 INPUT
 PASS element.createShadowRoot() is not null
-tref
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-AUDIO
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-VIDEO
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-SELECT
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-IMG
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-TEXTAREA
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-IFRAME
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-CANVAS
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-METER
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-PROGRESS
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-OBJECT
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+APPLET
+PASS element.createShadowRoot() is not null
 EMBED
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-KEYGEN
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
-VIDEO
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+PASS element.createShadowRoot() is not null
+OBJECT
+PASS element.createShadowRoot() is not null
+tref
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
 AUDIO
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+VIDEO
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+SELECT
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+IMG
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+TEXTAREA
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+IFRAME
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+CANVAS
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+METER
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+PROGRESS
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+KEYGEN
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+VIDEO
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
+AUDIO
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
 FIELDSET
-PASS element.createShadowRoot() threw exception HierarchyRequestError: A Node was inserted somewhere it doesn't belong..
+PASS element.createShadowRoot() threw exception HierarchyRequestError: Failed to execute 'createShadowRoot' on 'Element': Author-created shadow roots are disabled for this element..
 PASS successfullyParsed is true
 
 TEST COMPLETE

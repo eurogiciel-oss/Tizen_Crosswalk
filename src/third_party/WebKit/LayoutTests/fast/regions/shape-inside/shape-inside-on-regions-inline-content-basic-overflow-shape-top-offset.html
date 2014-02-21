@@ -1,10 +1,6 @@
 <!DOCTYPE HTML>
 <html>
 <head>
-    <script>
-        if (window.internals)
-            window.internals.settings.setCSSExclusionsEnabled(true);
-    </script>
     <style>
         #rectangle {
             font: 20px Ahem, sans-serif;
@@ -16,7 +12,7 @@
             -webkit-flow-from: flow;
             width: 200px;
             height: 200px;
-            -webkit-shape-inside: rectangle(50px, 50px, 100px, 100px);
+            shape-inside: rectangle(50px, 50px, 100px, 100px);
             border: 2px solid green;
         }
         #border {

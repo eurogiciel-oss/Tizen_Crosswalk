@@ -24,8 +24,6 @@
 
 #include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
-#include "core/platform/graphics/FontCache.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
 #include "core/rendering/HitTestResult.h"
 #include "core/rendering/InlineFlowBox.h"
 #include "core/rendering/PointerEventsHitRules.h"
@@ -36,7 +34,9 @@
 #include "core/rendering/svg/SVGResourcesCache.h"
 #include "core/rendering/svg/SVGTextRunRenderingContext.h"
 #include "platform/FloatConversion.h"
+#include "platform/fonts/FontCache.h"
 #include "platform/graphics/DrawLooper.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 
 using namespace std;
 
@@ -207,7 +207,7 @@ void SVGInlineTextBox::paintSelectionBackground(PaintInfo& paintInfo)
         return;
 
     Color backgroundColor = renderer()->selectionBackgroundColor();
-    if (!backgroundColor.isValid() || !backgroundColor.alpha())
+    if (!backgroundColor.alpha())
         return;
 
     RenderSVGInlineText* textRenderer = toRenderSVGInlineText(this->textRenderer());
@@ -217,13 +217,6 @@ void SVGInlineTextBox::paintSelectionBackground(PaintInfo& paintInfo)
 
     RenderStyle* style = parentRenderer->style();
     ASSERT(style);
-
-    RenderStyle* selectionStyle = style;
-    if (hasSelection) {
-        selectionStyle = parentRenderer->getCachedPseudoStyle(SELECTION);
-        if (!selectionStyle)
-            selectionStyle = style;
-    }
 
     int startPosition, endPosition;
     selectionStartEnd(startPosition, endPosition);
@@ -321,7 +314,7 @@ void SVGInlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint&, LayoutUni
             paintInfo.context->concatCTM(fragmentTransform);
 
         // Spec: All text decorations except line-through should be drawn before the text is filled and stroked; thus, the text is rendered on top of these decorations.
-        int decorations = style->textDecorationsInEffect();
+        unsigned decorations = style->textDecorationsInEffect();
         if (decorations & TextDecorationUnderline)
             paintDecoration(paintInfo.context, TextDecorationUnderline, fragment);
         if (decorations & TextDecorationOverline)
@@ -369,11 +362,11 @@ bool SVGInlineTextBox::acquirePaintingResource(GraphicsContext*& context, float 
     ASSERT(style);
     ASSERT(m_paintingResourceMode != ApplyToDefaultMode);
 
-    Color fallbackColor;
+    bool hasFallback;
     if (m_paintingResourceMode & ApplyToFillMode)
-        m_paintingResource = RenderSVGResource::fillPaintingResource(renderer, style, fallbackColor);
+        m_paintingResource = RenderSVGResource::fillPaintingResource(renderer, style, hasFallback);
     else if (m_paintingResourceMode & ApplyToStrokeMode)
-        m_paintingResource = RenderSVGResource::strokePaintingResource(renderer, style, fallbackColor);
+        m_paintingResource = RenderSVGResource::strokePaintingResource(renderer, style, hasFallback);
     else {
         // We're either called for stroking or filling.
         ASSERT_NOT_REACHED();
@@ -383,11 +376,8 @@ bool SVGInlineTextBox::acquirePaintingResource(GraphicsContext*& context, float 
         return false;
 
     if (!m_paintingResource->applyResource(renderer, style, context, m_paintingResourceMode)) {
-        if (fallbackColor.isValid()) {
-            RenderSVGResourceSolidColor* fallbackResource = RenderSVGResource::sharedSolidPaintingResource();
-            fallbackResource->setColor(fallbackColor);
-
-            m_paintingResource = fallbackResource;
+        if (hasFallback) {
+            m_paintingResource = RenderSVGResource::sharedSolidPaintingResource();
             m_paintingResource->applyResource(renderer, style, context, m_paintingResourceMode);
         }
     }
@@ -433,8 +423,6 @@ void SVGInlineTextBox::restoreGraphicsContextAfterTextPainting(GraphicsContext*&
     TextRun::RenderingContext* renderingContext = textRun.renderingContext();
     if (renderingContext)
         static_cast<SVGTextRunRenderingContext*>(renderingContext)->setActivePaintingResource(0);
-#else
-    UNUSED_PARAM(textRun);
 #endif
 }
 
@@ -738,7 +726,8 @@ bool SVGInlineTextBox::nodeAtPoint(const HitTestRequest& request, HitTestResult&
     PointerEventsHitRules hitRules(PointerEventsHitRules::SVG_TEXT_HITTESTING, request, renderer()->style()->pointerEvents());
     bool isVisible = renderer()->style()->visibility() == VISIBLE;
     if (isVisible || !hitRules.requireVisible) {
-        if ((hitRules.canHitStroke && (renderer()->style()->svgStyle()->hasStroke() || !hitRules.requireStroke))
+        if (hitRules.canHitBoundingBox
+            || (hitRules.canHitStroke && (renderer()->style()->svgStyle()->hasStroke() || !hitRules.requireStroke))
             || (hitRules.canHitFill && (renderer()->style()->svgStyle()->hasFill() || !hitRules.requireFill))) {
             FloatPoint boxOrigin(x(), y());
             boxOrigin.moveBy(accumulatedOffset);

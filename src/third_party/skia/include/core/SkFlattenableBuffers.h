@@ -139,12 +139,39 @@ public:
 
     SkData* readByteArrayAsData() {
         size_t len = this->getArrayCount();
-        void* buffer = sk_malloc_throw(len);
-        (void)this->readByteArray(buffer, len);
+        void* buffer = NULL;
+        if (this->validateAvailable(len)) {
+            buffer = sk_malloc_throw(len);
+            (void)this->readByteArray(buffer, len);
+        } else {
+            len = 0;
+        }
         return SkData::NewFromMalloc(buffer, len);
     }
 
-    virtual void validate(bool isValid) {}
+    /** This function validates that the isValid input parameter is true
+      * If isValidating() is false, then true is always returned
+      * If isValidating() is true, then true is returned until validate() is called with isValid
+      * set to false. When isValid is false, an error flag will be set internally and, from that
+      * point on, validate() will return false. The error flag cannot be unset.
+      *
+      * @param isValid result of a test that is expected to be true
+      */
+    virtual bool validate(bool isValid);
+
+    /** This function returns true by default
+      * If isValidating() is true, it will return false if the internal error flag is set.
+      * Otherwise, it will return true.
+      */
+    virtual bool isValid() const { return true; }
+
+    /** This function returns true by default
+      * If isValidating() is true, it will return whether there's
+      * at least "size" memory left to read in the stream.
+      *
+      * @param size amount of memory that should still be available
+      */
+    virtual bool validateAvailable(size_t size) { return true; }
 
 private:
     template <typename T> T* readFlattenableT();

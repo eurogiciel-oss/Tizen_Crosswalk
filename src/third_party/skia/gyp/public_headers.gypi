@@ -72,6 +72,7 @@
       'effects/SkMorphologyImageFilter.h',
       'effects/Sk2DPathEffect.h',
       'effects/SkXfermodeImageFilter.h',
+      'effects/SkAlphaThresholdFilter.h',
       'effects/SkArithmeticMode.h',
       'effects/SkMergeImageFilter.h',
       'effects/SkPerlinNoiseShader.h',
@@ -195,7 +196,6 @@
       'core/SkFloatBits.h',
       'core/SkDeque.h',
       'core/SkTRegistry.h',
-      'core/Sk64.h',
       'core/SkTLazy.h',
       'core/SkComposeShader.h',
       'core/SkUtils.h',
@@ -218,7 +218,6 @@
       'core/SkStrokeRec.h',
       'core/SkImageDecoder.h',
       'core/SkTime.h',
-      'core/SkScalarCompare.h',
       'core/SkPathMeasure.h',
       'core/SkMaskFilter.h',
       'core/SkBounder.h',
@@ -228,7 +227,6 @@
       'core/SkChecksum.h',
       'core/SkMath.h',
       'core/SkDrawLooper.h',
-      'core/SkThread_platform.h',
       'core/SkFlattenableBuffers.h',
       'core/SkTemplates.h',
       'core/SkMask.h',
@@ -297,16 +295,6 @@
       'views/SkOSWindow_Unix.h',
       'views/SkWidget.h',
       'views/SkOSWindow_Win.h',
-      'lazy/SkBitmapFactory.h',
-      'lazy/SkImageCache.h',
-      'lazy/SkPurgeableImageCache.h',
-      'lazy/SkLruImageCache.h',
     ],
   },
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

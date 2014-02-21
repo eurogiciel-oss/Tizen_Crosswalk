@@ -18,7 +18,6 @@
 #include "chrome/browser/extensions/api/file_handlers/app_file_handler_util.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
-#include "chrome/browser/google_apis/task_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/browser.h"
@@ -31,6 +30,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/user_metrics.h"
+#include "google_apis/drive/task_util.h"
 #include "grit/generated_resources.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "webkit/browser/fileapi/file_system_backend.h"
@@ -38,9 +38,9 @@
 #include "webkit/browser/fileapi/file_system_operation_runner.h"
 #include "webkit/browser/fileapi/file_system_url.h"
 
+using base::UserMetricsAction;
 using content::BrowserContext;
 using content::BrowserThread;
-using content::UserMetricsAction;
 using extensions::Extension;
 using extensions::app_file_handler_util::FindFileHandlersForFiles;
 using extensions::app_file_handler_util::PathAndMimeTypeSet;
@@ -58,7 +58,7 @@ void ShowWarningMessageBox(Profile* profile, const base::FilePath& file_path) {
       browser ? browser->window()->GetNativeWindow() : NULL,
       l10n_util::GetStringFUTF16(
           IDS_FILE_BROWSER_ERROR_VIEWING_FILE_TITLE,
-          UTF8ToUTF16(file_path.BaseName().value())),
+          base::UTF8ToUTF16(file_path.BaseName().value())),
       l10n_util::GetStringUTF16(IDS_FILE_BROWSER_ERROR_VIEWING_FILE),
       chrome::MESSAGE_BOX_TYPE_WARNING);
 }
@@ -98,7 +98,6 @@ void ExecuteFileTaskForUrl(Profile* profile,
       profile,
       source_url,
       kFileManagerAppId,
-      0, // no tab id
       task,
       urls,
       file_tasks::FileTaskFinishedCallback());
@@ -112,14 +111,14 @@ void ExecuteFileTaskForUrl(Profile* profile,
 //               the file manager when the removal drive is unmounted.
 // "select" - Open the file manager for the given file. The folder containing
 //            the file will be opened with the file selected.
-void OpenFileManagerWithInternalActionId(const base::FilePath& file_path,
+void OpenFileManagerWithInternalActionId(Profile* profile,
+                                         const base::FilePath& file_path,
                                          const std::string& action_id) {
   DCHECK(action_id == "auto-open" ||
          action_id == "open" ||
          action_id == "select");
 
   content::RecordAction(UserMetricsAction("ShowFileBrowserFullTab"));
-  Profile* profile = ProfileManager::GetDefaultProfileOrOffTheRecord();
 
   GURL url;
   if (!ConvertAbsoluteFilePathToFileSystemUrl(
@@ -175,12 +174,12 @@ bool OpenFile(Profile* profile, const base::FilePath& file_path) {
 // Used to implement OpenItem().
 void ContinueOpenItem(Profile* profile,
                       const base::FilePath& file_path,
-                      base::PlatformFileError error) {
+                      base::File::Error error) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
-  if (error == base::PLATFORM_FILE_OK) {
+  if (error == base::File::FILE_OK) {
     // A directory exists at |file_path|. Open it with the file manager.
-    OpenFileManagerWithInternalActionId(file_path, "open");
+    OpenFileManagerWithInternalActionId(profile, file_path, "open");
   } else {
     // |file_path| should be a file. Open it.
     if (!OpenFile(profile, file_path))
@@ -217,14 +216,13 @@ void CheckIfDirectoryExists(
 
 }  // namespace
 
-void OpenRemovableDrive(const base::FilePath& file_path) {
-  OpenFileManagerWithInternalActionId(file_path, "auto-open");
+void OpenRemovableDrive(Profile* profile, const base::FilePath& file_path) {
+  OpenFileManagerWithInternalActionId(profile, file_path, "auto-open");
 }
 
-void OpenItem(const base::FilePath& file_path) {
+void OpenItem(Profile* profile, const base::FilePath& file_path) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
-  Profile* profile = ProfileManager::GetDefaultProfileOrOffTheRecord();
   GURL url;
   if (!ConvertAbsoluteFilePathToFileSystemUrl(
           profile, file_path, kFileManagerAppId, &url) ||
@@ -241,9 +239,9 @@ void OpenItem(const base::FilePath& file_path) {
                          base::Bind(&ContinueOpenItem, profile, file_path));
 }
 
-void ShowItemInFolder(const base::FilePath& file_path) {
+void ShowItemInFolder(Profile* profile, const base::FilePath& file_path) {
   // This action changes the selection so we do not reuse existing tabs.
-  OpenFileManagerWithInternalActionId(file_path, "select");
+  OpenFileManagerWithInternalActionId(profile, file_path, "select");
 }
 
 }  // namespace util

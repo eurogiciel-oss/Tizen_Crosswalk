@@ -23,16 +23,16 @@
 #include "core/dom/Text.h"
 
 #include "SVGNames.h"
-#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
 #include "bindings/v8/ExceptionStatePlaceholder.h"
 #include "core/css/resolver/StyleResolver.h"
 #include "core/dom/ExceptionCode.h"
 #include "core/dom/NodeRenderStyle.h"
-#include "core/dom/NodeRenderingContext.h"
+#include "core/dom/NodeRenderingTraversal.h"
 #include "core/dom/NodeTraversal.h"
-#include "core/events/ScopedEventQueue.h"
+#include "core/dom/RenderTreeBuilder.h"
 #include "core/dom/shadow/ShadowRoot.h"
+#include "core/events/ScopedEventQueue.h"
 #include "core/rendering/RenderCombineText.h"
 #include "core/rendering/RenderText.h"
 #include "core/rendering/svg/RenderSVGInlineText.h"
@@ -60,7 +60,7 @@ PassRefPtr<Node> Text::mergeNextSiblingNodesIfPossible()
     // Remove empty text nodes.
     if (!length()) {
         // Care must be taken to get the next node before removing the current node.
-        RefPtr<Node> nextNode(NodeTraversal::nextPostOrder(this));
+        RefPtr<Node> nextNode(NodeTraversal::nextPostOrder(*this));
         remove(IGNORE_EXCEPTION);
         return nextNode.release();
     }
@@ -84,25 +84,31 @@ PassRefPtr<Node> Text::mergeNextSiblingNodesIfPossible()
         String oldTextData = data();
         setDataWithoutUpdate(data() + nextTextData);
         updateTextRenderer(oldTextData.length(), 0);
+
         // Empty nextText for layout update.
         nextText->setDataWithoutUpdate(emptyString());
+        nextText->updateTextRenderer(0, nextTextData.length());
+
         document().didMergeTextNodes(nextText.get(), offset);
+
         // Restore nextText for mutation event.
         nextText->setDataWithoutUpdate(nextTextData);
+        nextText->updateTextRenderer(0, 0);
+
         document().incDOMTreeVersion();
         didModifyData(oldTextData);
         nextText->remove(IGNORE_EXCEPTION);
     }
 
-    return NodeTraversal::nextPostOrder(this);
+    return NodeTraversal::nextPostOrder(*this);
 }
 
-PassRefPtr<Text> Text::splitText(unsigned offset, ExceptionState& es)
+PassRefPtr<Text> Text::splitText(unsigned offset, ExceptionState& exceptionState)
 {
     // IndexSizeError: Raised if the specified offset is negative or greater than
     // the number of 16-bit units in data.
     if (offset > length()) {
-        es.throwDOMException(IndexSizeError, ExceptionMessages::failedToExecute("splitText", "Text", "The offset " + String::number(offset) + " is larger than the Text node's length."));
+        exceptionState.throwDOMException(IndexSizeError, "The offset " + String::number(offset) + " is larger than the Text node's length.");
         return 0;
     }
 
@@ -114,8 +120,8 @@ PassRefPtr<Text> Text::splitText(unsigned offset, ExceptionState& es)
     didModifyData(oldStr);
 
     if (parentNode())
-        parentNode()->insertBefore(newText.get(), nextSibling(), es);
-    if (es.hadException())
+        parentNode()->insertBefore(newText.get(), nextSibling(), exceptionState);
+    if (exceptionState.hadException())
         return 0;
 
     if (renderer())
@@ -221,7 +227,7 @@ PassRefPtr<Text> Text::replaceWholeText(const String& newText)
 
 String Text::nodeName() const
 {
-    return textAtom.string();
+    return "#text";
 }
 
 Node::NodeType Text::nodeType() const
@@ -234,7 +240,7 @@ PassRefPtr<Node> Text::cloneNode(bool /*deep*/)
     return cloneWithData(data());
 }
 
-bool Text::textRendererIsNeeded(const NodeRenderingContext& context)
+bool Text::textRendererIsNeeded(const RenderStyle& style, const RenderObject& parent)
 {
     if (isEditingText())
         return true;
@@ -242,39 +248,38 @@ bool Text::textRendererIsNeeded(const NodeRenderingContext& context)
     if (!length())
         return false;
 
-    if (context.style()->display() == NONE)
+    if (style.display() == NONE)
         return false;
 
     if (!containsOnlyWhitespace())
         return true;
 
-    RenderObject* parent = context.parentRenderer();
-    if (!parent->canHaveWhitespaceChildren())
+    if (!parent.canHaveWhitespaceChildren())
         return false;
 
-    if (context.style()->preserveNewline()) // pre/pre-wrap/pre-line always make renderers.
+    if (style.preserveNewline()) // pre/pre-wrap/pre-line always make renderers.
         return true;
 
-    RenderObject* prev = context.previousRenderer();
+    const RenderObject* prev = NodeRenderingTraversal::previousSiblingRenderer(this);
     if (prev && prev->isBR()) // <span><br/> <br/></span>
         return false;
 
-    if (parent->isRenderInline()) {
+    if (parent.isRenderInline()) {
         // <span><div/> <div/></span>
         if (prev && !prev->isInline())
             return false;
     } else {
-        if (parent->isRenderBlock() && !parent->childrenInline() && (!prev || !prev->isInline()))
+        if (parent.isRenderBlock() && !parent.childrenInline() && (!prev || !prev->isInline()))
             return false;
 
         // Avoiding creation of a Renderer for the text node is a non-essential memory optimization.
         // So to avoid blowing up on very wide DOMs, we limit the number of siblings to visit.
         unsigned maxSiblingsToVisit = 50;
 
-        RenderObject* first = parent->firstChild();
+        RenderObject* first = parent.firstChild();
         while (first && first->isFloatingOrOutOfFlowPositioned() && maxSiblingsToVisit--)
             first = first->nextSibling();
-        if (!first || context.nextRenderer() == first)
+        if (!first || NodeRenderingTraversal::nextSiblingRenderer(this) == first)
             // Whitespace at the start of a block just goes away.  Don't even
             // make a render object for this text.
             return false;
@@ -301,7 +306,7 @@ RenderText* Text::createTextRenderer(RenderStyle* style)
 
 void Text::attach(const AttachContext& context)
 {
-    NodeRenderingContext(this, context.resolvedStyle).createRendererForTextIfNeeded();
+    RenderTreeBuilder(this, context.resolvedStyle).createRendererForTextIfNeeded();
     CharacterData::attach(context);
 }
 
@@ -309,7 +314,7 @@ void Text::recalcTextStyle(StyleRecalcChange change, Text* nextTextSibling)
 {
     if (RenderText* renderer = toRenderText(this->renderer())) {
         if (change != NoChange || needsStyleRecalc())
-            renderer->setStyle(document().styleResolver()->styleForText(this));
+            renderer->setStyle(document().ensureStyleResolver().styleForText(this));
         if (needsStyleRecalc())
             renderer->setText(dataImpl());
         clearNeedsStyleRecalc();
@@ -334,7 +339,7 @@ void Text::updateTextRenderer(unsigned offsetOfReplacedData, unsigned lengthOfRe
     if (!inActiveDocument())
         return;
     RenderText* textRenderer = toRenderText(renderer());
-    if (!textRenderer || !textRendererIsNeeded(NodeRenderingContext(this, textRenderer->style()))) {
+    if (!textRenderer || !textRendererIsNeeded(*textRenderer->style(), *textRenderer->parent())) {
         lazyReattachIfAttached();
         // FIXME: Editing should be updated so this is not neccesary.
         if (recalcStyleBehavior == DeprecatedRecalcStyleImmediatlelyForEditing)
@@ -342,11 +347,6 @@ void Text::updateTextRenderer(unsigned offsetOfReplacedData, unsigned lengthOfRe
         return;
     }
     textRenderer->setTextWithOffset(dataImpl(), offsetOfReplacedData, lengthOfReplacedData);
-}
-
-bool Text::childTypeAllowed(NodeType) const
-{
-    return false;
 }
 
 PassRefPtr<Text> Text::cloneWithData(const String& data)

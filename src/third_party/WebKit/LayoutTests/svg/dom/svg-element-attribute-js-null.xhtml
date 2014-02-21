@@ -52,8 +52,8 @@
                     type: 'SVGElement',
                     elementToUse: svg,
                     attributes: [
-                        {name: 'id', expectedNull: ''},
-                        {name: 'xmlbase', expectedNull: ''}
+                        {name: 'id', expectedNull: 'null'},
+                        {name: 'xmlbase', expectedNull: 'null'}
                     ]
                 },
                 {
@@ -74,7 +74,7 @@
                     type: 'SVGScriptElement',
                     elementToUse: document.createElementNS(svgNS, 'script'),
                     attributes: [
-                        {name: 'type', expectedNull: ''}
+                        {name: 'type', expectedNull: 'null'}
                     ]
                 }
             ];

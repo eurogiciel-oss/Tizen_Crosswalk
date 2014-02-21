@@ -31,19 +31,18 @@
 /**
  * @constructor
  * @extends {WebInspector.SidebarView}
- * @param {WebInspector.FileSystemModel.FileSystem} fileSystem
+ * @param {!WebInspector.FileSystemModel.FileSystem} fileSystem
  */
 WebInspector.FileSystemView = function(fileSystem)
 {
     WebInspector.SidebarView.call(this, WebInspector.SidebarView.SidebarPosition.Start, "FileSystemViewSidebarWidth");
-    this.element.addStyleClass("file-system-view");
-    this.element.addStyleClass("storage-view");
+    this.element.classList.add("file-system-view");
+    this.element.classList.add("storage-view");
 
     var directoryTreeElement = this.element.createChild("ol", "filesystem-directory-tree");
     this._directoryTree = new TreeOutline(directoryTreeElement);
-    this.sidebarElement.appendChild(directoryTreeElement);
-    this.sidebarElement.addStyleClass("outline-disclosure");
-    this.sidebarElement.addStyleClass("sidebar");
+    this.firstElement().appendChild(directoryTreeElement);
+    this.firstElement().classList.add("outline-disclosure", "sidebar");
 
     var rootItem = new WebInspector.FileSystemView.EntryTreeElement(this, fileSystem.root);
     rootItem.expanded = true;
@@ -61,7 +60,7 @@ WebInspector.FileSystemView = function(fileSystem)
 
 WebInspector.FileSystemView.prototype = {
     /**
-     * @type {Array.<Element>}
+     * @type {!Array.<!Element>}
      */
     get statusBarItems()
     {
@@ -69,7 +68,7 @@ WebInspector.FileSystemView.prototype = {
     },
 
     /**
-     * @type {WebInspector.View}
+     * @type {!WebInspector.View}
      */
     get visibleView()
     {
@@ -77,7 +76,7 @@ WebInspector.FileSystemView.prototype = {
     },
 
     /**
-     * @param {WebInspector.View} view
+     * @param {!WebInspector.View} view
      */
     showView: function(view)
     {
@@ -86,7 +85,7 @@ WebInspector.FileSystemView.prototype = {
         if (this._visibleView)
             this._visibleView.detach();
         this._visibleView = view;
-        view.show(this.mainElement);
+        this.setMainView(view);
     },
 
     _refresh: function()
@@ -111,8 +110,8 @@ WebInspector.FileSystemView.prototype = {
 /**
  * @constructor
  * @extends {TreeElement}
- * @param {WebInspector.FileSystemView} fileSystemView
- * @param {WebInspector.FileSystemModel.Entry} entry
+ * @param {!WebInspector.FileSystemView} fileSystemView
+ * @param {!WebInspector.FileSystemModel.Entry} entry
  */
 WebInspector.FileSystemView.EntryTreeElement = function(fileSystemView, entry)
 {
@@ -123,26 +122,37 @@ WebInspector.FileSystemView.EntryTreeElement = function(fileSystemView, entry)
 }
 
 WebInspector.FileSystemView.EntryTreeElement.prototype = {
+    /**
+     * @override
+     */
     onattach: function()
     {
         var selection = this.listItemElement.createChild("div", "selection");
         this.listItemElement.insertBefore(selection, this.listItemElement.firstChild);
     },
 
+    /**
+     * @override
+     * @return {boolean}
+     */
     onselect: function()
     {
         if (!this._view) {
             if (this._entry.isDirectory)
                 this._view = new WebInspector.DirectoryContentView();
             else {
-                var file = /** @type {WebInspector.FileSystemModel.File} */ (this._entry);
+                var file = /** @type {!WebInspector.FileSystemModel.File} */ (this._entry);
                 this._view = new WebInspector.FileContentView(file);
             }
         }
         this._fileSystemView.showView(this._view);
         this.refresh();
+        return false;
     },
 
+    /**
+     * @override
+     */
     onpopulate: function()
     {
         this.refresh();
@@ -150,7 +160,7 @@ WebInspector.FileSystemView.EntryTreeElement.prototype = {
 
     /**
      * @param {number} errorCode
-     * @param {Array.<WebInspector.FileSystemModel.Entry>=} entries
+     * @param {!Array.<!WebInspector.FileSystemModel.Entry>=} entries
      */
     _directoryContentReceived: function(errorCode, entries)
     {
@@ -211,7 +221,7 @@ WebInspector.FileSystemView.EntryTreeElement.prototype = {
     {
         if (!this._entry.isDirectory) {
             if (this._view && this._view === this._fileSystemView.visibleView) {
-                var fileContentView = /** @type {WebInspector.FileContentView} */ (this._view);
+                var fileContentView = /** @type {!WebInspector.FileContentView} */ (this._view);
                 fileContentView.refresh();
             }
         } else

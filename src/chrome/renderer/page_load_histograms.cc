@@ -10,7 +10,9 @@
 #include "base/logging.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/histogram.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "chrome/common/chrome_switches.h"
@@ -20,6 +22,7 @@
 #include "content/public/renderer/render_thread.h"
 #include "content/public/renderer/render_view.h"
 #include "extensions/common/url_pattern.h"
+#include "net/base/url_util.h"
 #include "third_party/WebKit/public/platform/WebURLRequest.h"
 #include "third_party/WebKit/public/platform/WebURLResponse.h"
 #include "third_party/WebKit/public/web/WebDocument.h"
@@ -28,10 +31,10 @@
 #include "third_party/WebKit/public/web/WebView.h"
 #include "url/gurl.h"
 
-using WebKit::WebDataSource;
-using WebKit::WebFrame;
-using WebKit::WebPerformance;
-using WebKit::WebString;
+using blink::WebDataSource;
+using blink::WebFrame;
+using blink::WebPerformance;
+using blink::WebString;
 using base::Time;
 using base::TimeDelta;
 using content::DocumentState;
@@ -40,6 +43,13 @@ const size_t kPLTCount = 100;
 
 namespace {
 
+// ID indicating that no GWS-Chrome joint experiment is active.
+const int kNoExperiment = 0;
+
+// Max ID of GWS-Chrome joint experiment. If you change this value, please
+// update PLT_HISTOGRAM_WITH_GWS_VARIANT accordingly.
+const int kMaxExperimentID = 20;
+
 TimeDelta kPLTMin() {
   return TimeDelta::FromMilliseconds(10);
 }
@@ -47,8 +57,81 @@ TimeDelta kPLTMax() {
   return TimeDelta::FromMinutes(10);
 }
 
+// This function corresponds to PLT_HISTOGRAM macro invocation without caching.
+// Use this for PLT histograms with dynamically generated names, which
+// otherwise can't use the caching PLT_HISTOGRAM macro without code duplication.
+void PltHistogramWithNoMacroCaching(const std::string& name,
+                                    const TimeDelta& sample) {
+  // The parameters should exacly match the parameters in
+  // UMA_HISTOGRAM_CUSTOM_TIMES macro.
+  base::HistogramBase* histogram_pointer = base::Histogram::FactoryTimeGet(
+      name, kPLTMin(), kPLTMax(), kPLTCount,
+      base::HistogramBase::kUmaTargetedHistogramFlag);
+  histogram_pointer->AddTime(sample);
+}
+
+// Various preview applicability states.
+enum GwsPreviewState {
+  PREVIEW_NONE,
+  // Instant search clicks [not] applied, data reduction proxy used,
+  // from web search.
+  PREVIEW_NOT_USED,
+  // Instant search clicks applied, data reduction proxy [not] used,
+  // from web search
+  PREVIEW,
+  // Instant search clicks applied, data reduction proxy used,
+  // [not] from web search
+  PREVIEW_WAS_SHOWN,
+};
+
+// This records UMA corresponding to the PLT_HISTOGRAM macro without caching.
+void PltHistogramWithGwsPreview(const char* name,
+                                const TimeDelta& sample,
+                                GwsPreviewState preview_state,
+                                int preview_experiment_id) {
+  std::string preview_suffix;
+  switch (preview_state) {
+    case PREVIEW_WAS_SHOWN:
+      preview_suffix = "_WithPreview";
+      break;
+    case PREVIEW:
+      preview_suffix = "_Preview";
+      break;
+    case PREVIEW_NOT_USED:
+      preview_suffix = "_NoPreview";
+      break;
+    default:
+      return;
+  }
+  PltHistogramWithNoMacroCaching(name + preview_suffix, sample);
+
+  if (preview_experiment_id != kNoExperiment) {
+    std::string name_with_experiment_id = base::StringPrintf(
+          "%s%s_Experiment%d", name, preview_suffix.c_str(),
+          preview_experiment_id);
+    PltHistogramWithNoMacroCaching(name_with_experiment_id, sample);
+  }
+}
+
 #define PLT_HISTOGRAM(name, sample) \
     UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, kPLTMin(), kPLTMax(), kPLTCount);
+
+#define PLT_HISTOGRAM_WITH_GWS_VARIANT(                                        \
+    name, sample, came_from_websearch, websearch_chrome_joint_experiment_id,   \
+    preview_state, preview_experiment_id) {                                    \
+  PLT_HISTOGRAM(name, sample);                                                 \
+  if (came_from_websearch) {                                                   \
+    PLT_HISTOGRAM(base::StringPrintf("%s_FromGWS", name), sample)              \
+    if (websearch_chrome_joint_experiment_id != kNoExperiment) {               \
+      std::string name_with_experiment_id = base::StringPrintf(                \
+          "%s_FromGWS_Experiment%d",                                           \
+          name, websearch_chrome_joint_experiment_id);                         \
+      PltHistogramWithNoMacroCaching(name_with_experiment_id, sample);         \
+    }                                                                          \
+  }                                                                            \
+  PltHistogramWithGwsPreview(name, sample, preview_state,                      \
+                             preview_experiment_id);                           \
+}
 
 // In addition to PLT_HISTOGRAM, add the *_DataReductionProxy variant
 // conditionally. This macro runs only in one thread.
@@ -98,7 +181,7 @@ bool DataReductionProxyWasUsed(WebFrame* frame) {
   if (!document_state->was_fetched_via_proxy())
     return false;
 
-  std::string via_header(UTF16ToUTF8(
+  std::string via_header(base::UTF16ToUTF8(
       frame->dataSource()->response().httpHeaderField(kViaHeaderName)));
   return via_header.find(kDatReductionProxyViaValue) != std::string::npos;
 #endif
@@ -130,10 +213,83 @@ bool IsFromGoogleSearchResult(const GURL& url, const GURL& referrer) {
   return false;
 }
 
+// Extracts a Google Web Search and Chrome joint experiment ID from a referrer
+// that came from a Google Web Search results page. An experiment ID is embedded
+// in a query string as a "gcjeid=" parameter value.
+int GetQueryStringBasedExperiment(const GURL& referrer) {
+  std::string value;
+  if (!net::GetValueForKeyInQuery(referrer, "gcjeid", &value))
+    return kNoExperiment;
+
+  int experiment_id;
+  if (!base::StringToInt(value, &experiment_id))
+    return kNoExperiment;
+  if (0 < experiment_id && experiment_id <= kMaxExperimentID)
+    return experiment_id;
+  return kNoExperiment;
+}
+
+// Appends "cerivrj_*" and "gcjeid" query parameters from preview_url to url.
+// Returns true if "cerivrj_*" query is found.
+// This will be used only for search results URLs.
+bool AppendPreviewQueryFromURL(const GURL& preview_url, GURL* url) {
+  bool preview_query_found = false;
+  for (net::QueryIterator it(preview_url); !it.IsAtEnd(); it.Advance()) {
+    const std::string param_name = it.GetKey();
+    bool is_preview = StartsWithASCII(param_name, "cerivrj_", true);
+    if (url && (is_preview || param_name == "gcjeid"))
+      net::AppendQueryParameter(*url, param_name, it.GetValue());
+    preview_query_found = preview_query_found || is_preview;
+  }
+  return preview_query_found;
+}
+
+// Returns true if the provided referrer URL is the preview URL of the current
+// URL. Preview URL differs from original only with "cerivrj_*", "gcjeid" query
+// parameters.
+bool IsReferrerPreviewOfURL(const GURL& url,
+                            const base::string16& referrer_str) {
+  GURL referrer(referrer_str);
+  if (referrer.is_valid()) {
+    GURL generated_preview_url(url);
+    // Now try to copy "cerivrj_*" and "gcjeid" paramters to url and check if
+    // they exactly match.
+    if (AppendPreviewQueryFromURL(referrer, &generated_preview_url))
+      return generated_preview_url == referrer;
+  }
+  return false;
+}
+
+// Returns preview state by looking at url and referer url.
+void GetPreviewState(const GURL& url,
+                     const base::string16& referrer,
+                     bool came_from_websearch,
+                     bool data_reduction_proxy_was_used,
+                     GwsPreviewState* preview_state,
+                     int* preview_experiment_id) {
+  // Conditions for GWS preview are,
+  // 1. Data reduction proxy was used.
+  // 2. URL is loaded from web search.
+  // If the URL contains "cerivrj_*' query parameter record under
+  // "Preview".
+  if (data_reduction_proxy_was_used) {
+    if (came_from_websearch) {
+      *preview_state =
+          AppendPreviewQueryFromURL(url, NULL) ? PREVIEW : PREVIEW_NOT_USED;
+    } else if (IsReferrerPreviewOfURL(url, referrer)) {
+      *preview_state = PREVIEW_WAS_SHOWN;
+      *preview_experiment_id = GetQueryStringBasedExperiment(GURL(referrer));
+    }
+  }
+}
+
 void DumpPerformanceTiming(const WebPerformance& performance,
                            DocumentState* document_state,
                            bool data_reduction_proxy_was_used,
-                           bool came_from_websearch) {
+                           bool came_from_websearch,
+                           int websearch_chrome_joint_experiment_id,
+                           GwsPreviewState preview_state,
+                           int preview_experiment_id) {
   Time request = document_state->request_time();
 
   Time navigation_start = Time::FromDoubleT(performance.navigationStart());
@@ -241,11 +397,21 @@ void DumpPerformanceTiming(const WebPerformance& performance,
   // intentional Javascript navigation before the load event fires.
   // TODO(dominich): Load type breakdown
   if (!load_event_start.is_null()) {
-    PLT_HISTOGRAM("PLT.PT_BeginToFinishDoc", load_event_start - begin);
-    PLT_HISTOGRAM("PLT.PT_CommitToFinishDoc",
-                  load_event_start - response_start);
-    PLT_HISTOGRAM("PLT.PT_RequestToFinishDoc",
-                  load_event_start - navigation_start);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_BeginToFinishDoc",
+                                   load_event_start - begin,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_CommitToFinishDoc",
+                                   load_event_start - response_start,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_RequestToFinishDoc",
+                                   load_event_start - navigation_start,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
     if (data_reduction_proxy_was_used) {
       PLT_HISTOGRAM("PLT.PT_BeginToFinishDoc_DataReductionProxy",
                     load_event_start - begin);
@@ -254,20 +420,28 @@ void DumpPerformanceTiming(const WebPerformance& performance,
       PLT_HISTOGRAM("PLT.PT_RequestToFinishDoc_DataReductionProxy",
                     load_event_start - navigation_start);
     }
-    if (came_from_websearch) {
-      PLT_HISTOGRAM("PLT.PT_BeginToFinishDoc_FromGWS",
-                    load_event_start - begin);
-      PLT_HISTOGRAM("PLT.PT_CommitToFinishDoc_FromGWS",
-                    load_event_start - response_start);
-      PLT_HISTOGRAM("PLT.PT_RequestToFinishDoc_FromGWS",
-                    load_event_start - navigation_start);
-    }
   }
   if (!load_event_end.is_null()) {
-    PLT_HISTOGRAM("PLT.PT_BeginToFinish", load_event_end - begin);
-    PLT_HISTOGRAM("PLT.PT_CommitToFinish", load_event_end - response_start);
-    PLT_HISTOGRAM("PLT.PT_RequestToFinish", load_event_end - navigation_start);
-    PLT_HISTOGRAM("PLT.PT_StartToFinish", load_event_end - request_start);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_BeginToFinish",
+                                   load_event_end - begin,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_CommitToFinish",
+                                   load_event_end - response_start,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_RequestToFinish",
+                                   load_event_end - navigation_start,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_StartToFinish",
+                                   load_event_end - request_start,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
     if (data_reduction_proxy_was_used) {
       PLT_HISTOGRAM("PLT.PT_BeginToFinish_DataReductionProxy",
                     load_event_end - begin);
@@ -276,15 +450,6 @@ void DumpPerformanceTiming(const WebPerformance& performance,
       PLT_HISTOGRAM("PLT.PT_RequestToFinish_DataReductionProxy",
                     load_event_end - navigation_start);
       PLT_HISTOGRAM("PLT.PT_StartToFinish_DataReductionProxy",
-                    load_event_end - request_start);
-    }
-    if (came_from_websearch) {
-      PLT_HISTOGRAM("PLT.PT_BeginToFinish_FromGWS", load_event_end - begin);
-      PLT_HISTOGRAM("PLT.PT_CommitToFinish_FromGWS",
-                    load_event_end - response_start);
-      PLT_HISTOGRAM("PLT.PT_RequestToFinish_FromGWS",
-                    load_event_end - navigation_start);
-      PLT_HISTOGRAM("PLT.PT_StartToFinish_FromGWS",
                     load_event_end - request_start);
     }
   }
@@ -300,19 +465,35 @@ void DumpPerformanceTiming(const WebPerformance& performance,
                     load_event_end - load_event_start);
   }
   if (!dom_content_loaded_start.is_null()) {
-    PLT_HISTOGRAM("PLT.PT_RequestToDomContentLoaded",
-                  dom_content_loaded_start - navigation_start);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_RequestToDomContentLoaded",
+                                   dom_content_loaded_start - navigation_start,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
     if (data_reduction_proxy_was_used)
       PLT_HISTOGRAM("PLT.PT_RequestToDomContentLoaded_DataReductionProxy",
                     dom_content_loaded_start - navigation_start);
-    if (came_from_websearch)
-      PLT_HISTOGRAM("PLT.PT_RequestToDomContentLoaded_FromGWS",
-                    dom_content_loaded_start - navigation_start);
   }
-  PLT_HISTOGRAM("PLT.PT_BeginToCommit", response_start - begin);
-  PLT_HISTOGRAM("PLT.PT_RequestToStart", request_start - navigation_start);
-  PLT_HISTOGRAM("PLT.PT_StartToCommit", response_start - request_start);
-  PLT_HISTOGRAM("PLT.PT_RequestToCommit", response_start - navigation_start);
+  PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_BeginToCommit",
+                                 response_start - begin,
+                                 came_from_websearch,
+                                 websearch_chrome_joint_experiment_id,
+                                 preview_state, preview_experiment_id);
+  PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_RequestToStart",
+                                 request_start - navigation_start,
+                                 came_from_websearch,
+                                 websearch_chrome_joint_experiment_id,
+                                 preview_state, preview_experiment_id);
+  PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_StartToCommit",
+                                 response_start - request_start,
+                                 came_from_websearch,
+                                 websearch_chrome_joint_experiment_id,
+                                 preview_state, preview_experiment_id);
+  PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.PT_RequestToCommit",
+                                 response_start - navigation_start,
+                                 came_from_websearch,
+                                 websearch_chrome_joint_experiment_id,
+                                 preview_state, preview_experiment_id);
   if (data_reduction_proxy_was_used) {
     PLT_HISTOGRAM("PLT.PT_BeginToCommit_DataReductionProxy",
                   response_start - begin);
@@ -321,15 +502,6 @@ void DumpPerformanceTiming(const WebPerformance& performance,
     PLT_HISTOGRAM("PLT.PT_StartToCommit_DataReductionProxy",
                   response_start - request_start);
     PLT_HISTOGRAM("PLT.PT_RequestToCommit_DataReductionProxy",
-                  response_start - navigation_start);
-  }
-  if (came_from_websearch) {
-    PLT_HISTOGRAM("PLT.PT_BeginToCommit_FromGWS", response_start - begin);
-    PLT_HISTOGRAM("PLT.PT_RequestToStart_FromGWS",
-                  request_start - navigation_start);
-    PLT_HISTOGRAM("PLT.PT_StartToCommit_FromGWS",
-                  response_start - request_start);
-    PLT_HISTOGRAM("PLT.PT_RequestToCommit_FromGWS",
                   response_start - navigation_start);
   }
 }
@@ -380,6 +552,17 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
   bool came_from_websearch =
       IsFromGoogleSearchResult(frame->document().url(),
                                GURL(frame->document().referrer()));
+  int websearch_chrome_joint_experiment_id = kNoExperiment;
+  if (came_from_websearch) {
+    websearch_chrome_joint_experiment_id =
+        GetQueryStringBasedExperiment(GURL(frame->document().referrer()));
+  }
+
+  GwsPreviewState preview_state = PREVIEW_NONE;
+  int preview_experiment_id = websearch_chrome_joint_experiment_id;
+  GetPreviewState(frame->document().url(), frame->document().referrer(),
+                  came_from_websearch, data_reduction_proxy_was_used,
+                  &preview_state, &preview_experiment_id);
 
   // Times based on the Web Timing metrics.
   // http://www.w3.org/TR/navigation-timing/
@@ -387,7 +570,10 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
   // the existing ones. Once we understand any differences, we will standardize
   // on a single set of metrics.
   DumpPerformanceTiming(frame->performance(), document_state,
-                        data_reduction_proxy_was_used, came_from_websearch);
+                        data_reduction_proxy_was_used,
+                        came_from_websearch,
+                        websearch_chrome_joint_experiment_id,
+                        preview_state, preview_experiment_id);
 
   // If we've already dumped, do nothing.
   // This simple bool works because we only dump for the main frame.
@@ -490,15 +676,19 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
     // See bug http://crbug.com/125273 for details.
     if (begin <= first_paint) {
       begin_to_first_paint.reset(new TimeDelta(first_paint - begin));
-      PLT_HISTOGRAM("PLT.BeginToFirstPaint", *begin_to_first_paint);
-      if (came_from_websearch)
-        PLT_HISTOGRAM("PLT.BeginToFirstPaint_FromGWS", *begin_to_first_paint);
+      PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.BeginToFirstPaint",
+                                     *begin_to_first_paint,
+                                     came_from_websearch,
+                                     websearch_chrome_joint_experiment_id,
+                                     preview_state, preview_experiment_id);
     }
     DCHECK(commit <= first_paint);
     commit_to_first_paint.reset(new TimeDelta(first_paint - commit));
-    PLT_HISTOGRAM("PLT.CommitToFirstPaint", *commit_to_first_paint);
-    if (came_from_websearch)
-      PLT_HISTOGRAM("PLT.CommitToFirstPaint_FromGWS", *commit_to_first_paint);
+    PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.CommitToFirstPaint",
+                                   *commit_to_first_paint,
+                                   came_from_websearch,
+                                   websearch_chrome_joint_experiment_id,
+                                   preview_state, preview_experiment_id);
   }
   if (!first_paint_after_load.is_null()) {
     // 'first_paint_after_load' can be before 'begin' for an unknown reason.
@@ -514,12 +704,14 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
     PLT_HISTOGRAM("PLT.FinishToFirstPaintAfterLoad",
         first_paint_after_load - finish_all_loads);
   }
-  PLT_HISTOGRAM("PLT.BeginToFinishDoc", begin_to_finish_doc);
-  PLT_HISTOGRAM("PLT.BeginToFinish", begin_to_finish_all_loads);
-  if (came_from_websearch) {
-    PLT_HISTOGRAM("PLT.BeginToFinishDoc_FromGWS", begin_to_finish_doc);
-    PLT_HISTOGRAM("PLT.BeginToFinish_FromGWS", begin_to_finish_all_loads);
-  }
+  PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.BeginToFinishDoc", begin_to_finish_doc,
+                                 came_from_websearch,
+                                 websearch_chrome_joint_experiment_id,
+                                 preview_state, preview_experiment_id);
+  PLT_HISTOGRAM_WITH_GWS_VARIANT("PLT.BeginToFinish", begin_to_finish_all_loads,
+                                 came_from_websearch,
+                                 websearch_chrome_joint_experiment_id,
+                                 preview_state, preview_experiment_id);
 
   // Load type related histograms.
   switch (load_type) {
@@ -596,7 +788,7 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
   // TODO(mpcomplete): remove the extension-related histograms after we collect
   // enough data. http://crbug.com/100411
   const bool use_adblock_histogram =
-      chrome::ChromeContentRendererClient::IsAdblockInstalled();
+      ChromeContentRendererClient::IsAdblockInstalled();
   if (use_adblock_histogram) {
     UMA_HISTOGRAM_ENUMERATION(
         "PLT.Abandoned_ExtensionAdblock",
@@ -628,7 +820,7 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
   }
 
   const bool use_adblockplus_histogram =
-      chrome::ChromeContentRendererClient::IsAdblockPlusInstalled();
+      ChromeContentRendererClient::IsAdblockPlusInstalled();
   if (use_adblockplus_histogram) {
     UMA_HISTOGRAM_ENUMERATION(
         "PLT.Abandoned_ExtensionAdblockPlus",
@@ -660,7 +852,7 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
   }
 
   const bool use_webrequest_adblock_histogram =
-      chrome::ChromeContentRendererClient::IsAdblockWithWebRequestInstalled();
+      ChromeContentRendererClient::IsAdblockWithWebRequestInstalled();
   if (use_webrequest_adblock_histogram) {
     UMA_HISTOGRAM_ENUMERATION(
         "PLT.Abandoned_ExtensionWebRequestAdblock",
@@ -692,7 +884,7 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
   }
 
   const bool use_webrequest_adblockplus_histogram =
-      chrome::ChromeContentRendererClient::
+      ChromeContentRendererClient::
           IsAdblockPlusWithWebRequestInstalled();
   if (use_webrequest_adblockplus_histogram) {
     UMA_HISTOGRAM_ENUMERATION(
@@ -725,7 +917,7 @@ void PageLoadHistograms::Dump(WebFrame* frame) {
   }
 
   const bool use_webrequest_other_histogram =
-      chrome::ChromeContentRendererClient::
+      ChromeContentRendererClient::
           IsOtherExtensionWithWebRequestInstalled();
   if (use_webrequest_other_histogram) {
     UMA_HISTOGRAM_ENUMERATION(

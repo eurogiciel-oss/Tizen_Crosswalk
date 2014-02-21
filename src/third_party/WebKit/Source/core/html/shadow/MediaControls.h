@@ -30,14 +30,12 @@
 #include "core/events/MouseEvent.h"
 #include "core/html/HTMLDivElement.h"
 #include "core/html/shadow/MediaControlElements.h"
-#include "core/page/Page.h"
 #include "core/rendering/RenderTheme.h"
 
 namespace WebCore {
 
 class Document;
 class Event;
-class Page;
 class MediaPlayer;
 
 class RenderBox;
@@ -55,8 +53,6 @@ class MediaControls : public HTMLDivElement {
     virtual void setMediaController(MediaControllerInterface*);
 
     virtual void reset();
-    virtual void reportedError();
-    virtual void loadedMetadata();
 
     virtual void show();
     virtual void hide();
@@ -97,9 +93,9 @@ class MediaControls : public HTMLDivElement {
 protected:
     explicit MediaControls(Document&);
 
-    virtual void defaultEventHandler(Event*);
+    virtual void defaultEventHandler(Event*) OVERRIDE;
 
-    virtual bool containsRelatedTarget(Event*);
+    bool containsRelatedTarget(Event*);
 
     MediaControllerInterface* m_mediaController;
 
@@ -123,19 +119,12 @@ protected:
     bool m_isMouseOverControls;
 
 private:
-    virtual bool isMediaControls() const { return true; }
+    virtual bool isMediaControls() const OVERRIDE FINAL { return true; }
 
-    virtual const AtomicString& part() const;
+    virtual const AtomicString& shadowPseudoId() const OVERRIDE;
 };
 
-inline MediaControls* toMediaControls(Node* node)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!node || node->isMediaControls());
-    return static_cast<MediaControls*>(node);
-}
-
-// This will catch anyone doing an unneccessary cast.
-void toMediaControls(const MediaControls*);
+DEFINE_NODE_TYPE_CASTS(MediaControls, isMediaControls());
 
 }
 

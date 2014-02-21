@@ -29,7 +29,7 @@
 /**
  * @constructor
  * @extends {WebInspector.SourceFrame}
- * @param {WebInspector.UISourceCode} uiSourceCode
+ * @param {!WebInspector.UISourceCode} uiSourceCode
  */
 WebInspector.UISourceCodeFrame = function(uiSourceCode)
 {
@@ -45,6 +45,14 @@ WebInspector.UISourceCodeFrame = function(uiSourceCode)
 }
 
 WebInspector.UISourceCodeFrame.prototype = {
+    /**
+     * @return {!WebInspector.UISourceCode}
+     */
+    uiSourceCode: function()
+    {
+        return this._uiSourceCode;
+    },
+
     _enableAutocompletionIfNeeded: function()
     {
         this.textEditor.setCompletionDictionary(WebInspector.settings.textEditorAutocompletion.get() ? new WebInspector.SampleCompletionDictionary() : null);
@@ -120,11 +128,14 @@ WebInspector.UISourceCodeFrame.prototype = {
         }
     },
 
+    beforeFormattedChange: function() { },
+
     /**
-     * @param {WebInspector.Event} event
+     * @param {!WebInspector.Event} event
      */
     _onFormattedChanged: function(event)
     {
+        this.beforeFormattedChange();
         var content = /** @type {string} */ (event.data.content);
         this._textEditor.setReadOnly(this._uiSourceCode.formatted());
         var selection = this._textEditor.selection();
@@ -144,7 +155,7 @@ WebInspector.UISourceCodeFrame.prototype = {
     },
 
     /**
-     * @param {WebInspector.Event} event
+     * @param {!WebInspector.Event} event
      */
     _onWorkingCopyChanged: function(event)
     {
@@ -155,7 +166,7 @@ WebInspector.UISourceCodeFrame.prototype = {
     },
 
     /**
-     * @param {WebInspector.Event} event
+     * @param {!WebInspector.Event} event
      */
     _onWorkingCopyCommitted: function(event)
     {

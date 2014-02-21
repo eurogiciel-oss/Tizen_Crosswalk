@@ -39,20 +39,43 @@
 
 namespace WebCore {
 
+ScriptPromise ScriptPromise::then(PassOwnPtr<ScriptFunction> onFulfilled, PassOwnPtr<ScriptFunction> onRejected)
+{
+    if (m_promise.hasNoValue() || !m_promise.isObject())
+        return ScriptPromise();
+    v8::Handle<v8::Object> promise = m_promise.v8Value().As<v8::Object>();
+    return ScriptPromise(V8PromiseCustom::then(promise, adoptByGarbageCollector(onFulfilled), adoptByGarbageCollector(onRejected), isolate()), isolate());
+}
+
+ScriptPromise::ScriptPromise(const ScriptValue& value)
+{
+    if (value.hasNoValue())
+        return;
+    v8::Local<v8::Value> v8Value(value.v8Value());
+    v8::Isolate* isolate = value.isolate();
+    if (V8PromiseCustom::isPromise(v8Value, isolate)) {
+        m_promise = value;
+        return;
+    }
+    m_promise = ScriptValue(V8PromiseCustom::toPromise(v8Value, isolate), isolate);
+}
+
 ScriptPromise ScriptPromise::createPending(ExecutionContext* context)
 {
-    ASSERT(v8::Context::InContext());
     ASSERT(context);
     v8::Isolate* isolate = toIsolate(context);
-    v8::Handle<v8::Object> promise = V8PromiseCustom::createPromise(toV8Context(context, DOMWrapperWorld::current())->Global(), isolate);
+    ASSERT(isolate->InContext());
+    v8::Handle<v8::Context> v8Context = toV8Context(context, DOMWrapperWorld::current());
+    v8::Handle<v8::Object> creationContext = v8Context.IsEmpty() ? v8::Object::New(isolate) : v8Context->Global();
+    v8::Handle<v8::Object> promise = V8PromiseCustom::createPromise(creationContext, isolate);
     return ScriptPromise(promise, isolate);
 }
 
 ScriptPromise ScriptPromise::createPending()
 {
-    ASSERT(v8::Context::InContext());
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
-    v8::Handle<v8::Object> promise = V8PromiseCustom::createPromise(v8::Object::New(), isolate);
+    ASSERT(isolate->InContext());
+    v8::Handle<v8::Object> promise = V8PromiseCustom::createPromise(v8::Object::New(isolate), isolate);
     return ScriptPromise(promise, isolate);
 }
 

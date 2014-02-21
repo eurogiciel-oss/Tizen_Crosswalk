@@ -6,14 +6,15 @@ import logging
 
 from telemetry.core import util
 from telemetry.core import exceptions
+from telemetry.unittest import DisabledTestOnCrOS
 from telemetry.unittest import tab_test_case
 
 
 def _IsDocumentVisible(tab):
-  state = tab.EvaluateJavaScript('document.webkitVisibilityState')
+  hidden = tab.EvaluateJavaScript('document.hidden || document.webkitHidden')
   # TODO(dtu): Remove when crbug.com/166243 is fixed.
   tab.Disconnect()
-  return state == 'visible'
+  return not hidden
 
 
 class TabTest(tab_test_case.TabTestCase):
@@ -55,6 +56,7 @@ class GpuTabTest(tab_test_case.TabTestCase):
     self._extra_browser_args = ['--enable-gpu-benchmarking']
     super(GpuTabTest, self).setUp()
 
+  @DisabledTestOnCrOS
   def testScreenshot(self):
     if not self._tab.screenshot_supported:
       logging.warning('Browser does not support screenshots, skipping test.')
@@ -75,6 +77,7 @@ class GpuTabTest(tab_test_case.TabTestCase):
     screenshot.GetPixelColor(32 * pixel_ratio, 32 * pixel_ratio).AssertIsRGB(
         255, 255, 255, tolerance=2)
 
+  @DisabledTestOnCrOS
   def testScreenshotSync(self):
     if not self._tab.screenshot_supported:
       logging.warning('Browser does not support screenshots, skipping test.')

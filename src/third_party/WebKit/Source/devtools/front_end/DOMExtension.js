@@ -144,14 +144,6 @@ Node.prototype.rangeBoundaryForOffset = function(offset)
     return { container: node, offset: offset };
 }
 
-/**
- * @param {string} className
- */
-Element.prototype.removeStyleClass = function(className)
-{
-    this.classList.remove(className);
-}
-
 Element.prototype.removeMatchingStyleClasses = function(classNameRegex)
 {
     var regex = new RegExp("(^|\\s+)" + classNameRegex + "($|\\s+)");
@@ -161,46 +153,34 @@ Element.prototype.removeMatchingStyleClasses = function(classNameRegex)
 
 /**
  * @param {string} className
- */
-Element.prototype.addStyleClass = function(className)
-{
-    this.classList.add(className);
-}
-
-/**
- * @param {string} className
- * @return {boolean}
- */
-Element.prototype.hasStyleClass = function(className)
-{
-    return this.classList.contains(className);
-}
-
-/**
- * @param {string} className
  * @param {*} enable
  */
 Element.prototype.enableStyleClass = function(className, enable)
 {
     if (enable)
-        this.addStyleClass(className);
+        this.classList.add(className);
     else
-        this.removeStyleClass(className);
+        this.classList.remove(className);
 }
 
 /**
  * @param {number|undefined} x
  * @param {number|undefined} y
+ * @param {!Element=} relativeTo
  */
-Element.prototype.positionAt = function(x, y)
+Element.prototype.positionAt = function(x, y, relativeTo)
 {
+    var shift = {x: 0, y: 0};
+    if (relativeTo)
+       shift = relativeTo.boxInWindow(this.ownerDocument.defaultView);
+
     if (typeof x === "number")
-        this.style.setProperty("left", x + "px");
+        this.style.setProperty("left", (shift.x + x) + "px");
     else
         this.style.removeProperty("left");
 
     if (typeof y === "number")
-        this.style.setProperty("top", y + "px");
+        this.style.setProperty("top", (shift.y + y) + "px");
     else
         this.style.removeProperty("top");
 }
@@ -212,8 +192,8 @@ Element.prototype.isScrolledToBottom = function()
 }
 
 /**
- * @param {Node} fromNode
- * @param {Node} toNode
+ * @param {!Node} fromNode
+ * @param {!Node} toNode
  */
 function removeSubsequentNodes(fromNode, toNode)
 {
@@ -236,8 +216,8 @@ function Size(width, height)
 }
 
 /**
- * @param {Element=} containerElement
- * @return {Size}
+ * @param {?Element=} containerElement
+ * @return {!Size}
  */
 Element.prototype.measurePreferredSize = function(containerElement)
 {
@@ -248,6 +228,17 @@ Element.prototype.measurePreferredSize = function(containerElement)
     this.positionAt(undefined, undefined);
     this.remove();
     return result;
+}
+
+/**
+ * @param {!Event} event
+ * @return {boolean}
+ */
+Element.prototype.containsEventPoint = function(event)
+{
+    var box = this.getBoundingClientRect();
+    return box.left < event.x  && event.x < box.right &&
+           box.top < event.y && event.y < box.bottom;
 }
 
 Node.prototype.enclosingNodeOrSelfWithNodeNameInArray = function(nameArray)
@@ -266,12 +257,12 @@ Node.prototype.enclosingNodeOrSelfWithNodeName = function(nodeName)
 
 /**
  * @param {string} className
- * @param {Element=} stayWithin
+ * @param {!Element=} stayWithin
  */
 Node.prototype.enclosingNodeOrSelfWithClass = function(className, stayWithin)
 {
     for (var node = this; node && node !== stayWithin && node !== this.ownerDocument; node = node.parentNode)
-        if (node.nodeType === Node.ELEMENT_NODE && node.hasStyleClass(className))
+        if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains(className))
             return node;
     return null;
 }
@@ -382,8 +373,27 @@ function AnchorBox(x, y, width, height)
 }
 
 /**
- * @param {Window} targetWindow
- * @return {AnchorBox}
+ * @param {!AnchorBox} box
+ * @return {!AnchorBox}
+ */
+AnchorBox.prototype.relativeTo = function(box)
+{
+    return new AnchorBox(
+        this.x - box.x, this.y - box.y, this.width, this.height);
+};
+
+/**
+ * @param {!Element} element
+ * @return {!AnchorBox}
+ */
+AnchorBox.prototype.relativeToElement = function(element)
+{
+    return this.relativeTo(element.boxInWindow(element.ownerDocument.defaultView));
+};
+
+/**
+ * @param {!Window} targetWindow
+ * @return {!AnchorBox}
  */
 Element.prototype.offsetRelativeToWindow = function(targetWindow)
 {
@@ -404,8 +414,8 @@ Element.prototype.offsetRelativeToWindow = function(targetWindow)
 }
 
 /**
- * @param {Window} targetWindow
- * @return {AnchorBox}
+ * @param {!Window} targetWindow
+ * @return {!AnchorBox}
  */
 Element.prototype.boxInWindow = function(targetWindow)
 {
@@ -559,6 +569,9 @@ Node.prototype.traversePreviousNode = function(stayWithin)
     return this.parentNode;
 }
 
+/**
+ * @return {boolean}
+ */
 function isEnterKey(event) {
     // Check if in IME.
     return event.keyCode !== 229 && event.keyIdentifier === "Enter";
@@ -573,7 +586,7 @@ function consumeEvent(e)
  * Mutation observers leak memory. Keep track of them and disconnect
  * on unload.
  * @constructor
- * @param {function(Array.<WebKitMutation>)} handler
+ * @param {function(!Array.<!WebKitMutation>)} handler
  */
 function NonLeakingMutationObserver(handler)
 {
@@ -592,8 +605,8 @@ NonLeakingMutationObserver._instances = [];
 
 NonLeakingMutationObserver.prototype = {
     /**
-     * @param {Element} element
-     * @param {Object} config
+     * @param {!Element} element
+     * @param {!Object} config
      */
     observe: function(element, config)
     {

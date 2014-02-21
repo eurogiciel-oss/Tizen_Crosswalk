@@ -16,7 +16,6 @@
       'dependencies': [
         '../base/base.gyp:base',
         'chrome_android_core',
-        'chromium_testshell_jni_headers',
         'chrome.gyp:browser_ui',
         '../content/content.gyp:content_app_browser',
       ],
@@ -28,12 +27,8 @@
         'android/testshell/chrome_main_delegate_testshell_android.h',
         "android/testshell/testshell_google_location_settings_helper.cc",
         "android/testshell/testshell_google_location_settings_helper.h",
-        'android/testshell/testshell_tab.cc',
-        'android/testshell/testshell_tab.h',
-        'android/testshell/testshell_stubs.cc',
       ],
       'include_dirs': [
-        '<(SHARED_INTERMEDIATE_DIR)/chromium_testshell',
         '../skia/config',
       ],
       'conditions': [
@@ -64,24 +59,14 @@
         'manifest_package_name': 'org.chromium.chrome.testshell',
         'java_in_dir': 'android/testshell/java',
         'resource_dir': 'android/testshell/res',
-        'asset_location': '<(ant_build_out)/../assets/<(package_name)',
+        'asset_location': '<(PRODUCT_DIR)/../assets/<(package_name)',
         'native_lib_target': 'libchromiumtestshell',
+        'native_lib_version_name': '<(version_full)',
         'additional_input_paths': [
           '<@(chrome_android_pak_output_resources)',
         ],
       },
       'includes': [ '../build/java_apk.gypi', ],
-    },
-    {
-      'target_name': 'chromium_testshell_jni_headers',
-      'type': 'none',
-      'sources': [
-        'android/testshell/java/src/org/chromium/chrome/testshell/TestShellTab.java',
-      ],
-      'variables': {
-        'jni_gen_package': 'chromium_testshell',
-      },
-      'includes': [ '../build/jni_generator.gypi' ],
     },
     {
       # chromium_testshell creates a .jar as a side effect. Any java targets
@@ -109,8 +94,6 @@
       ],
       'include_dirs': [
         '..',
-        '<(SHARED_INTERMEDIATE_DIR)/android',
-        '<(SHARED_INTERMEDIATE_DIR)/chrome',
         '<(android_ndk_include)',
       ],
       'sources': [

@@ -22,8 +22,10 @@
 #define Page_h
 
 #include "core/dom/ViewportDescription.h"
+#include "core/frame/SettingsDelegate.h"
+#include "core/frame/UseCounter.h"
+#include "core/page/HistoryController.h"
 #include "core/page/PageVisibilityState.h"
-#include "core/page/UseCounter.h"
 #include "core/rendering/Pagination.h"
 #include "platform/LifecycleContext.h"
 #include "platform/Supplementable.h"
@@ -50,13 +52,13 @@ class DragController;
 class EditorClient;
 class FocusController;
 class Frame;
+class FrameHost;
 class FrameSelection;
 class HaltablePlugin;
 class HistoryItem;
 class InspectorClient;
 class InspectorController;
 class Node;
-class PageConsole;
 class PageGroup;
 class PageLifecycleNotifier;
 class PlatformMouseEvent;
@@ -71,15 +73,16 @@ class VisibleSelection;
 class ScrollableArea;
 class ScrollingCoordinator;
 class Settings;
-class SharedWorkerRepositoryClient;
+class SpellCheckerClient;
 class StorageNamespace;
+class UndoStack;
 class ValidationMessageClient;
 
 typedef uint64_t LinkHash;
 
 float deviceScaleFactor(Frame*);
 
-class Page : public Supplementable<Page>, public LifecycleContext<Page> {
+class Page FINAL : public Supplementable<Page>, public LifecycleContext<Page>, public SettingsDelegate {
     WTF_MAKE_NONCOPYABLE(Page);
     friend class Settings;
 public:
@@ -98,10 +101,13 @@ public:
         DragClient* dragClient;
         InspectorClient* inspectorClient;
         BackForwardClient* backForwardClient;
+        SpellCheckerClient* spellCheckerClient;
     };
 
     explicit Page(PageClients&);
-    ~Page();
+    virtual ~Page();
+
+    FrameHost& frameHost() { return *m_frameHost; }
 
     void setNeedsRecalcStyleInAllFrames();
 
@@ -111,6 +117,10 @@ public:
     PluginData* pluginData() const;
 
     EditorClient& editorClient() const { return *m_editorClient; }
+    SpellCheckerClient& spellCheckerClient() const { return *m_spellCheckerClient; }
+    UndoStack& undoStack() const { return *m_undoStack; }
+
+    HistoryController& historyController() const { return *m_historyController; }
 
     void setMainFrame(PassRefPtr<Frame>);
     Frame* mainFrame() const { return m_mainFrame.get(); }
@@ -120,11 +130,8 @@ public:
     bool openedByDOM() const;
     void setOpenedByDOM();
 
-    // DEPRECATED. Use backForward() instead of the following function.
-    void goToItem(HistoryItem*);
-
-    // FIXME: InspectorPageGroup is only needed to support single process debugger layout tests, it should be removed when DumpRenderTree is gone.
-    enum PageGroupType { InspectorPageGroup, PrivatePageGroup, SharedPageGroup };
+    // FIXME: PageGroup should probably just be removed, see comment in PageGroup.h
+    enum PageGroupType { PrivatePageGroup, SharedPageGroup };
     void setGroupType(PageGroupType);
     void clearPageGroup();
     PageGroup& group()
@@ -148,8 +155,6 @@ public:
     PointerLockController& pointerLockController() const { return *m_pointerLockController; }
     ValidationMessageClient* validationMessageClient() const { return m_validationMessageClient; }
     void setValidationMessageClient(ValidationMessageClient* client) { m_validationMessageClient = client; }
-    SharedWorkerRepositoryClient* sharedWorkerRepositoryClient() { return m_sharedWorkerRepositoryClient; }
-    void setSharedWorkerRepositoryClient(SharedWorkerRepositoryClient* client) { m_sharedWorkerRepositoryClient = client; }
 
     ScrollingCoordinator* scrollingCoordinator();
 
@@ -167,6 +172,9 @@ public:
 
     void unmarkAllTextMatches();
 
+    // DefersLoading is used to delay loads during modal dialogs.
+    // Modal dialogs are supposed to freeze all background processes
+    // in the page, including prevent additional loads from staring/continuing.
     void setDefersLoading(bool);
     bool defersLoading() const { return m_defersLoading; }
 
@@ -182,11 +190,6 @@ public:
     // FrameView.
     const Pagination& pagination() const { return m_pagination; }
     void setPagination(const Pagination&);
-
-    void userStyleSheetLocationChanged();
-    const String& userStyleSheet() const;
-
-    void dnsPrefetchingStateChanged();
 
     static void allVisitedStateChanged(PageGroup*);
     static void visitedStateChanged(PageGroup*, LinkHash visitedHash);
@@ -210,8 +213,6 @@ public:
     bool isPainting() const { return m_isPainting; }
 #endif
 
-    PageConsole& console() { return *m_console; }
-
     double timerAlignmentInterval() const;
 
     class MultisamplingChangedObserver {
@@ -221,7 +222,6 @@ public:
 
     void addMultisamplingChangedObserver(MultisamplingChangedObserver*);
     void removeMultisamplingChangedObserver(MultisamplingChangedObserver*);
-    void multisamplingChanged();
 
     void didCommitLoad(Frame*);
 
@@ -242,6 +242,10 @@ private:
 
     void setTimerAlignmentInterval(double);
 
+    // SettingsDelegate overrides.
+    virtual Page* page() OVERRIDE { return this; }
+    virtual void settingsChanged(SettingsDelegate::ChangeType) OVERRIDE;
+
     const OwnPtr<AutoscrollController> m_autoscrollController;
     const OwnPtr<Chrome> m_chrome;
     const OwnPtr<DragCaretController> m_dragCaretController;
@@ -252,8 +256,9 @@ private:
     const OwnPtr<PointerLockController> m_pointerLockController;
     RefPtr<ScrollingCoordinator> m_scrollingCoordinator;
 
-    const OwnPtr<Settings> m_settings;
+    const OwnPtr<HistoryController> m_historyController;
     const OwnPtr<ProgressTracker> m_progress;
+    const OwnPtr<UndoStack> m_undoStack;
 
     RefPtr<Frame> m_mainFrame;
 
@@ -262,7 +267,7 @@ private:
     BackForwardClient* m_backForwardClient;
     EditorClient* const m_editorClient;
     ValidationMessageClient* m_validationMessageClient;
-    SharedWorkerRepositoryClient* m_sharedWorkerRepositoryClient;
+    SpellCheckerClient* const m_spellCheckerClient;
 
     UseCounter m_useCounter;
 
@@ -276,9 +281,6 @@ private:
     float m_deviceScaleFactor;
 
     Pagination m_pagination;
-
-    String m_userStyleSheet;
-    bool m_didLoadUserStyleSheet;
 
     RefPtr<PageGroup> m_group;
 
@@ -294,9 +296,11 @@ private:
     bool m_isPainting;
 #endif
 
-    const OwnPtr<PageConsole> m_console;
-
     HashSet<MultisamplingChangedObserver*> m_multisamplingChangedObservers;
+
+    // A pointer to all the interfaces provided to in-process Frames for this Page.
+    // FIXME: Most of the members of Page should move onto FrameHost.
+    OwnPtr<FrameHost> m_frameHost;
 };
 
 } // namespace WebCore

@@ -21,6 +21,7 @@
 
 #else
 
+#include <set>
 #include <string>
 
 #include "base/compiler_specific.h"
@@ -34,22 +35,23 @@
 #include "chrome/browser/signin/signin_internals_util.h"
 #include "chrome/browser/signin/signin_manager_base.h"
 #include "components/browser_context_keyed_service/browser_context_keyed_service.h"
-#include "content/public/browser/notification_observer.h"
-#include "content/public/browser/notification_registrar.h"
+#include "content/public/browser/render_process_host_observer.h"
 #include "google_apis/gaia/gaia_auth_consumer.h"
 #include "google_apis/gaia/google_service_auth_error.h"
+#include "google_apis/gaia/merge_session_helper.h"
 #include "net/cookies/canonical_cookie.h"
 
 class CookieSettings;
 class GaiaAuthFetcher;
 class ProfileIOData;
 class PrefService;
+class SigninAccountIdHelper;
 class SigninGlobalError;
 class SigninManagerDelegate;
 
 class SigninManager : public SigninManagerBase,
                       public GaiaAuthConsumer,
-                      public content::NotificationObserver {
+                      public content::RenderProcessHostObserver {
  public:
   // The callback invoked once the OAuth token has been fetched during signin,
   // but before the profile transitions to the "signed-in" state. This allows
@@ -150,22 +152,13 @@ class SigninManager : public SigninManagerBase,
   virtual void OnClientOAuthSuccess(const ClientOAuthResult& result) OVERRIDE;
   virtual void OnClientOAuthFailure(
       const GoogleServiceAuthError& error) OVERRIDE;
-  virtual void OnOAuth2RevokeTokenCompleted() OVERRIDE;
   virtual void OnGetUserInfoSuccess(const UserInfoMap& data) OVERRIDE;
   virtual void OnGetUserInfoFailure(
       const GoogleServiceAuthError& error) OVERRIDE;
-  virtual void OnUberAuthTokenSuccess(const std::string& token) OVERRIDE;
-  virtual void OnUberAuthTokenFailure(
-      const GoogleServiceAuthError& error) OVERRIDE;
-  virtual void OnMergeSessionSuccess(const std::string& data) OVERRIDE;
-  virtual void OnMergeSessionFailure(
-      const GoogleServiceAuthError& error) OVERRIDE;
 
-  // content::NotificationObserver
-  virtual void Observe(int type,
-                       const content::NotificationSource& source,
-                       const content::NotificationDetails& details) OVERRIDE;
-
+  // content::RenderProcessHostObserver
+  virtual void RenderProcessHostDestroyed(
+      content::RenderProcessHost* host) OVERRIDE;
 
   // Tells the SigninManager whether to prohibit signout for this profile.
   // If |prohibit_signout| is true, then signout will be prohibited.
@@ -181,19 +174,22 @@ class SigninManager : public SigninManagerBase,
   static bool IsSigninAllowedOnIOThread(ProfileIOData* io_data);
 
   // Allows the SigninManager to track the privileged signin process
-  // identified by |process_id| so that we can later ask (via IsSigninProcess)
+  // identified by |host_id| so that we can later ask (via IsSigninProcess)
   // if it is safe to sign the user in from the current context (see
   // OneClickSigninHelper).  All of this tracking state is reset once the
   // renderer process terminates.
-  void SetSigninProcess(int process_id);
+  //
+  // N.B. This is the id returned by RenderProcessHost::GetID().
+  void SetSigninProcess(int host_id);
   void ClearSigninProcess();
-  bool IsSigninProcess(int process_id) const;
+  bool IsSigninProcess(int host_id) const;
   bool HasSigninProcess() const;
 
- protected:
-  // If user was signed in, load tokens from DB if available.
-  virtual void InitTokenService() OVERRIDE;
+  // Add or remove observers for the merge session notification.
+  void AddMergeSessionObserver(MergeSessionHelper::Observer* observer);
+  void RemoveMergeSessionObserver(MergeSessionHelper::Observer* observer);
 
+ protected:
   // Flag saying whether signing out is allowed.
   bool prohibit_signout_;
 
@@ -209,6 +205,9 @@ class SigninManager : public SigninManagerBase,
   FRIEND_TEST_ALL_PREFIXES(SigninManagerTest, ClearTransientSigninData);
   FRIEND_TEST_ALL_PREFIXES(SigninManagerTest, ProvideSecondFactorSuccess);
   FRIEND_TEST_ALL_PREFIXES(SigninManagerTest, ProvideSecondFactorFailure);
+
+  // If user was signed in, load tokens from DB if available.
+  void InitTokenService();
 
   // Called to setup the transient signin data during one of the
   // StartSigninXXX methods.  |type| indicates which of the methods is being
@@ -243,10 +242,6 @@ class SigninManager : public SigninManagerBase,
   void HandleAuthError(const GoogleServiceAuthError& error,
                        bool clear_transient_data);
 
-  // Called to tell GAIA that we will no longer be using the current refresh
-  // token.
-  void RevokeOAuthLoginToken();
-
   void OnSigninAllowedPrefChanged();
   void OnGoogleServicesUsernamePatternChanged();
 
@@ -262,11 +257,11 @@ class SigninManager : public SigninManagerBase,
   // Actual client login handler.
   scoped_ptr<GaiaAuthFetcher> client_login_;
 
-  // Registrar for notifications from the TokenService.
-  content::NotificationRegistrar registrar_;
-
   // OAuth revocation fetcher for sign outs.
   scoped_ptr<GaiaAuthFetcher> revoke_token_fetcher_;
+
+  // Fetcher for the obfuscated user id.
+  scoped_ptr<SigninAccountIdHelper> account_id_helper_;
 
   // The type of sign being performed.  This value is valid only between a call
   // to one of the StartSigninXXX methods and when the sign in is either
@@ -282,7 +277,10 @@ class SigninManager : public SigninManagerBase,
 
   // See SetSigninProcess.  Tracks the currently active signin process
   // by ID, if there is one.
-  int signin_process_id_;
+  int signin_host_id_;
+
+  // The RenderProcessHosts being observed.
+  std::set<content::RenderProcessHost*> signin_hosts_observed_;
 
   // Callback invoked during signin after an OAuth token has been fetched
   // but before signin is complete.
@@ -296,6 +294,9 @@ class SigninManager : public SigninManagerBase,
 
   // Helper object to listen for changes to the signin allowed preference.
   BooleanPrefMember signin_allowed_;
+
+  // Helper to merge signed in account into the content area.
+  scoped_ptr<MergeSessionHelper> merge_session_helper_;
 
   DISALLOW_COPY_AND_ASSIGN(SigninManager);
 };

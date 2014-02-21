@@ -4,6 +4,9 @@
 
 #include "third_party/zlib/google/zip.h"
 
+#include <string>
+#include <vector>
+
 #include "base/bind.h"
 #include "base/file_util.h"
 #include "base/files/file_enumerator.h"
@@ -23,6 +26,38 @@
 #endif
 
 namespace {
+
+// Returns a zip_fileinfo struct with the time represented by |file_time|.
+zip_fileinfo TimeToZipFileInfo(const base::Time& file_time) {
+  base::Time::Exploded file_time_parts;
+  file_time.LocalExplode(&file_time_parts);
+
+  zip_fileinfo zip_info = {};
+  if (file_time_parts.year >= 1980) {
+    // This if check works around the handling of the year value in
+    // contrib/minizip/zip.c in function zip64local_TmzDateToDosDate
+    // It assumes that dates below 1980 are in the double digit format.
+    // Hence the fail safe option is to leave the date unset. Some programs
+    // might show the unset date as 1980-0-0 which is invalid.
+    zip_info.tmz_date.tm_year = file_time_parts.year;
+    zip_info.tmz_date.tm_mon = file_time_parts.month - 1;
+    zip_info.tmz_date.tm_mday = file_time_parts.day_of_month;
+    zip_info.tmz_date.tm_hour = file_time_parts.hour;
+    zip_info.tmz_date.tm_min = file_time_parts.minute;
+    zip_info.tmz_date.tm_sec = file_time_parts.second;
+  }
+
+  return zip_info;
+}
+
+// Returns a zip_fileinfo with the last modification date of |path| set.
+zip_fileinfo GetFileInfoForZipping(const base::FilePath& path) {
+  base::Time file_time;
+  base::File::Info file_info;
+  if (base::GetFileInfo(path, &file_info))
+    file_time = file_info.last_modified;
+  return TimeToZipFileInfo(file_time);
+}
 
 bool AddFileToZip(zipFile zip_file, const base::FilePath& src_dir) {
   net::FileStream stream(NULL);
@@ -51,8 +86,10 @@ bool AddFileToZip(zipFile zip_file, const base::FilePath& src_dir) {
 
 bool AddEntryToZip(zipFile zip_file, const base::FilePath& path,
                    const base::FilePath& root_path) {
-  std::string str_path =
-      path.AsUTF8Unsafe().substr(root_path.AsUTF8Unsafe().length() + 1);
+  base::FilePath relative_path;
+  bool result = root_path.AppendRelativePath(path, &relative_path);
+  DCHECK(result);
+  std::string str_path = relative_path.AsUTF8Unsafe();
 #if defined(OS_WIN)
   ReplaceSubstringsAfterOffset(&str_path, 0u, "\\", "/");
 #endif
@@ -61,11 +98,31 @@ bool AddEntryToZip(zipFile zip_file, const base::FilePath& path,
   if (is_directory)
     str_path += "/";
 
-  if (ZIP_OK != zipOpenNewFileInZip(
-      zip_file, str_path.c_str(),
-      NULL, NULL, 0u, NULL, 0u, NULL,  // file info, extrafield local, length,
-                                       // extrafield global, length, comment
-      Z_DEFLATED, Z_DEFAULT_COMPRESSION)) {
+  // Section 4.4.4 http://www.pkware.com/documents/casestudies/APPNOTE.TXT
+  // Setting the Language encoding flag so the file is told to be in utf-8.
+  const uLong LANGUAGE_ENCODING_FLAG = 0x1 << 11;
+
+  zip_fileinfo file_info = GetFileInfoForZipping(path);
+
+  if (ZIP_OK != zipOpenNewFileInZip4(
+                    zip_file,  // file
+                    str_path.c_str(),  // filename
+                    &file_info,  // zipfi
+                    NULL,  // extrafield_local,
+                    0u,  // size_extrafield_local
+                    NULL,  // extrafield_global
+                    0u,  // size_extrafield_global
+                    NULL,  // comment
+                    Z_DEFLATED,  // method
+                    Z_DEFAULT_COMPRESSION,  // level
+                    0,  // raw
+                    -MAX_WBITS,  // windowBits
+                    DEF_MEM_LEVEL,  // memLevel
+                    Z_DEFAULT_STRATEGY,  // strategy
+                    NULL,  // password
+                    0,  // crcForCrypting
+                    0,  // versionMadeBy
+                    LANGUAGE_ENCODING_FLAG)) {  // flagBase
     DLOG(ERROR) << "Could not open zip file entry " << str_path;
     return false;
   }

@@ -30,6 +30,7 @@ class MediaDrmBridge;
 
 namespace content {
 class BrowserDemuxerAndroid;
+class ContentViewCoreImpl;
 class WebContents;
 
 // This class manages all the MediaPlayerAndroid objects. It receives
@@ -48,6 +49,8 @@ class CONTENT_EXPORT BrowserMediaPlayerManager
   // Returns a new instance using the registered factory if available.
   static BrowserMediaPlayerManager* Create(RenderViewHost* rvh);
 
+  ContentViewCoreImpl* GetContentViewCore() const;
+
   virtual ~BrowserMediaPlayerManager();
 
   // WebContentsObserver overrides.
@@ -59,6 +62,8 @@ class CONTENT_EXPORT BrowserMediaPlayerManager
   virtual void FullscreenPlayerSeek(int msec);
   virtual void ExitFullscreen(bool release_media_player);
   virtual void SetVideoSurface(gfx::ScopedJavaSurface surface);
+  virtual void SuspendFullscreen();
+  virtual void ResumeFullscreen(gfx::ScopedJavaSurface surface);
 
   // Called when browser player wants the renderer media element to seek.
   // Any actual seek started by renderer will be handled by browser in OnSeek().
@@ -90,21 +95,24 @@ class CONTENT_EXPORT BrowserMediaPlayerManager
   virtual media::MediaDrmBridge* GetDrmBridge(int media_keys_id) OVERRIDE;
   virtual void DestroyAllMediaPlayers() OVERRIDE;
   virtual void OnProtectedSurfaceRequested(int player_id) OVERRIDE;
-  virtual void OnKeyAdded(int media_keys_id,
-                          const std::string& session_id) OVERRIDE;
-  virtual void OnKeyError(int media_keys_id,
-                          const std::string& session_id,
-                          media::MediaKeys::KeyError error_code,
-                          int system_code) OVERRIDE;
-  virtual void OnKeyMessage(int media_keys_id,
-                            const std::string& session_id,
-                            const std::vector<uint8>& message,
-                            const std::string& destination_url) OVERRIDE;
+  virtual void OnSessionCreated(int media_keys_id,
+                                uint32 session_id,
+                                const std::string& web_session_id) OVERRIDE;
+  virtual void OnSessionMessage(int media_keys_id,
+                                uint32 session_id,
+                                const std::vector<uint8>& message,
+                                const std::string& destination_url) OVERRIDE;
+  virtual void OnSessionReady(int media_keys_id, uint32 session_id) OVERRIDE;
+  virtual void OnSessionClosed(int media_keys_id, uint32 session_id) OVERRIDE;
+  virtual void OnSessionError(int media_keys_id,
+                              uint32 session_id,
+                              media::MediaKeys::KeyError error_code,
+                              int system_code) OVERRIDE;
 
-#if defined(GOOGLE_TV)
+#if defined(VIDEO_HOLE)
   void AttachExternalVideoSurface(int player_id, jobject surface);
   void DetachExternalVideoSurface(int player_id);
-#endif
+#endif  // defined(VIDEO_HOLE)
 
   // Called to disble the current fullscreen playback if the video is encrypted.
   // TODO(qinmin): remove this once we have the new fullscreen mode.
@@ -132,20 +140,22 @@ class CONTENT_EXPORT BrowserMediaPlayerManager
   void OnInitializeCDM(int media_keys_id,
                        const std::vector<uint8>& uuid,
                        const GURL& frame_url);
-  void OnGenerateKeyRequest(int media_keys_id,
-                            const std::string& type,
-                            const std::vector<uint8>& init_data);
-  void OnAddKey(int media_keys_id,
-                const std::vector<uint8>& key,
-                const std::vector<uint8>& init_data,
-                const std::string& session_id);
-  void OnCancelKeyRequest(int media_keys_id, const std::string& session_id);
+  void OnCreateSession(int media_keys_id,
+                       uint32 session_id,
+                       const std::string& type,
+                       const std::vector<uint8>& init_data);
+  void OnUpdateSession(int media_keys_id,
+                       uint32 session_id,
+                       const std::vector<uint8>& response);
+  void OnReleaseSession(int media_keys_id, uint32 session_id);
   void OnSetMediaKeys(int player_id, int media_keys_id);
 
-#if defined(GOOGLE_TV)
+  void OnCancelAllPendingSessionCreations(int media_keys_id);
+
+#if defined(VIDEO_HOLE)
   virtual void OnNotifyExternalSurface(
       int player_id, bool is_request, const gfx::RectF& rect);
-#endif
+#endif  // defined(VIDEO_HOLE)
 
   // Adds a given player to the list.
   void AddPlayer(media::MediaPlayerAndroid* player);
@@ -160,7 +170,7 @@ class CONTENT_EXPORT BrowserMediaPlayerManager
       int player_id,
       media::MediaPlayerAndroid* player);
 
-  // Add a new MediaDrmBridge for the given |uuid|, |media_keys_id|, and
+  // Adds a new MediaDrmBridge for the given |uuid|, |media_keys_id|, and
   // |frame_url|.
   void AddDrmBridge(int media_keys_id,
                     const std::vector<uint8>& uuid,
@@ -170,10 +180,16 @@ class CONTENT_EXPORT BrowserMediaPlayerManager
   void RemoveDrmBridge(int media_keys_id);
 
  private:
-  void GenerateKeyIfAllowed(int media_keys_id,
-                            const std::string& type,
-                            const std::vector<uint8>& init_data,
-                            bool allowed);
+  // If |permitted| is false, it does nothing but send
+  // |MediaKeysMsg_SessionError| IPC message.
+  // The primary use case is infobar permission callback, i.e., when infobar
+  // can decide user's intention either from interacting with the actual info
+  // bar or from the saved preference.
+  void CreateSessionIfPermitted(int media_keys_id,
+                                uint32 session_id,
+                                const std::string& type,
+                                const std::vector<uint8>& init_data,
+                                bool permitted);
 
   // Constructs a MediaPlayerAndroid object. Declared static to permit embedders
   // to override functionality.

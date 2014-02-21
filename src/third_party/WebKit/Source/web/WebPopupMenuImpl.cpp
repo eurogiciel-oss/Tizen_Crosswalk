@@ -39,22 +39,22 @@
 #include "WebViewClient.h"
 #include "WebWidgetClient.h"
 #include "core/frame/FrameView.h"
-#include "core/platform/Cursor.h"
+#include "platform/Cursor.h"
 #include "platform/NotImplemented.h"
-#include "core/platform/chromium/FramelessScrollView.h"
-#include "core/platform/graphics/GraphicsContext.h"
-#include "core/platform/graphics/skia/SkiaUtils.h"
 #include "platform/PlatformGestureEvent.h"
 #include "platform/PlatformKeyboardEvent.h"
 #include "platform/PlatformMouseEvent.h"
 #include "platform/PlatformWheelEvent.h"
 #include "platform/geometry/IntRect.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/graphics/skia/SkiaUtils.h"
+#include "platform/scroll/FramelessScrollView.h"
 #include "public/platform/WebRect.h"
 #include <skia/ext/platform_canvas.h>
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 // WebPopupMenu ---------------------------------------------------------------
 
@@ -68,10 +68,10 @@ WebPopupMenu* WebPopupMenu::create(WebWidgetClient* client)
 
 WebPopupMenuImpl::WebPopupMenuImpl(WebWidgetClient* client)
     : m_client(client)
+    // Set to impossible point so we always get the first mouse position.
+    , m_lastMousePosition(WebPoint(-1, -1))
     , m_widget(0)
 {
-    // Set to impossible point so we always get the first mouse position.
-    m_lastMousePosition = WebPoint(-1, -1);
 }
 
 WebPopupMenuImpl::~WebPopupMenuImpl()
@@ -394,4 +394,4 @@ void WebPopupMenuImpl::popupClosed(FramelessScrollView* widget)
         m_client->closeWidgetSoon();
 }
 
-} // namespace WebKit
+} // namespace blink

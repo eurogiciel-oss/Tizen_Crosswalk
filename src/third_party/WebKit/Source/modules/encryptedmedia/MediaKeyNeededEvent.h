@@ -26,8 +26,6 @@
 #ifndef MediaKeyNeededEvent_h
 #define MediaKeyNeededEvent_h
 
-#if ENABLE(ENCRYPTED_MEDIA_V2)
-
 #include "core/events/Event.h"
 #include "core/html/MediaKeyError.h"
 
@@ -36,10 +34,11 @@ namespace WebCore {
 struct MediaKeyNeededEventInit : public EventInit {
     MediaKeyNeededEventInit();
 
+    String contentType;
     RefPtr<Uint8Array> initData;
 };
 
-class MediaKeyNeededEvent : public Event {
+class MediaKeyNeededEvent FINAL : public Event {
 public:
     virtual ~MediaKeyNeededEvent();
 
@@ -55,16 +54,17 @@ public:
 
     virtual const AtomicString& interfaceName() const OVERRIDE;
 
+    String contentType() const { return m_contentType; }
     Uint8Array* initData() const { return m_initData.get(); }
 
 private:
     MediaKeyNeededEvent();
     MediaKeyNeededEvent(const AtomicString& type, const MediaKeyNeededEventInit& initializer);
 
+    String m_contentType;
     RefPtr<Uint8Array> m_initData;
 };
 
 } // namespace WebCore
 
-#endif
 #endif

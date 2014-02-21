@@ -22,7 +22,6 @@
 #if ENABLE(SVG_FONTS)
 #include "core/svg/SVGGlyphRefElement.h"
 
-#include "SVGNames.h"
 #include "XLinkNames.h"
 #include "core/svg/SVGParserUtilities.h"
 #include "wtf/text/AtomicString.h"
@@ -37,24 +36,23 @@ BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGGlyphRefElement)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGGlyphRefElement::SVGGlyphRefElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+inline SVGGlyphRefElement::SVGGlyphRefElement(Document& document)
+    : SVGElement(SVGNames::glyphRefTag, document)
     , m_x(0)
     , m_y(0)
     , m_dx(0)
     , m_dy(0)
 {
-    ASSERT(hasTagName(SVGNames::glyphRefTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGGlyphRefElement();
 }
 
-PassRefPtr<SVGGlyphRefElement> SVGGlyphRefElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGGlyphRefElement> SVGGlyphRefElement::create(Document& document)
 {
-    return adoptRef(new SVGGlyphRefElement(tagName, document));
+    return adoptRef(new SVGGlyphRefElement(document));
 }
 
-bool SVGGlyphRefElement::hasValidGlyphElement(String& glyphName) const
+bool SVGGlyphRefElement::hasValidGlyphElement(AtomicString& glyphName) const
 {
     // FIXME: We only support xlink:href so far.
     // https://bugs.webkit.org/show_bug.cgi?id=64787

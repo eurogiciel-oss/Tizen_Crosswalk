@@ -1,11 +1,9 @@
-
 /*
  * Copyright 2006 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
 
 #ifndef SkTypes_DEFINED
 #define SkTypes_DEFINED
@@ -149,6 +147,32 @@ struct SkCompileAssert {
  */
 #define SK_MACRO_APPEND_LINE(name)  SK_MACRO_CONCAT(name, __LINE__)
 
+/**
+ * For some classes, it's almost always an error to instantiate one without a name, e.g.
+ *   {
+ *       SkAutoMutexAcquire(&mutex);
+ *       <some code>
+ *   }
+ * In this case, the writer meant to hold mutex while the rest of the code in the block runs,
+ * but instead the mutex is acquired and then immediately released.  The correct usage is
+ *   {
+ *       SkAutoMutexAcquire lock(&mutex);
+ *       <some code>
+ *   }
+ *
+ * To prevent callers from instantiating your class without a name, use SK_REQUIRE_LOCAL_VAR
+ * like this:
+ *   class classname {
+ *       <your class>
+ *   };
+ *   #define classname(...) SK_REQUIRE_LOCAL_VAR(classname)
+ *
+ * This won't work with templates, and you must inline the class' constructors and destructors.
+ * Take a look at SkAutoFree and SkAutoMalloc in this file for examples.
+ */
+#define SK_REQUIRE_LOCAL_VAR(classname) \
+    SK_COMPILE_ASSERT(false, missing_name_for_##classname)
+
 ///////////////////////////////////////////////////////////////////////
 
 /**
@@ -193,6 +217,7 @@ typedef uint8_t SkBool8;
     SK_API uint16_t    SkToU16(uintmax_t);
     SK_API int32_t     SkToS32(intmax_t);
     SK_API uint32_t    SkToU32(uintmax_t);
+    SK_API int         SkToInt(intmax_t);
 #else
     #define SkToS8(x)   ((int8_t)(x))
     #define SkToU8(x)   ((uint8_t)(x))
@@ -200,6 +225,7 @@ typedef uint8_t SkBool8;
     #define SkToU16(x)  ((uint16_t)(x))
     #define SkToS32(x)  ((int32_t)(x))
     #define SkToU32(x)  ((uint32_t)(x))
+    #define SkToInt(x)  ((int)(x))
 #endif
 
 /** Returns 0 or 1 based on the condition
@@ -432,6 +458,7 @@ private:
     SkAutoFree(const SkAutoFree&);
     SkAutoFree& operator=(const SkAutoFree&);
 };
+#define SkAutoFree(...) SK_REQUIRE_LOCAL_VAR(SkAutoFree)
 
 /**
  *  Manage an allocated block of heap memory. This object is the sole manager of
@@ -518,6 +545,7 @@ private:
     void*   fPtr;
     size_t  fSize;  // can be larger than the requested size (see kReuse)
 };
+#define SkAutoMalloc(...) SK_REQUIRE_LOCAL_VAR(SkAutoMalloc)
 
 /**
  *  Manage an allocated block of memory. If the requested size is <= kSize, then
@@ -604,6 +632,7 @@ private:
     size_t      fSize;  // can be larger than the requested size (see kReuse)
     uint32_t    fStorage[(kSize + 3) >> 2];
 };
+// Can't guard the constructor because it's a template class.
 
 #endif /* C++ */
 

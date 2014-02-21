@@ -24,6 +24,7 @@
 #include "content/public/browser/render_view_host.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/test_utils.h"
+#include "extensions/common/extension_set.h"
 
 using extensions::Extension;
 
@@ -34,8 +35,8 @@ ExtensionSettingsUIBrowserTest::~ExtensionSettingsUIBrowserTest() {}
 
 Profile* ExtensionSettingsUIBrowserTest::GetProfile() {
   if (!profile_) {
-    profile_ =
-        browser() ? browser()->profile() : ProfileManager::GetDefaultProfile();
+    profile_ = browser() ? browser()->profile() :
+                           ProfileManager::GetActiveUserProfile();
   }
   return profile_;
 }
@@ -110,14 +111,15 @@ const Extension* ExtensionSettingsUIBrowserTest::InstallExtension(
             << " num after: " << base::IntToString(num_after)
             << " Installed extensions follow:";
 
-    for (ExtensionSet::const_iterator it = service->extensions()->begin();
+    for (extensions::ExtensionSet::const_iterator it =
+             service->extensions()->begin();
          it != service->extensions()->end(); ++it)
       VLOG(1) << "  " << (*it)->id();
 
     VLOG(1) << "Errors follow:";
-    const std::vector<string16>* errors =
+    const std::vector<base::string16>* errors =
         ExtensionErrorReporter::GetInstance()->GetErrors();
-    for (std::vector<string16>::const_iterator iter = errors->begin();
+    for (std::vector<base::string16>::const_iterator iter = errors->begin();
          iter != errors->end(); ++iter)
       VLOG(1) << *iter;
 

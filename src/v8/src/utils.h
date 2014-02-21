@@ -28,10 +28,10 @@
 #ifndef V8_UTILS_H_
 #define V8_UTILS_H_
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
-#include <climits>
 
 #include "allocation.h"
 #include "checks.h"
@@ -1083,7 +1083,7 @@ class EnumSet {
     // The strange typing in ASSERT is necessary to avoid stupid warnings, see:
     // http://gcc.gnu.org/bugzilla/show_bug.cgi?id=43680
     ASSERT(static_cast<int>(element) < static_cast<int>(sizeof(T) * CHAR_BIT));
-    return 1 << element;
+    return static_cast<T>(1) << element;
   }
 
   T bits_;
@@ -1118,6 +1118,7 @@ class BailoutId {
 
   bool IsNone() const { return id_ == kNoneId; }
   bool operator==(const BailoutId& other) const { return id_ == other.id_; }
+  bool operator!=(const BailoutId& other) const { return id_ != other.id_; }
 
  private:
   static const int kNoneId = -1;

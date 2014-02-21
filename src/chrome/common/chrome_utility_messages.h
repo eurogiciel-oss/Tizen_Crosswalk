@@ -69,6 +69,7 @@ IPC_STRUCT_TRAITS_END()
 IPC_STRUCT_TRAITS_BEGIN(iphoto::parser::Photo)
   IPC_STRUCT_TRAITS_MEMBER(id)
   IPC_STRUCT_TRAITS_MEMBER(location)
+  IPC_STRUCT_TRAITS_MEMBER(original_location)
 IPC_STRUCT_TRAITS_END()
 
 IPC_STRUCT_TRAITS_BEGIN(iphoto::parser::Library)
@@ -139,11 +140,18 @@ IPC_MESSAGE_CONTROL1(ChromeUtilityMsg_DecodeImageBase64,
                      std::string)  // base64 encoded image contents
 
 // Tell the utility process to render the given PDF into a metafile.
+// TODO(vitalybuka): switch to IPC::PlatformFileForTransit.
 IPC_MESSAGE_CONTROL4(ChromeUtilityMsg_RenderPDFPagesToMetafile,
                      base::PlatformFile,       // PDF file
                      base::FilePath,           // Location for output metafile
-                     printing::PdfRenderSettings,  // PDF render settitngs
+                     printing::PdfRenderSettings,  // PDF render settings
                      std::vector<printing::PageRange>)
+
+// Tell the utility process to render the given PDF into a PWGRaster.
+IPC_MESSAGE_CONTROL3(ChromeUtilityMsg_RenderPDFPagesToPWGRaster,
+                     IPC::PlatformFileForTransit,  /* Input PDF file */
+                     printing::PdfRenderSettings,  /* PDF render settings */
+                     IPC::PlatformFileForTransit   /* Output PWG file */)
 
 // Tell the utility process to decode the given JPEG image data with a robust
 // libjpeg codec.
@@ -219,6 +227,14 @@ IPC_MESSAGE_CONTROL2(ChromeUtilityMsg_IndexPicasaAlbumsContents,
 IPC_MESSAGE_CONTROL2(ChromeUtilityMsg_CheckMediaFile,
                      int64 /* milliseconds_of_decoding */,
                      IPC::PlatformFileForTransit /* Media file to parse */)
+
+IPC_MESSAGE_CONTROL2(ChromeUtilityMsg_ParseMediaMetadata,
+                     std::string /* mime_type */,
+                     int64 /* total_size */)
+
+IPC_MESSAGE_CONTROL2(ChromeUtilityMsg_RequestBlobBytes_Finished,
+                     int64 /* request_id */,
+                     std::string /* bytes */)
 #endif  // !defined(OS_ANDROID) && !defined(OS_IOS)
 
 //------------------------------------------------------------------------------
@@ -256,7 +272,7 @@ IPC_MESSAGE_CONTROL1(ChromeUtilityHostMsg_UnpackWebResource_Failed,
 IPC_MESSAGE_CONTROL1(ChromeUtilityHostMsg_ParseUpdateManifest_Succeeded,
                      UpdateManifest::Results /* updates */)
 
-// Reply when an error occured parsing the update manifest. |error_message|
+// Reply when an error occurred parsing the update manifest. |error_message|
 // is a description of what went wrong suitable for logging.
 IPC_MESSAGE_CONTROL1(ChromeUtilityHostMsg_ParseUpdateManifest_Failed,
                      std::string /* error_message, if any */)
@@ -265,7 +281,7 @@ IPC_MESSAGE_CONTROL1(ChromeUtilityHostMsg_ParseUpdateManifest_Failed,
 IPC_MESSAGE_CONTROL1(ChromeUtilityHostMsg_DecodeImage_Succeeded,
                      SkBitmap)  // decoded image
 
-// Reply when an error occured decoding the image.
+// Reply when an error occurred decoding the image.
 IPC_MESSAGE_CONTROL0(ChromeUtilityHostMsg_DecodeImage_Failed)
 
 // Reply when the utility process has succeeded in rendering the PDF.
@@ -273,8 +289,14 @@ IPC_MESSAGE_CONTROL2(ChromeUtilityHostMsg_RenderPDFPagesToMetafile_Succeeded,
                      int,          // Highest rendered page number
                      double)       // Scale factor
 
-// Reply when an error occured rendering the PDF.
+// Reply when an error occurred rendering the PDF.
 IPC_MESSAGE_CONTROL0(ChromeUtilityHostMsg_RenderPDFPagesToMetafile_Failed)
+
+// Reply when the utility process has succeeded in rendering the PDF to PWG.
+IPC_MESSAGE_CONTROL0(ChromeUtilityHostMsg_RenderPDFPagesToPWGRaster_Succeeded)
+
+// Reply when an error occurred rendering the PDF to PWG.
+IPC_MESSAGE_CONTROL0(ChromeUtilityHostMsg_RenderPDFPagesToPWGRaster_Failed)
 
 // Reply when the utility process successfully parsed a JSON string.
 //
@@ -358,4 +380,13 @@ IPC_MESSAGE_CONTROL1(ChromeUtilityHostMsg_IndexPicasaAlbumsContents_Finished,
 // the file appears to be a well formed media file.
 IPC_MESSAGE_CONTROL1(ChromeUtilityHostMsg_CheckMediaFile_Finished,
                      bool /* passed_checks */)
+
+IPC_MESSAGE_CONTROL2(ChromeUtilityHostMsg_ParseMediaMetadata_Finished,
+                     bool /* parse_success */,
+                     base::DictionaryValue /* metadata */)
+
+IPC_MESSAGE_CONTROL3(ChromeUtilityHostMsg_RequestBlobBytes,
+                     int64 /* request_id */,
+                     int64 /* start_byte */,
+                     int64 /* length */)
 #endif  // !defined(OS_ANDROID) && !defined(OS_IOS)

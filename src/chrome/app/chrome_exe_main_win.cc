@@ -19,11 +19,14 @@
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_paths_internal.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome_elf/chrome_elf_main.h"
 #include "components/breakpad/app/breakpad_client.h"
 #include "components/breakpad/app/breakpad_win.h"
+#include "components/startup_metric_utils/startup_metric_utils.h"
 #include "content/public/app/startup_helper_win.h"
 #include "content/public/common/result_codes.h"
 #include "sandbox/win/src/sandbox_factory.h"
+#include "ui/gfx/win/dpi.h"
 
 namespace {
 
@@ -45,9 +48,15 @@ int RunChrome(HINSTANCE instance) {
 
   bool exit_now = true;
   // We restarted because of a previous crash. Ask user if we should relaunch.
-  if (breakpad::ShowRestartDialogIfCrashed(&exit_now)) {
-    if (exit_now)
-      return content::RESULT_CODE_NORMAL_EXIT;
+  // Only show this for the browser process. See crbug.com/132119.
+  const std::string process_type =
+      CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          switches::kProcessType);
+  if (process_type.empty()) {
+    if (breakpad::ShowRestartDialogIfCrashed(&exit_now)) {
+      if (exit_now)
+        return content::RESULT_CODE_NORMAL_EXIT;
+    }
   }
 
   // Initialize the sandbox services.
@@ -111,10 +120,17 @@ bool AttemptFastNotify(const CommandLine& command_line) {
 }  // namespace
 
 int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE prev, wchar_t*, int) {
+  startup_metric_utils::RecordExeMainEntryTime();
+
+  // Signal Chrome Elf that Chrome has begun to start.
+  SignalChromeElf();
+
   // Initialize the commandline singleton from the environment.
   CommandLine::Init(0, NULL);
   // The exit manager is in charge of calling the dtors of singletons.
   base::AtExitManager exit_manager;
+
+  gfx::EnableHighDPISupport();
 
   if (AttemptFastNotify(*CommandLine::ForCurrentProcess()))
     return 0;

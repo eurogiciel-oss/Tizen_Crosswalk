@@ -21,12 +21,16 @@
 #include "config.h"
 #include "core/html/HTMLDetailsElement.h"
 
+#include "CSSPropertyNames.h"
+#include "CSSValueKeywords.h"
 #include "HTMLNames.h"
 #include "bindings/v8/ExceptionStatePlaceholder.h"
 #include "core/dom/Text.h"
 #include "core/dom/shadow/ShadowRoot.h"
+#include "core/html/HTMLDivElement.h"
 #include "core/html/HTMLSummaryElement.h"
 #include "core/html/shadow/HTMLContentElement.h"
+#include "core/html/shadow/ShadowElementNames.h"
 #include "core/rendering/RenderBlockFlow.h"
 #include "platform/text/PlatformLocale.h"
 
@@ -34,18 +38,17 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-PassRefPtr<HTMLDetailsElement> HTMLDetailsElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<HTMLDetailsElement> HTMLDetailsElement::create(Document& document)
 {
-    RefPtr<HTMLDetailsElement> details = adoptRef(new HTMLDetailsElement(tagName, document));
+    RefPtr<HTMLDetailsElement> details = adoptRef(new HTMLDetailsElement(document));
     details->ensureUserAgentShadowRoot();
     return details.release();
 }
 
-HTMLDetailsElement::HTMLDetailsElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+HTMLDetailsElement::HTMLDetailsElement(Document& document)
+    : HTMLElement(detailsTag, document)
     , m_isOpen(false)
 {
-    ASSERT(hasTagName(detailsTag));
     ScriptWrappable::init(this);
 }
 
@@ -54,19 +57,24 @@ RenderObject* HTMLDetailsElement::createRenderer(RenderStyle*)
     return new RenderBlockFlow(this);
 }
 
-void HTMLDetailsElement::didAddUserAgentShadowRoot(ShadowRoot* root)
+void HTMLDetailsElement::didAddUserAgentShadowRoot(ShadowRoot& root)
 {
-    DEFINE_STATIC_LOCAL(AtomicString, summarySelector, ("summary:first-of-type", AtomicString::ConstructFromLiteral));
+    DEFINE_STATIC_LOCAL(const AtomicString, summarySelector, ("summary:first-of-type", AtomicString::ConstructFromLiteral));
 
-    RefPtr<HTMLSummaryElement> defaultSummary = HTMLSummaryElement::create(summaryTag, document());
-    defaultSummary->appendChild(Text::create(document(), locale().queryString(WebKit::WebLocalizedString::DetailsLabel)));
+    RefPtr<HTMLSummaryElement> defaultSummary = HTMLSummaryElement::create(document());
+    defaultSummary->appendChild(Text::create(document(), locale().queryString(blink::WebLocalizedString::DetailsLabel)));
 
-    RefPtr<HTMLContentElement> content = HTMLContentElement::create(document());
-    content->setAttribute(selectAttr, summarySelector);
-    content->appendChild(defaultSummary);
+    RefPtr<HTMLContentElement> summary = HTMLContentElement::create(document());
+    summary->setIdAttribute(ShadowElementNames::detailsSummary());
+    summary->setAttribute(selectAttr, summarySelector);
+    summary->appendChild(defaultSummary);
+    root.appendChild(summary.release());
 
-    root->appendChild(content);
-    root->appendChild(HTMLContentElement::create(document()));
+    RefPtr<HTMLDivElement> content = HTMLDivElement::create(document());
+    content->setIdAttribute(ShadowElementNames::detailsContent());
+    content->appendChild(HTMLContentElement::create(document()));
+    content->setInlineStyleProperty(CSSPropertyDisplay, CSSValueNone);
+    root.appendChild(content.release());
 }
 
 Element* HTMLDetailsElement::findMainSummary() const
@@ -86,20 +94,23 @@ void HTMLDetailsElement::parseAttribute(const QualifiedName& name, const AtomicS
     if (name == openAttr) {
         bool oldValue = m_isOpen;
         m_isOpen = !value.isNull();
-        if (oldValue != m_isOpen)
-            lazyReattachIfAttached();
-    } else
-        HTMLElement::parseAttribute(name, value);
-}
-
-bool HTMLDetailsElement::childShouldCreateRenderer(const Node& child) const
-{
-    // FIXME: These checks do not look correct, we should just use insertion points instead.
-    if (m_isOpen)
-        return HTMLElement::childShouldCreateRenderer(child);
-    if (!child.hasTagName(summaryTag))
-        return false;
-    return child == findMainSummary() && HTMLElement::childShouldCreateRenderer(child);
+        if (m_isOpen == oldValue)
+            return;
+        Element* content = ensureUserAgentShadowRoot().getElementById(ShadowElementNames::detailsContent());
+        ASSERT(content);
+        if (m_isOpen)
+            content->removeInlineStyleProperty(CSSPropertyDisplay);
+        else
+            content->setInlineStyleProperty(CSSPropertyDisplay, CSSValueNone);
+        Element* summary = ensureUserAgentShadowRoot().getElementById(ShadowElementNames::detailsSummary());
+        ASSERT(summary);
+        // FIXME: DetailsMarkerControl's RenderDetailsMarker has no concept of being updated
+        // without recreating it causing a repaint. Instead we should change it so we can tell
+        // it to toggle the open/closed triangle state and avoid reattaching the entire summary.
+        summary->lazyReattachIfAttached();
+        return;
+    }
+    HTMLElement::parseAttribute(name, value);
 }
 
 void HTMLDetailsElement::toggleOpen()

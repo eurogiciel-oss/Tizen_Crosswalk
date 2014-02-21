@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="ko">
+<translation id="3234920859344197194">사이트에서 사용 중인 Chrome 프레임 플러그인의 보안 및 안정성 업데이트가 곧 중단됩니다. 플러그인을 제거하고 최신 브라우저로 업그레이드하세요.</translation>
 <translation id="8914504000324227558">Chrome 다시 시작</translation>
 <translation id="8000275528373650868">Chrome은 Windows Vista 또는 Windows XP 서비스 팩 2 이상이 설치된 컴퓨터에서 사용하실 수 있습니다.</translation>
 <translation id="8485767968786176057">인증서에 표시된 주소가 브라우저에서 이동하려는 웹사이트의 주소와 일치하지 않습니다. 공격자가 통신을 가로채어 다른 웹사이트의 인증서를 전달해 불일치가 발생했을 수 있습니다. 또는 방문하려는 사이트를 비롯하여 여러 웹사이트에 대해 동일한 인증서를 반환하도록 서버가 설정되어 있을 수 있습니다. Chrome은 사용자가 &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;에 연결되었음을 확인했으나, 연결하려는 &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;와(과) 동일한 사이트인지는 확인할 수 없습니다. 계속하는 경우 Chrome은 앞으로 이름이 일치하는지를 확인하지 않습니다.</translation>
@@ -27,7 +28,6 @@ Chrome에서 설정을 복구할 수 없습니다.</translation>
 <translation id="4891791193823137474">백그라운드에서 Chrome을 실행</translation>
 <translation id="2896252579017640304">Chrome 앱 실행</translation>
 <translation id="2370289711218562573">Chrome에서 즐겨찾기/북마크를 가져오고 있습니다.</translation>
-<translation id="8762286861469007470">Chrome 웹포털 인증 감지기</translation>
 <translation id="2721687379934343312">Mac에서는 비밀번호가 키체인에 저장되며 이 OS X 계정을 공유하는 다른 Chrome 사용자가 액세스하거나 동기화할 수 있습니다.</translation>
 <translation id="1761870329818521071">현재 실행 중인 Chrome 프레임과 동일한 버전은 설치할 수 없습니다. Chrome 프레임을 닫고 다시 시도하세요.</translation>
 <translation id="6014844626092547096">Chrome에 로그인했습니다. 관리자가 동기화를 사용 중지했습니다.</translation>
@@ -63,10 +63,10 @@ Chrome에서 설정을 복구할 수 없습니다.</translation>
 <translation id="1697213158865901863">Chrome 프레임</translation>
 <translation id="4513711165509885787">결제 세부정보가 Chrome에 저장되었습니다.</translation>
 <translation id="7098166902387133879">Chrome에서 마이크를 사용 중입니다.</translation>
-<translation id="3590194807845837023">프로필 잠금 해제 및 다시 시작</translation>
 <translation id="4053720452172726777">Chrome 맞춤설정 및 제어</translation>
 <translation id="6423071462708908582">&lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;에 접근하려 했지만 서버에서 만료된 인증서를 제출했습니다. 증서가 만료된 이후 손상되었는지 여부를 나타내는 정보가 없습니다. 다시 말해 Chrome은 사용자가 &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;와(과) 통신하고 있으며 침입자가 아니라는 것을 확인할 수 없습니다. 컴퓨터 시계가 현재 <ph name="CURRENT_TIME"/>(으)로 설정되어 있습니다. 시간이 정확하지 않으면 오류를 수정한 뒤 이 페이지를 새로고침하세요.</translation>
 <translation id="3197823471738295152">기기가 최신 버전입니다.</translation>
+<translation id="8286862437124483331">Chrome에서 비밀번호를 표시하려고 합니다. 허용하려면 Windows 비밀번호를 입력하세요.</translation>
 <translation id="3889417619312448367">Chrome 제거</translation>
 <translation id="1434626383986940139">Chrome 카나리아 앱</translation>
 <translation id="8551886023433311834">업데이트가 거의 완료되었습니다. 업데이트를 완료하려면 기기를 다시 시작하세요.</translation>
@@ -185,7 +185,6 @@ Chrome에서 설정을 복구할 수 없습니다.</translation>
 <translation id="7396375882099008034">Chrome이 방화벽이나 바이러스 백신이 설정된
         네트워크에 액세스할 수 있도록 허용합니다.</translation>
 <translation id="9102715433345326100">이 파일은 악성 파일이므로 Chrome에서 차단했습니다.</translation>
-<translation id="3170677364322086041">사이트에서 사용 중인 Chrome 프레임 플러그인의 보안 및 안정성 업데이트가 중단되었습니다. 플러그인을 제거하고 최신 브라우저로 업그레이드하세요.</translation>
 <translation id="8205111949707227942"/>
 <translation id="7253415505590551024">현재 여러 개의 다운로드가 진행 중입니다. Chrome을 종료하고 다운로드를 취소하시겠습니까?</translation>
 <translation id="7196020411877309443">이 메시지가 표시되는 이유</translation>
@@ -201,6 +200,7 @@ Chrome에서 설정을 복구할 수 없습니다.</translation>
           LAN 설정으로 이동하여
           '사용자 LAN에 프록시 서버 사용'을 선택 취소합니다.</translation>
 <translation id="7825851276765848807">알 수 없는 오류로 인해 설치에 실패했습니다. Chrome을 다시 다운로드하세요.</translation>
+<translation id="4919523385405675060">사이트에서 사용 중인 Chrome 프레임 플러그인의 보안 및 안정성 업데이트가 곧 중단됩니다. 플러그인을 제거하고 호환되는 브라우저를 다운로드하세요.</translation>
 <translation id="1061257178446858647">Chrome에 로그인되었습니다. 사용자의 북마크, 인터넷 사용기록, 기타 설정이 Google 계정에 동기화됩니다.</translation>
 <translation id="3335672657969596251">Chrome에서는 <ph name="OS_NAME"/>을(를) 지원하지 않습니다.</translation>
 <translation id="4458285410772214805">변경사항을 적용하려면 로그아웃했다가 다시 로그인하세요.</translation>

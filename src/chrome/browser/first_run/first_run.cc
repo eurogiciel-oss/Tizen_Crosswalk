@@ -62,7 +62,7 @@
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "url/gurl.h"
 
-using content::UserMetricsAction;
+using base::UserMetricsAction;
 
 namespace {
 
@@ -162,7 +162,7 @@ void DoDelayedInstallExtensions() {
 
 void DoDelayedInstallExtensionsIfNeeded(
     installer::MasterPreferences* install_prefs) {
-  DictionaryValue* extensions = 0;
+  base::DictionaryValue* extensions = 0;
   if (install_prefs->GetExtensionsBlock(&extensions)) {
     VLOG(1) << "Extensions block found in master preferences";
     DoDelayedInstallExtensions();
@@ -175,7 +175,7 @@ base::FilePath GetDefaultPrefFilePath(bool create_profile_dir,
       profiles::GetDefaultProfileDir(user_data_dir);
   if (create_profile_dir) {
     if (!base::PathExists(default_pref_dir)) {
-      if (!file_util::CreateDirectory(default_pref_dir))
+      if (!base::CreateDirectory(default_pref_dir))
         return base::FilePath();
     }
   }
@@ -262,7 +262,7 @@ void ImportFromFile(Profile* profile,
 
   const base::FilePath::StringType& import_bookmarks_path_str =
 #if defined(OS_WIN)
-      UTF8ToUTF16(import_bookmarks_path);
+      base::UTF8ToUTF16(import_bookmarks_path);
 #else
       import_bookmarks_path;
 #endif
@@ -370,7 +370,9 @@ void FirstRunBubbleLauncher::Observe(
   // Suppress the first run bubble if a Gaia sign in page, the continue
   // URL for the sign in page or the sync setup page is showing.
   if (contents &&
-      (gaia::IsGaiaSignonRealm(contents->GetURL().GetOrigin()) ||
+      (contents->GetURL().GetOrigin().spec() ==
+           chrome::kChromeUIChromeSigninURL ||
+       gaia::IsGaiaSignonRealm(contents->GetURL().GetOrigin()) ||
        signin::IsContinueUrlForWebBasedSigninFlow(contents->GetURL()) ||
        contents->GetURL() == GURL(std::string(chrome::kChromeUISettingsURL) +
                                   chrome::kSyncSetupSubPage))) {
@@ -435,6 +437,26 @@ installer::MasterPreferences* LoadMasterPrefs() {
   }
 
   return install_prefs;
+}
+
+// Makes chrome the user's default browser according to policy or
+// |make_chrome_default_for_user| if no policy is set.
+void ProcessDefaultBrowserPolicy(bool make_chrome_default_for_user) {
+  // Only proceed if chrome can be made default unattended. The interactive case
+  // (Windows 8+) is handled by the first run default browser prompt.
+  if (ShellIntegration::CanSetAsDefaultBrowser() ==
+          ShellIntegration::SET_DEFAULT_UNATTENDED) {
+    // The policy has precedence over the user's choice.
+    if (g_browser_process->local_state()->IsManagedPreference(
+            prefs::kDefaultBrowserSettingEnabled)) {
+      if (g_browser_process->local_state()->GetBoolean(
+          prefs::kDefaultBrowserSettingEnabled)) {
+        ShellIntegration::SetAsDefaultBrowser();
+      }
+    } else if (make_chrome_default_for_user) {
+        ShellIntegration::SetAsDefaultBrowser();
+    }
+  }
 }
 
 }  // namespace
@@ -528,7 +550,7 @@ void SetupMasterPrefsFromInstallPrefs(
   if (install_prefs.GetBool(
           installer::master_preferences::kMakeChromeDefaultForUser,
           &value) && value) {
-    out_prefs->make_chrome_default = true;
+    out_prefs->make_chrome_default_for_user = true;
   }
 
   if (install_prefs.GetBool(
@@ -542,29 +564,12 @@ void SetupMasterPrefsFromInstallPrefs(
       &out_prefs->import_bookmarks_path);
 
   out_prefs->variations_seed = install_prefs.GetVariationsSeed();
+  out_prefs->variations_seed_signature =
+      install_prefs.GetVariationsSeedSignature();
 
   install_prefs.GetString(
       installer::master_preferences::kDistroSuppressDefaultBrowserPromptPref,
       &out_prefs->suppress_default_browser_prompt_for_version);
-}
-
-void SetDefaultBrowser(installer::MasterPreferences* install_prefs){
-  // Even on the first run we only allow for the user choice to take effect if
-  // no policy has been set by the admin.
-  if (!g_browser_process->local_state()->IsManagedPreference(
-          prefs::kDefaultBrowserSettingEnabled)) {
-    bool value = false;
-    if (install_prefs->GetBool(
-            installer::master_preferences::kMakeChromeDefaultForUser,
-            &value) && value) {
-      ShellIntegration::SetAsDefaultBrowser();
-    }
-  } else {
-    if (g_browser_process->local_state()->GetBoolean(
-            prefs::kDefaultBrowserSettingEnabled)) {
-      ShellIntegration::SetAsDefaultBrowser();
-    }
-  }
 }
 
 bool CreateSentinel() {
@@ -591,7 +596,7 @@ MasterPrefs::MasterPrefs()
       homepage_defined(false),
       do_import_items(0),
       dont_import_items(0),
-      make_chrome_default(false),
+      make_chrome_default_for_user(false),
       suppress_first_run_default_browser_prompt(false) {
 }
 
@@ -713,8 +718,6 @@ ProcessMasterPreferencesResult ProcessMasterPreferences(
     DoDelayedInstallExtensionsIfNeeded(install_prefs.get());
 
     internal::SetupMasterPrefsFromInstallPrefs(*install_prefs, out_prefs);
-
-    internal::SetDefaultBrowser(install_prefs.get());
   }
 
   return FIRST_RUN_PROCEED;
@@ -808,12 +811,10 @@ void AutoImport(
   g_auto_import_state |= AUTO_IMPORT_CALLED;
 }
 
-void DoPostImportTasks(Profile* profile, bool make_chrome_default) {
-  if (make_chrome_default &&
-      ShellIntegration::CanSetAsDefaultBrowser() ==
-          ShellIntegration::SET_DEFAULT_UNATTENDED) {
-    ShellIntegration::SetAsDefaultBrowser();
-  }
+void DoPostImportTasks(Profile* profile, bool make_chrome_default_for_user) {
+  // Only set default browser after import as auto import relies on the current
+  // default browser to know what to import from.
+  ProcessDefaultBrowserPolicy(make_chrome_default_for_user);
 
   // Display the first run bubble if there is a default search provider.
   TemplateURLService* template_url =

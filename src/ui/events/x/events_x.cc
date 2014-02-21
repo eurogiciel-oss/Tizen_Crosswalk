@@ -4,6 +4,7 @@
 
 #include "ui/events/event_constants.h"
 
+#include <cmath>
 #include <string.h>
 #include <X11/extensions/XInput.h>
 #include <X11/extensions/XInput2.h>
@@ -195,60 +196,25 @@ ui::EventType GetTouchEventType(const base::NativeEvent& native_event) {
       return TouchEventIsGeneratedHack(native_event) ? ui::ET_TOUCH_CANCELLED :
                                                        ui::ET_TOUCH_RELEASED;
   }
-
-  return ui::ET_UNKNOWN;
-#else
-  ui::TouchFactory* factory = ui::TouchFactory::GetInstance();
-
-  // If this device doesn't support multi-touch, then just use the normal
-  // pressed/release events to indicate touch start/end.  With multi-touch,
-  // these events are sent only for the first (pressed) or last (released)
-  // touch point, and so we must infer start/end from motion events.
-  if (!factory->IsMultiTouchDevice(event->sourceid)) {
-    switch (event->evtype) {
-      case XI_ButtonPress:
-        return ui::ET_TOUCH_PRESSED;
-      case XI_ButtonRelease:
-        return ui::ET_TOUCH_RELEASED;
-      case XI_Motion:
-        if (GetButtonMaskForX2Event(event))
-          return ui::ET_TOUCH_MOVED;
-        return ui::ET_UNKNOWN;
-      default:
-        NOTREACHED();
-    }
-  }
-
-  DCHECK_EQ(event->evtype, XI_Motion);
-
-  // Note: We will not generate a _STATIONARY event here. It will be created,
-  // when necessary, by a RWHVV.
-  // TODO(sad): When should _CANCELLED be generated?
-
-  ui::DeviceDataManager* manager = ui::DeviceDataManager::GetInstance();
-
-  double slot;
-  if (!manager->GetEventData(
-      *native_event, ui::DeviceDataManager::DT_TOUCH_SLOT_ID, &slot))
-    return ui::ET_UNKNOWN;
-
-  if (!factory->IsSlotUsed(slot)) {
-    // This is a new touch point.
-    return ui::ET_TOUCH_PRESSED;
-  }
-
-  double tracking;
-  if (!manager->GetEventData(
-      *native_event, ui::DeviceDataManager::DT_TOUCH_TRACKING_ID, &tracking))
-    return ui::ET_UNKNOWN;
-
-  if (tracking == 0l) {
-    // The touch point has been released.
-    return ui::ET_TOUCH_RELEASED;
-  }
-
-  return ui::ET_TOUCH_MOVED;
 #endif  // defined(USE_XI2_MT)
+
+  DCHECK(ui::TouchFactory::GetInstance()->IsTouchDevice(event->sourceid));
+  switch (event->evtype) {
+    case XI_ButtonPress:
+      return ui::ET_TOUCH_PRESSED;
+    case XI_ButtonRelease:
+      return ui::ET_TOUCH_RELEASED;
+    case XI_Motion:
+      // Should not convert any emulated Motion event from touch device to
+      // touch event.
+      if (!(event->flags & XIPointerEmulated) &&
+          GetButtonMaskForX2Event(event))
+        return ui::ET_TOUCH_MOVED;
+      return ui::ET_UNKNOWN;
+    default:
+      NOTREACHED();
+  }
+  return ui::ET_UNKNOWN;
 }
 
 double GetTouchParamFromXEvent(XEvent* xev,
@@ -311,10 +277,19 @@ EventType EventTypeFromNative(const base::NativeEvent& native_event) {
       XIDeviceEvent* xievent =
           static_cast<XIDeviceEvent*>(native_event->xcookie.data);
 
+      // This check works only for master and floating slave devices. That is
+      // why it is necessary to check for the XI_Touch* events in the following
+      // switch statement to account for attached-slave touchscreens.
       if (factory->IsTouchDevice(xievent->sourceid))
         return GetTouchEventType(native_event);
 
       switch (xievent->evtype) {
+        case XI_TouchBegin:
+          return ui::ET_TOUCH_PRESSED;
+        case XI_TouchUpdate:
+          return ui::ET_TOUCH_MOVED;
+        case XI_TouchEnd:
+          return ui::ET_TOUCH_RELEASED;
         case XI_ButtonPress: {
           int button = EventButtonFromNative(native_event);
           if (button >= kMinWheelButton && button <= kMaxWheelButton)
@@ -367,6 +342,9 @@ int EventFlagsFromNative(const base::NativeEvent& native_event) {
         flags |= GetEventFlagsForButton(native_event->xbutton.button);
       return flags;
     }
+    case EnterNotify:
+    case LeaveNotify:
+      return GetEventFlagsFromXState(native_event->xcrossing.state);
     case MotionNotify:
       return GetEventFlagsFromXState(native_event->xmotion.state);
     case GenericEvent: {
@@ -508,21 +486,8 @@ KeyboardCode KeyboardCodeFromNative(const base::NativeEvent& native_event) {
   return KeyboardCodeFromXKeyEvent(native_event);
 }
 
-bool IsMouseEvent(const base::NativeEvent& native_event) {
-  if (native_event->type == EnterNotify ||
-      native_event->type == LeaveNotify ||
-      native_event->type == ButtonPress ||
-      native_event->type == ButtonRelease ||
-      native_event->type == MotionNotify)
-    return true;
-  if (native_event->type == GenericEvent) {
-    XIDeviceEvent* xievent =
-        static_cast<XIDeviceEvent*>(native_event->xcookie.data);
-    return xievent->evtype == XI_ButtonPress ||
-           xievent->evtype == XI_ButtonRelease ||
-           xievent->evtype == XI_Motion;
-  }
-  return false;
+const char* CodeFromNative(const base::NativeEvent& native_event) {
+  return CodeFromXEvent(native_event);
 }
 
 int GetChangedMouseButtonFlagsFromNative(
@@ -571,7 +536,6 @@ gfx::Vector2d GetMouseWheelOffset(const base::NativeEvent& native_event) {
 }
 
 void ClearTouchIdIfReleased(const base::NativeEvent& xev) {
-#if defined(USE_XI2_MT)
   ui::EventType type = ui::EventTypeFromNative(xev);
   if (type == ui::ET_TOUCH_CANCELLED ||
       type == ui::ET_TOUCH_RELEASED) {
@@ -583,39 +547,25 @@ void ClearTouchIdIfReleased(const base::NativeEvent& xev) {
       factory->ReleaseSlotForTrackingID(tracking_id);
     }
   }
-#endif
 }
 
 int GetTouchId(const base::NativeEvent& xev) {
   double slot = 0;
-  ui::TouchFactory* factory = ui::TouchFactory::GetInstance();
-  XIDeviceEvent* xievent = static_cast<XIDeviceEvent*>(xev->xcookie.data);
 #if defined(ENABLE_XI21_MT)
   // If using XInput2.1 for multi-touch support, the slot is tracked by the
   // source id of each device event.
+  XIDeviceEvent* xievent = static_cast<XIDeviceEvent*>(xev->xcookie.data);
   slot = xievent->sourceid;
 #endif
-  if (!factory->IsMultiTouchDevice(xievent->sourceid)) {
-    // TODO(sad): Come up with a way to generate touch-ids for multi-touch
-    // events when touch-events are generated from a single-touch device.
-    return slot;
-  }
-
   ui::DeviceDataManager* manager = ui::DeviceDataManager::GetInstance();
-
-#if defined(USE_XI2_MT)
   double tracking_id;
   if (!manager->GetEventData(
       *xev, ui::DeviceDataManager::DT_TOUCH_TRACKING_ID, &tracking_id)) {
     LOG(ERROR) << "Could not get the tracking ID for the event. Using 0.";
   } else {
+    ui::TouchFactory* factory = ui::TouchFactory::GetInstance();
     slot = factory->GetSlotForTrackingID(tracking_id);
   }
-#else
-  if (!manager->GetEventData(
-      *xev, ui::DeviceDataManager::DT_TOUCH_SLOT_ID, &slot))
-    LOG(ERROR) << "Could not get the slot ID for the event. Using 0.";
-#endif
   return slot;
 }
 

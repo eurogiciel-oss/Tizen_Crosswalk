@@ -23,49 +23,28 @@
 #include "config.h"
 #include "core/dom/LiveNodeList.h"
 
-#include "core/dom/Document.h"
 #include "core/dom/Element.h"
 #include "core/html/HTMLCollection.h"
 
 namespace WebCore {
 
-Node& LiveNodeListBase::rootNode() const
+ContainerNode& LiveNodeListBase::rootNode() const
 {
     if (isRootedAtDocument() && m_ownerNode->inDocument())
         return m_ownerNode->document();
     return *m_ownerNode;
 }
 
-ContainerNode* LiveNodeListBase::rootContainerNode() const
-{
-    Node& rootNode = this->rootNode();
-    if (!rootNode.isContainerNode())
-        return 0;
-    return toContainerNode(&rootNode);
-}
-
 void LiveNodeListBase::invalidateCache() const
 {
     m_cachedItem = 0;
     m_isLengthCacheValid = false;
-    m_isItemCacheValid = false;
-    m_isNameCacheValid = false;
-    m_isItemRefElementsCacheValid = false;
-    if (isNodeList(type()))
-        return;
-
-    const HTMLCollection* cacheBase = static_cast<const HTMLCollection*>(this);
-    cacheBase->m_idCache.clear();
-    cacheBase->m_nameCache.clear();
-    cacheBase->m_cachedElementsArrayOffset = 0;
 }
 
 void LiveNodeListBase::invalidateIdNameCacheMaps() const
 {
     ASSERT(hasIdNameCache());
-    const HTMLCollection* cacheBase = static_cast<const HTMLCollection*>(this);
-    cacheBase->m_idCache.clear();
-    cacheBase->m_nameCache.clear();
+    static_cast<const HTMLCollection*>(this)->invalidateIdNameCacheMaps();
 }
 
 Node* LiveNodeList::namedItem(const AtomicString& elementId) const
@@ -74,7 +53,7 @@ Node* LiveNodeList::namedItem(const AtomicString& elementId) const
 
     if (rootNode.inDocument()) {
         Element* element = rootNode.treeScope().getElementById(elementId);
-        if (element && nodeMatches(element) && element->isDescendantOf(&rootNode))
+        if (element && nodeMatches(*element) && element->isDescendantOf(&rootNode))
             return element;
         if (!element)
             return 0;

@@ -17,8 +17,8 @@ include_rules = [
   "-base/prefs",
 
   "+cc",
+  "-cc/surfaces",
   # If you want to use any of these files, move them to src/base first.
-  "-cc/base/hash_pair.h",
   "-cc/base/scoped_ptr_algorithm.h",
   "-cc/base/scoped_ptr_deque.h",
   "-cc/base/scoped_ptr_vector.h",
@@ -58,7 +58,7 @@ include_rules = [
   "-tools",
 
   # Allow inclusion of third-party code:
-  "+third_party/angle_dx11",
+  "+third_party/angle",
   "+third_party/flac",
   "+third_party/libjingle",
   "+third_party/mozilla",
@@ -72,6 +72,7 @@ include_rules = [
   "+third_party/WebKit/public/platform",
   "+third_party/WebKit/public/web",
 
+  "+ui/accessibility",
   "+ui/android",
   # Aura is analogous to Win32 or a Gtk, so it is allowed.
   "+ui/aura",
@@ -84,6 +85,7 @@ include_rules = [
   "+ui/shell_dialogs",
   "+ui/snapshot",
   "+ui/surface",
+  "+ui/wm/public",
   # Content knows about grd files, but the specifics of how to get a resource
   # given its id is left to the embedder.
   "-ui/base/l10n",

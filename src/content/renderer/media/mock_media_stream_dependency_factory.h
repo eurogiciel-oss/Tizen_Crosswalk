@@ -11,10 +11,28 @@
 #include "base/compiler_specific.h"
 #include "content/renderer/media/media_stream_dependency_factory.h"
 #include "third_party/libjingle/source/talk/app/webrtc/mediaconstraintsinterface.h"
+#include "third_party/libjingle/source/talk/media/base/videorenderer.h"
 
 namespace content {
 
 class WebAudioCapturerSource;
+
+class MockVideoRenderer : public cricket::VideoRenderer {
+ public:
+  MockVideoRenderer();
+  virtual ~MockVideoRenderer();
+  virtual bool SetSize(int width, int height, int reserved) OVERRIDE;
+  virtual bool RenderFrame(const cricket::VideoFrame* frame) OVERRIDE;
+
+  int width() const { return width_; }
+  int height() const { return height_; }
+  int num() const { return num_; }
+
+ private:
+  int width_;
+  int height_;
+  int num_;
+};
 
 class MockVideoSource : public webrtc::VideoSourceInterface {
  public:
@@ -36,6 +54,11 @@ class MockVideoSource : public webrtc::VideoSourceInterface {
   // Set the video capturer.
   void SetVideoCapturer(cricket::VideoCapturer* capturer);
 
+  // Test helpers.
+  int GetLastFrameWidth() const { return renderer_.width(); }
+  int GetLastFrameHeight() const { return renderer_.height(); }
+  int GetFrameNum() const { return renderer_.num(); }
+
  protected:
   virtual ~MockVideoSource();
 
@@ -45,6 +68,7 @@ class MockVideoSource : public webrtc::VideoSourceInterface {
   std::vector<webrtc::ObserverInterface*> observers_;
   MediaSourceInterface::SourceState state_;
   scoped_ptr<cricket::VideoCapturer> capturer_;
+  MockVideoRenderer renderer_;
 };
 
 class MockAudioSource : public webrtc::AudioSourceInterface {
@@ -118,7 +142,7 @@ class MockMediaStreamDependencyFactory : public MediaStreamDependencyFactory {
   virtual scoped_refptr<webrtc::PeerConnectionInterface> CreatePeerConnection(
       const webrtc::PeerConnectionInterface::IceServers& ice_servers,
       const webrtc::MediaConstraintsInterface* constraints,
-      WebKit::WebFrame* frame,
+      blink::WebFrame* frame,
       webrtc::PeerConnectionObserver* observer) OVERRIDE;
   virtual scoped_refptr<webrtc::AudioSourceInterface>
       CreateLocalAudioSource(
@@ -128,9 +152,13 @@ class MockMediaStreamDependencyFactory : public MediaStreamDependencyFactory {
           int video_session_id,
           bool is_screencast,
           const webrtc::MediaConstraintsInterface* constraints) OVERRIDE;
+  virtual scoped_refptr<webrtc::VideoSourceInterface>
+      CreateVideoSource(
+          cricket::VideoCapturer* capturer,
+          const webrtc::MediaConstraintsInterface* constraints) OVERRIDE;
   virtual scoped_refptr<WebAudioCapturerSource> CreateWebAudioSource(
-      WebKit::WebMediaStreamSource* source,
-      RTCMediaConstraints* constraints) OVERRIDE;
+      blink::WebMediaStreamSource* source,
+      const RTCMediaConstraints& constraints) OVERRIDE;
   virtual scoped_refptr<webrtc::MediaStreamInterface>
       CreateLocalMediaStream(const std::string& label) OVERRIDE;
   virtual scoped_refptr<webrtc::VideoTrackInterface>
@@ -143,8 +171,7 @@ class MockMediaStreamDependencyFactory : public MediaStreamDependencyFactory {
       const std::string& id,
       const scoped_refptr<WebRtcAudioCapturer>& capturer,
       WebAudioCapturerSource* webaudio_source,
-      webrtc::AudioSourceInterface* source,
-      const webrtc::MediaConstraintsInterface* constraints) OVERRIDE;
+      webrtc::AudioSourceInterface* source) OVERRIDE;
   virtual webrtc::SessionDescriptionInterface* CreateSessionDescription(
       const std::string& type,
       const std::string& sdp,
@@ -157,8 +184,9 @@ class MockMediaStreamDependencyFactory : public MediaStreamDependencyFactory {
   virtual bool EnsurePeerConnectionFactory() OVERRIDE;
   virtual bool PeerConnectionFactoryCreated() OVERRIDE;
 
-  virtual scoped_refptr<WebRtcAudioCapturer> MaybeCreateAudioCapturer(
-      int render_view_id, const StreamDeviceInfo& device_info) OVERRIDE;
+  virtual scoped_refptr<WebRtcAudioCapturer> CreateAudioCapturer(
+      int render_view_id, const StreamDeviceInfo& device_info,
+      const blink::WebMediaConstraints& constraints) OVERRIDE;
 
   MockAudioSource* last_audio_source() { return last_audio_source_.get(); }
   MockVideoSource* last_video_source() { return last_video_source_.get(); }

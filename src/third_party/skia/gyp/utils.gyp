@@ -12,7 +12,6 @@
       'include_dirs': [
         '../include/effects',
         '../include/images',
-        '../include/lazy',
         '../include/pathops',
         '../include/pipe',
         '../include/utils',
@@ -76,6 +75,8 @@
         '../src/utils/SkDeferredCanvas.cpp',
         '../src/utils/SkDumpCanvas.cpp',
         '../src/utils/SkFloatUtils.h',
+        '../src/utils/SkGatherPixelRefsAndRects.cpp',
+        '../src/utils/SkGatherPixelRefsAndRects.h',
         '../src/utils/SkInterpolator.cpp',
         '../src/utils/SkLayer.cpp',
         '../src/utils/SkMatrix44.cpp',
@@ -83,6 +84,7 @@
         '../src/utils/SkMD5.h',
         '../src/utils/SkMeshUtils.cpp',
         '../src/utils/SkNinePatch.cpp',
+        '../src/utils/SkNoSaveLayerCanvas.h',
         '../src/utils/SkNWayCanvas.cpp',
         '../src/utils/SkNullCanvas.cpp',
         '../src/utils/SkOSFile.cpp',
@@ -214,6 +216,11 @@
             '../src/utils/android/ashmem.cpp',
           ],
         }],
+        ['skia_run_pdfviewer_in_gm', {
+          'defines': [
+            'SK_BUILD_NATIVE_PDF_RENDERER',
+          ],
+        }],
       ],
       'direct_dependent_settings': {
         'include_dirs': [
@@ -223,9 +230,3 @@
     },
   ],
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

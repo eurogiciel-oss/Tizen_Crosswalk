@@ -59,13 +59,10 @@ class InstantController : public InstantPage::Delegate {
   // Sends the current SearchProvider suggestion to the Instant page if any.
   void SetSuggestionToPrefetch(const InstantSuggestion& suggestion);
 
-  // Notifies |instant_Tab_| to toggle voice search.
-  void ToggleVoiceSearch();
-
   // Called if the browser is navigating to a search URL for |search_terms| with
   // search-term-replacement enabled. If |instant_tab_| can be used to process
   // the search, this does so and returns true. Else, returns false.
-  bool SubmitQuery(const string16& search_terms);
+  bool SubmitQuery(const base::string16& search_terms);
 
   // Called to indicate that the omnibox focus state changed with the given
   // |reason|. If |focus_state| is FOCUS_NONE, |view_gaining_focus| is set to
@@ -119,18 +116,9 @@ class InstantController : public InstantPage::Delegate {
 
   FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, ExtendedModeIsOn);
   FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, MostVisited);
-  FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, NTPIsPreloaded);
-  FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, PreloadedNTPIsUsedInNewTab);
-  FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, PreloadedNTPIsUsedInSameTab);
-  FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, PreloadedNTPForWrongProvider);
-  FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, PreloadedNTPRenderProcessGone);
-  FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest,
-                           PreloadedNTPDoesntSupportInstant);
   FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, ProcessIsolation);
   FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, UnrelatedSiteInstance);
   FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, OnDefaultSearchProviderChanged);
-  FRIEND_TEST_ALL_PREFIXES(InstantExtendedNetworkTest,
-                           NTPReactsToNetworkChanges);
   FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest,
                            AcceptingURLSearchDoesNotNavigate);
   FRIEND_TEST_ALL_PREFIXES(InstantExtendedTest, AcceptingJSSearchDoesNotRunJS);
@@ -157,7 +145,6 @@ class InstantController : public InstantPage::Delegate {
   virtual void InstantPageAboutToNavigateMainFrame(
       const content::WebContents* contents,
       const GURL& url) OVERRIDE;
-  virtual void InstantPageLoadFailed(content::WebContents* contents) OVERRIDE;
 
   // Helper function to navigate the given contents to the local fallback
   // Instant URL and trim the history correctly.

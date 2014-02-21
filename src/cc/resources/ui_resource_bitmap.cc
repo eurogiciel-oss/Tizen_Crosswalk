@@ -7,18 +7,20 @@
 #include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkMallocPixelRef.h"
+#include "third_party/skia/include/core/SkPixelRef.h"
 
 namespace cc {
 
 void UIResourceBitmap::Create(const skia::RefPtr<SkPixelRef>& pixel_ref,
-                              UIResourceFormat format,
-                              gfx::Size size) {
-  DCHECK(size.width());
-  DCHECK(size.height());
+                              UIResourceFormat format) {
+  const SkImageInfo& info = pixel_ref->info();
+  DCHECK(info.fWidth);
+  DCHECK(info.fHeight);
   DCHECK(pixel_ref);
   DCHECK(pixel_ref->isImmutable());
   format_ = format;
-  size_ = size;
+  size_ = gfx::Size(info.fWidth, info.fHeight);
   pixel_ref_ = pixel_ref;
 
   // Default values for secondary parameters.
@@ -32,17 +34,13 @@ UIResourceBitmap::UIResourceBitmap(const SkBitmap& skbitmap) {
   DCHECK(skbitmap.isImmutable());
 
   skia::RefPtr<SkPixelRef> pixel_ref = skia::SharePtr(skbitmap.pixelRef());
-  Create(pixel_ref,
-         UIResourceBitmap::RGBA8,
-         gfx::Size(skbitmap.width(), skbitmap.height()));
+  Create(pixel_ref, UIResourceBitmap::RGBA8);
 
   SetOpaque(skbitmap.isOpaque());
 }
 
-UIResourceBitmap::UIResourceBitmap(const skia::RefPtr<SkPixelRef>& pixel_ref,
-                                   UIResourceFormat format,
-                                   gfx::Size size) {
-  Create(pixel_ref, format, size);
+UIResourceBitmap::UIResourceBitmap(const skia::RefPtr<SkPixelRef>& pixel_ref) {
+  Create(pixel_ref, UIResourceBitmap::ETC1);
 }
 
 UIResourceBitmap::~UIResourceBitmap() {}

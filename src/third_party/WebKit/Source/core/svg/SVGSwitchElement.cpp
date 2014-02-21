@@ -23,50 +23,29 @@
 #include "core/svg/SVGSwitchElement.h"
 
 #include "SVGNames.h"
-#include "core/page/UseCounter.h"
+#include "core/frame/UseCounter.h"
 #include "core/rendering/svg/RenderSVGTransformableContainer.h"
 
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_BOOLEAN(SVGSwitchElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGSwitchElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGGraphicsElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGSwitchElement::SVGSwitchElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
+inline SVGSwitchElement::SVGSwitchElement(Document& document)
+    : SVGGraphicsElement(SVGNames::switchTag, document)
 {
-    ASSERT(hasTagName(SVGNames::switchTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGSwitchElement();
 
     UseCounter::count(document, UseCounter::SVGSwitchElement);
 }
 
-PassRefPtr<SVGSwitchElement> SVGSwitchElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGSwitchElement> SVGSwitchElement::create(Document& document)
 {
-    return adoptRef(new SVGSwitchElement(tagName, document));
-}
-
-bool SVGSwitchElement::childShouldCreateRenderer(const Node& child) const
-{
-    // FIXME: This function does not do what the comment below implies it does.
-    // It will create a renderer for any valid SVG element children, not just the first one.
-    for (Node* node = firstChild(); node; node = node->nextSibling()) {
-        if (!node->isSVGElement())
-            continue;
-
-        SVGElement* element = toSVGElement(node);
-        if (!element || !element->isValid())
-            continue;
-
-        return node == &child; // Only allow this child if it's the first valid child
-    }
-
-    return false;
+    return adoptRef(new SVGSwitchElement(document));
 }
 
 RenderObject* SVGSwitchElement::createRenderer(RenderStyle*)

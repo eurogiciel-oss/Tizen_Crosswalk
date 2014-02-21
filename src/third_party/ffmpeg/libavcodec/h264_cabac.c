@@ -1618,6 +1618,9 @@ decode_cabac_residual_internal(H264Context *h, int16_t *block,
     cc.range     = h->cabac.range;
     cc.low       = h->cabac.low;
     cc.bytestream= h->cabac.bytestream;
+#if !UNCHECKED_BITSTREAM_READER
+    cc.bytestream_end = h->cabac.bytestream_end;
+#endif
 #else
 #define CC &h->cabac
 #endif
@@ -1683,7 +1686,6 @@ decode_cabac_residual_internal(H264Context *h, int16_t *block,
         }
     }
 
-
 #define STORE_BLOCK(type) \
     do { \
         uint8_t *ctx = coeff_abs_level1_ctx[node_ctx] + abs_level_m1_ctx_base; \
@@ -1727,11 +1729,11 @@ decode_cabac_residual_internal(H264Context *h, int16_t *block,
         } \
     } while ( coeff_count );
 
-        if (h->pixel_shift) {
-            STORE_BLOCK(int32_t)
-        } else {
-            STORE_BLOCK(int16_t)
-        }
+    if (h->pixel_shift) {
+        STORE_BLOCK(int32_t)
+    } else {
+        STORE_BLOCK(int16_t)
+    }
 #ifdef CABAC_ON_STACK
             h->cabac.range     = cc.range     ;
             h->cabac.low       = cc.low       ;

@@ -6,15 +6,13 @@
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
-#include "base/message_loop/message_loop.h"
-#include "base/threading/thread.h"
 
 namespace media {
 
-#if !defined(OS_MACOSX)
-// TODO(crogers): implement MIDIManager for other platforms.
+#if !defined(OS_MACOSX) && !defined(OS_WIN) && !defined(USE_ALSA)
+// TODO(toyoshim): implement MIDIManager for other platforms.
 MIDIManager* MIDIManager::Create() {
-  return NULL;
+  return new MIDIManager;
 }
 #endif
 
@@ -22,7 +20,8 @@ MIDIManager::MIDIManager()
     : initialized_(false) {
 }
 
-MIDIManager::~MIDIManager() {}
+MIDIManager::~MIDIManager() {
+}
 
 bool MIDIManager::StartSession(MIDIManagerClient* client) {
   // Lazily initialize the MIDI back-end.
@@ -44,6 +43,17 @@ void MIDIManager::EndSession(MIDIManagerClient* client) {
     clients_.erase(i);
 }
 
+void MIDIManager::DispatchSendMIDIData(MIDIManagerClient* client,
+                                       uint32 port_index,
+                                       const std::vector<uint8>& data,
+                                       double timestamp) {
+  NOTREACHED();
+}
+
+bool MIDIManager::Initialize() {
+  return false;
+}
+
 void MIDIManager::AddInputPort(const MIDIPortInfo& info) {
   input_ports_.push_back(info);
 }
@@ -61,27 +71,6 @@ void MIDIManager::ReceiveMIDIData(
 
   for (ClientList::iterator i = clients_.begin(); i != clients_.end(); ++i)
     (*i)->ReceiveMIDIData(port_index, data, length, timestamp);
-}
-
-bool MIDIManager::CurrentlyOnMIDISendThread() {
-  return send_thread_->message_loop() == base::MessageLoop::current();
-}
-
-void MIDIManager::DispatchSendMIDIData(MIDIManagerClient* client,
-                                       uint32 port_index,
-                                       const std::vector<uint8>& data,
-                                       double timestamp) {
-  // Lazily create the thread when first needed.
-  if (!send_thread_) {
-    send_thread_.reset(new base::Thread("MIDISendThread"));
-    send_thread_->Start();
-    send_message_loop_ = send_thread_->message_loop_proxy();
-  }
-
-  send_message_loop_->PostTask(
-     FROM_HERE,
-     base::Bind(&MIDIManager::SendMIDIData, base::Unretained(this),
-         client, port_index, data, timestamp));
 }
 
 }  // namespace media

@@ -31,10 +31,12 @@
 #ifndef WebSharedWorkerRepositoryClient_h
 #define WebSharedWorkerRepositoryClient_h
 
-namespace WebKit {
+#include "WebSharedWorkerConnector.h"
 
+namespace blink {
+
+enum WebContentSecurityPolicyType;
 class WebString;
-class WebSharedWorker;
 class WebURL;
 
 class WebSharedWorkerRepositoryClient {
@@ -42,13 +44,18 @@ public:
     // Unique identifier for the parent document of a worker (unique within a given process).
     typedef unsigned long long DocumentID;
 
-    // Creates a new shared worker. This may return null.
-    virtual WebSharedWorker* createSharedWorker(const WebURL&, const WebString&, DocumentID) { return 0; }
+    // Creates a new shared worker connector. This may return null.
+    // FIXME(horo): Remove createSharedWorkerConnector of 3 arguments.
+    virtual WebSharedWorkerConnector* createSharedWorkerConnector(const WebURL& url, const WebString& name, DocumentID id) { return 0; }
+    virtual WebSharedWorkerConnector* createSharedWorkerConnector(const WebURL& url, const WebString& name, DocumentID id, const WebString& contentSecurityPolicy, WebContentSecurityPolicyType)
+    {
+        return createSharedWorkerConnector(url, name, id);
+    }
 
     // Invoked when a document has been detached. DocumentID can be re-used after documentDetached() is invoked.
     virtual void documentDetached(DocumentID) { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // WebSharedWorkerRepositoryClient_h

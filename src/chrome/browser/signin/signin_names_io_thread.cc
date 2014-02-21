@@ -31,7 +31,7 @@ SigninNamesOnIOThread::SigninNamesOnIOThread() {
     if (manager) {
       const ProfileInfoCache& cache = manager->GetProfileInfoCache();
       for (size_t i = 0; i < cache.GetNumberOfProfiles(); ++i) {
-        string16 email = cache.GetUserNameOfProfileAtIndex(i);
+        base::string16 email = cache.GetUserNameOfProfileAtIndex(i);
         if (!email.empty())
           emails_.insert(email);
       }
@@ -65,13 +65,13 @@ void SigninNamesOnIOThread::Observe(
     case chrome::NOTIFICATION_GOOGLE_SIGNIN_SUCCESSFUL: {
       const GoogleServiceSigninSuccessDetails* signin_details =
           content::Details<GoogleServiceSigninSuccessDetails>(details).ptr();
-      PostTaskToIOThread(type, UTF8ToUTF16(signin_details->username));
+      PostTaskToIOThread(type, base::UTF8ToUTF16(signin_details->username));
       break;
     }
     case chrome::NOTIFICATION_GOOGLE_SIGNED_OUT: {
       const GoogleServiceSignoutDetails* signout_details =
           content::Details<GoogleServiceSignoutDetails>(details).ptr();
-      PostTaskToIOThread(type, UTF8ToUTF16(signout_details->username));
+      PostTaskToIOThread(type, base::UTF8ToUTF16(signout_details->username));
       break;
     }
     default:
@@ -89,7 +89,7 @@ void SigninNamesOnIOThread::CheckOnUIThread() const {
 
 void SigninNamesOnIOThread::PostTaskToIOThread(
     int type,
-    const string16& email) {
+    const base::string16& email) {
   if (content::BrowserThread::CurrentlyOn(content::BrowserThread::IO)) {
     UpdateOnIOThread(type, email);
   } else {
@@ -104,7 +104,7 @@ void SigninNamesOnIOThread::PostTaskToIOThread(
 
 void SigninNamesOnIOThread::UpdateOnIOThread(
     int type,
-    const string16& email) {
+    const base::string16& email) {
   CheckOnIOThread();
   if (type == chrome::NOTIFICATION_GOOGLE_SIGNIN_SUCCESSFUL) {
     emails_.insert(email);

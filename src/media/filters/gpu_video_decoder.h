@@ -19,8 +19,8 @@
 template <class T> class scoped_refptr;
 
 namespace base {
-class MessageLoopProxy;
 class SharedMemory;
+class SingleThreadTaskRunner;
 }
 
 namespace media {
@@ -30,12 +30,13 @@ class GpuVideoAcceleratorFactories;
 class MediaLog;
 
 // GPU-accelerated video decoder implementation.  Relies on
-// AcceleratedVideoDecoderMsg_Decode and friends.
+// AcceleratedVideoDecoderMsg_Decode and friends.  Can be created on any thread
+// but must be accessed and destroyed on GpuVideoAcceleratorFactories's
+// GetMessageLoop().
 class MEDIA_EXPORT GpuVideoDecoder
     : public VideoDecoder,
       public VideoDecodeAccelerator::Client {
  public:
-  // The message loop of |factories| will be saved to |gvd_loop_proxy_|.
   explicit GpuVideoDecoder(
       const scoped_refptr<GpuVideoAcceleratorFactories>& factories,
       const scoped_refptr<MediaLog>& media_log);
@@ -123,10 +124,12 @@ class MEDIA_EXPORT GpuVideoDecoder
   // Destroy all PictureBuffers in |buffers|, and delete their textures.
   void DestroyPictureBuffers(PictureBufferMap* buffers);
 
+  // Assert the contract that this class is operated on the right thread.
+  void DCheckGpuVideoAcceleratorFactoriesTaskRunnerIsCurrent() const;
+
   bool needs_bitstream_conversion_;
 
-  // Message loop which this class and |factories_| run on.
-  scoped_refptr<base::MessageLoopProxy> gvd_loop_proxy_;
+  // Bound to factories_->GetMessageLoop().
   base::WeakPtrFactory<GpuVideoDecoder> weak_factory_;
   base::WeakPtr<GpuVideoDecoder> weak_this_;
 

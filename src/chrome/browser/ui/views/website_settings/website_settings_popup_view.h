@@ -12,6 +12,7 @@
 #include "base/strings/string16.h"
 #include "chrome/browser/ui/views/website_settings/permission_selector_view_observer.h"
 #include "chrome/browser/ui/website_settings/website_settings_ui.h"
+#include "content/public/common/signed_certificate_timestamp_id_and_status.h"
 #include "ui/views/bubble/bubble_delegate.h"
 #include "ui/views/controls/button/button.h"
 #include "ui/views/controls/link_listener.h"
@@ -85,7 +86,7 @@ class WebsiteSettingsPopupView
   virtual void SetPermissionInfo(
       const PermissionInfoList& permission_info_list) OVERRIDE;
   virtual void SetIdentityInfo(const IdentityInfo& identity_info) OVERRIDE;
-  virtual void SetFirstVisit(const string16& first_visit) OVERRIDE;
+  virtual void SetFirstVisit(const base::string16& first_visit) OVERRIDE;
   virtual void SetSelectedTab(TabId tab_id) OVERRIDE;
 
   // Creates the contents of the "Permissions" tab. The ownership of the
@@ -100,7 +101,7 @@ class WebsiteSettingsPopupView
   // section |contents| and an optional |link|. This method creates a section
   // for the given |headline|, |contents| and |link|. |link| can be NULL if the
   // section should not contain a link.
-  views::View* CreateSection(const string16& headline,
+  views::View* CreateSection(const base::string16& headline,
                              views::View* contents,
                              views::Link* link) WARN_UNUSED_RESULT;
 
@@ -112,8 +113,8 @@ class WebsiteSettingsPopupView
   // the views hierarchy. If the |link| is NULL then no link is be displayed.
   void ResetConnectionSection(views::View* section_container,
                               const gfx::Image& icon,
-                              const string16& headline,
-                              const string16& text,
+                              const base::string16& headline,
+                              const base::string16& text,
                               views::Link* link);
   // Handles LinkClicked asynchronously.
   void HandleLinkClickedAsync(views::Link* source);
@@ -151,9 +152,14 @@ class WebsiteSettingsPopupView
   // provided by the website. If the site does not provide a certificate then
   // |certificate_dialog_link_| is NULL.
   views::Link* certificate_dialog_link_;
+
   // The id of the certificate provided by the site. If the site does not
   // provide a certificate then |cert_id_| is 0.
   int cert_id_;
+  // The IDs and validation status of Signed Certificate TImestamps provided
+  // by the site. Empty if no SCTs accompany the certificate.
+  content::SignedCertificateTimestampIDStatusList
+      signed_certificate_timestamp_ids_;
 
   // The link to open the help center page that contains more information about
   // the connection status icons.

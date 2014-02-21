@@ -40,7 +40,7 @@
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 static OwnPtr<WebPluginLoadObserver>& nextPluginLoadObserver()
 {
@@ -48,9 +48,9 @@ static OwnPtr<WebPluginLoadObserver>& nextPluginLoadObserver()
     return nextPluginLoadObserver;
 }
 
-PassRefPtr<WebDataSourceImpl> WebDataSourceImpl::create(const ResourceRequest& request, const SubstituteData& data)
+PassRefPtr<WebDataSourceImpl> WebDataSourceImpl::create(Frame* frame, const ResourceRequest& request, const SubstituteData& data)
 {
-    return adoptRef(new WebDataSourceImpl(request, data));
+    return adoptRef(new WebDataSourceImpl(frame, request, data));
 }
 
 const WebURLRequest& WebDataSourceImpl::originalRequest() const
@@ -131,11 +131,6 @@ WebApplicationCacheHost* WebDataSourceImpl::applicationCacheHost()
     return ApplicationCacheHostInternal::toWebApplicationCacheHost(DocumentLoader::applicationCacheHost());
 }
 
-void WebDataSourceImpl::setDeferMainResourceDataLoad(bool defer)
-{
-    DocumentLoader::setDeferMainResourceDataLoad(defer);
-}
-
 void WebDataSourceImpl::setNavigationStartTime(double navigationStart)
 {
     timing()->setNavigationStart(navigationStart);
@@ -165,8 +160,8 @@ void WebDataSourceImpl::setNextPluginLoadObserver(PassOwnPtr<WebPluginLoadObserv
     nextPluginLoadObserver() = observer;
 }
 
-WebDataSourceImpl::WebDataSourceImpl(const ResourceRequest& request, const SubstituteData& data)
-    : DocumentLoader(request, data)
+WebDataSourceImpl::WebDataSourceImpl(Frame* frame, const ResourceRequest& request, const SubstituteData& data)
+    : DocumentLoader(frame, request, data)
 {
     if (!nextPluginLoadObserver())
         return;
@@ -185,4 +180,4 @@ WebDataSourceImpl::~WebDataSourceImpl()
 {
 }
 
-} // namespace WebKit
+} // namespace blink

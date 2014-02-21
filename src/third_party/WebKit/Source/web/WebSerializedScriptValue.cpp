@@ -31,12 +31,13 @@
 #include "config.h"
 #include "WebSerializedScriptValue.h"
 
+#include "bindings/v8/ExceptionState.h"
 #include "bindings/v8/SerializedScriptValue.h"
 #include "public/platform/WebString.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 WebSerializedScriptValue WebSerializedScriptValue::fromString(const WebString& s)
 {
@@ -45,9 +46,9 @@ WebSerializedScriptValue WebSerializedScriptValue::fromString(const WebString& s
 
 WebSerializedScriptValue WebSerializedScriptValue::serialize(v8::Handle<v8::Value> value)
 {
-    bool didThrow;
-    WebSerializedScriptValue serializedValue = SerializedScriptValue::create(value, 0, 0, didThrow, v8::Isolate::GetCurrent());
-    if (didThrow)
+    WebCore::TrackExceptionState exceptionState;
+    WebSerializedScriptValue serializedValue = SerializedScriptValue::create(value, 0, 0, exceptionState, v8::Isolate::GetCurrent());
+    if (exceptionState.hadException())
         return createInvalid();
     return serializedValue;
 }
@@ -93,4 +94,4 @@ WebSerializedScriptValue::operator PassRefPtr<SerializedScriptValue>() const
     return m_private.get();
 }
 
-} // namespace WebKit
+} // namespace blink

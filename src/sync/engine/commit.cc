@@ -5,6 +5,7 @@
 #include "sync/engine/commit.h"
 
 #include "base/debug/trace_event.h"
+#include "sync/engine/commit_processor.h"
 #include "sync/engine/commit_util.h"
 #include "sync/engine/sync_directory_commit_contribution.h"
 #include "sync/engine/syncer.h"
@@ -30,34 +31,18 @@ Commit::~Commit() {
 
 Commit* Commit::Init(
     ModelTypeSet requested_types,
+    ModelTypeSet enabled_types,
     size_t max_entries,
     const std::string& account_name,
     const std::string& cache_guid,
-    CommitContributorMap* contributor_map,
+    CommitProcessor* commit_processor,
     ExtensionsActivity* extensions_activity) {
   // Gather per-type contributions.
   ContributionMap contributions;
-  size_t num_entries = 0;
-  for (ModelTypeSet::Iterator it = requested_types.First();
-       it.Good(); it.Inc()) {
-    CommitContributorMap::iterator cm_it = contributor_map->find(it.Get());
-    if (cm_it == contributor_map->end()) {
-      NOTREACHED()
-          << "Could not find requested type " << ModelTypeToString(it.Get())
-          << " in contributor map.";
-      continue;
-    }
-    size_t spaces_remaining = max_entries - num_entries;
-    SyncDirectoryCommitContribution* contribution =
-        cm_it->second->GetContribution(spaces_remaining);
-    if (contribution) {
-      num_entries += contribution->GetNumEntries();
-      contributions.insert(std::make_pair(it.Get(), contribution));
-    }
-    if (num_entries == max_entries) {
-      break;  // No point in continuting to iterate in this case.
-    }
-  }
+  commit_processor->GatherCommitContributions(
+      requested_types,
+      max_entries,
+      &contributions);
 
   // Give up if no one had anything to commit.
   if (contributions.empty())
@@ -81,13 +66,9 @@ Commit* Commit::Init(
   }
 
   // Set the client config params.
-  ModelTypeSet enabled_types;
-  for (CommitContributorMap::iterator it = contributor_map->begin();
-       it != contributor_map->end(); ++it) {
-    enabled_types.Put(it->first);
-  }
-  commit_util::AddClientConfigParamsToMessage(enabled_types,
-                                                    commit_message);
+  commit_util::AddClientConfigParamsToMessage(
+      enabled_types,
+      commit_message);
 
   // Finally, serialize all our contributions.
   for (std::map<ModelType, SyncDirectoryCommitContribution*>::iterator it =
@@ -109,6 +90,11 @@ SyncerError Commit::PostAndProcessResponse(
     request_types.Put(it->first);
   }
   session->mutable_status_controller()->set_commit_request_types(request_types);
+
+  if (session->context()->debug_info_getter()) {
+    sync_pb::DebugInfo* debug_info = message_.mutable_debug_info();
+    session->context()->debug_info_getter()->GetDebugInfo(debug_info);
+  }
 
   DVLOG(1) << "Sending commit message.";
   TRACE_EVENT_BEGIN0("sync", "PostCommit");
@@ -134,6 +120,12 @@ SyncerError Commit::PostAndProcessResponse(
        << "Expected: " << message_entries << ", "
        << "Got: " << response_entries;
     return SERVER_RESPONSE_VALIDATION_FAILED;
+  }
+
+  if (session->context()->debug_info_getter()) {
+    // Clear debug info now that we have successfully sent it to the server.
+    DVLOG(1) << "Clearing client debug info.";
+    session->context()->debug_info_getter()->ClearDebugInfo();
   }
 
   // Let the contributors process the responses to each of their requests.

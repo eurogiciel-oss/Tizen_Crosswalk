@@ -18,11 +18,11 @@
 #include "base/memory/scoped_ptr.h"
 #include "cc/base/cc_export.h"
 #include "cc/base/region.h"
-#include "skia/ext/lazy_pixel_ref.h"
 #include "skia/ext/refptr.h"
-#include "third_party/skia/include/core/SkPixelRef.h"
 #include "third_party/skia/include/core/SkTileGridPicture.h"
 #include "ui/gfx/rect.h"
+
+class SkPixelRef;
 
 namespace base {
 class Value;
@@ -40,10 +40,10 @@ class CC_EXPORT Picture
     : public base::RefCountedThreadSafe<Picture> {
  public:
   typedef std::pair<int, int> PixelRefMapKey;
-  typedef std::vector<skia::LazyPixelRef*> PixelRefs;
+  typedef std::vector<SkPixelRef*> PixelRefs;
   typedef base::hash_map<PixelRefMapKey, PixelRefs> PixelRefMap;
 
-  static scoped_refptr<Picture> Create(gfx::Rect layer_rect);
+  static scoped_refptr<Picture> Create(const gfx::Rect& layer_rect);
   static scoped_refptr<Picture> CreateFromValue(const base::Value* value);
   static scoped_refptr<Picture> CreateFromSkpValue(const base::Value* value);
 
@@ -84,15 +84,15 @@ class CC_EXPORT Picture
   class CC_EXPORT PixelRefIterator {
    public:
     PixelRefIterator();
-    PixelRefIterator(gfx::Rect layer_rect, const Picture* picture);
+    PixelRefIterator(const gfx::Rect& layer_rect, const Picture* picture);
     ~PixelRefIterator();
 
-    skia::LazyPixelRef* operator->() const {
+    SkPixelRef* operator->() const {
       DCHECK_LT(current_index_, current_pixel_refs_->size());
       return (*current_pixel_refs_)[current_index_];
     }
 
-    skia::LazyPixelRef* operator*() const {
+    SkPixelRef* operator*() const {
       DCHECK_LT(current_index_, current_pixel_refs_->size());
       return (*current_pixel_refs_)[current_index_];
     }
@@ -117,18 +117,20 @@ class CC_EXPORT Picture
   void EmitTraceSnapshot();
   void EmitTraceSnapshotAlias(Picture* original);
 
+  bool WillPlayBackBitmaps() const { return picture_->willPlayBackBitmaps(); }
+
  private:
-  explicit Picture(gfx::Rect layer_rect);
+  explicit Picture(const gfx::Rect& layer_rect);
   // This constructor assumes SkPicture is already ref'd and transfers
   // ownership to this picture.
   Picture(const skia::RefPtr<SkPicture>&,
-          gfx::Rect layer_rect,
-          gfx::Rect opaque_rect,
+          const gfx::Rect& layer_rect,
+          const gfx::Rect& opaque_rect,
           const PixelRefMap& pixel_refs);
   // This constructor will call AdoptRef on the SkPicture.
   Picture(SkPicture*,
-          gfx::Rect layer_rect,
-          gfx::Rect opaque_rect);
+          const gfx::Rect& layer_rect,
+          const gfx::Rect& opaque_rect);
   ~Picture();
 
   gfx::Rect layer_rect_;

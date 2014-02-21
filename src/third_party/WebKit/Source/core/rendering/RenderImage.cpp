@@ -31,21 +31,23 @@
 #include "HTMLNames.h"
 #include "core/editing/FrameSelection.h"
 #include "core/fetch/ImageResource.h"
+#include "core/fetch/ResourceLoadPriorityOptimizer.h"
+#include "core/fetch/ResourceLoader.h"
 #include "core/html/HTMLAreaElement.h"
 #include "core/html/HTMLImageElement.h"
 #include "core/html/HTMLInputElement.h"
 #include "core/html/HTMLMapElement.h"
 #include "core/inspector/InspectorInstrumentation.h"
 #include "core/frame/Frame.h"
-#include "core/platform/graphics/Font.h"
-#include "core/platform/graphics/FontCache.h"
-#include "core/platform/graphics/GraphicsContext.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
 #include "core/rendering/HitTestResult.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/PaintInfo.h"
 #include "core/rendering/RenderView.h"
 #include "core/svg/graphics/SVGImage.h"
-#include "wtf/UnusedParam.h"
+#include "platform/fonts/Font.h"
+#include "platform/fonts/FontCache.h"
+#include "platform/graphics/GraphicsContext.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 
 using namespace std;
 
@@ -55,12 +57,12 @@ using namespace HTMLNames;
 
 RenderImage::RenderImage(Element* element)
     : RenderReplaced(element, IntSize())
-    , m_needsToSetSizeForAltText(false)
     , m_didIncrementVisuallyNonEmptyPixelCount(false)
     , m_isGeneratedContent(false)
     , m_imageDevicePixelRatio(1.0f)
 {
     updateAltText();
+    ResourceLoadPriorityOptimizer::resourceLoadPriorityOptimizer()->addRenderObject(this);
 }
 
 RenderImage* RenderImage::createAnonymous(Document* document)
@@ -142,11 +144,6 @@ bool RenderImage::setImageSizeForAltText(ImageResource* newImage /* = 0 */)
 void RenderImage::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
 {
     RenderReplaced::styleDidChange(diff, oldStyle);
-    if (m_needsToSetSizeForAltText) {
-        if (!m_altText.isEmpty() && setImageSizeForAltText(m_imageResource->cachedImage()))
-            imageDimensionsChanged(true /* imageSizeChanged */);
-        m_needsToSetSizeForAltText = false;
-    }
 }
 
 void RenderImage::imageChanged(WrappedImagePtr newImage, const IntRect* rect)
@@ -181,17 +178,8 @@ void RenderImage::imageChanged(WrappedImagePtr newImage, const IntRect* rect)
     bool imageSizeChanged = false;
 
     // Set image dimensions, taking into account the size of the alt text.
-    if (m_imageResource->errorOccurred() || !newImage) {
-        if (!m_altText.isEmpty() && document().hasPendingStyleRecalc()) {
-            ASSERT(node());
-            if (node()) {
-                m_needsToSetSizeForAltText = true;
-                node()->setNeedsStyleRecalc(LocalStyleChange, StyleChangeFromRenderer);
-            }
-            return;
-        }
+    if (m_imageResource->errorOccurred() || !newImage)
         imageSizeChanged = setImageSizeForAltText(m_imageResource->cachedImage());
-    }
 
     imageDimensionsChanged(imageSizeChanged, rect);
 }
@@ -362,16 +350,21 @@ void RenderImage::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paintOf
 
                 // Only draw the alt text if it'll fit within the content box,
                 // and only if it fits above the error image.
-                TextRun textRun = RenderBlockFlow::constructTextRun(this, font, m_altText, style());
+                TextRun textRun = RenderBlockFlow::constructTextRun(this, font, m_altText, style(), TextRun::AllowTrailingExpansion | TextRun::ForbidLeadingExpansion, DefaultTextRunFlags | RespectDirection);
                 LayoutUnit textWidth = font.width(textRun);
                 TextRunPaintInfo textRunPaintInfo(textRun);
                 textRunPaintInfo.bounds = FloatRect(textRectOrigin, FloatSize(textWidth, fontMetrics.height()));
                 context->setFillColor(resolveColor(CSSPropertyColor));
+                if (textRun.direction() == RTL) {
+                    int availableWidth = cWidth - static_cast<int>(paddingWidth);
+                    textOrigin.move(availableWidth - ceilf(textWidth), 0);
+                }
                 if (errorPictureDrawn) {
                     if (usableWidth >= textWidth && fontMetrics.height() <= imageOffset.height())
-                        context->drawText(font, textRunPaintInfo, textOrigin);
-                } else if (usableWidth >= textWidth && usableHeight >= fontMetrics.height())
-                    context->drawText(font, textRunPaintInfo, textOrigin);
+                        context->drawBidiText(font, textRunPaintInfo, textOrigin);
+                } else if (usableWidth >= textWidth && usableHeight >= fontMetrics.height()) {
+                    context->drawBidiText(font, textRunPaintInfo, textOrigin);
+                }
             }
         }
     } else if (m_imageResource->hasImage() && cWidth > 0 && cHeight > 0) {
@@ -415,7 +408,7 @@ void RenderImage::paintAreaElementFocusRing(PaintInfo& paintInfo)
         return;
 
     Element* focusedElement = document.focusedElement();
-    if (!focusedElement || !isHTMLAreaElement(focusedElement))
+    if (!focusedElement || !focusedElement->hasTagName(areaTag))
         return;
 
     HTMLAreaElement* areaElement = toHTMLAreaElement(focusedElement);
@@ -489,9 +482,8 @@ bool RenderImage::boxShadowShouldBeAppliedToBackground(BackgroundBleedAvoidance 
     return !const_cast<RenderImage*>(this)->backgroundIsKnownToBeObscured();
 }
 
-bool RenderImage::foregroundIsKnownToBeOpaqueInRect(const LayoutRect& localRect, unsigned maxDepthToTest) const
+bool RenderImage::foregroundIsKnownToBeOpaqueInRect(const LayoutRect& localRect, unsigned) const
 {
-    UNUSED_PARAM(maxDepthToTest);
     if (!m_imageResource->hasImage() || m_imageResource->errorOccurred())
         return false;
     if (m_imageResource->cachedImage() && !m_imageResource->cachedImage()->isLoaded())
@@ -571,8 +563,33 @@ void RenderImage::updateAltText()
 
 void RenderImage::layout()
 {
+    LayoutRectRecorder recorder(*this);
     RenderReplaced::layout();
     updateInnerContentRect();
+}
+
+bool RenderImage::updateImageLoadingPriorities()
+{
+    if (!m_imageResource || !m_imageResource->cachedImage() || m_imageResource->cachedImage()->isLoaded())
+        return false;
+
+    LayoutRect viewBounds = viewRect();
+    LayoutRect objectBounds = absoluteContentBox();
+
+    // The object bounds might be empty right now, so intersects will fail since it doesn't deal
+    // with empty rects. Use LayoutRect::contains in that case.
+    bool isVisible;
+    if (!objectBounds.isEmpty())
+        isVisible =  viewBounds.intersects(objectBounds);
+    else
+        isVisible = viewBounds.contains(objectBounds);
+
+    ResourceLoadPriorityOptimizer::VisibilityStatus status = isVisible ?
+        ResourceLoadPriorityOptimizer::Visible : ResourceLoadPriorityOptimizer::NotVisible;
+
+    ResourceLoadPriorityOptimizer::resourceLoadPriorityOptimizer()->notifyImageResourceVisibility(m_imageResource->cachedImage(), status);
+
+    return true;
 }
 
 void RenderImage::computeIntrinsicRatioInformation(FloatSize& intrinsicSize, double& intrinsicRatio, bool& isPercentageIntrinsicSize) const
@@ -589,7 +606,8 @@ void RenderImage::computeIntrinsicRatioInformation(FloatSize& intrinsicSize, dou
         }
     }
     // Don't compute an intrinsic ratio to preserve historical WebKit behavior if we're painting alt text and/or a broken image.
-    if (m_imageResource && m_imageResource->errorOccurred()) {
+    // Video is excluded from this behavior because video elements have a default aspect ratio that a failed poster image load should not override.
+    if (m_imageResource && m_imageResource->errorOccurred() && !isVideo()) {
         intrinsicRatio = 1;
         return;
     }

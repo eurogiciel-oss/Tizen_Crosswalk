@@ -9,8 +9,9 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "media/base/video_frame.h"
 #include "media/cast/cast_defines.h"
-#include "media/cast/rtp_common/rtp_defines.h"
+#include "media/cast/transport/cast_transport_config.h"
 #include "third_party/libvpx/source/libvpx/vpx/vp8cx.h"
 
 namespace media {
@@ -27,13 +28,6 @@ Vp8Encoder::Vp8Encoder(const VideoSenderConfig& video_config,
       max_number_of_repeated_buffers_in_a_row_(
           (max_unacked_frames > kNumberOfVp8VideoBuffers) ?
           ((max_unacked_frames - 1) / kNumberOfVp8VideoBuffers) : 0),
-      config_(new vpx_codec_enc_cfg_t()),
-      encoder_(new vpx_codec_ctx_t()),
-      // Creating a wrapper to the image - setting image data to NULL. Actual
-      // pointer will be set during encode. Setting align to 1, as it is
-      // meaningless (actual memory is not allocated).
-      raw_image_(vpx_img_wrap(NULL, IMG_FMT_I420, video_config.width,
-                              video_config.height, 1, NULL)),
       key_frame_requested_(true),
       timestamp_(0),
       last_encoded_frame_id_(kStartFrameId),
@@ -54,19 +48,34 @@ Vp8Encoder::Vp8Encoder(const VideoSenderConfig& video_config,
          cast_config_.max_number_of_video_buffers_used ==
              kNumberOfVp8VideoBuffers) << "Invalid argument";
 
+  thread_checker_.DetachFromThread();
+}
+
+Vp8Encoder::~Vp8Encoder() {
+  vpx_codec_destroy(encoder_.get());
+  vpx_img_free(raw_image_);
+}
+
+void Vp8Encoder::Initialize() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  config_.reset(new vpx_codec_enc_cfg_t());
+  encoder_.reset(new vpx_codec_ctx_t());
+
+  // Creating a wrapper to the image - setting image data to NULL. Actual
+  // pointer will be set during encode. Setting align to 1, as it is
+  // meaningless (actual memory is not allocated).
+  raw_image_ = vpx_img_wrap(NULL, IMG_FMT_I420, cast_config_.width,
+                            cast_config_.height, 1, NULL);
+
   for (int i = 0; i < kNumberOfVp8VideoBuffers; ++i) {
     acked_frame_buffers_[i] = true;
     used_buffers_frame_id_[i] = kStartFrameId;
   }
-  InitEncode(video_config.number_of_cores);
-}
-
-Vp8Encoder::~Vp8Encoder() {
-  vpx_codec_destroy(encoder_);
-  vpx_img_free(raw_image_);
+  InitEncode(cast_config_.number_of_cores);
 }
 
 void Vp8Encoder::InitEncode(int number_of_cores) {
+  DCHECK(thread_checker_.CalledOnValidThread());
   // Populate encoder configuration with default values.
   if (vpx_codec_enc_config_default(vpx_codec_vp8_cx(), config_.get(), 0)) {
     DCHECK(false) << "Invalid return value";
@@ -111,27 +120,36 @@ void Vp8Encoder::InitEncode(int number_of_cores) {
   uint32 rc_max_intra_target = MaxIntraTarget(config_->rc_buf_optimal_sz);
   vpx_codec_flags_t flags = 0;
   // TODO(mikhal): Tune settings.
-  if (vpx_codec_enc_init(encoder_, vpx_codec_vp8_cx(), config_.get(), flags)) {
-    DCHECK(false) << "Invalid return value";
+  if (vpx_codec_enc_init(encoder_.get(),
+                         vpx_codec_vp8_cx(),
+                         config_.get(),
+                         flags)) {
+    DCHECK(false) << "vpx_codec_enc_init() failed.";
+    encoder_.reset();
+    return;
   }
-  vpx_codec_control(encoder_, VP8E_SET_STATIC_THRESHOLD, 1);
-  vpx_codec_control(encoder_, VP8E_SET_NOISE_SENSITIVITY, 0);
-  vpx_codec_control(encoder_, VP8E_SET_CPUUSED, -6);
-  vpx_codec_control(encoder_, VP8E_SET_MAX_INTRA_BITRATE_PCT,
+  vpx_codec_control(encoder_.get(), VP8E_SET_STATIC_THRESHOLD, 1);
+  vpx_codec_control(encoder_.get(), VP8E_SET_NOISE_SENSITIVITY, 0);
+  vpx_codec_control(encoder_.get(), VP8E_SET_CPUUSED, -6);
+  vpx_codec_control(encoder_.get(), VP8E_SET_MAX_INTRA_BITRATE_PCT,
                     rc_max_intra_target);
 }
 
-bool Vp8Encoder::Encode(const I420VideoFrame& input_image,
-                        EncodedVideoFrame* encoded_image) {
+bool Vp8Encoder::Encode(const scoped_refptr<media::VideoFrame>& video_frame,
+                        transport::EncodedVideoFrame* encoded_image) {
+  DCHECK(thread_checker_.CalledOnValidThread());
   // Image in vpx_image_t format.
   // Input image is const. VP8's raw image is not defined as const.
-  raw_image_->planes[PLANE_Y] = const_cast<uint8*>(input_image.y_plane.data);
-  raw_image_->planes[PLANE_U] = const_cast<uint8*>(input_image.u_plane.data);
-  raw_image_->planes[PLANE_V] = const_cast<uint8*>(input_image.v_plane.data);
+  raw_image_->planes[PLANE_Y] =
+      const_cast<uint8*>(video_frame->data(VideoFrame::kYPlane));
+  raw_image_->planes[PLANE_U] =
+      const_cast<uint8*>(video_frame->data(VideoFrame::kUPlane));
+  raw_image_->planes[PLANE_V] =
+      const_cast<uint8*>(video_frame->data(VideoFrame::kVPlane));
 
-  raw_image_->stride[VPX_PLANE_Y] = input_image.y_plane.stride;
-  raw_image_->stride[VPX_PLANE_U] = input_image.u_plane.stride;
-  raw_image_->stride[VPX_PLANE_V] = input_image.v_plane.stride;
+  raw_image_->stride[VPX_PLANE_Y] = video_frame->stride(VideoFrame::kYPlane);
+  raw_image_->stride[VPX_PLANE_U] = video_frame->stride(VideoFrame::kUPlane);
+  raw_image_->stride[VPX_PLANE_V] = video_frame->stride(VideoFrame::kVPlane);
 
   uint8 latest_frame_id_to_reference;
   Vp8Buffers buffer_to_update;
@@ -139,8 +157,7 @@ bool Vp8Encoder::Encode(const I420VideoFrame& input_image,
   if (key_frame_requested_) {
     flags = VPX_EFLAG_FORCE_KF;
     // Self reference.
-    latest_frame_id_to_reference =
-        static_cast<uint8>(last_encoded_frame_id_ + 1);
+    latest_frame_id_to_reference = last_encoded_frame_id_ + 1;
     // We can pick any buffer as buffer_to_update since we update
     // them all.
     buffer_to_update = kLastBuffer;
@@ -155,7 +172,11 @@ bool Vp8Encoder::Encode(const I420VideoFrame& input_image,
   // Note: The duration does not reflect the real time between frames. This is
   // done to keep the encoder happy.
   uint32 duration = kVideoFrequency / cast_config_.max_frame_rate;
-  if (vpx_codec_encode(encoder_, raw_image_, timestamp_, duration, flags,
+  if (vpx_codec_encode(encoder_.get(),
+                       raw_image_,
+                       timestamp_,
+                       duration,
+                       flags,
                        VPX_DL_REALTIME)) {
     return false;
   }
@@ -165,7 +186,7 @@ bool Vp8Encoder::Encode(const I420VideoFrame& input_image,
   const vpx_codec_cx_pkt_t *pkt = NULL;
   vpx_codec_iter_t iter = NULL;
   size_t total_size = 0;
-  while ((pkt = vpx_codec_get_cx_data(encoder_, &iter)) != NULL) {
+  while ((pkt = vpx_codec_get_cx_data(encoder_.get(), &iter)) != NULL) {
     if (pkt->kind == VPX_CODEC_CX_FRAME_PKT) {
       total_size += pkt->data.frame.sz;
       encoded_image->data.reserve(total_size);
@@ -185,7 +206,7 @@ bool Vp8Encoder::Encode(const I420VideoFrame& input_image,
   if (total_size == 0) return true;
 
   // Populate the encoded frame.
-  encoded_image->codec = kVp8;
+  encoded_image->codec = transport::kVp8;
   encoded_image->last_referenced_frame_id = latest_frame_id_to_reference;
   encoded_image->frame_id = ++last_encoded_frame_id_;
 
@@ -230,7 +251,7 @@ void Vp8Encoder::GetCodecReferenceFlags(vpx_codec_flags_t* flags) {
   }
 }
 
-uint8 Vp8Encoder::GetLatestFrameIdToReference() {
+uint32 Vp8Encoder::GetLatestFrameIdToReference() {
   if (!use_multiple_video_buffers_) return last_encoded_frame_id_;
 
   int latest_frame_id_to_reference = -1;
@@ -258,7 +279,7 @@ uint8 Vp8Encoder::GetLatestFrameIdToReference() {
     }
   }
   DCHECK(latest_frame_id_to_reference != -1) << "Invalid state";
-  return static_cast<uint8>(latest_frame_id_to_reference);
+  return static_cast<uint32>(latest_frame_id_to_reference);
 }
 
 Vp8Encoder::Vp8Buffers Vp8Encoder::GetNextBufferToUpdate() {
@@ -322,18 +343,20 @@ void Vp8Encoder::GetCodecUpdateFlags(Vp8Buffers buffer_to_update,
 }
 
 void Vp8Encoder::UpdateRates(uint32 new_bitrate) {
+  DCHECK(thread_checker_.CalledOnValidThread());
   uint32 new_bitrate_kbit = new_bitrate / 1000;
   if (config_->rc_target_bitrate == new_bitrate_kbit) return;
 
   config_->rc_target_bitrate = new_bitrate_kbit;
 
   // Update encoder context.
-  if (vpx_codec_enc_config_set(encoder_, config_.get())) {
+  if (vpx_codec_enc_config_set(encoder_.get(), config_.get())) {
     DCHECK(false) << "Invalid return value";
   }
 }
 
-void Vp8Encoder::LatestFrameIdToReference(uint8 frame_id) {
+void Vp8Encoder::LatestFrameIdToReference(uint32 frame_id) {
+  DCHECK(thread_checker_.CalledOnValidThread());
   if (!use_multiple_video_buffers_) return;
 
   VLOG(1) << "VP8 ok to reference frame:" << static_cast<int>(frame_id);
@@ -345,6 +368,7 @@ void Vp8Encoder::LatestFrameIdToReference(uint8 frame_id) {
 }
 
 void Vp8Encoder::GenerateKeyFrame() {
+  DCHECK(thread_checker_.CalledOnValidThread());
   key_frame_requested_ = true;
 }
 

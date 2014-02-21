@@ -13,7 +13,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 std::string GalleryName(const MediaGalleryPrefInfo& gallery) {
-  string16 name = gallery.GetGalleryDisplayName();
+  base::string16 name = gallery.GetGalleryDisplayName();
   return UTF16ToASCII(name);
 }
 
@@ -30,11 +30,11 @@ TEST(MediaGalleriesDialogControllerTest, TestNameGeneration) {
 #endif
   EXPECT_EQ(galleryName, GalleryName(gallery));
 
-  gallery.display_name = ASCIIToUTF16("override");
+  gallery.display_name = base::ASCIIToUTF16("override");
   EXPECT_EQ("override", GalleryName(gallery));
 
-  gallery.display_name = string16();
-  gallery.volume_label = ASCIIToUTF16("label");
+  gallery.display_name = base::string16();
+  gallery.volume_label = base::ASCIIToUTF16("label");
   EXPECT_EQ(galleryName, GalleryName(gallery));
 
   gallery.path = base::FilePath(FILE_PATH_LITERAL("sub/gallery2"));
@@ -52,18 +52,18 @@ TEST(MediaGalleriesDialogControllerTest, TestNameGeneration) {
   gallery.device_id = StorageInfo::MakeDeviceId(
       StorageInfo::REMOVABLE_MASS_STORAGE_WITH_DCIM,
       "/path/to/dcim");
-  gallery.display_name = ASCIIToUTF16("override");
+  gallery.display_name = base::ASCIIToUTF16("override");
   EXPECT_EQ("override", GalleryName(gallery));
 
-  gallery.volume_label = ASCIIToUTF16("volume");
-  gallery.vendor_name = ASCIIToUTF16("vendor");
-  gallery.model_name = ASCIIToUTF16("model");
+  gallery.volume_label = base::ASCIIToUTF16("volume");
+  gallery.vendor_name = base::ASCIIToUTF16("vendor");
+  gallery.model_name = base::ASCIIToUTF16("model");
   EXPECT_EQ("override", GalleryName(gallery));
 
-  gallery.display_name = string16();
+  gallery.display_name = base::string16();
   EXPECT_EQ("volume", GalleryName(gallery));
 
-  gallery.volume_label = string16();
+  gallery.volume_label = base::string16();
   EXPECT_EQ("vendor, model", GalleryName(gallery));
 
   gallery.total_size_in_bytes = 1000000;

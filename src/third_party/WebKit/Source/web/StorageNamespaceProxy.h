@@ -29,22 +29,22 @@
 #include "core/storage/StorageArea.h"
 #include "core/storage/StorageNamespace.h"
 
-namespace WebKit { class WebStorageNamespace; }
+namespace blink { class WebStorageNamespace; }
 
 namespace WebCore {
 
 // Instances of StorageNamespaceProxy are only used to interact with
 // SessionStorage, never LocalStorage.
-class StorageNamespaceProxy : public StorageNamespace {
+class StorageNamespaceProxy FINAL : public StorageNamespace {
 public:
-    explicit StorageNamespaceProxy(PassOwnPtr<WebKit::WebStorageNamespace>);
+    explicit StorageNamespaceProxy(PassOwnPtr<blink::WebStorageNamespace>);
     virtual ~StorageNamespaceProxy();
-    virtual PassOwnPtr<StorageArea> storageArea(SecurityOrigin*);
+    virtual PassOwnPtr<StorageArea> storageArea(SecurityOrigin*) OVERRIDE;
 
-    bool isSameNamespace(const WebKit::WebStorageNamespace&);
+    bool isSameNamespace(const blink::WebStorageNamespace&);
 
 private:
-    OwnPtr<WebKit::WebStorageNamespace> m_storageNamespace;
+    OwnPtr<blink::WebStorageNamespace> m_storageNamespace;
 };
 
 } // namespace WebCore

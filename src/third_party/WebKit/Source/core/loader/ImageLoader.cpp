@@ -29,14 +29,13 @@
 #include "core/events/EventSender.h"
 #include "core/fetch/CrossOriginAccessControl.h"
 #include "core/fetch/FetchRequest.h"
-#include "core/fetch/ImageResource.h"
 #include "core/fetch/ResourceFetcher.h"
 #include "core/html/HTMLObjectElement.h"
 #include "core/html/parser/HTMLParserIdioms.h"
 #include "core/rendering/RenderImage.h"
 #include "core/rendering/RenderVideo.h"
 #include "core/rendering/svg/RenderSVGImage.h"
-#include "weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityOrigin.h"
 
 namespace WebCore {
 
@@ -158,10 +157,10 @@ void ImageLoader::updateFromElement()
     if (!attr.isNull() && !stripLeadingAndTrailingHTMLSpaces(attr).isEmpty()) {
         FetchRequest request(ResourceRequest(document.completeURL(sourceURI(attr))), element()->localName());
 
-        String crossOriginMode = m_element->fastGetAttribute(HTMLNames::crossoriginAttr);
+        AtomicString crossOriginMode = m_element->fastGetAttribute(HTMLNames::crossoriginAttr);
         if (!crossOriginMode.isNull()) {
             StoredCredentials allowCredentials = equalIgnoringCase(crossOriginMode, "use-credentials") ? AllowStoredCredentials : DoNotAllowStoredCredentials;
-            updateRequestForAccessControl(request.mutableResourceRequest(), document.securityOrigin(), allowCredentials);
+            request.setCrossOriginAccessControl(document.securityOrigin(), allowCredentials);
         }
 
         if (m_loadManually) {
@@ -265,26 +264,18 @@ void ImageLoader::notifyFinished(Resource* resource)
     if (!m_hasPendingLoadEvent)
         return;
 
-    if (m_element->fastHasAttribute(HTMLNames::crossoriginAttr)
-        && !m_element->document().securityOrigin()->canRequest(image()->response().url())
-        && !resource->passesAccessControlCheck(m_element->document().securityOrigin())) {
-
-        setImageWithoutConsideringPendingLoadEvent(0);
+    if (resource->errorOccurred()) {
+        loadEventSender().cancelEvent(this);
+        m_hasPendingLoadEvent = false;
 
         m_hasPendingErrorEvent = true;
         errorEventSender().dispatchEventSoon(this);
-
-        DEFINE_STATIC_LOCAL(String, consoleMessage, ("Cross-origin image load denied by Cross-Origin Resource Sharing policy."));
-        m_element->document().addConsoleMessage(SecurityMessageSource, ErrorMessageLevel, consoleMessage);
-
-        ASSERT(!m_hasPendingLoadEvent);
 
         // Only consider updating the protection ref-count of the Element immediately before returning
         // from this function as doing so might result in the destruction of this ImageLoader.
         updatedHasPendingEvent();
         return;
     }
-
     if (resource->wasCanceled()) {
         m_hasPendingLoadEvent = false;
         // Only consider updating the protection ref-count of the Element immediately before returning
@@ -292,7 +283,6 @@ void ImageLoader::notifyFinished(Resource* resource)
         updatedHasPendingEvent();
         return;
     }
-
     loadEventSender().dispatchEventSoon(this);
 }
 

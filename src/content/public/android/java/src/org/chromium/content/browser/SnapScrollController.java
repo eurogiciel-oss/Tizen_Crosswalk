@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@ package org.chromium.content.browser;
 
 import android.content.Context;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.MotionEvent;
 
 /**
@@ -96,7 +95,6 @@ class SnapScrollController {
                 mDistanceY = 0;
                 break;
             default:
-                Log.i(TAG, "setSnapScrollingMode case-default no-op");
                 break;
         }
     }
@@ -117,13 +115,6 @@ class SnapScrollController {
         }
         mChannelDistance = mChannelDistance * metrics.density;
         if (mChannelDistance < 16f) mChannelDistance = 16f;
-    }
-
-    /**
-     * Resets the snap scroll mode to default.
-     */
-    void resetSnapScrollMode() {
-        mSnapScrollMode = SNAP_NONE;
     }
 
     /**

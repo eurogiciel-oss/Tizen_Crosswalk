@@ -288,10 +288,10 @@ void SkClipStack::Element::updateBoundAndGenID(const Element* prior) {
         // Note: the left edge is handled slightly differently below. We
         // are a bit more generous in the rounding since we don't want to
         // risk missing the left pixels when fLeft is very close to .5
-        fFiniteBound.set(SkIntToScalar(SkScalarFloorToInt(fFiniteBound.fLeft+0.45f)),
-                         SkIntToScalar(SkScalarRound(fFiniteBound.fTop)),
-                         SkIntToScalar(SkScalarRound(fFiniteBound.fRight)),
-                         SkIntToScalar(SkScalarRound(fFiniteBound.fBottom)));
+        fFiniteBound.set(SkScalarFloorToScalar(fFiniteBound.fLeft+0.45f),
+                         SkScalarRoundToScalar(fFiniteBound.fTop),
+                         SkScalarRoundToScalar(fFiniteBound.fRight),
+                         SkScalarRoundToScalar(fFiniteBound.fBottom));
     }
 
     // Now determine the previous Element's bound information taking into
@@ -406,6 +406,9 @@ SkClipStack& SkClipStack::operator=(const SkClipStack& b) {
 }
 
 bool SkClipStack::operator==(const SkClipStack& b) const {
+    if (this->getTopmostGenID() == b.getTopmostGenID()) {
+        return true;
+    }
     if (fSaveCount != b.fSaveCount ||
         fDeque.count() != b.fDeque.count()) {
         return false;
@@ -452,7 +455,6 @@ void SkClipStack::restoreTo(int saveCount) {
         if (element->fSaveCount <= saveCount) {
             break;
         }
-        this->purgeClip(element);
         element->~Element();
         fDeque.pop_back();
     }
@@ -540,7 +542,6 @@ void SkClipStack::clipDevRect(const SkRect& rect, SkRegion::Op op, bool doAA) {
                     return;
                 case Element::kRect_Type:
                     if (element->rectRectIntersectAllowed(rect, doAA)) {
-                        this->purgeClip(element);
                         if (!element->fRect.intersect(rect)) {
                             element->setEmpty();
                             return;
@@ -554,7 +555,6 @@ void SkClipStack::clipDevRect(const SkRect& rect, SkRegion::Op op, bool doAA) {
                     break;
                 case Element::kPath_Type:
                     if (!SkRect::Intersects(element->fPath.getBounds(), rect)) {
-                        this->purgeClip(element);
                         element->setEmpty();
                         return;
                     }
@@ -567,10 +567,6 @@ void SkClipStack::clipDevRect(const SkRect& rect, SkRegion::Op op, bool doAA) {
     }
     new (fDeque.push_back()) Element(fSaveCount, rect, op, doAA);
     ((Element*) fDeque.back())->updateBoundAndGenID(element);
-
-    if (element && element->fSaveCount == fSaveCount) {
-        this->purgeClip(element);
-    }
 }
 
 void SkClipStack::clipDevPath(const SkPath& path, SkRegion::Op op, bool doAA) {
@@ -589,14 +585,12 @@ void SkClipStack::clipDevPath(const SkPath& path, SkRegion::Op op, bool doAA) {
                     return;
                 case Element::kRect_Type:
                     if (!SkRect::Intersects(element->fRect, pathBounds)) {
-                        this->purgeClip(element);
                         element->setEmpty();
                         return;
                     }
                     break;
                 case Element::kPath_Type:
                     if (!SkRect::Intersects(element->fPath.getBounds(), pathBounds)) {
-                        this->purgeClip(element);
                         element->setEmpty();
                         return;
                     }
@@ -609,10 +603,6 @@ void SkClipStack::clipDevPath(const SkPath& path, SkRegion::Op op, bool doAA) {
     }
     new (fDeque.push_back()) Element(fSaveCount, path, op, doAA);
     ((Element*) fDeque.back())->updateBoundAndGenID(element);
-
-    if (element && element->fSaveCount == fSaveCount) {
-        this->purgeClip(element);
-    }
 }
 
 void SkClipStack::clipEmpty() {
@@ -626,27 +616,17 @@ void SkClipStack::clipEmpty() {
                 return;
             case Element::kRect_Type:
             case Element::kPath_Type:
-                this->purgeClip(element);
                 element->setEmpty();
                 return;
         }
     }
     new (fDeque.push_back()) Element(fSaveCount);
 
-    if (element && element->fSaveCount == fSaveCount) {
-        this->purgeClip(element);
-    }
     ((Element*)fDeque.back())->fGenID = kEmptyGenID;
 }
 
 bool SkClipStack::isWideOpen() const {
-    if (0 == fDeque.count()) {
-        return true;
-    }
-
-    const Element* back = (const Element*) fDeque.back();
-    return kWideOpenGenID == back->fGenID ||
-           (kInsideOut_BoundsType == back->fFiniteBoundType && back->fFiniteBound.isEmpty());
+    return this->getTopmostGenID() == kWideOpenGenID;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -740,45 +720,20 @@ void SkClipStack::getConservativeBounds(int offsetX,
     }
 }
 
-void SkClipStack::addPurgeClipCallback(PFPurgeClipCB callback, void* data) const {
-    ClipCallbackData temp = { callback, data };
-    fCallbackData.append(1, &temp);
-}
-
-void SkClipStack::removePurgeClipCallback(PFPurgeClipCB callback, void* data) const {
-    ClipCallbackData temp = { callback, data };
-    int index = fCallbackData.find(temp);
-    if (index >= 0) {
-        fCallbackData.removeShuffle(index);
-    }
-}
-
-// The clip state represented by 'element' will never be used again. Purge it.
-void SkClipStack::purgeClip(Element* element) {
-    SkASSERT(NULL != element);
-    if (element->fGenID >= 0 && element->fGenID < kFirstUnreservedGenID) {
-        return;
-    }
-
-    for (int i = 0; i < fCallbackData.count(); ++i) {
-        (*fCallbackData[i].fCallback)(element->fGenID, fCallbackData[i].fData);
-    }
-
-    // Invalidate element's gen ID so handlers can detect already handled records
-    element->fGenID = kInvalidGenID;
-}
-
 int32_t SkClipStack::GetNextGenID() {
     // TODO: handle overflow.
     return sk_atomic_inc(&gGenID);
 }
 
 int32_t SkClipStack::getTopmostGenID() const {
-
     if (fDeque.empty()) {
-        return kInvalidGenID;
+        return kWideOpenGenID;
     }
 
-    Element* element = (Element*)fDeque.back();
-    return element->fGenID;
+    const Element* back = static_cast<const Element*>(fDeque.back());
+    if (kInsideOut_BoundsType == back->fFiniteBoundType && back->fFiniteBound.isEmpty()) {
+        return kWideOpenGenID;
+    }
+
+    return back->getGenID();
 }

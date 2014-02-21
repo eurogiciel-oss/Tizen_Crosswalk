@@ -43,9 +43,8 @@ namespace WebCore {
 
 class V8TestObject {
 public:
-    static bool HasInstance(v8::Handle<v8::Value>, v8::Isolate*, WrapperWorldType);
-    static bool HasInstanceInAnyWorld(v8::Handle<v8::Value>, v8::Isolate*);
-    static v8::Handle<v8::FunctionTemplate> GetTemplate(v8::Isolate*, WrapperWorldType);
+    static bool hasInstance(v8::Handle<v8::Value>, v8::Isolate*);
+    static v8::Handle<v8::FunctionTemplate> domTemplate(v8::Isolate*, WrapperWorldType);
     static TestObj* toNative(v8::Handle<v8::Object> object)
     {
         return fromInternalPointer(object->GetAlignedPointerFromInternalField(v8DOMWrapperObjectIndex));
@@ -56,7 +55,6 @@ public:
     static void customMethodMethodCustom(const v8::FunctionCallbackInfo<v8::Value>&);
     static void customMethodWithArgsMethodCustom(const v8::FunctionCallbackInfo<v8::Value>&);
     static void classMethod2MethodCustom(const v8::FunctionCallbackInfo<v8::Value>&);
-    static void constructorCallback(const v8::FunctionCallbackInfo<v8::Value>&);
     static void customAttrAttributeGetterCustom(const v8::PropertyCallbackInfo<v8::Value>&);
     static void customAttrAttributeSetterCustom(v8::Local<v8::Value>, const v8::PropertyCallbackInfo<void>&);
     static const int eventListenerCacheIndex = v8DefaultWrapperInternalFieldCount + 0;
@@ -71,7 +69,7 @@ public:
         return static_cast<TestObj*>(V8EventTarget::fromInternalPointer(object));
     }
     static void installPerContextEnabledProperties(v8::Handle<v8::Object>, TestObj*, v8::Isolate*);
-    static void installPerContextEnabledPrototypeProperties(v8::Handle<v8::Object>, v8::Isolate*);
+    static void installPerContextEnabledMethods(v8::Handle<v8::Object>, v8::Isolate*);
 
 private:
     friend v8::Handle<v8::Object> wrap(TestObj*, v8::Handle<v8::Object> creationContext, v8::Isolate*);
@@ -94,7 +92,7 @@ inline v8::Handle<v8::Object> wrap(TestObj* impl, v8::Handle<v8::Object> creatio
 inline v8::Handle<v8::Value> toV8(TestObj* impl, v8::Handle<v8::Object> creationContext, v8::Isolate* isolate)
 {
     if (UNLIKELY(!impl))
-        return v8NullWithCheck(isolate);
+        return v8::Null(isolate);
     v8::Handle<v8::Value> wrapper = DOMDataStore::getWrapper<V8TestObject>(impl, isolate);
     if (!wrapper.IsEmpty())
         return wrapper;
@@ -165,5 +163,4 @@ inline void v8SetReturnValueFast(const CallbackInfo& callbackInfo, PassRefPtr<Te
 }
 
 }
-
 #endif // V8TestObject_h

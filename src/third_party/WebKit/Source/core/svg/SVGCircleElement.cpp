@@ -22,7 +22,6 @@
 
 #include "core/svg/SVGCircleElement.h"
 
-#include "SVGNames.h"
 #include "core/rendering/svg/RenderSVGEllipse.h"
 #include "core/rendering/svg/RenderSVGResource.h"
 #include "core/svg/SVGElementInstance.h"
@@ -31,41 +30,33 @@
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_LENGTH(SVGCircleElement, SVGNames::cxAttr, Cx, cx)
-DEFINE_ANIMATED_LENGTH(SVGCircleElement, SVGNames::cyAttr, Cy, cy)
-DEFINE_ANIMATED_LENGTH(SVGCircleElement, SVGNames::rAttr, R, r)
-DEFINE_ANIMATED_BOOLEAN(SVGCircleElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
-
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGCircleElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(cx)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(cy)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(r)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGGraphicsElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGCircleElement::SVGCircleElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
-    , m_cx(LengthModeWidth)
-    , m_cy(LengthModeHeight)
-    , m_r(LengthModeOther)
+inline SVGCircleElement::SVGCircleElement(Document& document)
+    : SVGGeometryElement(SVGNames::circleTag, document)
+    , m_cx(SVGAnimatedLength::create(this, SVGNames::cxAttr, SVGLength::create(LengthModeWidth)))
+    , m_cy(SVGAnimatedLength::create(this, SVGNames::cyAttr, SVGLength::create(LengthModeHeight)))
+    , m_r(SVGAnimatedLength::create(this, SVGNames::rAttr, SVGLength::create(LengthModeOther)))
 {
-    ASSERT(hasTagName(SVGNames::circleTag));
     ScriptWrappable::init(this);
+
+    addToPropertyMap(m_cx);
+    addToPropertyMap(m_cy);
+    addToPropertyMap(m_r);
     registerAnimatedPropertiesForSVGCircleElement();
 }
 
-PassRefPtr<SVGCircleElement> SVGCircleElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGCircleElement> SVGCircleElement::create(Document& document)
 {
-    return adoptRef(new SVGCircleElement(tagName, document));
+    return adoptRef(new SVGCircleElement(document));
 }
 
 bool SVGCircleElement::isSupportedAttribute(const QualifiedName& attrName)
 {
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
     if (supportedAttributes.isEmpty()) {
-        SVGLangSpace::addSupportedAttributes(supportedAttributes);
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
         supportedAttributes.add(SVGNames::cxAttr);
         supportedAttributes.add(SVGNames::cyAttr);
         supportedAttributes.add(SVGNames::rAttr);
@@ -78,16 +69,14 @@ void SVGCircleElement::parseAttribute(const QualifiedName& name, const AtomicStr
     SVGParsingError parseError = NoError;
 
     if (!isSupportedAttribute(name))
-        SVGGraphicsElement::parseAttribute(name, value);
+        SVGGeometryElement::parseAttribute(name, value);
     else if (name == SVGNames::cxAttr)
-        setCxBaseValue(SVGLength::construct(LengthModeWidth, value, parseError));
+        m_cx->setBaseValueAsString(value, AllowNegativeLengths, parseError);
     else if (name == SVGNames::cyAttr)
-        setCyBaseValue(SVGLength::construct(LengthModeHeight, value, parseError));
+        m_cy->setBaseValueAsString(value, AllowNegativeLengths, parseError);
     else if (name == SVGNames::rAttr)
-        setRBaseValue(SVGLength::construct(LengthModeOther, value, parseError, ForbidNegativeLengths));
-    else if (SVGLangSpace::parseAttribute(name, value)
-             || SVGExternalResourcesRequired::parseAttribute(name, value)) {
-    } else
+        m_r->setBaseValueAsString(value, ForbidNegativeLengths, parseError);
+    else
         ASSERT_NOT_REACHED();
 
     reportAttributeParsingError(parseError, name, value);
@@ -96,7 +85,7 @@ void SVGCircleElement::parseAttribute(const QualifiedName& name, const AtomicStr
 void SVGCircleElement::svgAttributeChanged(const QualifiedName& attrName)
 {
     if (!isSupportedAttribute(attrName)) {
-        SVGGraphicsElement::svgAttributeChanged(attrName);
+        SVGGeometryElement::svgAttributeChanged(attrName);
         return;
     }
 
@@ -119,19 +108,14 @@ void SVGCircleElement::svgAttributeChanged(const QualifiedName& attrName)
         return;
     }
 
-    if (SVGLangSpace::isKnownAttribute(attrName) || SVGExternalResourcesRequired::isKnownAttribute(attrName)) {
-        RenderSVGResource::markForLayoutAndParentResourceInvalidation(renderer);
-        return;
-    }
-
     ASSERT_NOT_REACHED();
 }
 
 bool SVGCircleElement::selfHasRelativeLengths() const
 {
-    return cxCurrentValue().isRelative()
-        || cyCurrentValue().isRelative()
-        || rCurrentValue().isRelative();
+    return m_cx->currentValue()->isRelative()
+        || m_cy->currentValue()->isRelative()
+        || m_r->currentValue()->isRelative();
 }
 
 RenderObject* SVGCircleElement::createRenderer(RenderStyle*)

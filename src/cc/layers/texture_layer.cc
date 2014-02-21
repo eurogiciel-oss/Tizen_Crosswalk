@@ -13,7 +13,6 @@
 #include "cc/resources/single_release_callback.h"
 #include "cc/trees/blocking_task_runner.h"
 #include "cc/trees/layer_tree_host.h"
-#include "third_party/WebKit/public/platform/WebGraphicsContext3D.h"
 
 namespace cc {
 
@@ -50,7 +49,7 @@ TextureLayer::~TextureLayer() {
 
 void TextureLayer::ClearClient() {
   if (rate_limit_context_ && client_ && layer_tree_host())
-    layer_tree_host()->StopRateLimiter(client_->Context3d());
+    layer_tree_host()->StopRateLimiter();
   client_ = NULL;
   if (uses_mailbox_)
     SetTextureMailbox(TextureMailbox(), scoped_ptr<SingleReleaseCallback>());
@@ -70,7 +69,8 @@ void TextureLayer::SetFlipped(bool flipped) {
   SetNeedsCommit();
 }
 
-void TextureLayer::SetUV(gfx::PointF top_left, gfx::PointF bottom_right) {
+void TextureLayer::SetUV(const gfx::PointF& top_left,
+                         const gfx::PointF& bottom_right) {
   if (uv_top_left_ == top_left && uv_bottom_right_ == bottom_right)
     return;
   uv_top_left_ = top_left;
@@ -114,7 +114,7 @@ void TextureLayer::SetBlendBackgroundColor(bool blend) {
 
 void TextureLayer::SetRateLimitContext(bool rate_limit) {
   if (!rate_limit && rate_limit_context_ && client_ && layer_tree_host())
-    layer_tree_host()->StopRateLimiter(client_->Context3d());
+    layer_tree_host()->StopRateLimiter();
 
   rate_limit_context_ = rate_limit;
 }
@@ -179,7 +179,7 @@ void TextureLayer::SetNeedsDisplayRect(const gfx::RectF& dirty_rect) {
   Layer::SetNeedsDisplayRect(dirty_rect);
 
   if (rate_limit_context_ && client_ && layer_tree_host() && DrawsContent())
-    layer_tree_host()->StartRateLimiter(client_->Context3d());
+    layer_tree_host()->StartRateLimiter();
 }
 
 void TextureLayer::SetLayerTreeHost(LayerTreeHost* host) {
@@ -196,7 +196,7 @@ void TextureLayer::SetLayerTreeHost(LayerTreeHost* host) {
       SetNextCommitWaitsForActivation();
     }
     if (rate_limit_context_ && client_)
-      layer_tree_host()->StopRateLimiter(client_->Context3d());
+      layer_tree_host()->StopRateLimiter();
   }
   // If we're removed from the tree, the TextureLayerImpl will be destroyed, and
   // we will need to set the mailbox again on a new TextureLayerImpl the next
@@ -234,10 +234,6 @@ bool TextureLayer::Update(ResourceUpdateQueue* queue,
       }
     } else {
       texture_id_ = client_->PrepareTexture();
-      DCHECK_EQ(!!texture_id_, !!client_->Context3d());
-      if (client_->Context3d() &&
-          client_->Context3d()->getGraphicsResetStatusARB() != GL_NO_ERROR)
-        texture_id_ = 0;
       updated = true;
       SetNeedsPushProperties();
       // The texture id needs to be removed from the active tree before the
@@ -256,12 +252,12 @@ void TextureLayer::PushPropertiesTo(LayerImpl* layer) {
   Layer::PushPropertiesTo(layer);
 
   TextureLayerImpl* texture_layer = static_cast<TextureLayerImpl*>(layer);
-  texture_layer->set_flipped(flipped_);
-  texture_layer->set_uv_top_left(uv_top_left_);
-  texture_layer->set_uv_bottom_right(uv_bottom_right_);
-  texture_layer->set_vertex_opacity(vertex_opacity_);
-  texture_layer->set_premultiplied_alpha(premultiplied_alpha_);
-  texture_layer->set_blend_background_color(blend_background_color_);
+  texture_layer->SetFlipped(flipped_);
+  texture_layer->SetUVTopLeft(uv_top_left_);
+  texture_layer->SetUVBottomRight(uv_bottom_right_);
+  texture_layer->SetVertexOpacity(vertex_opacity_);
+  texture_layer->SetPremultipliedAlpha(premultiplied_alpha_);
+  texture_layer->SetBlendBackgroundColor(blend_background_color_);
   if (uses_mailbox_ && needs_set_mailbox_) {
     TextureMailbox texture_mailbox;
     scoped_ptr<SingleReleaseCallback> release_callback;
@@ -273,7 +269,7 @@ void TextureLayer::PushPropertiesTo(LayerImpl* layer) {
     texture_layer->SetTextureMailbox(texture_mailbox, release_callback.Pass());
     needs_set_mailbox_ = false;
   } else {
-    texture_layer->set_texture_id(texture_id_);
+    texture_layer->SetTextureId(texture_id_);
     content_committed_ = DrawsContent();
   }
 }

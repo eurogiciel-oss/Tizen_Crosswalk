@@ -49,10 +49,8 @@ PairingRegistry::Pairing PairingRegistry::Pairing::Create(
   std::string shared_secret;
   char buffer[kKeySize];
   crypto::RandBytes(buffer, arraysize(buffer));
-  if (!base::Base64Encode(base::StringPiece(buffer, arraysize(buffer)),
-                          &shared_secret)) {
-    LOG(FATAL) << "Base64Encode failed.";
-  }
+  base::Base64Encode(base::StringPiece(buffer, arraysize(buffer)),
+                     &shared_secret);
   return Pairing(created_time, client_name, client_id, shared_secret);
 }
 
@@ -258,7 +256,7 @@ void PairingRegistry::SanitizePairings(const GetAllPairingsCallback& callback,
 
   scoped_ptr<base::ListValue> sanitized_pairings(new base::ListValue());
   for (size_t i = 0; i < pairings->GetSize(); ++i) {
-    DictionaryValue* pairing_json;
+    base::DictionaryValue* pairing_json;
     if (!pairings->GetDictionary(i, &pairing_json)) {
       LOG(WARNING) << "A pairing entry is not a dictionary.";
       continue;

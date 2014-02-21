@@ -30,10 +30,10 @@
 #include "core/dom/ExceptionCode.h"
 #include "core/dom/ExecutionContext.h"
 #include "core/events/Event.h"
-#include "core/platform/mediastream/MediaStreamCenter.h"
-#include "core/platform/mediastream/MediaStreamComponent.h"
 #include "modules/mediastream/MediaStreamTrackSourcesCallback.h"
-#include "modules/mediastream/MediaStreamTrackSourcesRequest.h"
+#include "modules/mediastream/MediaStreamTrackSourcesRequestImpl.h"
+#include "platform/mediastream/MediaStreamCenter.h"
+#include "platform/mediastream/MediaStreamComponent.h"
 #include "public/platform/WebSourceInfo.h"
 
 namespace WebCore {
@@ -121,20 +121,20 @@ String MediaStreamTrack::readyState() const
     return String();
 }
 
-void MediaStreamTrack::getSources(ExecutionContext* context, PassRefPtr<MediaStreamTrackSourcesCallback> callback, ExceptionState& es)
+void MediaStreamTrack::getSources(ExecutionContext* context, PassOwnPtr<MediaStreamTrackSourcesCallback> callback, ExceptionState& exceptionState)
 {
-    RefPtr<MediaStreamTrackSourcesRequest> request = MediaStreamTrackSourcesRequest::create(context, callback);
+    RefPtr<MediaStreamTrackSourcesRequest> request = MediaStreamTrackSourcesRequestImpl::create(context->securityOrigin()->toString(), callback);
     if (!MediaStreamCenter::instance().getMediaStreamTrackSources(request.release()))
-        es.throwDOMException(NotSupportedError, ExceptionMessages::failedToExecute("getSources", "MediaStreamTrack", "Functionality not implemented yet"));
+        exceptionState.throwDOMException(NotSupportedError, ExceptionMessages::failedToExecute("getSources", "MediaStreamTrack", "Functionality not implemented yet"));
 }
 
-void MediaStreamTrack::stopTrack(ExceptionState& es)
+void MediaStreamTrack::stopTrack(ExceptionState& exceptionState)
 {
     if (ended())
         return;
 
     if (!MediaStreamCenter::instance().didStopMediaStreamTrack(component()))
-        es.throwDOMException(NotSupportedError, ExceptionMessages::failedToExecute("stop", "MediaStreamTrack", "Functionality not implemented yet"));
+        exceptionState.throwDOMException(NotSupportedError, ExceptionMessages::failedToExecute("stop", "MediaStreamTrack", "Functionality not implemented yet"));
 }
 
 bool MediaStreamTrack::ended() const

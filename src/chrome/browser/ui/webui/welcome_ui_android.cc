@@ -54,12 +54,12 @@ WelcomeUI::WelcomeUI(content::WebUI* web_ui)
   bool tos_visible = tab && tab->ShouldWelcomePageLinkToTermsOfService();
   html_source->AddBoolean("tosVisible", tos_visible);
 
-  string16 tos_html;
+  base::string16 tos_html;
   if (tos_visible) {
     std::string privacy_notice_url =
         base::StringPrintf(kPrivacyNoticeBaseURL, locale.c_str());
-    tos_html = l10n_util::GetStringFUTF16(IDS_FIRSTRUN_TOS_EXPLANATION,
-                                          UTF8ToUTF16(privacy_notice_url));
+    tos_html = l10n_util::GetStringFUTF16(
+        IDS_FIRSTRUN_TOS_EXPLANATION, base::UTF8ToUTF16(privacy_notice_url));
   }
   html_source->AddString("tosHtml", tos_html);
 

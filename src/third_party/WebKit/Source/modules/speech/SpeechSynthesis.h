@@ -29,10 +29,10 @@
 #include "bindings/v8/ScriptWrappable.h"
 #include "core/dom/ContextLifecycleObserver.h"
 #include "core/events/EventTarget.h"
-#include "core/platform/PlatformSpeechSynthesisUtterance.h"
-#include "core/platform/PlatformSpeechSynthesizer.h"
 #include "modules/speech/SpeechSynthesisUtterance.h"
 #include "modules/speech/SpeechSynthesisVoice.h"
+#include "platform/speech/PlatformSpeechSynthesisUtterance.h"
+#include "platform/speech/PlatformSpeechSynthesizer.h"
 #include "wtf/Deque.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/RefCounted.h"
@@ -44,7 +44,7 @@ class ExceptionState;
 class PlatformSpeechSynthesizerClient;
 class SpeechSynthesisVoice;
 
-class SpeechSynthesis : public PlatformSpeechSynthesizerClient, public ScriptWrappable, public RefCounted<SpeechSynthesis>, public ContextLifecycleObserver, public EventTargetWithInlineData {
+class SpeechSynthesis FINAL : public PlatformSpeechSynthesizerClient, public ScriptWrappable, public RefCounted<SpeechSynthesis>, public ContextLifecycleObserver, public EventTargetWithInlineData {
     REFCOUNTED_EVENT_TARGET(SpeechSynthesis);
 public:
     static PassRefPtr<SpeechSynthesis> create(ExecutionContext*);
@@ -65,7 +65,7 @@ public:
 
     DEFINE_ATTRIBUTE_EVENT_LISTENER(voiceschanged);
 
-    virtual ExecutionContext* executionContext() const;
+    virtual ExecutionContext* executionContext() const OVERRIDE;
 
 private:
     explicit SpeechSynthesis(ExecutionContext*);

@@ -18,10 +18,6 @@ namespace autofill {
 struct PasswordForm;
 }
 
-namespace predictors {
-class LoggedInPredictorTable;
-}
-
 namespace prerender {
 
 class PrerenderManager;
@@ -53,7 +49,7 @@ class PrerenderTabHelper
   // content::WebContentsObserver implementation.
   virtual void ProvisionalChangeToMainFrameUrl(
       const GURL& url,
-      content::RenderViewHost* render_view_host) OVERRIDE;
+      content::RenderFrameHost* render_frame_host) OVERRIDE;
   virtual void DidStopLoading(
       content::RenderViewHost* render_view_host) OVERRIDE;
   virtual void DidStartProvisionalLoadForFrame(
@@ -66,7 +62,7 @@ class PrerenderTabHelper
       content::RenderViewHost* render_view_host) OVERRIDE;
   virtual void DidCommitProvisionalLoadForFrame(
       int64 frame_id,
-      const string16& frame_unique_name,
+      const base::string16& frame_unique_name,
       bool is_main_frame,
       const GURL& validated_url,
       content::PageTransition transition_type,
@@ -87,11 +83,6 @@ class PrerenderTabHelper
   void RecordEventIfLoggedInURL(Event event, const GURL& url);
   void RecordEventIfLoggedInURLResult(Event event, scoped_ptr<bool> is_present,
                                       scoped_ptr<bool> lookup_succeeded);
-  // Helper class to compute pixel-based stats on the paint progress
-  // between when a prerendered page is swapped in and when the onload event
-  // fires.
-  class PixelStats;
-  scoped_ptr<PixelStats> pixel_stats_;
 
   // Retrieves the PrerenderManager, or NULL, if none was found.
   PrerenderManager* MaybeGetPrerenderManager() const;

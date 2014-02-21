@@ -4,6 +4,28 @@
 <script src="../../http/tests/inspector/timeline-test.js"></script>
 <script>
 
+function initialize_TimelineCoalescing()
+{
+
+InspectorTest.dumpStats = function(record)
+{
+    if (!record.parent)
+        return "";
+    var aggregatedStats = record.aggregatedStats;
+    var timeByCategory = "";
+    
+    for (category in aggregatedStats) {
+        if (timeByCategory)
+            timeByCategory += ", ";
+        timeByCategory += category + ": " + aggregatedStats[category].toFixed(5);
+    }
+    var duration = (record.endTime - record.startTime).toFixed(5);
+    var durationTillLastChild = (record.lastChildEndTime - record.startTime).toFixed(5);
+    return "duration: " + duration + ":" + durationTillLastChild + (timeByCategory ? " (" + timeByCategory + ")" : "");
+}
+
+}
+
 function test()
 {
     var records = [
@@ -61,8 +83,8 @@ function test()
 
     InspectorTest.loadTimelineRecords(records);
 
-    var rootRecord = WebInspector.panels.timeline._presentationModel.rootRecord();
-    InspectorTest.dumpTimelineRecord(rootRecord);
+    var rootRecord = InspectorTest.timelinePresentationModel().rootRecord();
+    InspectorTest.dumpTimelineRecord(rootRecord, InspectorTest.dumpStats);
     var coalesced = rootRecord.children[0];
     InspectorTest.addResult("coalesced record's hasWarnings(): " + coalesced.hasWarnings());
     InspectorTest.addResult("coalesced record's childHasWarnings(): " + coalesced.childHasWarnings());

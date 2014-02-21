@@ -8,6 +8,8 @@
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
+#include "base/time/clock.h"
+#include "base/time/time.h"
 
 namespace gcm {
 
@@ -44,11 +46,13 @@ const char kLoginDeviceIdPrefix[] = "android-";
 const char kLoginSettingName[] = "new_vc";
 const char kLoginSettingValue[] = "1";
 
+// Maximum amount of time to save an unsent outgoing message for.
+const int kMaxTTLSeconds = 4 * 7 * 24 * 60 * 60;  // 4 weeks.
+
 }  // namespace
 
-scoped_ptr<mcs_proto::LoginRequest> BuildLoginRequest(
-    uint64 auth_id,
-    uint64 auth_token) {
+scoped_ptr<mcs_proto::LoginRequest> BuildLoginRequest(uint64 auth_id,
+                                                      uint64 auth_token) {
   // Create a hex encoded auth id for the device id field.
   std::string auth_id_hex;
   auth_id_hex = base::StringPrintf("%" PRIx64, auth_id);
@@ -85,6 +89,20 @@ scoped_ptr<mcs_proto::IqStanza> BuildStreamAck() {
   stream_ack_iq->mutable_extension()->set_id(kStreamAck);
   stream_ack_iq->mutable_extension()->set_data("");
   return stream_ack_iq.Pass();
+}
+
+scoped_ptr<mcs_proto::IqStanza> BuildSelectiveAck(
+    const std::vector<std::string>& acked_ids) {
+  scoped_ptr<mcs_proto::IqStanza> selective_ack_iq(new mcs_proto::IqStanza());
+  selective_ack_iq->set_type(mcs_proto::IqStanza::SET);
+  selective_ack_iq->set_id("");
+  selective_ack_iq->mutable_extension()->set_id(kSelectiveAck);
+  mcs_proto::SelectiveAck selective_ack;
+  for (size_t i = 0; i < acked_ids.size(); ++i)
+    selective_ack.add_id(acked_ids[i]);
+  selective_ack_iq->mutable_extension()->set_data(
+      selective_ack.SerializeAsString());
+  return selective_ack_iq.Pass();
 }
 
 // Utility method to build a google::protobuf::MessageLite object from a MCS
@@ -196,25 +214,50 @@ void SetLastStreamIdReceived(uint32 val,
   if (protobuf->GetTypeName() == kProtoNames[kIqStanzaTag]) {
     reinterpret_cast<mcs_proto::IqStanza*>(protobuf)->
         set_last_stream_id_received(val);
-     return;
+    return;
   } else if (protobuf->GetTypeName() == kProtoNames[kHeartbeatPingTag]) {
     reinterpret_cast<mcs_proto::HeartbeatPing*>(protobuf)->
         set_last_stream_id_received(val);
-     return;
+    return;
   } else if (protobuf->GetTypeName() == kProtoNames[kHeartbeatAckTag]) {
     reinterpret_cast<mcs_proto::HeartbeatAck*>(protobuf)->
         set_last_stream_id_received(val);
-     return;
+    return;
   } else if (protobuf->GetTypeName() == kProtoNames[kDataMessageStanzaTag]) {
     reinterpret_cast<mcs_proto::DataMessageStanza*>(protobuf)->
         set_last_stream_id_received(val);
-     return;
+    return;
   } else if (protobuf->GetTypeName() == kProtoNames[kLoginResponseTag]) {
     reinterpret_cast<mcs_proto::LoginResponse*>(protobuf)->
         set_last_stream_id_received(val);
-     return;
+    return;
   }
   NOTREACHED();
+}
+
+bool HasTTLExpired(const google::protobuf::MessageLite& protobuf,
+                   base::Clock* clock) {
+  if (protobuf.GetTypeName() != kProtoNames[kDataMessageStanzaTag])
+    return false;
+  uint64 ttl = GetTTL(protobuf);
+  uint64 sent =
+      reinterpret_cast<const mcs_proto::DataMessageStanza*>(&protobuf)->sent();
+  DCHECK(sent);
+  return ttl > 0 &&
+      clock->Now() >
+          base::Time::FromInternalValue(
+              (sent + ttl) * base::Time::kMicrosecondsPerSecond);
+}
+
+int GetTTL(const google::protobuf::MessageLite& protobuf) {
+  if (protobuf.GetTypeName() != kProtoNames[kDataMessageStanzaTag])
+    return 0;
+  const mcs_proto::DataMessageStanza* data_message =
+      reinterpret_cast<const mcs_proto::DataMessageStanza*>(&protobuf);
+  if (!data_message->has_ttl())
+    return kMaxTTLSeconds;
+  DCHECK_LE(data_message->ttl(), kMaxTTLSeconds);
+  return data_message->ttl();
 }
 
 }  // namespace gcm

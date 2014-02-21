@@ -8,6 +8,7 @@
 #include "media/cast/rtcp/rtcp.h"
 #include "media/cast/rtcp/rtcp_defines.h"
 #include "media/cast/rtcp/rtcp_utility.h"
+#include "media/cast/transport/cast_transport_defines.h"
 
 namespace media {
 namespace cast {
@@ -15,12 +16,18 @@ namespace cast {
 class RtcpReceiverFeedback {
  public:
   virtual void OnReceivedSenderReport(
-      const RtcpSenderInfo& remote_sender_info) = 0;
+      const transport::RtcpSenderInfo& remote_sender_info) = 0;
 
   virtual void OnReceiverReferenceTimeReport(
       const RtcpReceiverReferenceTimeReport& remote_time_report) = 0;
 
   virtual void OnReceivedSendReportRequest() = 0;
+
+  virtual void OnReceivedReceiverLog(
+      const RtcpReceiverLogMessage& receiver_log) = 0;
+
+  virtual void OnReceivedSenderLog(
+      const transport::RtcpSenderLogMessage& sender_log) = 0;
 
   virtual ~RtcpReceiverFeedback() {}
 };
@@ -37,7 +44,8 @@ class RtcpRttFeedback {
 
 class RtcpReceiver {
  public:
-  explicit RtcpReceiver(RtcpSenderFeedback* sender_feedback,
+  explicit RtcpReceiver(scoped_refptr<CastEnvironment> cast_environment,
+                        RtcpSenderFeedback* sender_feedback,
                         RtcpReceiverFeedback* receiver_feedback,
                         RtcpRttFeedback* rtt_feedback,
                         uint32 local_ssrc);
@@ -89,6 +97,12 @@ class RtcpReceiver {
       const RtcpField* rtcp_field,
       MissingFramesAndPacketsMap* missing_frames_and_packets);
 
+  void HandleApplicationSpecificCastReceiverLog(RtcpParser* rtcp_parser);
+  void HandleApplicationSpecificCastSenderLog(RtcpParser* rtcp_parser);
+  void HandleApplicationSpecificCastReceiverEventLog(
+      RtcpParser* rtcp_parser,
+      RtcpReceiverEventLogMessages* event_log_messages);
+
   const uint32 ssrc_;
   uint32 remote_ssrc_;
 
@@ -96,6 +110,9 @@ class RtcpReceiver {
   RtcpSenderFeedback* const sender_feedback_;
   RtcpReceiverFeedback* const receiver_feedback_;
   RtcpRttFeedback* const rtt_feedback_;
+  scoped_refptr<CastEnvironment> cast_environment_;
+
+  transport::FrameIdWrapHelper ack_frame_id_wrap_helper_;
 
   DISALLOW_COPY_AND_ASSIGN(RtcpReceiver);
 };

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="../../forms/resources/common.js"></script>
 <script src="../../forms/resources/picker-common.js"></script>
 <script src="resources/calendar-picker-common.js"></script>
@@ -55,6 +55,7 @@ function test() {
     shouldBeEqualToString('highlightedDayCells()', '2000-01-31,2000-02-01,2000-02-02,2000-02-03,2000-02-04,2000-02-05');
 
     debug('Check that mouse click sets the value.');
+    setNoCloseOnCommit();
     clickDayCellAt(6, 0);
     shouldBeEqualToString('currentMonth()', '2000-01');
     shouldBeEqualToString('selectedValue()', '1999-W52');

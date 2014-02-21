@@ -18,7 +18,6 @@
 #include "chrome/browser/history/select_favicon_frames.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/web_applications/web_app.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
 #include "chrome/common/extensions/manifest_handlers/icons_handler.h"
 #include "chrome/common/pref_names.h"
@@ -27,6 +26,7 @@
 #include "content/public/browser/notification_registrar.h"
 #include "content/public/browser/notification_source.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/common/extension.h"
 #include "grit/theme_resources.h"
 #include "skia/ext/image_operations.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -286,7 +286,7 @@ void UpdateShortcutWorker::UpdateShortcutsOnFileThread() {
   // Ensure web_app_path exists. web_app_path could be missing for a legacy
   // shortcut created by Gears.
   if (!base::PathExists(web_app_path) &&
-      !file_util::CreateDirectory(web_app_path)) {
+      !base::CreateDirectory(web_app_path)) {
     NOTREACHED();
     return;
   }
@@ -299,8 +299,9 @@ void UpdateShortcutWorker::UpdateShortcutsOnFileThread() {
   CheckExistingShortcuts();
   if (!shortcut_files_.empty()) {
     // Generates app id from web app url and profile path.
-    string16 app_id = ShellIntegration::GetAppModelIdForProfile(
-        UTF8ToWide(web_app::GenerateApplicationNameFromURL(shortcut_info_.url)),
+    base::string16 app_id = ShellIntegration::GetAppModelIdForProfile(
+        base::UTF8ToWide(
+            web_app::GenerateApplicationNameFromURL(shortcut_info_.url)),
         profile_path_);
 
     // Sanitize description
@@ -404,7 +405,7 @@ void GetShortcutInfoForTab(WebContents* web_contents,
   info->url = app_info.app_url.is_empty() ? web_contents->GetURL() :
                                             app_info.app_url;
   info->title = app_info.title.empty() ?
-      (web_contents->GetTitle().empty() ? UTF8ToUTF16(info->url.spec()) :
+      (web_contents->GetTitle().empty() ? base::UTF8ToUTF16(info->url.spec()) :
                                           web_contents->GetTitle()) :
       app_info.title;
   info->description = app_info.description;
@@ -429,8 +430,8 @@ void UpdateShortcutInfoForApp(const extensions::Extension& app,
   shortcut_info->extension_id = app.id();
   shortcut_info->is_platform_app = app.is_platform_app();
   shortcut_info->url = extensions::AppLaunchInfo::GetLaunchWebURL(&app);
-  shortcut_info->title = UTF8ToUTF16(app.name());
-  shortcut_info->description = UTF8ToUTF16(app.description());
+  shortcut_info->title = base::UTF8ToUTF16(app.name());
+  shortcut_info->description = base::UTF8ToUTF16(app.description());
   shortcut_info->extension_path = app.path();
   shortcut_info->profile_path = profile->GetPath();
   shortcut_info->profile_name =

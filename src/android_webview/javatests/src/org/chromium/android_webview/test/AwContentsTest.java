@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,18 +24,17 @@ import org.chromium.net.test.util.TestWebServer;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * AwContents tests.
  */
 public class AwContentsTest extends AwTestBase {
-    public static class OnDownloadStartHelper extends CallbackHelper {
+    private static class OnDownloadStartHelper extends CallbackHelper {
         String mUrl;
         String mUserAgent;
         String mContentDisposition;
@@ -164,12 +163,12 @@ public class AwContentsTest extends AwTestBase {
 
         System.gc();
 
-        assertTrue(pollOnUiThread(new Callable<Boolean>() {
+        pollOnUiThread(new Callable<Boolean>() {
             @Override
             public Boolean call() {
                 return AwContents.getNativeInstanceCount() <= MAX_IDLE_INSTANCES;
             }
-        }));
+        });
         for (int i = 0; i < REPETITIONS; ++i) {
             for (int j = 0; j < CONCURRENT_INSTANCES; ++j) {
                 AwTestContainerView view = createAwTestContainerViewOnMainSync(mContentsClient);
@@ -187,12 +186,12 @@ public class AwContentsTest extends AwTestBase {
 
         System.gc();
 
-        assertTrue(pollOnUiThread(new Callable<Boolean>() {
+        pollOnUiThread(new Callable<Boolean>() {
             @Override
             public Boolean call() {
                 return AwContents.getNativeInstanceCount() <= MAX_IDLE_INSTANCES;
             }
-        }));
+        });
     }
 
     private int callDocumentHasImagesSync(final AwContents awContents)
@@ -214,7 +213,7 @@ public class AwContentsTest extends AwTestBase {
               awContents.documentHasImages(msg);
             }
         });
-        assertTrue(s.tryAcquire(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        assertTrue(s.tryAcquire(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS));
         int result = val.get();
         return result;
     }
@@ -305,15 +304,12 @@ public class AwContentsTest extends AwTestBase {
         runTestOnUiThread(new Runnable() {
             @Override
             public void run() {
-              for (int i = 0; i < 10; ++i) {
-                  awContents.clearCache(true);
-              }
+                for (int i = 0; i < 10; ++i) {
+                    awContents.clearCache(true);
+                }
             }
         });
     }
-
-    private static final long TEST_TIMEOUT = 20000L;
-    private static final int CHECK_INTERVAL = 100;
 
     @SmallTest
     @Feature({"AndroidWebView"})
@@ -338,17 +334,17 @@ public class AwContentsTest extends AwTestBase {
             getAwSettingsOnUiThread(awContents).setImagesEnabled(true);
             loadUrlSync(awContents, mContentsClient.getOnPageFinishedHelper(), pageUrl);
 
-            assertTrue(pollOnUiThread(new Callable<Boolean>() {
+            pollOnUiThread(new Callable<Boolean>() {
                 @Override
                 public Boolean call() {
                     return awContents.getFavicon() != null &&
                         !awContents.getFavicon().sameAs(defaultFavicon);
                 }
-            }));
+            });
 
             final Object originalFaviconSource = (new URL(faviconUrl)).getContent();
             final Bitmap originalFavicon =
-                BitmapFactory.decodeStream((InputStream)originalFaviconSource);
+                BitmapFactory.decodeStream((InputStream) originalFaviconSource);
             assertNotNull(originalFavicon);
 
             assertTrue(awContents.getFavicon().sameAs(originalFavicon));
@@ -408,12 +404,12 @@ public class AwContentsTest extends AwTestBase {
               SCRIPT));
 
         // Forcing "offline".
-        awContents.setNetworkAvailable(false);
+        setNetworkAvailableOnUiThread(awContents, false);
         assertEquals("false", executeJavaScriptAndWaitForResult(awContents, mContentsClient,
               SCRIPT));
 
         // Forcing "online".
-        awContents.setNetworkAvailable(true);
+        setNetworkAvailableOnUiThread(awContents, true);
         assertEquals("true", executeJavaScriptAndWaitForResult(awContents, mContentsClient,
               SCRIPT));
     }
@@ -428,7 +424,7 @@ public class AwContentsTest extends AwTestBase {
         public void run() {
             mCallbackHelper.notifyCalled();
         }
-    };
+    }
 
     @Feature({"AndroidWebView", "JavaBridge"})
     @SmallTest
@@ -448,6 +444,6 @@ public class AwContentsTest extends AwTestBase {
                         "javascript:window.bridge.run();");
             }
         });
-        callback.waitForCallback(0, 1, 20, TimeUnit.SECONDS);
+        callback.waitForCallback(0, 1, WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
     }
 }

@@ -12,6 +12,7 @@
 #include "SkBounder.h"
 #include "SkDraw.h"
 #include "SkRasterClip.h"
+#include "SkRRect.h"
 #include "SkTypes.h"
 
 #if SK_SUPPORT_GPU
@@ -19,8 +20,6 @@
 #include "SkGr.h"
 #include "SkGrPixelRef.h"
 #endif
-
-SK_DEFINE_INST_COUNT(SkMaskFilter)
 
 bool SkMaskFilter::filterMask(SkMask*, const SkMask&, const SkMatrix&,
                               SkIPoint*) const {
@@ -204,6 +203,26 @@ static int countNestedRects(const SkPath& path, SkRect rects[2]) {
     return path.isRect(&rects[0]);
 }
 
+bool SkMaskFilter::filterRRect(const SkRRect& devRRect, const SkMatrix& matrix,
+                               const SkRasterClip& clip, SkBounder* bounder,
+                               SkBlitter* blitter, SkPaint::Style style) const {
+    // Attempt to speed up drawing by creating a nine patch. If a nine patch
+    // cannot be used, return false to allow our caller to recover and perform
+    // the drawing another way.
+    NinePatch patch;
+    patch.fMask.fImage = NULL;
+    if (kTrue_FilterReturn != this->filterRRectToNine(devRRect, matrix,
+                                                      clip.getBounds(),
+                                                      &patch)) {
+        SkASSERT(NULL == patch.fMask.fImage);
+        return false;
+    }
+    draw_nine(patch.fMask, patch.fOuterRect, patch.fCenter, true, clip,
+              bounder, blitter);
+    SkMask::FreeImage(patch.fMask.fImage);
+    return true;
+}
+
 bool SkMaskFilter::filterPath(const SkPath& devPath, const SkMatrix& matrix,
                               const SkRasterClip& clip, SkBounder* bounder,
                               SkBlitter* blitter, SkPaint::Style style) const {
@@ -267,13 +286,19 @@ bool SkMaskFilter::filterPath(const SkPath& devPath, const SkMatrix& matrix,
 }
 
 SkMaskFilter::FilterReturn
+SkMaskFilter::filterRRectToNine(const SkRRect&, const SkMatrix&,
+                                const SkIRect& clipBounds, NinePatch*) const {
+    return kUnimplemented_FilterReturn;
+}
+
+SkMaskFilter::FilterReturn
 SkMaskFilter::filterRectsToNine(const SkRect[], int count, const SkMatrix&,
                                 const SkIRect& clipBounds, NinePatch*) const {
     return kUnimplemented_FilterReturn;
 }
 
 #if SK_SUPPORT_GPU
-bool SkMaskFilter::asNewEffect(GrEffectRef** effect, GrTexture*) const {
+bool SkMaskFilter::asNewEffect(GrEffectRef** effect, GrTexture*, const SkMatrix&) const {
     return false;
 }
 
@@ -284,54 +309,9 @@ bool SkMaskFilter::canFilterMaskGPU(const SkRect& devBounds,
     return false;
 }
 
-bool SkMaskFilter::filterMaskGPU(GrContext* context,
-                                 const SkBitmap& srcBM,
-                                 const SkRect& maskRect,
-                                 SkBitmap* resultBM) const {
-    SkAutoTUnref<GrTexture> src;
-    bool canOverwriteSrc = false;
-    if (NULL == srcBM.getTexture()) {
-        GrTextureDesc desc;
-        // Needs to be a render target to be overwritten in filterMaskGPU
-        desc.fFlags     = kRenderTarget_GrTextureFlagBit | kNoStencil_GrTextureFlagBit;
-        desc.fConfig    = SkBitmapConfig2GrPixelConfig(srcBM.config());
-        desc.fWidth     = srcBM.width();
-        desc.fHeight    = srcBM.height();
-
-        // TODO: right now this is exact to guard against out of bounds reads
-        // by the filter code. More thought needs to be devoted to the
-        // "filterMaskGPU" contract and then enforced (i.e., clamp the code
-        // in "filterMaskGPU" so it never samples beyond maskRect)
-        GrAutoScratchTexture ast(context, desc, GrContext::kExact_ScratchTexMatch);
-        if (NULL == ast.texture()) {
-            return false;
-        }
-
-        SkAutoLockPixels alp(srcBM);
-        ast.texture()->writePixels(0, 0, srcBM.width(), srcBM.height(),
-                                   desc.fConfig,
-                                   srcBM.getPixels(), srcBM.rowBytes());
-
-        src.reset(ast.detach());
-        canOverwriteSrc = true;
-    } else {
-        src.reset((GrTexture*) srcBM.getTexture());
-        src.get()->ref();
-    }
-    GrTexture* dst;
-
-    bool result = this->filterMaskGPU(src, maskRect, &dst, canOverwriteSrc);
-    if (!result) {
-        return false;
-    }
-
-    resultBM->setConfig(srcBM.config(), dst->width(), dst->height());
-    resultBM->setPixelRef(SkNEW_ARGS(SkGrPixelRef, (dst)))->unref();
-    dst->unref();
-    return true;
-}
 
 bool SkMaskFilter::filterMaskGPU(GrTexture* src,
+                                 const SkMatrix& ctm,
                                  const SkRect& maskRect,
                                  GrTexture** result,
                                  bool canOverwriteSrc) const {

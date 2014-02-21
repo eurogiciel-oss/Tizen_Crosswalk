@@ -27,6 +27,7 @@
 #include "core/rendering/style/ShadowList.h"
 #include "core/rendering/style/StyleFilterData.h"
 #include "core/rendering/style/StyleTransformData.h"
+#include "core/rendering/svg/ReferenceFilterBuilder.h"
 
 namespace WebCore {
 
@@ -39,7 +40,7 @@ StyleRareNonInheritedData::StyleRareNonInheritedData()
     , m_perspectiveOriginY(RenderStyle::initialPerspectiveOriginY())
     , lineClamp(RenderStyle::initialLineClamp())
     , m_draggableRegionMode(DraggableRegionNone)
-    , m_mask(FillLayer(MaskFillLayer))
+    , m_mask(MaskFillLayer, true)
     , m_pageSize()
     , m_shapeInside(RenderStyle::initialShapeInside())
     , m_shapeOutside(RenderStyle::initialShapeOutside())
@@ -47,7 +48,14 @@ StyleRareNonInheritedData::StyleRareNonInheritedData()
     , m_shapePadding(RenderStyle::initialShapePadding())
     , m_shapeImageThreshold(RenderStyle::initialShapeImageThreshold())
     , m_clipPath(RenderStyle::initialClipPath())
+    , m_textDecorationColor(StyleColor::currentColor())
+    , m_visitedLinkTextDecorationColor(StyleColor::currentColor())
     , m_visitedLinkBackgroundColor(RenderStyle::initialBackgroundColor())
+    , m_visitedLinkOutlineColor(StyleColor::currentColor())
+    , m_visitedLinkBorderLeftColor(StyleColor::currentColor())
+    , m_visitedLinkBorderRightColor(StyleColor::currentColor())
+    , m_visitedLinkBorderTopColor(StyleColor::currentColor())
+    , m_visitedLinkBorderBottomColor(StyleColor::currentColor())
     , m_order(RenderStyle::initialOrder())
     , m_objectPosition(RenderStyle::initialObjectPosition())
     , m_flowThread(RenderStyle::initialFlowThread())
@@ -61,7 +69,9 @@ StyleRareNonInheritedData::StyleRareNonInheritedData()
     , m_backfaceVisibility(RenderStyle::initialBackfaceVisibility())
     , m_alignContent(RenderStyle::initialAlignContent())
     , m_alignItems(RenderStyle::initialAlignItems())
+    , m_alignItemsOverflowAlignment(RenderStyle::initialAlignItemsOverflowAlignment())
     , m_alignSelf(RenderStyle::initialAlignSelf())
+    , m_alignSelfOverflowAlignment(RenderStyle::initialAlignSelfOverflowAlignment())
     , m_justifyContent(RenderStyle::initialJustifyContent())
     , userDrag(RenderStyle::initialUserDrag())
     , textOverflow(RenderStyle::initialTextOverflow())
@@ -79,6 +89,9 @@ StyleRareNonInheritedData::StyleRareNonInheritedData()
     , m_touchAction(RenderStyle::initialTouchAction())
     , m_objectFit(RenderStyle::initialObjectFit())
     , m_isolation(RenderStyle::initialIsolation())
+    , m_justifySelf(RenderStyle::initialJustifySelf())
+    , m_justifySelfOverflowAlignment(RenderStyle::initialJustifySelfOverflowAlignment())
+    , m_scrollBehavior(RenderStyle::initialScrollBehavior())
 {
     m_maskBoxImage.setMaskDefaults();
 }
@@ -137,7 +150,9 @@ StyleRareNonInheritedData::StyleRareNonInheritedData(const StyleRareNonInherited
     , m_backfaceVisibility(o.m_backfaceVisibility)
     , m_alignContent(o.m_alignContent)
     , m_alignItems(o.m_alignItems)
+    , m_alignItemsOverflowAlignment(o.m_alignItemsOverflowAlignment)
     , m_alignSelf(o.m_alignSelf)
+    , m_alignSelfOverflowAlignment(o.m_alignSelfOverflowAlignment)
     , m_justifyContent(o.m_justifyContent)
     , userDrag(o.userDrag)
     , textOverflow(o.textOverflow)
@@ -155,11 +170,17 @@ StyleRareNonInheritedData::StyleRareNonInheritedData(const StyleRareNonInherited
     , m_touchAction(o.m_touchAction)
     , m_objectFit(o.m_objectFit)
     , m_isolation(o.m_isolation)
+    , m_justifySelf(o.m_justifySelf)
+    , m_justifySelfOverflowAlignment(o.m_justifySelfOverflowAlignment)
+    , m_scrollBehavior(o.m_scrollBehavior)
 {
 }
 
 StyleRareNonInheritedData::~StyleRareNonInheritedData()
 {
+    const FilterOperations& filterOperations = m_filter->m_operations;
+    for (unsigned i = 0; i < filterOperations.size(); ++i)
+        ReferenceFilterBuilder::clearDocumentResourceReference(filterOperations.at(i));
 }
 
 bool StyleRareNonInheritedData::operator==(const StyleRareNonInheritedData& o) const
@@ -217,7 +238,9 @@ bool StyleRareNonInheritedData::operator==(const StyleRareNonInheritedData& o) c
         && m_backfaceVisibility == o.m_backfaceVisibility
         && m_alignContent == o.m_alignContent
         && m_alignItems == o.m_alignItems
+        && m_alignItemsOverflowAlignment == o.m_alignItemsOverflowAlignment
         && m_alignSelf == o.m_alignSelf
+        && m_alignSelfOverflowAlignment == o.m_alignSelfOverflowAlignment
         && m_justifyContent == o.m_justifyContent
         && userDrag == o.userDrag
         && textOverflow == o.textOverflow
@@ -234,7 +257,10 @@ bool StyleRareNonInheritedData::operator==(const StyleRareNonInheritedData& o) c
         && m_hasAspectRatio == o.m_hasAspectRatio
         && m_touchAction == o.m_touchAction
         && m_objectFit == o.m_objectFit
-        && m_isolation == o.m_isolation;
+        && m_isolation == o.m_isolation
+        && m_justifySelf == o.m_justifySelf
+        && m_justifySelfOverflowAlignment == o.m_justifySelfOverflowAlignment
+        && m_scrollBehavior == o.m_scrollBehavior;
 }
 
 bool StyleRareNonInheritedData::contentDataEquivalent(const StyleRareNonInheritedData& o) const

@@ -27,34 +27,20 @@
 
 namespace WebCore {
 
-inline SVGTSpanElement::SVGTSpanElement(const QualifiedName& tagName, Document& document)
-    : SVGTextPositioningElement(tagName, document)
+inline SVGTSpanElement::SVGTSpanElement(Document& document)
+    : SVGTextPositioningElement(SVGNames::tspanTag, document)
 {
-    ASSERT(hasTagName(SVGNames::tspanTag));
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<SVGTSpanElement> SVGTSpanElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGTSpanElement> SVGTSpanElement::create(Document& document)
 {
-    return adoptRef(new SVGTSpanElement(tagName, document));
+    return adoptRef(new SVGTSpanElement(document));
 }
 
 RenderObject* SVGTSpanElement::createRenderer(RenderStyle*)
 {
     return new RenderSVGTSpan(this);
-}
-
-bool SVGTSpanElement::childShouldCreateRenderer(const Node& child) const
-{
-    if (child.isTextNode()
-        || child.hasTagName(SVGNames::aTag)
-#if ENABLE(SVG_FONTS)
-        || child.hasTagName(SVGNames::altGlyphTag)
-#endif
-        || child.hasTagName(SVGNames::tspanTag))
-        return true;
-
-    return false;
 }
 
 bool SVGTSpanElement::rendererIsNeeded(const RenderStyle& style)

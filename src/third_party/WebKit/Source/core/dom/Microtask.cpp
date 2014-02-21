@@ -32,7 +32,7 @@
 #include "core/dom/Microtask.h"
 
 #include "core/dom/MutationObserver.h"
-#include "core/dom/custom/CustomElementCallbackDispatcher.h"
+#include "core/dom/custom/CustomElementScheduler.h"
 #include "wtf/Vector.h"
 
 namespace WebCore {
@@ -47,7 +47,7 @@ void Microtask::performCheckpoint()
     bool anyWorkDone;
     do {
         MutationObserver::deliverAllMutations();
-        anyWorkDone = CustomElementCallbackDispatcher::instance().dispatch();
+        anyWorkDone = CustomElementScheduler::dispatchMicrotaskProcessingSteps();
     } while (anyWorkDone);
 
     performingCheckpoint = false;

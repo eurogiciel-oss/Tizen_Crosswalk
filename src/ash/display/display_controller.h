@@ -17,6 +17,7 @@
 #include "base/observer_list.h"
 #include "base/time/time.h"
 #include "ui/aura/root_window_observer.h"
+#include "ui/aura/window.h"
 #include "ui/gfx/display_observer.h"
 #include "ui/gfx/point.h"
 
@@ -71,16 +72,17 @@ class ASH_EXPORT DisplayController : public gfx::DisplayObserver,
   void Start();
   void Shutdown();
 
-  // Returns primary display. This is safe to use after ash::Shell is
-  // deleted.
-  static const gfx::Display& GetPrimaryDisplay();
-
-  // Returns the number of display. This is safe to use after
-  // ash::Shell is deleted.
-  static int GetNumDisplays();
+  // Returns primary display's ID.
+  // TODO(oshima): Move this out from DisplayController;
+  static int64 GetPrimaryDisplayId();
 
   internal::MirrorWindowController* mirror_window_controller() {
     return mirror_window_controller_.get();
+  }
+
+  internal::VirtualKeyboardWindowController*
+      virtual_keyboard_window_controller() {
+    return virtual_keyboard_window_controller_.get();
   }
 
   // Initializes primary display.
@@ -118,7 +120,7 @@ class ASH_EXPORT DisplayController : public gfx::DisplayObserver,
 
   // Returns all root windows. In non extended desktop mode, this
   // returns the primary root window only.
-  std::vector<aura::RootWindow*> GetAllRootWindows();
+  aura::Window::Windows GetAllRootWindows();
 
   // Returns all oot window controllers. In non extended desktop
   // mode, this return a RootWindowController for the primary root window only.
@@ -136,19 +138,6 @@ class ASH_EXPORT DisplayController : public gfx::DisplayObserver,
   // Sets the work area's |insets| to the display assigned to |window|.
   bool UpdateWorkAreaOfDisplayNearestWindow(const aura::Window* window,
                                             const gfx::Insets& insets);
-
-  // Returns the display object nearest given |point|.
-  const gfx::Display& GetDisplayNearestPoint(
-      const gfx::Point& point) const;
-
-  // Returns the display object nearest given |window|.
-  const gfx::Display& GetDisplayNearestWindow(
-      const aura::Window* window) const;
-
-  // Returns the display that most closely intersects |match_rect|.
-  const gfx::Display& GetDisplayMatching(
-      const gfx::Rect& match_rect)const;
-
   // aura::DisplayObserver overrides:
   virtual void OnDisplayBoundsChanged(
       const gfx::Display& display) OVERRIDE;
@@ -156,13 +145,13 @@ class ASH_EXPORT DisplayController : public gfx::DisplayObserver,
   virtual void OnDisplayRemoved(const gfx::Display& display) OVERRIDE;
 
   // RootWindowObserver overrides:
-  virtual void OnRootWindowHostResized(const aura::RootWindow* root) OVERRIDE;
+  virtual void OnWindowTreeHostResized(const aura::RootWindow* root) OVERRIDE;
 
   // aura::DisplayManager::Delegate overrides:
   virtual void CreateOrUpdateNonDesktopDisplay(
       const internal::DisplayInfo& info) OVERRIDE;
   virtual void CloseNonDesktopDisplay() OVERRIDE;
-  virtual void PreDisplayConfigurationChange(bool dispay_removed) OVERRIDE;
+  virtual void PreDisplayConfigurationChange(bool clear_focus) OVERRIDE;
   virtual void PostDisplayConfigurationChange() OVERRIDE;
 
  private:
@@ -200,13 +189,13 @@ class ASH_EXPORT DisplayController : public gfx::DisplayObserver,
   scoped_ptr<DisplayChangeLimiter> limiter_;
 
   // The mapping from display ID to its root window.
-  std::map<int64, aura::RootWindow*> root_windows_;
+  std::map<int64, aura::Window*> root_windows_;
 
   ObserverList<Observer> observers_;
 
   // Store the primary root window temporarily while replacing
   // display.
-  aura::RootWindow* primary_root_window_for_replace_;
+  aura::Window* primary_root_window_for_replace_;
 
   scoped_ptr<internal::FocusActivationStore> focus_activation_store_;
 

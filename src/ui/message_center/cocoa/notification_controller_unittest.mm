@@ -16,6 +16,9 @@
 #include "ui/message_center/notification.h"
 #include "ui/message_center/notification_types.h"
 
+using base::ASCIIToUTF16;
+using base::UTF8ToUTF16;
+
 namespace {
 
 class MockMessageCenter : public message_center::FakeMessageCenter {
@@ -55,7 +58,7 @@ class MockMessageCenter : public message_center::FakeMessageCenter {
   DISALLOW_COPY_AND_ASSIGN(MockMessageCenter);
 };
 
-}
+}  // namespace
 
 @implementation MCNotificationController (TestingInterface)
 - (NSButton*)closeButton {
@@ -93,10 +96,17 @@ class MockMessageCenter : public message_center::FakeMessageCenter {
 }
 @end
 
+namespace message_center {
+
 class NotificationControllerTest : public ui::CocoaTest {
  public:
   NSImage* TestIcon() {
     return [NSImage imageNamed:NSImageNameUser];
+  }
+
+ protected:
+  message_center::NotifierId DummyNotifierId() {
+    return message_center::NotifierId();
   }
 };
 
@@ -108,8 +118,8 @@ TEST_F(NotificationControllerTest, BasicLayout) {
           ASCIIToUTF16("Added to circles"),
           ASCIIToUTF16("Jonathan and 5 others"),
           gfx::Image(),
-          string16(),
-          message_center::NotifierId(),
+          base::string16(),
+          DummyNotifierId(),
           message_center::RichNotificationData(),
           NULL));
   notification->set_icon(gfx::Image([TestIcon() retain]));
@@ -138,8 +148,8 @@ TEST_F(NotificationControllerTest, OverflowText) {
                        "notification. Are you really going to read this "
                        "entire thing?"),
           gfx::Image(),
-          string16(),
-          message_center::NotifierId(),
+          base::string16(),
+          DummyNotifierId(),
           message_center::RichNotificationData(),
           NULL));
   base::scoped_nsobject<MCNotificationController> controller(
@@ -156,11 +166,11 @@ TEST_F(NotificationControllerTest, Close) {
       new message_center::Notification(
           message_center::NOTIFICATION_TYPE_SIMPLE,
           "an_id",
-          string16(),
-          string16(),
+          base::string16(),
+          base::string16(),
           gfx::Image(),
-          string16(),
-          message_center::NotifierId(),
+          base::string16(),
+          DummyNotifierId(),
           message_center::RichNotificationData(),
           NULL));
   MockMessageCenter message_center;
@@ -186,8 +196,8 @@ TEST_F(NotificationControllerTest, Update) {
           ASCIIToUTF16("This message isn't too long and should fit in the"
                        "default bounds."),
           gfx::Image(),
-          string16(),
-          message_center::NotifierId(),
+          base::string16(),
+          DummyNotifierId(),
           message_center::RichNotificationData(),
           NULL));
   base::scoped_nsobject<MCNotificationController> controller(
@@ -219,11 +229,11 @@ TEST_F(NotificationControllerTest, Buttons) {
       new message_center::Notification(
           message_center::NOTIFICATION_TYPE_BASE_FORMAT,
           "an_id",
-          string16(),
-          string16(),
+          base::string16(),
+          base::string16(),
           gfx::Image(),
-          string16(),
-          message_center::NotifierId(),
+          base::string16(),
+          DummyNotifierId(),
           optional,
           NULL));
   MockMessageCenter message_center;
@@ -244,11 +254,11 @@ TEST_F(NotificationControllerTest, Image) {
       new message_center::Notification(
           message_center::NOTIFICATION_TYPE_BASE_FORMAT,
           "an_id",
-          string16(),
-          string16(),
+          base::string16(),
+          base::string16(),
           gfx::Image(),
-          string16(),
-          message_center::NotifierId(),
+          base::string16(),
+          DummyNotifierId(),
           message_center::RichNotificationData(),
           NULL));
   NSImage* image = [NSImage imageNamed:NSImageNameFolder];
@@ -262,9 +272,10 @@ TEST_F(NotificationControllerTest, Image) {
   [controller view];
 
   ASSERT_EQ(1u, [[controller bottomSubviews] count]);
-  ASSERT_TRUE([[[controller bottomSubviews] lastObject]
+  ASSERT_TRUE([[[[controller bottomSubviews] lastObject] contentView]
       isKindOfClass:[NSImageView class]]);
-  EXPECT_EQ(image, [[[controller bottomSubviews] lastObject] image]);
+  EXPECT_EQ(image,
+      [[[[controller bottomSubviews] lastObject] contentView] image]);
 }
 
 TEST_F(NotificationControllerTest, List) {
@@ -289,8 +300,8 @@ TEST_F(NotificationControllerTest, List) {
           UTF8ToUTF16("Notification Title"),
           UTF8ToUTF16("Notification Message - should be hidden"),
           gfx::Image(),
-          string16(),
-          message_center::NotifierId(),
+          base::string16(),
+          DummyNotifierId(),
           optional,
           NULL));
 
@@ -308,3 +319,5 @@ TEST_F(NotificationControllerTest, List) {
   EXPECT_LT(NSMaxY([[controller listView] frame]),
             NSMinY([[controller titleView] frame]));
 }
+
+}  // namespace message_center

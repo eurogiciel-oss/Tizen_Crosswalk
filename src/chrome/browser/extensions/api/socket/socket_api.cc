@@ -15,9 +15,9 @@
 #include "chrome/browser/extensions/api/socket/udp_socket.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/io_thread.h"
-#include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/permissions/permissions_data.h"
 #include "chrome/common/extensions/permissions/socket_permission.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/permissions/permissions_data.h"
 #include "net/base/host_port_pair.h"
 #include "net/base/io_buffer.h"
 #include "net/base/ip_endpoint.h"
@@ -259,7 +259,7 @@ void SocketDisconnectFunction::Work() {
     socket->Disconnect();
   else
     error_ = kSocketNotFoundError;
-  SetResult(Value::CreateNullValue());
+  SetResult(base::Value::CreateNullValue());
 }
 
 bool SocketBindFunction::Prepare() {
@@ -661,7 +661,8 @@ bool SocketGetNetworkListFunction::RunImpl() {
 
 void SocketGetNetworkListFunction::GetNetworkListOnFileThread() {
   net::NetworkInterfaceList interface_list;
-  if (GetNetworkList(&interface_list)) {
+  if (GetNetworkList(&interface_list,
+                     net::INCLUDE_HOST_SCOPE_VIRTUAL_INTERFACES)) {
     content::BrowserThread::PostTask(content::BrowserThread::UI, FROM_HERE,
         base::Bind(&SocketGetNetworkListFunction::SendResponseOnUIThread,
             this, interface_list));
@@ -691,6 +692,7 @@ void SocketGetNetworkListFunction::SendResponseOnUIThread(
         make_linked_ptr(new api::socket::NetworkInterface);
     info->name = i->name;
     info->address = net::IPAddressToString(i->address);
+    info->prefix_length = i->network_prefix;
     create_arg.push_back(info);
   }
 

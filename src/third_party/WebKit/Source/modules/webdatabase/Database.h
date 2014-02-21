@@ -48,16 +48,15 @@ class SQLTransactionCallback;
 class SQLTransactionErrorCallback;
 class VoidCallback;
 
-class Database : public DatabaseBase, public DatabaseBackend, public ScriptWrappable {
+class Database FINAL : public DatabaseBase, public DatabaseBackend, public ScriptWrappable {
 public:
     virtual ~Database();
 
     // Direct support for the DOM API
-    virtual String version() const;
-    void changeVersion(const String& oldVersion, const String& newVersion, PassRefPtr<SQLTransactionCallback>,
-                       PassRefPtr<SQLTransactionErrorCallback>, PassRefPtr<VoidCallback> successCallback);
-    void transaction(PassRefPtr<SQLTransactionCallback>, PassRefPtr<SQLTransactionErrorCallback>, PassRefPtr<VoidCallback> successCallback);
-    void readTransaction(PassRefPtr<SQLTransactionCallback>, PassRefPtr<SQLTransactionErrorCallback>, PassRefPtr<VoidCallback> successCallback);
+    virtual String version() const OVERRIDE;
+    void changeVersion(const String& oldVersion, const String& newVersion, PassOwnPtr<SQLTransactionCallback>, PassOwnPtr<SQLTransactionErrorCallback>, PassOwnPtr<VoidCallback> successCallback);
+    void transaction(PassOwnPtr<SQLTransactionCallback>, PassOwnPtr<SQLTransactionErrorCallback>, PassOwnPtr<VoidCallback> successCallback);
+    void readTransaction(PassOwnPtr<SQLTransactionCallback>, PassOwnPtr<SQLTransactionErrorCallback>, PassOwnPtr<VoidCallback> successCallback);
 
     // Internal engine support
     static Database* from(DatabaseBackend*);
@@ -65,12 +64,9 @@ public:
 
     Vector<String> tableNames();
 
-    virtual SecurityOrigin* securityOrigin() const;
+    virtual SecurityOrigin* securityOrigin() const OVERRIDE;
 
-    virtual void markAsDeletedAndClose();
-    bool deleted() const { return m_deleted; }
-
-    virtual void closeImmediately();
+    virtual void closeImmediately() OVERRIDE;
 
     void scheduleTransactionCallback(SQLTransaction*);
 
@@ -80,8 +76,8 @@ private:
     PassRefPtr<DatabaseBackend> backend();
     static PassRefPtr<Database> create(ExecutionContext*, PassRefPtr<DatabaseBackendBase>);
 
-    void runTransaction(PassRefPtr<SQLTransactionCallback>, PassRefPtr<SQLTransactionErrorCallback>,
-        PassRefPtr<VoidCallback> successCallback, bool readOnly, const ChangeVersionData* = 0);
+    void runTransaction(PassOwnPtr<SQLTransactionCallback>, PassOwnPtr<SQLTransactionErrorCallback>,
+        PassOwnPtr<VoidCallback> successCallback, bool readOnly, const ChangeVersionData* = 0);
 
     Vector<String> performGetTableNames();
 
@@ -90,8 +86,6 @@ private:
 
     RefPtr<SecurityOrigin> m_databaseThreadSecurityOrigin;
     RefPtr<DatabaseContext> m_databaseContext;
-
-    bool m_deleted;
 
     friend class DatabaseManager;
     friend class DatabaseServer; // FIXME: remove this when the backend has been split out.

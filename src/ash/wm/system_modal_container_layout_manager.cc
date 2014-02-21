@@ -21,6 +21,7 @@
 #include "ui/compositor/scoped_layer_animation_settings.h"
 #include "ui/events/event.h"
 #include "ui/gfx/screen.h"
+#include "ui/views/background.h"
 #include "ui/views/corewm/compound_event_filter.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget.h"
@@ -62,8 +63,8 @@ void SystemModalContainerLayoutManager::OnWindowResized() {
 void SystemModalContainerLayoutManager::OnWindowAddedToLayout(
     aura::Window* child) {
   DCHECK((modal_background_ && child == modal_background_->GetNativeView()) ||
-         child->type() == aura::client::WINDOW_TYPE_NORMAL ||
-         child->type() == aura::client::WINDOW_TYPE_POPUP);
+         child->type() == ui::wm::WINDOW_TYPE_NORMAL ||
+         child->type() == ui::wm::WINDOW_TYPE_POPUP);
   DCHECK(
       container_->id() != internal::kShellWindowId_LockSystemModalContainer ||
       Shell::GetInstance()->session_state_delegate()->IsUserSessionBlocked());

@@ -33,15 +33,13 @@
 
 #include "bindings/v8/V8Binding.h"
 #include "core/dom/Clipboard.h"
+#include "core/dom/DataObjectItem.h"
 #include "core/dom/StringCallback.h"
-#include "core/platform/chromium/ChromiumDataObjectItem.h"
+#include "wtf/StdLibExtras.h"
 
 namespace WebCore {
 
-const char DataTransferItem::kindString[] = "string";
-const char DataTransferItem::kindFile[] = "file";
-
-PassRefPtr<DataTransferItem> DataTransferItem::create(PassRefPtr<Clipboard> clipboard, PassRefPtr<ChromiumDataObjectItem> item)
+PassRefPtr<DataTransferItem> DataTransferItem::create(PassRefPtr<Clipboard> clipboard, PassRefPtr<DataObjectItem> item)
 {
     return adoptRef(new DataTransferItem(clipboard, item));
 }
@@ -52,9 +50,18 @@ DataTransferItem::~DataTransferItem()
 
 String DataTransferItem::kind() const
 {
+    DEFINE_STATIC_LOCAL(const String, kindString, ("string"));
+    DEFINE_STATIC_LOCAL(const String, kindFile, ("file"));
     if (!m_clipboard->canReadTypes())
         return String();
-    return m_item->kind();
+    switch (m_item->kind()) {
+    case DataObjectItem::StringKind:
+        return kindString;
+    case DataObjectItem::FileKind:
+        return kindFile;
+    }
+    ASSERT_NOT_REACHED();
+    return String();
 }
 
 String DataTransferItem::type() const
@@ -64,12 +71,14 @@ String DataTransferItem::type() const
     return m_item->type();
 }
 
-void DataTransferItem::getAsString(ExecutionContext* context, PassRefPtr<StringCallback> callback) const
+void DataTransferItem::getAsString(ExecutionContext* context, PassOwnPtr<StringCallback> callback) const
 {
     if (!m_clipboard->canReadData())
         return;
+    if (!callback || m_item->kind() != DataObjectItem::StringKind)
+        return;
 
-    m_item->getAsString(callback, context);
+    StringCallback::scheduleCallback(callback, context, m_item->getAsString());
 }
 
 PassRefPtr<Blob> DataTransferItem::getAsFile() const
@@ -80,7 +89,7 @@ PassRefPtr<Blob> DataTransferItem::getAsFile() const
     return m_item->getAsFile();
 }
 
-DataTransferItem::DataTransferItem(PassRefPtr<Clipboard> clipboard, PassRefPtr<ChromiumDataObjectItem> item)
+DataTransferItem::DataTransferItem(PassRefPtr<Clipboard> clipboard, PassRefPtr<DataObjectItem> item)
     : m_clipboard(clipboard)
     , m_item(item)
 {

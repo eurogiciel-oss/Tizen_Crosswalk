@@ -33,18 +33,27 @@
 
 namespace WebCore {
 
-PassRefPtr<AnimatableValue> AnimatableClipPathOperation::interpolateTo(const AnimatableValue* value, double fraction) const
+bool AnimatableClipPathOperation::usesDefaultInterpolationWith(const AnimatableValue* value) const
 {
     const AnimatableClipPathOperation* toOperation = toAnimatableClipPathOperation(value);
 
-    if (m_operation->getOperationType() != ClipPathOperation::SHAPE || toOperation->m_operation->getOperationType() != ClipPathOperation::SHAPE)
+    if (m_operation->type() != ClipPathOperation::SHAPE || toOperation->m_operation->type() != ClipPathOperation::SHAPE)
+        return true;
+
+    const BasicShape* fromShape = toShapeClipPathOperation(clipPathOperation())->basicShape();
+    const BasicShape* toShape = toShapeClipPathOperation(toOperation->clipPathOperation())->basicShape();
+
+    return !fromShape->canBlend(toShape);
+}
+
+PassRefPtr<AnimatableValue> AnimatableClipPathOperation::interpolateTo(const AnimatableValue* value, double fraction) const
+{
+    if (usesDefaultInterpolationWith(value))
         return defaultInterpolateTo(this, value, fraction);
 
-    const BasicShape* fromShape = static_cast<ShapeClipPathOperation*>(clipPathOperation())->basicShape();
-    const BasicShape* toShape = static_cast<ShapeClipPathOperation*>(toOperation->clipPathOperation())->basicShape();
-
-    if (!fromShape->canBlend(toShape))
-        return defaultInterpolateTo(this, value, fraction);
+    const AnimatableClipPathOperation* toOperation = toAnimatableClipPathOperation(value);
+    const BasicShape* fromShape = toShapeClipPathOperation(clipPathOperation())->basicShape();
+    const BasicShape* toShape = toShapeClipPathOperation(toOperation->clipPathOperation())->basicShape();
 
     return AnimatableClipPathOperation::create(ShapeClipPathOperation::create(toShape->blend(fromShape, fraction)).get());
 }

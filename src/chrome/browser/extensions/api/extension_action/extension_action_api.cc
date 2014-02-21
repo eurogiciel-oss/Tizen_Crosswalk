@@ -11,7 +11,6 @@
 #include "base/values.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/extensions/api/extension_action/extension_page_actions_api_constants.h"
-#include "chrome/browser/extensions/event_router.h"
 #include "chrome/browser/extensions/extension_action.h"
 #include "chrome/browser/extensions/extension_action_manager.h"
 #include "chrome/browser/extensions/extension_function_registry.h"
@@ -19,6 +18,7 @@
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/extensions/extension_toolbar_model.h"
 #include "chrome/browser/extensions/location_bar_controller.h"
 #include "chrome/browser/extensions/state_store.h"
 #include "chrome/browser/extensions/tab_helper.h"
@@ -27,7 +27,9 @@
 #include "chrome/common/render_messages.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/notification_service.h"
+#include "extensions/browser/event_router.h"
 #include "extensions/common/error_utils.h"
+#include "ui/gfx/codec/png_codec.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
 
@@ -97,23 +99,26 @@ bool StringToSkBitmap(const std::string& str, SkBitmap* bitmap) {
   std::string raw_str;
   if (!base::Base64Decode(str, &raw_str))
     return false;
-  IPC::Message bitmap_pickle(raw_str.data(), raw_str.size());
-  PickleIterator iter(bitmap_pickle);
-  return IPC::ReadParam(&bitmap_pickle, &iter, bitmap);
+
+  bool success = gfx::PNGCodec::Decode(
+      reinterpret_cast<unsigned const char*>(raw_str.data()), raw_str.size(),
+      bitmap);
+  return success;
 }
 
 // Conversion function for reading/writing to storage.
 std::string RepresentationToString(const gfx::ImageSkia& image, float scale) {
   SkBitmap bitmap = image.GetRepresentation(scale).sk_bitmap();
-  IPC::Message bitmap_pickle;
-  // Clear the header values so they don't vary in serialization.
-  bitmap_pickle.SetHeaderValues(0, 0, 0);
-  IPC::WriteParam(&bitmap_pickle, bitmap);
-  std::string raw_str(static_cast<const char*>(bitmap_pickle.data()),
-                      bitmap_pickle.size());
-  std::string base64_str;
-  if (!base::Base64Encode(raw_str, &base64_str))
+  SkAutoLockPixels lock_image(bitmap);
+  std::vector<unsigned char> data;
+  bool success = gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, false, &data);
+  if (!success)
     return std::string();
+
+  base::StringPiece raw_str(
+      reinterpret_cast<const char*>(&data[0]), data.size());
+  std::string base64_str;
+  base::Base64Encode(raw_str, &base64_str);
   return base64_str;
 }
 
@@ -224,11 +229,6 @@ ExtensionActionAPI::ExtensionActionAPI(Profile* profile) {
   registry->RegisterFunction<PageActionSetPopupFunction>();
   registry->RegisterFunction<PageActionGetTitleFunction>();
   registry->RegisterFunction<PageActionGetPopupFunction>();
-
-  // Script Badges
-  registry->RegisterFunction<ScriptBadgeGetAttentionFunction>();
-  registry->RegisterFunction<ScriptBadgeGetPopupFunction>();
-  registry->RegisterFunction<ScriptBadgeSetPopupFunction>();
 }
 
 ExtensionActionAPI::~ExtensionActionAPI() {
@@ -237,7 +237,7 @@ ExtensionActionAPI::~ExtensionActionAPI() {
 // static
 ProfileKeyedAPIFactory<ExtensionActionAPI>*
 ExtensionActionAPI::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 // static
@@ -292,24 +292,12 @@ void ExtensionActionAPI::PageActionExecuted(Profile* profile,
   DispatchOldPageActionEvent(profile, page_action.extension_id(),
                              page_action.id(), tab_id, url, button);
   WebContents* web_contents = NULL;
-  if (!ExtensionTabUtil::GetTabById(tab_id, profile, profile->IsOffTheRecord(),
-                                    NULL, NULL, &web_contents, NULL)) {
+  if (!extensions::ExtensionTabUtil::GetTabById(
+          tab_id, profile, profile->IsOffTheRecord(),
+          NULL, NULL, &web_contents, NULL)) {
     return;
   }
   ExtensionActionExecuted(profile, page_action, web_contents);
-}
-
-// static
-void ExtensionActionAPI::ScriptBadgeExecuted(
-    Profile* profile,
-    const ExtensionAction& script_badge,
-    int tab_id) {
-  WebContents* web_contents = NULL;
-  if (!ExtensionTabUtil::GetTabById(tab_id, profile, profile->IsOffTheRecord(),
-                                    NULL, NULL, &web_contents, NULL)) {
-    return;
-  }
-  ExtensionActionExecuted(profile, script_badge, web_contents);
 }
 
 // static
@@ -322,7 +310,7 @@ void ExtensionActionAPI::DispatchEventToExtension(
     return;
 
   scoped_ptr<Event> event(new Event(event_name, event_args.Pass()));
-  event->restrict_to_profile = profile;
+  event->restrict_to_browser_context = profile;
   event->user_gesture = EventRouter::USER_GESTURE_ENABLED;
   ExtensionSystem::Get(profile)->event_router()->
       DispatchEventToExtension(extension_id, event.Pass());
@@ -339,7 +327,7 @@ void ExtensionActionAPI::DispatchOldPageActionEvent(
   scoped_ptr<base::ListValue> args(new base::ListValue());
   args->Append(new base::StringValue(page_action_id));
 
-  DictionaryValue* data = new DictionaryValue();
+  base::DictionaryValue* data = new base::DictionaryValue();
   data->Set(page_actions_keys::kTabIdKey, new base::FundamentalValue(tab_id));
   data->Set(page_actions_keys::kTabUrlKey, new base::StringValue(url));
   data->Set(page_actions_keys::kButtonKey,
@@ -362,9 +350,6 @@ void ExtensionActionAPI::ExtensionActionExecuted(
     case ActionInfo::TYPE_PAGE:
       event_name = "pageAction.onClicked";
       break;
-    case ActionInfo::TYPE_SCRIPT_BADGE:
-      event_name = "scriptBadge.onClicked";
-      break;
     case ActionInfo::TYPE_SYSTEM_INDICATOR:
       // The System Indicator handles its own clicks.
       break;
@@ -372,8 +357,8 @@ void ExtensionActionAPI::ExtensionActionExecuted(
 
   if (event_name) {
     scoped_ptr<base::ListValue> args(new base::ListValue());
-    DictionaryValue* tab_value = ExtensionTabUtil::CreateTabValue(
-        web_contents);
+    base::DictionaryValue* tab_value =
+        extensions::ExtensionTabUtil::CreateTabValue(web_contents);
     args->Append(tab_value);
 
     DispatchEventToExtension(profile,
@@ -496,9 +481,7 @@ ExtensionActionFunction::~ExtensionActionFunction() {
 bool ExtensionActionFunction::RunImpl() {
   ExtensionActionManager* manager = ExtensionActionManager::Get(GetProfile());
   const Extension* extension = GetExtension();
-  if (StartsWithASCII(name(), "scriptBadge.", false)) {
-    extension_action_ = manager->GetScriptBadge(*extension);
-  } else if (StartsWithASCII(name(), "systemIndicator.", false)) {
+  if (StartsWithASCII(name(), "systemIndicator.", false)) {
     extension_action_ = manager->GetSystemIndicator(*extension);
   } else {
     extension_action_ = manager->GetBrowserAction(*extension);
@@ -551,21 +534,21 @@ bool ExtensionActionFunction::ExtractDataFromArguments() {
     return true;
 
   switch (first_arg->GetType()) {
-    case Value::TYPE_INTEGER:
+    case base::Value::TYPE_INTEGER:
       CHECK(first_arg->GetAsInteger(&tab_id_));
       break;
 
-    case Value::TYPE_DICTIONARY: {
+    case base::Value::TYPE_DICTIONARY: {
       // Found the details argument.
       details_ = static_cast<base::DictionaryValue*>(first_arg);
       // Still need to check for the tabId within details.
       base::Value* tab_id_value = NULL;
       if (details_->Get("tabId", &tab_id_value)) {
         switch (tab_id_value->GetType()) {
-          case Value::TYPE_NULL:
+          case base::Value::TYPE_NULL:
             // OK; tabId is optional, leave it default.
             return true;
-          case Value::TYPE_INTEGER:
+          case base::Value::TYPE_INTEGER:
             CHECK(tab_id_value->GetAsInteger(&tab_id_));
             return true;
           default:
@@ -577,7 +560,7 @@ bool ExtensionActionFunction::ExtractDataFromArguments() {
       break;
     }
 
-    case Value::TYPE_NULL:
+    case base::Value::TYPE_NULL:
       // The tabId might be an optional argument.
       break;
 
@@ -599,9 +582,6 @@ void ExtensionActionFunction::NotifyChange() {
                      ->GetPageAction(*extension_.get())) {
         NotifyLocationBarChange();
       }
-      return;
-    case ActionInfo::TYPE_SCRIPT_BADGE:
-      NotifyLocationBarChange();
       return;
     case ActionInfo::TYPE_SYSTEM_INDICATOR:
       NotifySystemIndicatorChange();
@@ -756,10 +736,10 @@ bool ExtensionActionSetBadgeTextFunction::RunExtensionAction() {
 
 bool ExtensionActionSetBadgeBackgroundColorFunction::RunExtensionAction() {
   EXTENSION_FUNCTION_VALIDATE(details_);
-  Value* color_value = NULL;
+  base::Value* color_value = NULL;
   EXTENSION_FUNCTION_VALIDATE(details_->Get("color", &color_value));
   SkColor color = 0;
-  if (color_value->IsType(Value::TYPE_LIST)) {
+  if (color_value->IsType(base::Value::TYPE_LIST)) {
     base::ListValue* list = NULL;
     EXTENSION_FUNCTION_VALIDATE(details_->GetList("color", &list));
     EXTENSION_FUNCTION_VALIDATE(list->GetSize() == 4);
@@ -771,7 +751,7 @@ bool ExtensionActionSetBadgeBackgroundColorFunction::RunExtensionAction() {
 
     color = SkColorSetARGB(color_array[3], color_array[0],
                            color_array[1], color_array[2]);
-  } else if (color_value->IsType(Value::TYPE_STRING)) {
+  } else if (color_value->IsType(base::Value::TYPE_STRING)) {
     std::string color_string;
     EXTENSION_FUNCTION_VALIDATE(details_->GetString("color", &color_string));
     if (!ParseCSSColorString(color_string, &color))
@@ -819,9 +799,7 @@ BrowserActionOpenPopupFunction::BrowserActionOpenPopupFunction()
 }
 
 bool BrowserActionOpenPopupFunction::RunImpl() {
-  ExtensionToolbarModel* model = extensions::ExtensionSystem::Get(GetProfile())
-                                     ->extension_service()
-                                     ->toolbar_model();
+  ExtensionToolbarModel* model = ExtensionToolbarModel::Get(GetProfile());
   if (!model) {
     error_ = kInternalError;
     return false;
@@ -875,17 +853,6 @@ void BrowserActionOpenPopupFunction::Observe(
   registrar_.RemoveAll();
 }
 
-//
-// ScriptBadgeGetAttentionFunction
-//
-
-ScriptBadgeGetAttentionFunction::~ScriptBadgeGetAttentionFunction() {}
-
-bool ScriptBadgeGetAttentionFunction::RunExtensionAction() {
-  tab_helper().location_bar_controller()->GetAttentionFor(extension_id());
-  return true;
-}
-
 }  // namespace extensions
 
 //
@@ -901,7 +868,7 @@ PageActionsFunction::~PageActionsFunction() {
 bool PageActionsFunction::SetPageActionEnabled(bool enable) {
   std::string extension_action_id;
   EXTENSION_FUNCTION_VALIDATE(args_->GetString(0, &extension_action_id));
-  DictionaryValue* action = NULL;
+  base::DictionaryValue* action = NULL;
   EXTENSION_FUNCTION_VALIDATE(args_->GetDictionary(1, &action));
 
   int tab_id;
@@ -927,7 +894,7 @@ bool PageActionsFunction::SetPageActionEnabled(bool enable) {
 
   // Find the WebContents that contains this tab id.
   WebContents* contents = NULL;
-  bool result = ExtensionTabUtil::GetTabById(
+  bool result = extensions::ExtensionTabUtil::GetTabById(
       tab_id, GetProfile(), include_incognito(), NULL, NULL, &contents, NULL);
   if (!result || !contents) {
     error_ = extensions::ErrorUtils::FormatErrorMessage(

@@ -27,7 +27,6 @@
 <translation id="3549345495227188780">Primeiros passos com o Chromium OS</translation>
 <translation id="4330297532943865716">Uma instalação conflitante do Chromium ou Chromium Frame foi encontrada no sistema. Desinstale-a e tente novamente.</translation>
 <translation id="6953661834318318668">Barra de ferramentas do Chromium</translation>
-<translation id="2245147136185581459">Detector de portal prisioneiro do Chromium</translation>
 <translation id="4285930937574705105">Ocorreu uma falha na instalação devido a um erro não especificado. Se o Chromium estiver sendo executado, feche-o e tente novamente.</translation>
 <translation id="1396446129537741364">O Chromium está tentando mostrar senhas.</translation>
 <translation id="3555616473548901994">Desinstalação concluída.</translation>
@@ -61,7 +60,6 @@
 <translation id="7771626876550251690">Neste caso, o endereço listado no certificado não corresponde ao endereço do website que seu navegador tentou acessar. Uma possível razão para isso é suas comunicações estarem sendo interceptadas por um invasor que está apresentando um certificado para outro site, o que causa incompatibilidade. Outra possível razão é o servidor estar configurado para retornar o mesmo certificado para diversos sites, incluindo o que você está tentando visitar, mesmo que esse certificado não seja válido para todos os websites. O Chromium pode informar que você acessou &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, mas não pode confirmar se esse é o mesmo site que &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; que você pretendia acessar. Se você continuar, o Chromium não verificará se há outras incompatibilidades de nome.</translation>
 <translation id="4330585738697551178">Este módulo é conhecido por entrar em conflito com o Chromium.</translation>
 <translation id="3190315855212034486">O Chromium travou. Reiniciar agora?</translation>
-<translation id="3590194807845837023">Desbloquear perfil e reiniciar</translation>
 <translation id="6714487516757221107">Nenhuma instalação do Chromium ou Chromium Frame encontrada para atualizar.</translation>
 <translation id="3197823471738295152">O dispositivo está atualizado.</translation>
 <translation id="8551886023433311834">Atualização quase concluída! Reinicie seu dispositivo para concluir a atualização.</translation>
@@ -150,6 +148,7 @@
           e desmarque a caixa de seleção &quot;Usar um servidor proxy para a rede local&quot;.</translation>
 <translation id="8621669128220841554">Falha na instalação devido a um erro não especificado. Faça o download do Chromium novamente.</translation>
 <translation id="6717134281241384636">Seu perfil não pode ser usado porque é de uma versão mais recente do Chromium. Alguns recursos podem não estar disponíveis. Especifique outro diretório de perfil ou use uma versão mais recente do Chromium.</translation>
+<translation id="8907580949721785412">O Chromium está tentando mostrar senhas. Digite sua senha do Windows para permitir isso.</translation>
 <translation id="9013087743919948559">Adicionar ao Chromium</translation>
 <translation id="6212496753309875659">Este computador já tem uma versão mais recente do Chromium. Se o software não estiver funcionando, desinstale o Chromium e tente novamente.</translation>
 <translation id="1298199220304005244">Obter ajuda para usar o Chromium OS</translation>

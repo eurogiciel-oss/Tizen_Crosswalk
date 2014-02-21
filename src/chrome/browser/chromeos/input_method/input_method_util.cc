@@ -316,7 +316,7 @@ InputMethodUtil::~InputMethodUtil() {
 }
 
 bool InputMethodUtil::TranslateStringInternal(
-    const std::string& english_string, string16 *out_string) const {
+    const std::string& english_string, base::string16 *out_string) const {
   DCHECK(out_string);
   HashType::const_iterator iter = english_to_resource_id_.find(english_string);
   if (iter == english_to_resource_id_.end()) {
@@ -331,13 +331,13 @@ bool InputMethodUtil::TranslateStringInternal(
   return true;
 }
 
-string16 InputMethodUtil::TranslateString(
+base::string16 InputMethodUtil::TranslateString(
     const std::string& english_string) const {
-  string16 localized_string;
+  base::string16 localized_string;
   if (TranslateStringInternal(english_string, &localized_string)) {
     return localized_string;
   }
-  return UTF8ToUTF16(english_string);
+  return base::UTF8ToUTF16(english_string);
 }
 
 bool InputMethodUtil::IsValidInputMethodId(
@@ -345,7 +345,7 @@ bool InputMethodUtil::IsValidInputMethodId(
   // We can't check the component extension is whilelisted or not here because
   // it might not be initialized.
   return GetInputMethodDescriptorFromId(input_method_id) != NULL ||
-      ComponentExtensionIMEManager::IsComponentExtensionIMEId(input_method_id);
+      extension_ime_util::IsComponentExtensionIME(input_method_id);
 }
 
 // static
@@ -377,25 +377,25 @@ std::string InputMethodUtil::GetKeyboardLayoutName(
 
 std::string InputMethodUtil::GetInputMethodDisplayNameFromId(
     const std::string& input_method_id) const {
-  string16 display_name;
+  base::string16 display_name;
   if (!extension_ime_util::IsExtensionIME(input_method_id) &&
       TranslateStringInternal(input_method_id, &display_name)) {
-    return UTF16ToUTF8(display_name);
+    return base::UTF16ToUTF8(display_name);
   }
   // Return an empty string if the display name is not found.
   return "";
 }
 
-string16 InputMethodUtil::GetInputMethodShortName(
+base::string16 InputMethodUtil::GetInputMethodShortName(
     const InputMethodDescriptor& input_method) const {
   // For the status area, we use two-letter, upper-case language code like
   // "US" and "JP".
-  string16 text;
+  base::string16 text;
 
   // Check special cases first.
   for (size_t i = 0; i < kMappingFromIdToIndicatorTextLen; ++i) {
     if (kMappingFromIdToIndicatorText[i].input_method_id == input_method.id()) {
-      text = UTF8ToUTF16(kMappingFromIdToIndicatorText[i].indicator_text);
+      text = base::UTF8ToUTF16(kMappingFromIdToIndicatorText[i].indicator_text);
       break;
     }
   }
@@ -404,8 +404,8 @@ string16 InputMethodUtil::GetInputMethodShortName(
   if (text.empty() &&
       IsKeyboardLayout(input_method.id())) {
     const size_t kMaxKeyboardLayoutNameLen = 2;
-    const string16 keyboard_layout =
-        UTF8ToUTF16(GetKeyboardLayoutName(input_method.id()));
+    const base::string16 keyboard_layout =
+        base::UTF8ToUTF16(GetKeyboardLayoutName(input_method.id()));
     text = StringToUpperASCII(keyboard_layout).substr(
         0, kMaxKeyboardLayoutNameLen);
   }
@@ -420,14 +420,14 @@ string16 InputMethodUtil::GetInputMethodShortName(
     const size_t kMaxLanguageNameLen = 2;
     DCHECK(!input_method.language_codes().empty());
     const std::string language_code = input_method.language_codes().at(0);
-    text = StringToUpperASCII(UTF8ToUTF16(language_code)).substr(
+    text = StringToUpperASCII(base::UTF8ToUTF16(language_code)).substr(
         0, kMaxLanguageNameLen);
   }
   DCHECK(!text.empty());
   return text;
 }
 
-string16 InputMethodUtil::GetInputMethodMediumName(
+base::string16 InputMethodUtil::GetInputMethodMediumName(
     const InputMethodDescriptor& input_method) const {
   // For the "Your input method has changed to..." bubble. In most cases
   // it uses the same name as the short name, unless found in a table
@@ -442,11 +442,11 @@ string16 InputMethodUtil::GetInputMethodMediumName(
   return GetInputMethodShortName(input_method);
 }
 
-string16 InputMethodUtil::GetInputMethodLongName(
+base::string16 InputMethodUtil::GetInputMethodLongName(
     const InputMethodDescriptor& input_method) const {
   if (!input_method.name().empty()) {
     // If the descriptor has a name, use it.
-    return UTF8ToUTF16(input_method.name());
+    return base::UTF8ToUTF16(input_method.name());
   }
 
   // We don't show language here.  Name of keyboard layout or input method
@@ -456,20 +456,21 @@ string16 InputMethodUtil::GetInputMethodLongName(
   // keyboard layouts and share the same layout of keyboard (Belgian). We need
   // to show explicitly the language for the layout. For Arabic, Amharic, and
   // Indic languages: they share "Standard Input Method".
-  const string16 standard_input_method_text = delegate_->GetLocalizedString(
-      IDS_OPTIONS_SETTINGS_LANGUAGES_M17N_STANDARD_INPUT_METHOD);
+  const base::string16 standard_input_method_text =
+      delegate_->GetLocalizedString(
+          IDS_OPTIONS_SETTINGS_LANGUAGES_M17N_STANDARD_INPUT_METHOD);
   DCHECK(!input_method.language_codes().empty());
   const std::string language_code = input_method.language_codes().at(0);
 
-  string16 text = TranslateString(input_method.id());
+  base::string16 text = TranslateString(input_method.id());
   if (text == standard_input_method_text ||
              language_code == "de" ||
              language_code == "fr" ||
              language_code == "nl") {
-    const string16 language_name = delegate_->GetDisplayLanguageName(
+    const base::string16 language_name = delegate_->GetDisplayLanguageName(
         language_code);
 
-    text = language_name + UTF8ToUTF16(" - ") + text;
+    text = language_name + base::UTF8ToUTF16(" - ") + text;
   }
 
   DCHECK(!text.empty());
@@ -638,7 +639,8 @@ InputMethodDescriptor InputMethodUtil::GetFallbackInputMethodDescriptor() {
                                layouts,
                                languages,
                                true,  // login keyboard.
-                               GURL());  // options page, not available.
+                               GURL(),  // options page, not available.
+                               GURL()); // input view page, not available.
 }
 
 void InputMethodUtil::ReloadInternalMaps() {

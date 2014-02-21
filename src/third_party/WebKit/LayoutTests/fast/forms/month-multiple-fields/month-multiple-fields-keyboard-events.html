@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body>
 <p id="description"></p>
@@ -53,19 +53,6 @@ keyDown('1');
 keyDown('2');
 keyDown('A');
 shouldBeEqualToString('input.value', '0012-09');
-
-// FIXME: We should test type ahead time out. When event.leapForward() affects
-// keyboard event time stamp, we can uncomment this fragment.
-/*
-beginTest('Digit keys with type ahead timeout');
-keyDown('1');
-leapForward(1100);
-keyDown('1');
-keyDown('5');
-keyDown('6');
-keyDown('A');
-shouldBeEqualToString('input.value', '0056-01');
-*/
 
 beginTest('Left/Right keys', '2012-09');
 keyDown('rightArrow');

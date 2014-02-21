@@ -376,7 +376,7 @@ void HistoryService::Shutdown() {
 
 void HistoryService::SetKeywordSearchTermsForURL(const GURL& url,
                                                  TemplateURLID keyword_id,
-                                                 const string16& term) {
+                                                 const base::string16& term) {
   DCHECK(thread_checker_.CalledOnValidThread());
   ScheduleAndForget(PRIORITY_UI,
                     &HistoryBackend::SetKeywordSearchTermsForURL,
@@ -393,7 +393,7 @@ void HistoryService::DeleteAllSearchTermsForKeyword(
 
 HistoryService::Handle HistoryService::GetMostRecentKeywordSearchTerms(
     TemplateURLID keyword_id,
-    const string16& prefix,
+    const base::string16& prefix,
     int max_count,
     CancelableRequestConsumerBase* consumer,
     const GetMostRecentKeywordSearchTermsCallback& callback) {
@@ -408,6 +408,13 @@ void HistoryService::DeleteKeywordSearchTermForURL(const GURL& url) {
   DCHECK(thread_checker_.CalledOnValidThread());
   ScheduleAndForget(PRIORITY_UI, &HistoryBackend::DeleteKeywordSearchTermForURL,
                     url);
+}
+
+void HistoryService::DeleteMatchingURLsForKeyword(TemplateURLID keyword_id,
+                                                  const base::string16& term) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  ScheduleAndForget(PRIORITY_UI, &HistoryBackend::DeleteMatchingURLsForKeyword,
+                    keyword_id, term);
 }
 
 void HistoryService::URLsNoLongerBookmarked(const std::set<GURL>& urls) {
@@ -432,25 +439,6 @@ HistoryService::Handle HistoryService::QuerySegmentUsageSince(
     const SegmentQueryCallback& callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
   return Schedule(PRIORITY_UI, &HistoryBackend::QuerySegmentUsage,
-                  consumer, new history::QuerySegmentUsageRequest(callback),
-                  from_time, max_result_count);
-}
-
-void HistoryService::IncreaseSegmentDuration(const GURL& url,
-                                             Time time,
-                                             base::TimeDelta delta) {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  ScheduleAndForget(PRIORITY_NORMAL, &HistoryBackend::IncreaseSegmentDuration,
-                    url, time, delta);
-}
-
-HistoryService::Handle HistoryService::QuerySegmentDurationSince(
-    CancelableRequestConsumerBase* consumer,
-    base::Time from_time,
-    int max_result_count,
-    const SegmentQueryCallback& callback) {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  return Schedule(PRIORITY_UI, &HistoryBackend::QuerySegmentDuration,
                   consumer, new history::QuerySegmentUsageRequest(callback),
                   from_time, max_result_count);
 }
@@ -524,7 +512,7 @@ void HistoryService::AddPage(const history::HistoryAddPageArgs& add_page_args) {
 }
 
 void HistoryService::AddPageNoVisitForBookmark(const GURL& url,
-                                               const string16& title) {
+                                               const base::string16& title) {
   DCHECK(thread_checker_.CalledOnValidThread());
   if (!CanAddURL(url))
     return;
@@ -534,7 +522,7 @@ void HistoryService::AddPageNoVisitForBookmark(const GURL& url,
 }
 
 void HistoryService::SetPageTitle(const GURL& url,
-                                  const string16& title) {
+                                  const base::string16& title) {
   DCHECK(thread_checker_.CalledOnValidThread());
   ScheduleAndForget(PRIORITY_NORMAL, &HistoryBackend::SetPageTitle, url, title);
 }
@@ -549,7 +537,7 @@ void HistoryService::UpdateWithPageEndTime(const void* host,
 }
 
 void HistoryService::AddPageWithDetails(const GURL& url,
-                                        const string16& title,
+                                        const base::string16& title,
                                         int visit_count,
                                         int typed_count,
                                         Time last_visit,
@@ -594,16 +582,6 @@ void HistoryService::AddPagesWithDetails(const history::URLRows& info,
 
   ScheduleAndForget(PRIORITY_NORMAL,
                     &HistoryBackend::AddPagesWithDetails, info, visit_source);
-}
-
-void HistoryService::SetPageContents(const GURL& url,
-                                     const string16& contents) {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  if (!CanAddURL(url))
-    return;
-
-  ScheduleAndForget(PRIORITY_LOW, &HistoryBackend::SetPageContents,
-                    url, contents);
 }
 
 CancelableTaskTracker::TaskId HistoryService::GetFavicons(
@@ -852,7 +830,7 @@ void HistoryService::RemoveDownloads(const std::set<uint32>& ids) {
 }
 
 HistoryService::Handle HistoryService::QueryHistory(
-    const string16& text_query,
+    const base::string16& text_query,
     const history::QueryOptions& options,
     CancelableRequestConsumerBase* consumer,
     const QueryHistoryCallback& callback) {
@@ -1033,8 +1011,8 @@ bool HistoryService::CanAddURL(const GURL& url) {
       url.SchemeIs(chrome::kChromeNativeScheme) ||
       url.SchemeIs(chrome::kChromeUIScheme) ||
       url.SchemeIs(chrome::kChromeSearchScheme) ||
-      url.SchemeIs(content::kViewSourceScheme) ||
-      url.SchemeIs(chrome::kChromeInternalScheme))
+      url.SchemeIs(chrome::kDomDistillerScheme) ||
+      url.SchemeIs(content::kViewSourceScheme))
     return false;
 
   // Allow all about: and chrome: URLs except about:blank, since the user may
@@ -1113,6 +1091,7 @@ void HistoryService::NotifyProfileError(int backend_id,
     return;
   }
   ShowProfileErrorDialog(
+      PROFILE_ERROR_HISTORY,
       (init_status == sql::INIT_FAILURE) ?
       IDS_COULDNT_OPEN_PROFILE_ERROR : IDS_PROFILE_TOO_NEW_ERROR);
 }

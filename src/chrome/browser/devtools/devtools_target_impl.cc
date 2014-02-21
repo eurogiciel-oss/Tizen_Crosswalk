@@ -64,7 +64,7 @@ RenderViewHostTarget::RenderViewHostTarget(RenderViewHost* rvh, bool is_tab) {
   if (!web_contents)
     return;  // Orphan RVH will show up with no title/url/icon in clients.
 
-  title_ = UTF16ToUTF8(web_contents->GetTitle());
+  title_ = base::UTF16ToUTF8(web_contents->GetTitle());
   url_ = web_contents->GetURL();
   content::NavigationController& controller = web_contents->GetController();
   content::NavigationEntry* entry = controller.GetActiveEntry();
@@ -74,7 +74,7 @@ RenderViewHostTarget::RenderViewHostTarget(RenderViewHost* rvh, bool is_tab) {
 
   if (is_tab) {
     type_ = kTargetTypePage;
-    tab_id_ = ExtensionTabUtil::GetTabId(web_contents);
+    tab_id_ = extensions::ExtensionTabUtil::GetTabId(web_contents);
   } else {
     Profile* profile =
         Profile::FromBrowserContext(web_contents->GetBrowserContext());
@@ -84,19 +84,17 @@ RenderViewHostTarget::RenderViewHostTarget(RenderViewHost* rvh, bool is_tab) {
           extensions()->GetByID(url_.host());
       if (extension) {
         title_ = extension->name();
-        if (extension->is_hosted_app()
+        extensions::ExtensionHost* extension_host =
+            extensions::ExtensionSystem::Get(profile)->process_manager()->
+                GetBackgroundHostForExtension(extension->id());
+        if (extension_host &&
+            extension_host->host_contents() == web_contents) {
+          type_ = kTargetTypeBackgroundPage;
+          extension_id_ = extension->id();
+        } else if (extension->is_hosted_app()
             || extension->is_legacy_packaged_app()
             || extension->is_platform_app()) {
           type_ = kTargetTypeApp;
-        } else {
-          extensions::ExtensionHost* extension_host =
-              extensions::ExtensionSystem::Get(profile)->process_manager()->
-                  GetBackgroundHostForExtension(extension->id());
-          if (extension_host &&
-              extension_host->host_contents() == web_contents) {
-            type_ = kTargetTypeBackgroundPage;
-            extension_id_ = extension->id();
-          }
         }
         favicon_url_ = extensions::ExtensionIconSource::GetIconURL(
             extension, extension_misc::EXTENSION_ICON_SMALLISH,
@@ -166,7 +164,7 @@ WorkerTarget::WorkerTarget(const WorkerService::WorkerInfo& worker) {
       DevToolsAgentHost::GetForWorker(worker.process_id, worker.route_id);
   id_ = agent_host_->GetId();
   type_ = kTargetTypeWorker;
-  title_ = UTF16ToUTF8(worker.name);
+  title_ = base::UTF16ToUTF8(worker.name);
   description_ =
       base::StringPrintf("Worker pid:%d", base::GetProcId(worker.handle));
   url_ = worker.url;

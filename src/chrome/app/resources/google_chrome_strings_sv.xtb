@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="sv">
+<translation id="3234920859344197194">Webbplatsen använder pluginprogrammet Chrome Frame som snart slutar få nya säkerhets- och stabilitetsuppdateringar. Avinstallera programmet och uppgradera till en ny webbläsare.</translation>
 <translation id="8914504000324227558">Starta om Chrome</translation>
 <translation id="8000275528373650868">För Google Chrome krävs Windows Vista eller Windows XP med SP2 eller senare.</translation>
 <translation id="8485767968786176057">I det här fallet överensstämmer inte adressen i certifikatet med webbplatsen som webbläsaren försökte öppna. Det kan bero på att kommunikationen har kapats av en bedragare som anger ett certifikat för en annan webbplats, vilket orsakar konflikten. En annan orsak kan vara att servern är konfigurerad för att returnera samma certifikat till flera webbplatser, inklusive den som du försöker besöka, trots att certifikatet inte är giltigt för alla dessa webbplatser. Google Chrome kan intyga att du har öppnat &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, men kan inte bekräfta att det är webbplatsen &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; som du ville besöka. Om du fortsätter kommer inte Chrome att söka efter eventuella nya namnkonflikter.</translation>
@@ -27,7 +28,6 @@ Vissa funktioner kanske inte är tillgängliga och ändringar i inställningarna
 <translation id="4891791193823137474">Låt Google Chrome köras i bakgrunden</translation>
 <translation id="2896252579017640304">Starta Chrome-appar</translation>
 <translation id="2370289711218562573">Google Chrome importerar favoriter/bokmärken.</translation>
-<translation id="8762286861469007470">Chrome Captive Portal-detektor</translation>
 <translation id="2721687379934343312">På Mac sparas lösenord på nyckelringen. Andra Chrome-användare som använder det här OS X-kontot kan komma åt lösenorden och synkronisera dem.</translation>
 <translation id="1761870329818521071">Det går inte att installera samma version av Google Chrome Frame som redan körs. Stäng Google Chrome Frame och försök igen.</translation>
 <translation id="6014844626092547096">Nu är du inloggad på Chrome. Synkronisering har inaktiverats av administratören.</translation>
@@ -63,10 +63,10 @@ Vissa funktioner kanske inte är tillgängliga och ändringar i inställningarna
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Dina faktureringsuppgifter har sparats i Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome använder din mikrofon.</translation>
-<translation id="3590194807845837023">Lås upp profil och starta om</translation>
 <translation id="4053720452172726777">Anpassa och kontrollera Google Chrome</translation>
 <translation id="6423071462708908582">Du försökte öppna &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, men servern visade ett certifikat som inte gäller längre. Det finns ingen information som avgör om certifikatets säkerhet har påverkats efter att det upphörde att gälla. Det innebär att Google Chrome inte kan garantera att du kommunicerar med &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; och inte en angripare. Datorns klocka är inställd på <ph name="CURRENT_TIME"/>. Ser det rätt ut? Om det inte gör det bör du rätta till den och uppdatera sidan.</translation>
 <translation id="3197823471738295152">Enheten är uppdaterad.</translation>
+<translation id="8286862437124483331">Skriv ditt Windows-lösenord om du vill tillåta att lösenord visas i Google Chrome.</translation>
 <translation id="3889417619312448367">Avinstallera Google Chrome</translation>
 <translation id="1434626383986940139">Chrome Canary-appar</translation>
 <translation id="8551886023433311834">Uppdateringen är nästan klar! Slutför den genom att starta om enheten.</translation>
@@ -188,7 +188,6 @@ Om du loggar in ändå synkroniseras din information i Chrome, till exempel bokm
 <translation id="7396375882099008034">Tillåt att Chrome får åtkomst till nätverket i inställningarna för brandväggen eller
         antivirusprogrammet.</translation>
 <translation id="9102715433345326100">Filen är skadlig och har blockerats av Chrome.</translation>
-<translation id="3170677364322086041">Den här webbplatsen använder Chrome Frame. Denna plugin är inaktuell och inga nya säkerhets- eller stabilitetsuppdateringar släpps. Du bör avinstallera den och uppgradera till en modern webbläsare.</translation>
 <translation id="8205111949707227942">Valfritt: Hjälp till att göra Chrome bättre genom att automatiskt skicka användningsstatistik och kraschrapporter till Google.</translation>
 <translation id="7253415505590551024">Hämtningar pågår. Vill du avsluta Google Chrome och avbryta hämtningarna?</translation>
 <translation id="7196020411877309443">Varför visas det här?</translation>
@@ -205,6 +204,7 @@ Om du loggar in ändå synkroniseras din information i Chrome, till exempel bokm
           LAN-inställningar
           och avmarkera Använd en proxyserver för nätverket.</translation>
 <translation id="7825851276765848807">Installationen misslyckades på grund av ett okänt fel. Hämta Google Chrome igen.</translation>
+<translation id="4919523385405675060">Webbplatsen använder pluginprogrammet Chrome Frame som snart slutar få nya säkerhets- och stabilitetsuppdateringar. Avinstallera programmet och hämta en kompatibel webbläsare.</translation>
 <translation id="1061257178446858647">Du är nu inloggad i Chrome! Bokmärken, historik och andra inställningar synkroniseras med ditt Google-konto.</translation>
 <translation id="3335672657969596251">Google Chrome saknar stöd för <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Den här ändringen träder inte i kraft förrän du loggat ut och sedan loggar in igen.</translation>

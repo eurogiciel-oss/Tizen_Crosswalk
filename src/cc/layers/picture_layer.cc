@@ -4,7 +4,6 @@
 
 #include "cc/layers/picture_layer.h"
 
-#include "cc/debug/devtools_instrumentation.h"
 #include "cc/layers/content_layer_client.h"
 #include "cc/layers/picture_layer_impl.h"
 #include "cc/trees/layer_tree_impl.h"
@@ -64,7 +63,6 @@ void PictureLayer::SetLayerTreeHost(LayerTreeHost* host) {
   if (host) {
     pile_->SetMinContentsScale(host->settings().minimum_contents_scale);
     pile_->SetTileGridSize(host->settings().default_tile_size);
-    pile_->set_num_raster_threads(host->settings().num_raster_threads);
     pile_->set_slow_down_raster_scale_factor(
         host->debug_state().slow_down_raster_scale_factor);
     pile_->set_show_debug_picture_borders(
@@ -84,15 +82,19 @@ void PictureLayer::SetNeedsDisplayRect(const gfx::RectF& layer_rect) {
 
 bool PictureLayer::Update(ResourceUpdateQueue* queue,
                           const OcclusionTracker* occlusion) {
-  // Do not early-out of this function so that PicturePile::Update has a chance
-  // to record pictures due to changing visibility of this layer.
+  update_source_frame_number_ = layer_tree_host()->source_frame_number();
+  bool updated = Layer::Update(queue, occlusion);
+
+  if (last_updated_visible_content_rect_ == visible_content_rect() &&
+      pile_->size() == paint_properties().bounds &&
+      pending_invalidation_.IsEmpty()) {
+    // Only early out if the visible content rect of this layer hasn't changed.
+    return updated;
+  }
 
   TRACE_EVENT1("cc", "PictureLayer::Update",
                "source_frame_number",
                layer_tree_host()->source_frame_number());
-
-  update_source_frame_number_ = layer_tree_host()->source_frame_number();
-  bool updated = Layer::Update(queue, occlusion);
 
   pile_->Resize(paint_properties().bounds);
 
@@ -108,14 +110,15 @@ bool PictureLayer::Update(ResourceUpdateQueue* queue,
     // the full page content must always be provided in the picture layer.
     visible_layer_rect = gfx::Rect(bounds());
   }
-  devtools_instrumentation::ScopedLayerTask paint_layer(
-      devtools_instrumentation::kPaintLayer, id());
   updated |= pile_->Update(client_,
                            SafeOpaqueBackgroundColor(),
                            contents_opaque(),
                            pile_invalidation_,
                            visible_layer_rect,
+                           update_source_frame_number_,
                            rendering_stats_instrumentation());
+  last_updated_visible_content_rect_ = visible_content_rect();
+
   if (updated) {
     SetNeedsPushProperties();
   } else {

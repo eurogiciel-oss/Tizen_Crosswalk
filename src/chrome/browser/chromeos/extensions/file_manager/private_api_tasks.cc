@@ -4,20 +4,20 @@
 
 #include "chrome/browser/chromeos/extensions/file_manager/private_api_tasks.h"
 
+#include <set>
+#include <string>
+#include <vector>
+
 #include "chrome/browser/chromeos/drive/file_system_util.h"
-#include "chrome/browser/chromeos/extensions/file_manager/private_api_util.h"
 #include "chrome/browser/chromeos/file_manager/file_tasks.h"
 #include "chrome/browser/chromeos/file_manager/fileapi_util.h"
 #include "chrome/browser/chromeos/file_manager/mime_util.h"
 #include "chrome/browser/chromeos/fileapi/file_system_backend.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/file_browser_private.h"
-#include "content/public/browser/render_view_host.h"
 #include "webkit/browser/fileapi/file_system_context.h"
 #include "webkit/browser/fileapi/file_system_url.h"
 
-using extensions::app_file_handler_util::PathAndMimeTypeSet;
-using extensions::Extension;
 using fileapi::FileSystemURL;
 
 namespace extensions {
@@ -47,8 +47,8 @@ std::set<std::string> GetUniqueMimeTypes(
     const std::vector<std::string>& mime_type_list) {
   std::set<std::string> mime_types;
   for (size_t i = 0; i < mime_type_list.size(); ++i) {
-    std::string mime_type;
-    // We'll skip empty MIME types.
+    const std::string mime_type = mime_type_list[i];
+    // We'll skip empty MIME types and existing MIME types.
     if (!mime_type.empty())
       mime_types.insert(mime_type);
   }
@@ -89,12 +89,10 @@ bool FileBrowserPrivateExecuteTaskFunction::RunImpl() {
     file_urls.push_back(url);
   }
 
-  const int32 tab_id = file_manager::util::GetTabId(dispatcher());
   return file_manager::file_tasks::ExecuteFileTask(
       GetProfile(),
       source_url(),
       extension_->id(),
-      tab_id,
       task,
       file_urls,
       base::Bind(&FileBrowserPrivateExecuteTaskFunction::OnTaskExecuted, this));
@@ -124,7 +122,7 @@ bool FileBrowserPrivateGetFileTasksFunction::RunImpl() {
 
   // Collect all the URLs, convert them to GURLs, and crack all the urls into
   // file paths.
-  PathAndMimeTypeSet path_mime_set;
+  extensions::app_file_handler_util::PathAndMimeTypeSet path_mime_set;
   std::vector<GURL> file_urls;
   for (size_t i = 0; i < params->file_urls.size(); ++i) {
     std::string mime_type;

@@ -15,7 +15,7 @@
 #include "chrome/browser/translate/translate_accept_languages.h"
 #include "chrome/browser/translate/translate_manager.h"
 #include "chrome/common/pref_names.h"
-#include "components/translate/common/translate_util.h"
+#include "components/translate/core/common/translate_util.h"
 #include "components/user_prefs/pref_registry_syncable.h"
 
 const char TranslatePrefs::kPrefTranslateLanguageBlacklist[] =
@@ -39,32 +39,13 @@ void GetBlacklistedLanguages(const PrefService* prefs,
   DCHECK(languages->empty());
 
   const char* key = TranslatePrefs::kPrefTranslateLanguageBlacklist;
-  const ListValue* list = prefs->GetList(key);
-  for (ListValue::const_iterator it = list->begin(); it != list->end(); ++it) {
+  const base::ListValue* list = prefs->GetList(key);
+  for (base::ListValue::const_iterator it = list->begin();
+       it != list->end(); ++it) {
     std::string lang;
     (*it)->GetAsString(&lang);
     languages->push_back(lang);
   }
-}
-
-// Converts the language code for Translate. This removes the sub code (like
-// -US) except for Chinese, and converts the synonyms.
-// The same logic exists at language_options.js, and please keep consistensy
-// with the JavaScript file.
-std::string ConvertLangCodeForTranslation(const std::string &lang) {
-  std::vector<std::string> tokens;
-  base::SplitString(lang, '-', &tokens);
-  if (tokens.size() < 1)
-    return lang;
-
-  std::string main_part = tokens[0];
-
-  // Translate doesn't support General Chinese and the sub code is necessary.
-  if (main_part == "zh")
-    return lang;
-
-  translate::ToTranslateLanguageSynonym(&main_part);
-  return main_part;
 }
 
 // Expands language codes to make these more suitable for Accept-Language.
@@ -102,6 +83,21 @@ void ExpandLanguageCodes(const std::vector<std::string>& languages,
 
 TranslatePrefs::TranslatePrefs(PrefService* user_prefs)
     : prefs_(user_prefs) {
+}
+
+void TranslatePrefs::ResetToDefaults() {
+  ClearBlockedLanguages();
+  ClearBlacklistedSites();
+  ClearWhitelistedLanguagePairs();
+
+  std::vector<std::string> languages;
+  GetLanguageList(&languages);
+  for (std::vector<std::string>::const_iterator it = languages.begin();
+      it != languages.end(); ++it) {
+    const std::string& language = *it;
+    ResetTranslationAcceptedCount(language);
+    ResetTranslationDeniedCount(language);
+  }
 }
 
 bool TranslatePrefs::IsBlockedLanguage(
@@ -155,7 +151,8 @@ void TranslatePrefs::RemoveSiteFromBlacklist(const std::string& site) {
 bool TranslatePrefs::IsLanguagePairWhitelisted(
     const std::string& original_language,
     const std::string& target_language) {
-  const DictionaryValue* dict = prefs_->GetDictionary(kPrefTranslateWhitelists);
+  const base::DictionaryValue* dict =
+      prefs_->GetDictionary(kPrefTranslateWhitelists);
   if (dict && !dict->empty()) {
     std::string auto_target_lang;
     if (dict->GetString(original_language, &auto_target_lang) &&
@@ -169,7 +166,7 @@ void TranslatePrefs::WhitelistLanguagePair(
     const std::string& original_language,
     const std::string& target_language) {
   DictionaryPrefUpdate update(prefs_, kPrefTranslateWhitelists);
-  DictionaryValue* dict = update.Get();
+  base::DictionaryValue* dict = update.Get();
   if (!dict) {
     NOTREACHED() << "Unregistered translate whitelist pref";
     return;
@@ -181,7 +178,7 @@ void TranslatePrefs::RemoveLanguagePairFromWhitelist(
     const std::string& original_language,
     const std::string& target_language) {
   DictionaryPrefUpdate update(prefs_, kPrefTranslateWhitelists);
-  DictionaryValue* dict = update.Get();
+  base::DictionaryValue* dict = update.Get();
   if (!dict) {
     NOTREACHED() << "Unregistered translate whitelist pref";
     return;
@@ -189,11 +186,11 @@ void TranslatePrefs::RemoveLanguagePairFromWhitelist(
   dict->Remove(original_language, NULL);
 }
 
-bool TranslatePrefs::HasBlacklistedLanguages() const {
+bool TranslatePrefs::HasBlockedLanguages() const {
   return !IsListEmpty(kPrefTranslateBlockedLanguages);
 }
 
-void TranslatePrefs::ClearBlacklistedLanguages() {
+void TranslatePrefs::ClearBlockedLanguages() {
   prefs_->ClearPref(kPrefTranslateBlockedLanguages);
 }
 
@@ -215,7 +212,7 @@ void TranslatePrefs::ClearWhitelistedLanguagePairs() {
 
 int TranslatePrefs::GetTranslationDeniedCount(
     const std::string& language) const {
-  const DictionaryValue* dict =
+  const base::DictionaryValue* dict =
       prefs_->GetDictionary(kPrefTranslateDeniedCount);
   int count = 0;
   return dict->GetInteger(language, &count) ? count : 0;
@@ -224,7 +221,7 @@ int TranslatePrefs::GetTranslationDeniedCount(
 void TranslatePrefs::IncrementTranslationDeniedCount(
     const std::string& language) {
   DictionaryPrefUpdate update(prefs_, kPrefTranslateDeniedCount);
-  DictionaryValue* dict = update.Get();
+  base::DictionaryValue* dict = update.Get();
 
   int count = 0;
   dict->GetInteger(language, &count);
@@ -237,7 +234,7 @@ void TranslatePrefs::ResetTranslationDeniedCount(const std::string& language) {
 }
 
 int TranslatePrefs::GetTranslationAcceptedCount(const std::string& language) {
-  const DictionaryValue* dict =
+  const base::DictionaryValue* dict =
       prefs_->GetDictionary(kPrefTranslateAcceptedCount);
   int count = 0;
   return dict->GetInteger(language, &count) ? count : 0;
@@ -246,7 +243,7 @@ int TranslatePrefs::GetTranslationAcceptedCount(const std::string& language) {
 void TranslatePrefs::IncrementTranslationAcceptedCount(
     const std::string& language) {
   DictionaryPrefUpdate update(prefs_, kPrefTranslateAcceptedCount);
-  DictionaryValue* dict = update.Get();
+  base::DictionaryValue* dict = update.Get();
   int count = 0;
   dict->GetInteger(language, &count);
   dict->SetInteger(language, count + 1);
@@ -358,11 +355,11 @@ void TranslatePrefs::MigrateUserPrefs(PrefService* user_prefs) {
   //   assuming the last (i.e. most recent) target lang is what user wants to
   //   keep auto-translated.
   DictionaryPrefUpdate update(user_prefs, kPrefTranslateWhitelists);
-  DictionaryValue* dict = update.Get();
+  base::DictionaryValue* dict = update.Get();
   if (dict && !dict->empty()) {
-    DictionaryValue::Iterator iter(*dict);
+    base::DictionaryValue::Iterator iter(*dict);
     while (!iter.IsAtEnd()) {
-      const ListValue* list = NULL;
+      const base::ListValue* list = NULL;
       if (!iter.value().GetAsList(&list) || !list)
         break;  // Dictionary has either been migrated or new format.
       std::string key = iter.key();
@@ -404,14 +401,14 @@ void TranslatePrefs::MigrateUserPrefs(PrefService* user_prefs) {
 
     // Create the new preference kPrefTranslateBlockedLanguages.
     {
-      ListValue blocked_languages_list;
+      base::ListValue blocked_languages_list;
       for (std::vector<std::string>::const_iterator it =
                blocked_languages.begin();
            it != blocked_languages.end(); ++it) {
-        blocked_languages_list.Append(new StringValue(*it));
+        blocked_languages_list.Append(new base::StringValue(*it));
       }
       ListPrefUpdate update(user_prefs, kPrefTranslateBlockedLanguages);
-      ListValue* list = update.Get();
+      base::ListValue* list = update.Get();
       DCHECK(list != NULL);
       list->Swap(&blocked_languages_list);
     }
@@ -471,7 +468,25 @@ void TranslatePrefs::CreateBlockedLanguages(
                             result.begin(), result.end());
 }
 
-bool TranslatePrefs::IsValueInList(const ListValue* list,
+// static
+std::string TranslatePrefs::ConvertLangCodeForTranslation(
+    const std::string &lang) {
+  std::vector<std::string> tokens;
+  base::SplitString(lang, '-', &tokens);
+  if (tokens.size() < 1)
+    return lang;
+
+  std::string main_part = tokens[0];
+
+  // Translate doesn't support General Chinese and the sub code is necessary.
+  if (main_part == "zh")
+    return lang;
+
+  translate::ToTranslateLanguageSynonym(&main_part);
+  return main_part;
+}
+
+bool TranslatePrefs::IsValueInList(const base::ListValue* list,
     const std::string& in_value) const {
   for (size_t i = 0; i < list->GetSize(); ++i) {
     std::string value;
@@ -483,7 +498,7 @@ bool TranslatePrefs::IsValueInList(const ListValue* list,
 
 bool TranslatePrefs::IsValueBlacklisted(const char* pref_id,
     const std::string& value) const {
-  const ListValue* blacklist = prefs_->GetList(pref_id);
+  const base::ListValue* blacklist = prefs_->GetList(pref_id);
   return (blacklist && !blacklist->empty() && IsValueInList(blacklist, value));
 }
 
@@ -491,30 +506,31 @@ void TranslatePrefs::BlacklistValue(const char* pref_id,
     const std::string& value) {
   {
     ListPrefUpdate update(prefs_, pref_id);
-    ListValue* blacklist = update.Get();
+    base::ListValue* blacklist = update.Get();
     if (!blacklist) {
       NOTREACHED() << "Unregistered translate blacklist pref";
       return;
     }
-    blacklist->Append(new StringValue(value));
+    blacklist->Append(new base::StringValue(value));
   }
 }
 
 void TranslatePrefs::RemoveValueFromBlacklist(const char* pref_id,
     const std::string& value) {
   ListPrefUpdate update(prefs_, pref_id);
-  ListValue* blacklist = update.Get();
+  base::ListValue* blacklist = update.Get();
   if (!blacklist) {
     NOTREACHED() << "Unregistered translate blacklist pref";
     return;
   }
-  StringValue string_value(value);
+  base::StringValue string_value(value);
   blacklist->Remove(string_value, NULL);
 }
 
 bool TranslatePrefs::IsLanguageWhitelisted(
     const std::string& original_language, std::string* target_language) const {
-  const DictionaryValue* dict = prefs_->GetDictionary(kPrefTranslateWhitelists);
+  const base::DictionaryValue* dict =
+      prefs_->GetDictionary(kPrefTranslateWhitelists);
   if (dict && dict->GetString(original_language, target_language)) {
     DCHECK(!target_language->empty());
     return !target_language->empty();
@@ -523,11 +539,11 @@ bool TranslatePrefs::IsLanguageWhitelisted(
 }
 
 bool TranslatePrefs::IsListEmpty(const char* pref_id) const {
-  const ListValue* blacklist = prefs_->GetList(pref_id);
+  const base::ListValue* blacklist = prefs_->GetList(pref_id);
   return (blacklist == NULL || blacklist->empty());
 }
 
 bool TranslatePrefs::IsDictionaryEmpty(const char* pref_id) const {
-  const DictionaryValue* dict = prefs_->GetDictionary(pref_id);
+  const base::DictionaryValue* dict = prefs_->GetDictionary(pref_id);
   return (dict == NULL || dict->empty());
 }

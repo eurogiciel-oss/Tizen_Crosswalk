@@ -27,9 +27,7 @@
 #include "core/events/EventDispatcher.h"
 
 #include "core/dom/ContainerNode.h"
-#include "core/events/EventContext.h"
 #include "core/events/EventDispatchMediator.h"
-#include "core/events/EventRetargeter.h"
 #include "core/events/MouseEvent.h"
 #include "core/events/ScopedEventQueue.h"
 #include "core/events/WindowEventContext.h"
@@ -61,7 +59,7 @@ EventDispatcher::EventDispatcher(Node* node, PassRefPtr<Event> event)
     ASSERT(m_event.get());
     ASSERT(!m_event->type().isNull()); // JavaScript code can create an event with an empty name, but not null.
     m_view = node->document().view();
-    m_event->eventPath().resetWith(m_node.get());
+    m_event->ensureEventPath().resetWith(m_node.get());
 }
 
 void EventDispatcher::dispatchScopedEvent(Node* node, PassRefPtr<EventDispatchMediator> mediator)
@@ -71,7 +69,7 @@ void EventDispatcher::dispatchScopedEvent(Node* node, PassRefPtr<EventDispatchMe
     ScopedEventQueue::instance()->enqueueEventDispatchMediator(mediator);
 }
 
-void EventDispatcher::dispatchSimulatedClick(Node* node, Event* underlyingEvent, SimulatedClickMouseEventOptions mouseEventOptions, SimulatedClickVisualOptions visualOptions)
+void EventDispatcher::dispatchSimulatedClick(Node* node, Event* underlyingEvent, SimulatedClickMouseEventOptions mouseEventOptions)
 {
     if (isDisabledFormControl(node))
         return;
@@ -88,7 +86,7 @@ void EventDispatcher::dispatchSimulatedClick(Node* node, Event* underlyingEvent,
 
     if (mouseEventOptions != SendNoEvents)
         EventDispatcher(node, SimulatedMouseEvent::create(EventTypeNames::mousedown, node->document().domWindow(), underlyingEvent)).dispatch();
-    node->setActive(true, visualOptions == ShowPressedLook);
+    node->setActive(true);
     if (mouseEventOptions != SendNoEvents)
         EventDispatcher(node, SimulatedMouseEvent::create(EventTypeNames::mouseup, node->document().domWindow(), underlyingEvent)).dispatch();
     node->setActive(false);
@@ -110,7 +108,7 @@ bool EventDispatcher::dispatch()
     m_event->setTarget(EventPath::eventTargetRespectingTargetRules(m_node.get()));
     ASSERT(!NoEventDispatchAssertion::isEventDispatchForbidden());
     ASSERT(m_event->target());
-    WindowEventContext windowEventContext(m_event.get(), m_node.get(), topEventContext());
+    WindowEventContext windowEventContext(m_event.get(), m_node.get(), topNodeEventContext());
     InspectorInstrumentationCookie cookie = InspectorInstrumentation::willDispatchEvent(&m_node->document(), *m_event, windowEventContext.window(), m_node.get(), m_event->eventPath());
 
     void* preDispatchEventHandlerResult;
@@ -145,7 +143,7 @@ inline EventDispatchContinuation EventDispatcher::dispatchEventAtCapturing(Windo
         return DoneDispatching;
 
     for (size_t i = m_event->eventPath().size() - 1; i > 0; --i) {
-        const EventContext& eventContext = m_event->eventPath()[i];
+        const NodeEventContext& eventContext = m_event->eventPath()[i];
         if (eventContext.currentTargetSameAsTarget())
             continue;
         eventContext.handleLocalEvents(m_event.get());
@@ -168,7 +166,7 @@ inline void EventDispatcher::dispatchEventAtBubbling(WindowEventContext& windowC
     // Trigger bubbling event handlers, starting at the bottom and working our way up.
     size_t size = m_event->eventPath().size();
     for (size_t i = 1; i < size; ++i) {
-        const EventContext& eventContext = m_event->eventPath()[i];
+        const NodeEventContext& eventContext = m_event->eventPath()[i];
         if (eventContext.currentTargetSameAsTarget())
             m_event->setEventPhase(Event::AT_TARGET);
         else if (m_event->bubbles() && !m_event->cancelBubble())
@@ -219,7 +217,7 @@ inline void EventDispatcher::dispatchEventPostProcess(void* preDispatchEventHand
     }
 }
 
-const EventContext* EventDispatcher::topEventContext()
+const NodeEventContext* EventDispatcher::topNodeEventContext()
 {
     return m_event->eventPath().isEmpty() ? 0 : &m_event->eventPath().last();
 }

@@ -11,15 +11,15 @@
 #include <string>
 
 #include "base/basictypes.h"
+#include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/scoped_vector.h"
-#include "base/platform_file.h"
 #include "base/strings/string16.h"
 #include "base/strings/string_piece.h"
 #include "ui/base/layout.h"
-#include "ui/base/ui_export.h"
+#include "ui/base/ui_base_export.h"
 #include "ui/gfx/font_list.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/native_widget_types.h"
@@ -38,7 +38,7 @@ class ResourceHandle;
 
 // ResourceBundle is a central facility to load images and other resources,
 // such as theme graphics. Every resource is loaded only once.
-class UI_EXPORT ResourceBundle {
+class UI_BASE_EXPORT ResourceBundle {
  public:
   // An enumeration of the various font styles used throughout Chrome.
   // The following holds true for the font sizes:
@@ -105,7 +105,7 @@ class UI_EXPORT ResourceBundle {
 
     // Retrieve a localized string. Return true if a string was provided or
     // false to attempt retrieval of the default string.
-    virtual bool GetLocalizedString(int message_id, string16* value) = 0;
+    virtual bool GetLocalizedString(int message_id, base::string16* value) = 0;
 
     // Returns a font or NULL to attempt retrieval of the default resource.
     virtual scoped_ptr<gfx::Font> GetFont(FontStyle style) = 0;
@@ -135,8 +135,8 @@ class UI_EXPORT ResourceBundle {
   // controls whether or not ResourceBundle::LoadCommonResources is called.
   // This allows the use of this function in a sandbox without local file
   // access (as on Android).
-  static void InitSharedInstanceWithPakFile(
-      base::PlatformFile file, bool should_load_common_resources);
+  static void InitSharedInstanceWithPakFile(base::File file,
+                                            bool should_load_common_resources);
 
   // Initialize the ResourceBundle using given data pack path for testing.
   static void InitSharedInstanceWithPakPath(const base::FilePath& path);
@@ -164,7 +164,7 @@ class UI_EXPORT ResourceBundle {
                            ScaleFactor scale_factor);
 
   // Same as above but using an already open file.
-  void AddDataPackFromFile(base::PlatformFile file, ScaleFactor scale_factor);
+  void AddDataPackFromFile(base::File file, ScaleFactor scale_factor);
 
   // Same as AddDataPackFromPath but does not log an error if the pack fails to
   // load.
@@ -230,7 +230,7 @@ class UI_EXPORT ResourceBundle {
 
   // Get a localized string given a message id.  Returns an empty
   // string if the message_id is not found.
-  string16 GetLocalizedString(int message_id);
+  base::string16 GetLocalizedString(int message_id);
 
   // Returns the font list for the specified style.
   const gfx::FontList& GetFontList(FontStyle style);

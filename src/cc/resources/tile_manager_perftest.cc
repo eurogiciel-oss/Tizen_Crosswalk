@@ -41,8 +41,11 @@ class TileManagerPerfTest : public testing::Test {
 
     resource_provider_ =
         ResourceProvider::Create(output_surface_.get(), NULL, 0, false, 1);
-    tile_manager_ = make_scoped_ptr(
-        new FakeTileManager(&tile_manager_client_, resource_provider_.get()));
+    size_t raster_task_limit_bytes = 32 * 1024 * 1024;  // 16-64MB in practice.
+    tile_manager_ =
+        make_scoped_ptr(new FakeTileManager(&tile_manager_client_,
+                                            resource_provider_.get(),
+                                            raster_task_limit_bytes));
     picture_pile_ = FakePicturePileImpl::CreatePile();
   }
 
@@ -113,7 +116,7 @@ class TileManagerPerfTest : public testing::Test {
                                     1.0,
                                     0,
                                     0,
-                                    true);
+                                    Tile::USE_LCD_TEXT);
       tile->SetPriority(ACTIVE_TREE, GetTilePriorityFromBin(bin));
       tile->SetPriority(PENDING_TREE, GetTilePriorityFromBin(bin));
       tiles->push_back(std::make_pair(tile, bin));
@@ -140,8 +143,7 @@ class TileManagerPerfTest : public testing::Test {
     timer_.Reset();
     do {
       if (priority_change_percent > 0) {
-        for (unsigned i = 0;
-             i < tile_count;
+        for (unsigned i = 0; i < tile_count;
              i += 100 / priority_change_percent) {
           Tile* tile = tiles[i].first.get();
           ManagedTileBin bin = GetNextBin(tiles[i].second);
@@ -156,8 +158,8 @@ class TileManagerPerfTest : public testing::Test {
       timer_.NextLap();
     } while (!timer_.HasTimeLimitExpired());
 
-    perf_test::PrintResult("manage_tiles", "", test_name,
-                           timer_.LapsPerSecond(), "runs/s", true);
+    perf_test::PrintResult(
+        "manage_tiles", "", test_name, timer_.LapsPerSecond(), "runs/s", true);
   }
 
  private:

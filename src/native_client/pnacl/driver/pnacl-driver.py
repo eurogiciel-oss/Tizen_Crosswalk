@@ -22,16 +22,18 @@ EXTRA_ENV = {
                            # linker line for .pexe generation.
                            # It doesn't normally make sense to do this.
 
-  'ALLOW_CXX_EXCEPTIONS': '0', # Allow exception handling. This should not be
-                               # used for stable ABI pexes.
+  # CXX_EH_MODE specifies how to deal with C++ exception handling:
+  #  * 'none':  Strips out use of C++ exception handling.
+  #  * 'sjlj':  Enables the setjmp()+longjmp()-based implementation of
+  #    C++ exception handling.  This is supported in PNaCl's stable
+  #    ABI.
+  #  * 'zerocost':  Enables the zero-cost implementation of C++
+  #    exception handling.  This is not supported in PNaCl's stable
+  #    ABI.
+  'CXX_EH_MODE': 'none',
 
   'FORCE_INTERMEDIATE_LL': '0',
                           # Produce an intermediate .ll file
-                          # Useful for debugging.
-                          # NOTE: potentially different code paths and bugs
-                          #       might be triggered by this
-  'FORCE_INTERMEDIATE_S': '0',
-                          # producing an intermediate .s file
                           # Useful for debugging.
                           # NOTE: potentially different code paths and bugs
                           #       might be triggered by this
@@ -51,15 +53,13 @@ EXTRA_ENV = {
                           # remains uset.
   'DEFAULTLIBS' : '1',    # Link with default libraries
   'DIAGNOSTIC'  : '0',    # Diagnostic flag detected
-  'SHARED'      : '0',    # Produce a shared library
-  'STATIC'      : '0',    # -static (default)
-  'DYNAMIC'     : '0',    # -dynamic
   'PIC'         : '0',    # Generate PIC
   # TODO(robertm): Switch the default to 1
   'NO_ASM'      : '0',    # Disallow use of inline assembler
   'NEED_DASH_E' : '0',    # Used for stdin inputs, which must have an explicit
                           # type set (using -x) unless -E is specified.
   'VERBOSE'     : '0',    # Verbose (-v)
+  'SHOW_VERSION': '0',    # Version (--version)
 
   'PTHREAD'     : '0',   # use pthreads?
   'INPUTS'      : '',    # Input files
@@ -77,6 +77,7 @@ EXTRA_ENV = {
                        # if it's explicitly set or not when the driver
                        # is only used for linking + translating.
   'CC_FLAGS'    : '-O${#OPT_LEVEL ? ${OPT_LEVEL} : 0} ' +
+                  '-fno-vectorize -fno-slp-vectorize ' +
                   '-fno-common ${PTHREAD ? -pthread} ' +
                   '-nostdinc ${BIAS_%BIAS%} ' +
                   # BUG: http://code.google.com/p/nativeclient/issues/detail?id=2345
@@ -97,9 +98,7 @@ EXTRA_ENV = {
     '${ISYSTEM_CLANG} ' +
     '${ISYSTEM_CXX} ' +
     '${BASE_USR}/include ' +
-    '${BASE_SDK}/include ' +
-    # This is used only for newlib bootstrapping.
-    '${BASE}/sysroot/include',
+    '${BASE_SDK}/include ',
 
   'ISYSTEM_CLANG'  : '${BASE_LLVM}/lib/clang/3.3/include',
 
@@ -114,18 +113,14 @@ EXTRA_ENV = {
 
   # Only propagate opt level to linker if explicitly set, so that the
   # linker will know if an opt level was explicitly set or not.
-  'LD_FLAGS' : '${#OPT_LEVEL ? -O${OPT_LEVEL}} ' +
-               '${STATIC ? -static} ${SHARED ? -shared} ' +
-               '${PIC ? -fPIC} ${@AddPrefix:-L:SEARCH_DIRS}',
+  'LD_FLAGS' : '${#OPT_LEVEL ? -O${OPT_LEVEL}} -static ' +
+               '${PIC ? -fPIC} ${@AddPrefix:-L:SEARCH_DIRS} ' +
+               '--pnacl-exceptions=${CXX_EH_MODE}',
 
-  'SEARCH_DIRS'      : '${SEARCH_DIRS_USER} ${PREFIXES}',
-  'SEARCH_DIRS_USER' : '', # Directories specified using -L
-  'PREFIXES'         : '', # Prefixes specified by using the -B flag.
+  'SEARCH_DIRS' : '', # Directories specified using -L
 
   # Library Strings
-  'EMITMODE'         : '${!USE_STDLIB ? nostdlib : ' +
-                       '${STATIC ? static : ' +
-                       '${SHARED ? shared : dynamic}}}',
+  'EMITMODE'         : '${!USE_STDLIB ? nostdlib : static}',
 
   # This is setup so that LD_ARGS_xxx is evaluated lazily.
   'LD_ARGS' : '${LD_ARGS_%EMITMODE%}',
@@ -134,21 +129,12 @@ EXTRA_ENV = {
   # provided on the command-line.
   'LD_ARGS_nostdlib': '-nostdlib ${ld_inputs}',
 
-  # TODO(pdox): Pull all native objects out of here
-  #             and into pnacl-translate.
-  # BUG= http://code.google.com/p/nativeclient/issues/detail?id=2423
   'LD_ARGS_static':
-    '${ALLOW_CXX_EXCEPTIONS ? -l:crt1_for_eh.x : -l:crt1.x} ' +
+    '${CXX_EH_MODE==zerocost ? -l:crt1_for_eh.x : -l:crt1.x} ' +
     '-l:crti.bc -l:crtbegin.bc '
-    '${!ALLOW_CXX_EXCEPTIONS ? -l:unwind_stubs.bc} ' +
+    '${CXX_EH_MODE==sjlj ? -l:sjlj_eh_redirect.bc : '
+      '${CXX_EH_MODE==none ? -l:unwind_stubs.bc}} ' +
     '${ld_inputs} ' +
-    '--start-group ${STDLIBS} --end-group',
-
-  'LD_ARGS_shared':
-    '-l:crti.bc -l:crtbeginS.bc ${ld_inputs} ${STDLIBS}',
-
-  'LD_ARGS_dynamic':
-    '-l:crti.bc -l:crtbegin.bc ${ld_inputs} ' +
     '--start-group ${STDLIBS} --end-group',
 
   'LLVM_PASSES_TO_DISABLE': '',
@@ -157,10 +143,11 @@ EXTRA_ENV = {
   'TRANSLATE_FLAGS' : '-O${#OPT_LEVEL ? ${OPT_LEVEL} : 0}',
 
   'STDLIBS'   : '${DEFAULTLIBS ? '
-                '${LIBSTDCPP} ${LIBPTHREAD} ${LIBNACL} ${LIBC}}',
+                '${LIBSTDCPP} ${LIBPTHREAD} ${LIBNACL} ${LIBC} ${LIBPNACLMM}}',
   'LIBSTDCPP' : '${IS_CXX ? -l${STDLIB_TRUNC} -lm }',
   'LIBC'      : '-lc',
   'LIBNACL'   : '-lnacl',
+  'LIBPNACLMM': '-lpnaclmm',
   # Enabled/disabled by -pthreads
   'LIBPTHREAD': '${PTHREAD ? -lpthread}',
 
@@ -191,22 +178,6 @@ def AddDiagnosticFlag(*args):
   env.append('CC_FLAGS', *args)
   env.set('DIAGNOSTIC', '1')
 
-def AddBPrefix(prefix):
-  prefix = pathtools.normalize(prefix)
-  if pathtools.isdir(prefix) and not prefix.endswith('/'):
-    prefix += '/'
-
-  env.append('PREFIXES', prefix)
-
-  # Add prefix/include to isystem if it exists
-  include_dir = prefix + 'include'
-  if pathtools.isdir(include_dir):
-    env.append('ISYSTEM_USER', include_dir)
-
-def AddAllowCXXExceptions(*args):
-  env.set('ALLOW_CXX_EXCEPTIONS', '1')
-  AddLDFlag(*args)
-
 def SetTarget(*args):
   arch = ParseTriple(args[0])
   env.set('FRONTEND_TRIPLE', args[0])
@@ -215,15 +186,17 @@ def SetTarget(*args):
 def SetStdLib(*args):
   """Set the C++ Standard Library."""
   lib = args[0]
-  assert(lib == 'libc++' or lib == 'libstdc++')
+  assert lib == 'libc++' or lib == 'libstdc++', (
+      'Invalid C++ standard library: -stdlib=%s' % lib)
   env.set('STDLIB', lib)
   env.set('STDLIB_TRUNC', lib[3:])
   if lib == 'libc++':
     env.set('STDLIB_IDIR', 'v1')
-    # libc++ depends on pthread for C++11 features as well as some
-    # exception handling (which may get removed later by the PNaCl ABI
-    # simplification) and initialize-once.
-    env.set('PTHREAD', '1')
+    if env.getbool('IS_CXX'):
+      # libc++ depends on pthread for C++11 features as well as some
+      # exception handling (which may get removed later by the PNaCl ABI
+      # simplification) and initialize-once.
+      env.set('PTHREAD', '1')
   elif lib == 'libstdc++':
     env.set('STDLIB_IDIR', '4.6.2')
 
@@ -255,6 +228,26 @@ def HandleDashX(arg):
     return
   filetype.SetForcedFileType(filetype.GCCTypeToFileType(arg))
 
+def AddVersionFlag(*args):
+  env.set('SHOW_VERSION', '1')
+  AddDiagnosticFlag(*args)
+
+def AddBPrefix(prefix):
+  """ Add a path to the list searched for host binaries and include dirs. """
+  AddHostBinarySearchPath(prefix)
+  prefix = pathtools.normalize(prefix)
+  if pathtools.isdir(prefix) and not prefix.endswith('/'):
+    prefix += '/'
+
+  # Add prefix/ to the library search dir if it exists
+  if pathtools.isdir(prefix):
+    env.append('SEARCH_DIRS', prefix)
+
+  # Add prefix/include to isystem if it exists
+  include_dir = prefix + 'include'
+  if pathtools.isdir(include_dir):
+    env.append('ISYSTEM_USER', include_dir)
+
 CustomPatterns = [
   ( '--driver=(.+)',                "env.set('CC', pathtools.normalize($0))\n"),
   ( '--pnacl-allow-native',         "env.set('ALLOW_NATIVE', '1')"),
@@ -262,7 +255,10 @@ CustomPatterns = [
   ( '--pnacl-frontend-triple=(.+)', SetTarget),
   ( ('-target','(.+)'),             SetTarget),
   ( ('--target=(.+)'),              SetTarget),
-  ( '(--pnacl-allow-exceptions)',   AddAllowCXXExceptions),
+  ( '--pnacl-exceptions=(none|sjlj|zerocost)', "env.set('CXX_EH_MODE', $0)"),
+  # TODO(mseaborn): Remove "--pnacl-allow-exceptions", which is
+  # superseded by "--pnacl-exceptions".
+  ( '--pnacl-allow-exceptions',     "env.set('CXX_EH_MODE', 'zerocost')"),
   ( '(--pnacl-allow-nexe-build-id)', AddLDFlag),
   ( '(--pnacl-disable-abi-check)',  AddLDFlag),
   ( '(--pnacl-disable-pass=.+)',    AddLLVMPassDisableFlag),
@@ -337,6 +333,7 @@ GCCPatterns = [
   ( ('(-include.+)'),         AddCCFlag),
   ( '(-g)',                   AddCCFlag),
   ( '(-W.*)',                 AddCCFlag),
+  ( '(-w)',                   AddCCFlag),
   ( '(-std=.*)',              AddCCFlag),
   ( '(-ansi)',                AddCCFlag),
   ( ('(-D)','(.*)'),          AddCCFlag),
@@ -351,15 +348,14 @@ GCCPatterns = [
                               "env.set('VERBOSE', '1')"),
   ( '(-pthreads?)',           "env.set('PTHREAD', '1')"),
 
-  ( '-shared',                "env.set('SHARED', '1')"),
-  ( '-static',                "env.set('STATIC', '1')"),
-  ( '-dynamic',               "env.set('DYNAMIC', '1')"),
+  # No-op: accepted for compatibility in case build scripts pass it.
+  ( '-static',                ""),
 
   ( ('-B','(.*)'),            AddBPrefix),
   ( ('-B(.+)'),               AddBPrefix),
 
-  ( ('-L','(.+)'), "env.append('SEARCH_DIRS_USER', pathtools.normalize($0))"),
-  ( '-L(.+)',      "env.append('SEARCH_DIRS_USER', pathtools.normalize($0))"),
+  ( ('-L','(.+)'), "env.append('SEARCH_DIRS', pathtools.normalize($0))"),
+  ( '-L(.+)',      "env.append('SEARCH_DIRS', pathtools.normalize($0))"),
 
   ( '(-Wp,.*)', AddCCFlag),
   ( '(-Xpreprocessor .*)', AddCCFlag),
@@ -410,7 +406,7 @@ GCCPatterns = [
   ( '(-print-.*)',            AddDiagnosticFlag),
   ( '(--print.*)',            AddDiagnosticFlag),
   ( '(-dumpspecs)',           AddDiagnosticFlag),
-  ( '(--version)',            AddDiagnosticFlag),
+  ( '(--version)',            AddVersionFlag),
   # These are preprocessor flags which should be passed to the frontend, but
   # should not prevent the usual -i flags (which DIAGNOSTIC mode does)
   ( '(-d[DIMNU])',            AddCCFlag),
@@ -436,12 +432,6 @@ def CheckSetup():
               'Use pnacl-clang or pnacl-clang++.')
 
 def DriverOutputTypes(driver_flag, compiling_to_native):
-  if env.getbool('SHARED'):
-    bclink_output = 'pso'
-    link_output = 'so'
-  else:
-    bclink_output = 'pexe'
-    link_output = 'nexe'
   output_type_map = {
     ('-E', False) : 'pp',
     ('-E', True)  : 'pp',
@@ -449,10 +439,28 @@ def DriverOutputTypes(driver_flag, compiling_to_native):
     ('-c', True)  : 'o',
     ('-S', False) : 'll',
     ('-S', True)  : 's',
-    ('',   False) : bclink_output,
-    ('',   True)  : link_output
+    ('',   False) : 'pexe',
+    ('',   True)  : 'nexe',
   }
   return output_type_map[(driver_flag, compiling_to_native)]
+
+
+def ReadDriverRevision():
+  nacl_version = 'unknown'
+  rev_file = env.getone('DRIVER_REV_FILE')
+  # Might be an SVN version or a GIT hash (depending on the NaCl src client)
+  nacl_ver = DriverOpen(rev_file, 'rb').readlines()[0]
+  m = re.search(r'\[SVN\].*/native_client:\s*(\d+)', nacl_ver)
+  if m:
+    return m.group(1)
+  m = re.search(r'\[GIT\].*/native_client.git:\s*(\w+)', nacl_ver)
+  if m:
+    return m.group(1)
+  # fail-fast: if the REV file exists but regex search failed,
+  # we need to fix the regex to get nacl-version.
+  if not m:
+    Log.Fatal('Failed to parse REV file to get nacl-version.')
+
 
 def main(argv):
   env.update(EXTRA_ENV)
@@ -464,22 +472,21 @@ def main(argv):
   # parse the output. In these cases we do not alter the incoming
   # commandline. It is also important to not emit spurious messages.
   if env.getbool('DIAGNOSTIC'):
-    Run(env.get('CC') + env.get('CC_FLAGS'))
+    if env.getbool('SHOW_VERSION'):
+      code, stdout, stderr = Run(env.get('CC') + env.get('CC_FLAGS'),
+                                 redirect_stdout=subprocess.PIPE)
+      out = stdout.split('\n')
+      nacl_version = ReadDriverRevision()
+      out[0] += ' nacl-version=%s' % nacl_version
+      stdout = '\n'.join(out)
+      print stdout,
+    else:
+      Run(env.get('CC') + env.get('CC_FLAGS'))
     return 0
 
   unmatched = env.get('UNMATCHED')
   if len(unmatched) > 0:
     UnrecognizedOption(*unmatched)
-
-  is_shared = env.getbool('SHARED')
-
-  if env.getbool('STATIC') and env.getbool('SHARED'):
-    Log.Fatal("Can't handle both -static and -shared")
-
-  # default to static.
-  if (not env.getbool('DYNAMIC') and
-      not env.getbool('SHARED')):
-    env.set('STATIC', '1')
 
   # If -arch was given, we are compiling directly to native code
   compiling_to_native = GetArch() is not None
@@ -489,7 +496,7 @@ def main(argv):
 
   if not env.get('STDLIB'):
     # Default C++ Standard Library.
-    SetStdLib('libstdc++')
+    SetStdLib('libc++')
 
   inputs = env.get('INPUTS')
   output = env.getone('OUTPUT')
@@ -687,8 +694,7 @@ def SetupChain(chain, input_type, output_type):
     return
 
   # po -> o
-  if (cur_type == 'po' and output_type == 'o' and
-      not env.getbool('FORCE_INTERMEDIATE_S')):
+  if (cur_type == 'po' and output_type == 'o'):
     # If we aren't using biased bitcode, then at least -expand-byval
     # must be run to work with the PPAPI shim calling convention.
     if IsPortable():
@@ -761,8 +767,7 @@ BASIC OPTIONS:
   -Wp,<arg>             Pass <arg> to the preprocessor.
   -Xpreprocessor,<arg>  Pass <arg> to the preprocessor.
   -x <language>         Treat subsequent input files as having type <language>.
-  -static               Produce a static executable.
-  -shared               Produce a shared object.
+  -static               Produce a static executable (the default).
   -Bstatic              Link subsequent libraries statically.
   -Bdynamic             Link subsequent libraries dynamically.
   -fPIC                 Ignored (only used by translator backend)

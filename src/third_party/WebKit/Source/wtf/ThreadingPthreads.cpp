@@ -42,7 +42,6 @@
 #include "wtf/ThreadIdentifierDataPthreads.h"
 #include "wtf/ThreadSpecific.h"
 #include "wtf/ThreadingPrimitives.h"
-#include "wtf/UnusedParam.h"
 #include "wtf/WTFThreadData.h"
 #include "wtf/dtoa.h"
 #include "wtf/dtoa/cached-powers.h"
@@ -182,13 +181,12 @@ ThreadIdentifier createThreadInternal(ThreadFunction entryPoint, void* data, con
     OwnPtr<ThreadFunctionInvocation> invocation = adoptPtr(new ThreadFunctionInvocation(entryPoint, data));
     pthread_t threadHandle;
     if (pthread_create(&threadHandle, 0, wtfThreadEntryPoint, invocation.get())) {
-        LOG_ERROR("Failed to create pthread at entry point %p with data %p", wtfThreadEntryPoint, invocation.get());
+        WTF_LOG_ERROR("Failed to create pthread at entry point %p with data %p", wtfThreadEntryPoint, invocation.get());
         return 0;
     }
 
     // Balanced by adoptPtr() in wtfThreadEntryPoint.
-    ThreadFunctionInvocation* leakedInvocation = invocation.leakPtr();
-    UNUSED_PARAM(leakedInvocation);
+    ThreadFunctionInvocation* ALLOW_UNUSED leakedInvocation = invocation.leakPtr();
 
     return establishIdentifierForPthreadHandle(threadHandle);
 }
@@ -197,8 +195,6 @@ void initializeCurrentThreadInternal(const char* threadName)
 {
 #if HAVE(PTHREAD_SETNAME_NP)
     pthread_setname_np(threadName);
-#else
-    UNUSED_PARAM(threadName);
 #endif
 
 #if OS(MACOSX)
@@ -227,9 +223,9 @@ int waitForThreadCompletion(ThreadIdentifier threadID)
     int joinResult = pthread_join(pthreadHandle, 0);
 
     if (joinResult == EDEADLK)
-        LOG_ERROR("ThreadIdentifier %u was found to be deadlocked trying to quit", threadID);
+        WTF_LOG_ERROR("ThreadIdentifier %u was found to be deadlocked trying to quit", threadID);
     else if (joinResult)
-        LOG_ERROR("ThreadIdentifier %u was unable to be joined.\n", threadID);
+        WTF_LOG_ERROR("ThreadIdentifier %u was unable to be joined.\n", threadID);
 
     MutexLocker locker(threadMapMutex());
     PthreadState* state = threadMap().get(threadID);
@@ -256,7 +252,7 @@ void detachThread(ThreadIdentifier threadID)
 
     int detachResult = pthread_detach(pthreadHandle);
     if (detachResult)
-        LOG_ERROR("ThreadIdentifier %u was unable to be detached\n", threadID);
+        WTF_LOG_ERROR("ThreadIdentifier %u was unable to be detached\n", threadID);
 
     PthreadState* state = threadMap().get(threadID);
     ASSERT(state);

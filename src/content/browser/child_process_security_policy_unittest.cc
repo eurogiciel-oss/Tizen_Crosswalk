@@ -69,7 +69,7 @@ class ChildProcessSecurityPolicyTest : public testing::Test {
     // net::URLRequest::IsHandledURL() no longer claims support for default
     // protocols as this is the responsibility of the browser (which is
     // responsible for adding the appropriate ProtocolHandler).
-    test_browser_client_.AddScheme(chrome::kFileScheme);
+    test_browser_client_.AddScheme(kFileScheme);
   }
 
   virtual void TearDown() {
@@ -122,11 +122,11 @@ TEST_F(ChildProcessSecurityPolicyTest, IsWebSafeSchemeTest) {
 
   EXPECT_TRUE(p->IsWebSafeScheme(kHttpScheme));
   EXPECT_TRUE(p->IsWebSafeScheme(kHttpsScheme));
-  EXPECT_TRUE(p->IsWebSafeScheme(chrome::kFtpScheme));
-  EXPECT_TRUE(p->IsWebSafeScheme(chrome::kDataScheme));
+  EXPECT_TRUE(p->IsWebSafeScheme(kFtpScheme));
+  EXPECT_TRUE(p->IsWebSafeScheme(kDataScheme));
   EXPECT_TRUE(p->IsWebSafeScheme("feed"));
   EXPECT_TRUE(p->IsWebSafeScheme(chrome::kBlobScheme));
-  EXPECT_TRUE(p->IsWebSafeScheme(chrome::kFileSystemScheme));
+  EXPECT_TRUE(p->IsWebSafeScheme(kFileSystemScheme));
 
   EXPECT_FALSE(p->IsWebSafeScheme("registered-web-safe-scheme"));
   p->RegisterWebSafeScheme("registered-web-safe-scheme");

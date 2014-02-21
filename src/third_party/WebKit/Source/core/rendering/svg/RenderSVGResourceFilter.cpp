@@ -25,12 +25,15 @@
 
 #include "core/rendering/svg/RenderSVGResourceFilter.h"
 
-#include "core/page/Settings.h"
-#include "core/platform/graphics/filters/SourceAlpha.h"
-#include "core/platform/graphics/filters/SourceGraphic.h"
+#include "core/frame/Settings.h"
 #include "core/rendering/svg/RenderSVGResourceFilterPrimitive.h"
 #include "core/rendering/svg/SVGRenderingContext.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
+#include "platform/graphics/UnacceleratedImageBufferSurface.h"
+#include "platform/graphics/filters/SkiaImageFilterBuilder.h"
+#include "platform/graphics/filters/SourceAlpha.h"
+#include "platform/graphics/filters/SourceGraphic.h"
+#include "platform/graphics/gpu/AcceleratedImageBufferSurface.h"
 
 using namespace std;
 
@@ -46,6 +49,11 @@ RenderSVGResourceFilter::RenderSVGResourceFilter(SVGFilterElement* node)
 RenderSVGResourceFilter::~RenderSVGResourceFilter()
 {
     m_filter.clear();
+}
+
+bool RenderSVGResourceFilter::isChildAllowed(RenderObject* child, RenderStyle*) const
+{
+    return child->isSVGResourceFilterPrimitive();
 }
 
 void RenderSVGResourceFilter::removeAllClientsFromCache(bool markForInvalidation)
@@ -94,7 +102,7 @@ PassRefPtr<SVGFilterBuilder> RenderSVGResourceFilter::buildPrimitives(SVGFilter*
         effect->setEffectBoundaries(SVGLengthContext::resolveRectangle<SVGFilterPrimitiveStandardAttributes>(effectElement, filterElement->primitiveUnitsCurrentValue(), targetBoundingBox));
         effect->setOperatingColorSpace(
             effectElement->renderer()->style()->svgStyle()->colorInterpolationFilters() == CI_LINEARRGB ? ColorSpaceLinearRGB : ColorSpaceDeviceRGB);
-        builder->add(effectElement->resultCurrentValue(), effect);
+        builder->add(AtomicString(effectElement->resultCurrentValue()), effect);
     }
     return builder.release();
 }
@@ -102,36 +110,39 @@ PassRefPtr<SVGFilterBuilder> RenderSVGResourceFilter::buildPrimitives(SVGFilter*
 bool RenderSVGResourceFilter::fitsInMaximumImageSize(const FloatSize& size, FloatSize& scale)
 {
     bool matchesFilterSize = true;
-    if (size.width() > kMaxFilterSize) {
-        scale.setWidth(scale.width() * kMaxFilterSize / size.width());
+    if (size.width() * scale.width() > kMaxFilterSize) {
+        scale.setWidth(kMaxFilterSize / size.width());
         matchesFilterSize = false;
     }
-    if (size.height() > kMaxFilterSize) {
-        scale.setHeight(scale.height() * kMaxFilterSize / size.height());
+    if (size.height() * scale.height() > kMaxFilterSize) {
+        scale.setHeight(kMaxFilterSize / size.height());
         matchesFilterSize = false;
     }
 
     return matchesFilterSize;
 }
 
-static bool createImageBuffer(const FloatRect& targetRect, const AffineTransform& absoluteTransform,
-    OwnPtr<ImageBuffer>& imageBuffer, RenderingMode renderingMode)
+static bool createImageBuffer(const Filter* filter, OwnPtr<ImageBuffer>& imageBuffer, bool accelerated)
 {
-    IntRect paintRect = SVGRenderingContext::calculateImageBufferRect(targetRect, absoluteTransform);
+    IntRect paintRect = filter->sourceImageRect();
     // Don't create empty ImageBuffers.
     if (paintRect.isEmpty())
         return false;
 
-    OwnPtr<ImageBuffer> image = ImageBuffer::create(paintRect.size(), 1, renderingMode);
-    if (!image)
+    OwnPtr<ImageBufferSurface> surface;
+    if (accelerated)
+        surface = adoptPtr(new AcceleratedImageBufferSurface(paintRect.size()));
+    if (!accelerated || !surface->isValid())
+        surface = adoptPtr(new UnacceleratedImageBufferSurface(paintRect.size()));
+    if (!surface->isValid())
         return false;
+    OwnPtr<ImageBuffer> image = ImageBuffer::create(surface.release());
 
     GraphicsContext* imageContext = image->context();
     ASSERT(imageContext);
 
     imageContext->translate(-paintRect.x(), -paintRect.y());
-    imageContext->concatCTM(absoluteTransform);
-
+    imageContext->concatCTM(filter->absoluteTransform());
     imageBuffer = image.release();
     return true;
 }
@@ -142,7 +153,13 @@ bool RenderSVGResourceFilter::applyResource(RenderObject* object, RenderStyle*, 
     ASSERT(context);
     ASSERT_UNUSED(resourceMode, resourceMode == ApplyToDefaultMode);
 
-    if (m_filter.contains(object)) {
+    clearInvalidationMask();
+
+    bool deferredFiltersEnabled = object->document().settings()->deferredFiltersEnabled();
+    if (deferredFiltersEnabled) {
+        if (m_objects.contains(object))
+            return false; // We're in a cycle.
+    } else if (m_filter.contains(object)) {
         FilterData* filterData = m_filter.get(object);
         if (filterData->state == FilterData::PaintingSource || filterData->state == FilterData::Applying)
             filterData->state = FilterData::CycleDetected;
@@ -163,54 +180,77 @@ bool RenderSVGResourceFilter::applyResource(RenderObject* object, RenderStyle*, 
     if (!absoluteTransform.isInvertible())
         return false;
 
-    // Eliminate shear of the absolute transformation matrix, to be able to produce unsheared tile images for feTile.
-    filterData->shearFreeAbsoluteTransform = AffineTransform(absoluteTransform.xScale(), 0, 0, absoluteTransform.yScale(), 0, 0);
+    // Filters cannot handle a full transformation, only scales in each direction.
+    FloatSize filterScale;
 
-    // Determine absolute boundaries of the filter and the drawing region.
-    FloatRect absoluteFilterBoundaries = filterData->shearFreeAbsoluteTransform.mapRect(filterData->boundaries);
+    // Calculate the scale factor for the filter.
+    // Also see http://www.w3.org/TR/SVG/filters.html#FilterEffectsRegion
+    if (filterElement->hasAttribute(SVGNames::filterResAttr)) {
+        //  If resolution is specified, scale to match it.
+        filterScale = FloatSize(
+            filterElement->filterResXCurrentValue() / filterData->boundaries.width(),
+            filterElement->filterResYCurrentValue() / filterData->boundaries.height());
+    } else {
+        // Otherwise, use the scale of the absolute transform.
+        filterScale = FloatSize(absoluteTransform.xScale(), absoluteTransform.yScale());
+    }
+    // The size of the scaled filter boundaries shouldn't be bigger than kMaxFilterSize.
+    // Intermediate filters are limited by the filter boundaries so they can't be bigger than this.
+    fitsInMaximumImageSize(filterData->boundaries.size(), filterScale);
+
     filterData->drawingRegion = object->strokeBoundingBox();
     filterData->drawingRegion.intersect(filterData->boundaries);
-    FloatRect absoluteDrawingRegion = filterData->shearFreeAbsoluteTransform.mapRect(filterData->drawingRegion);
+    FloatRect absoluteDrawingRegion = filterData->drawingRegion;
+    if (!deferredFiltersEnabled)
+        absoluteDrawingRegion.scale(filterScale.width(), filterScale.height());
+
+    IntRect intDrawingRegion = enclosingIntRect(absoluteDrawingRegion);
 
     // Create the SVGFilter object.
     bool primitiveBoundingBoxMode = filterElement->primitiveUnitsCurrentValue() == SVGUnitTypes::SVG_UNIT_TYPE_OBJECTBOUNDINGBOX;
-    filterData->filter = SVGFilter::create(filterData->shearFreeAbsoluteTransform, absoluteDrawingRegion, targetBoundingBox, filterData->boundaries, primitiveBoundingBoxMode);
+    filterData->shearFreeAbsoluteTransform = AffineTransform();
+    if (!deferredFiltersEnabled)
+        filterData->shearFreeAbsoluteTransform.scale(filterScale.width(), filterScale.height());
+    filterData->filter = SVGFilter::create(filterData->shearFreeAbsoluteTransform, intDrawingRegion, targetBoundingBox, filterData->boundaries, primitiveBoundingBoxMode);
 
     // Create all relevant filter primitives.
     filterData->builder = buildPrimitives(filterData->filter.get());
     if (!filterData->builder)
         return false;
 
-    // Calculate the scale factor for the use of filterRes.
-    // Also see http://www.w3.org/TR/SVG/filters.html#FilterEffectsRegion
-    FloatSize scale(1, 1);
-    if (filterElement->hasAttribute(SVGNames::filterResAttr)) {
-        scale.setWidth(filterElement->filterResXCurrentValue() / absoluteFilterBoundaries.width());
-        scale.setHeight(filterElement->filterResYCurrentValue() / absoluteFilterBoundaries.height());
-    }
-
-    if (scale.isEmpty())
-        return false;
-
-    // Determine scale factor for filter. The size of intermediate ImageBuffers shouldn't be bigger than kMaxFilterSize.
-    FloatRect tempSourceRect = absoluteDrawingRegion;
-    tempSourceRect.scale(scale.width(), scale.height());
-    fitsInMaximumImageSize(tempSourceRect.size(), scale);
-
-    // Set the scale level in SVGFilter.
-    filterData->filter->setFilterResolution(scale);
-
     FilterEffect* lastEffect = filterData->builder->lastEffect();
     if (!lastEffect)
         return false;
 
-    RenderSVGResourceFilterPrimitive::determineFilterPrimitiveSubregion(lastEffect);
-    FloatRect subRegion = lastEffect->maxEffectRect();
-    // At least one FilterEffect has a too big image size,
-    // recalculate the effect sizes with new scale factors.
-    if (!fitsInMaximumImageSize(subRegion.size(), scale)) {
-        filterData->filter->setFilterResolution(scale);
-        RenderSVGResourceFilterPrimitive::determineFilterPrimitiveSubregion(lastEffect);
+    lastEffect->determineFilterPrimitiveSubregion(ClipToFilterRegion);
+
+    if (deferredFiltersEnabled) {
+        SkiaImageFilterBuilder builder(context);
+        FloatRect oldBounds = context->getClipBounds();
+        m_objects.set(object, oldBounds);
+        RefPtr<ImageFilter> imageFilter = builder.build(lastEffect, ColorSpaceDeviceRGB);
+        FloatRect boundaries = enclosingIntRect(filterData->boundaries);
+        if (filterElement->hasAttribute(SVGNames::filterResAttr)) {
+            context->save();
+            // Get boundaries in device coords.
+            FloatSize size = context->getCTM().mapSize(boundaries.size());
+            // Compute the scale amount required so that the resulting offscreen is exactly filterResX by filterResY pixels.
+            FloatSize filterResScale(
+                filterElement->filterResXCurrentValue() / size.width(),
+                filterElement->filterResYCurrentValue() / size.height());
+            // Scale the CTM so the primitive is drawn to filterRes.
+            context->translate(boundaries.x(), boundaries.y());
+            context->scale(filterResScale);
+            context->translate(-boundaries.x(), -boundaries.y());
+            // Create a resize filter with the inverse scale.
+            imageFilter = builder.buildResize(1 / filterResScale.width(), 1 / filterResScale.height(), imageFilter.get());
+            // Clip the context so that the offscreen created in beginLayer()
+            // is clipped to filterResX by filerResY. Use Replace mode since
+            // this clip may be larger than the parent device.
+            context->clipRectReplace(boundaries);
+        }
+        context->beginLayer(1, CompositeSourceOver, &boundaries, ColorFilterNone, imageFilter.get());
+        return true;
     }
 
     // If the drawingRegion is empty, we have something like <g filter=".."/>.
@@ -222,14 +262,9 @@ bool RenderSVGResourceFilter::applyResource(RenderObject* object, RenderStyle*, 
         return false;
     }
 
-    // Change the coordinate transformation applied to the filtered element to reflect the resolution of the filter.
-    AffineTransform effectiveTransform;
-    effectiveTransform.scale(scale.width(), scale.height());
-    effectiveTransform.multiply(filterData->shearFreeAbsoluteTransform);
-
     OwnPtr<ImageBuffer> sourceGraphic;
-    RenderingMode renderingMode = object->document().settings()->acceleratedFiltersEnabled() ? Accelerated : Unaccelerated;
-    if (!createImageBuffer(filterData->drawingRegion, effectiveTransform, sourceGraphic, renderingMode)) {
+    bool isAccelerated = object->document().settings()->acceleratedFiltersEnabled();
+    if (!createImageBuffer(filterData->filter.get(), sourceGraphic, isAccelerated)) {
         ASSERT(!m_filter.contains(object));
         filterData->savedContext = context;
         m_filter.set(object, filterData.release());
@@ -237,7 +272,7 @@ bool RenderSVGResourceFilter::applyResource(RenderObject* object, RenderStyle*, 
     }
 
     // Set the rendering mode from the page's settings.
-    filterData->filter->setRenderingMode(renderingMode);
+    filterData->filter->setIsAccelerated(isAccelerated);
 
     GraphicsContext* sourceGraphicContext = sourceGraphic->context();
     ASSERT(sourceGraphicContext);
@@ -258,6 +293,23 @@ void RenderSVGResourceFilter::postApplyResource(RenderObject* object, GraphicsCo
     ASSERT(object);
     ASSERT(context);
     ASSERT_UNUSED(resourceMode, resourceMode == ApplyToDefaultMode);
+
+    if (object->document().settings()->deferredFiltersEnabled()) {
+        SVGFilterElement* filterElement = toSVGFilterElement(element());
+        if (filterElement->hasAttribute(SVGNames::filterResAttr)) {
+            // Restore the clip bounds before endLayer(), so the filtered
+            // image draw is clipped to the original device bounds, not the
+            // clip we set before the beginLayer() above.
+            FloatRect oldBounds = m_objects.get(object);
+            context->clipRectReplace(oldBounds);
+            context->endLayer();
+            context->restore();
+        } else {
+            context->endLayer();
+        }
+        m_objects.remove(object);
+        return;
+    }
 
     FilterData* filterData = m_filter.get(object);
     if (!filterData)
@@ -310,19 +362,13 @@ void RenderSVGResourceFilter::postApplyResource(RenderObject* object, GraphicsCo
 
         ImageBuffer* resultImage = lastEffect->asImageBuffer();
         if (resultImage) {
-            context->concatCTM(filterData->shearFreeAbsoluteTransform.inverse());
-
-            context->scale(FloatSize(1 / filterData->filter->filterResolution().width(), 1 / filterData->filter->filterResolution().height()));
-            context->drawImageBuffer(resultImage, lastEffect->absolutePaintRect());
-            context->scale(filterData->filter->filterResolution());
-
-            context->concatCTM(filterData->shearFreeAbsoluteTransform);
+            context->drawImageBuffer(resultImage, filterData->filter->mapAbsoluteRectToLocalRect(lastEffect->absolutePaintRect()));
         }
     }
     filterData->sourceGraphicBuffer.clear();
 }
 
-FloatRect RenderSVGResourceFilter::resourceBoundingBox(RenderObject* object)
+FloatRect RenderSVGResourceFilter::resourceBoundingBox(const RenderObject* object)
 {
     if (SVGFilterElement* element = toSVGFilterElement(this->element()))
         return SVGLengthContext::resolveRectangle<SVGFilterElement>(element, element->filterUnitsCurrentValue(), object->objectBoundingBox());
@@ -332,6 +378,12 @@ FloatRect RenderSVGResourceFilter::resourceBoundingBox(RenderObject* object)
 
 void RenderSVGResourceFilter::primitiveAttributeChanged(RenderObject* object, const QualifiedName& attribute)
 {
+    if (object->document().settings()->deferredFiltersEnabled()) {
+        markAllClientsForInvalidation(RepaintInvalidation);
+        markAllClientLayersForInvalidation();
+        return;
+    }
+
     FilterMap::iterator it = m_filter.begin();
     FilterMap::iterator end = m_filter.end();
     SVGFilterPrimitiveStandardAttributes* primitve = static_cast<SVGFilterPrimitiveStandardAttributes*>(object->node());

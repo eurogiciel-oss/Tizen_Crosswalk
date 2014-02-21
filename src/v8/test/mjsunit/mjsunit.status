@@ -30,15 +30,10 @@
   # All tests in the bug directory are expected to fail.
   'bugs/*': [FAIL],
 
-  # TODO(mvstanton) Re-enable when the performance is bearable again.
-  'regress/regress-2185-2': [SKIP],
-
   ##############################################################################
   # Flaky tests.
-  # BUG(v8:2921): Flaky on ia32 nosnap, arm and nacl.
-  'debug-step-4-in-frame': [PASS, [('system == linux and arch == ia32 or '
-                                    'arch == arm or arch == nacl_ia32 or '
-                                    'arch == nacl_x64'), FLAKY]],
+  # BUG(v8:2921).
+  'debug-step-4-in-frame': [PASS, FAIL, SLOW],
 
   ##############################################################################
   # Fails.
@@ -104,7 +99,35 @@
   ##############################################################################
   # Long running test that reproduces memory leak and should be run manually.
   'regress/regress-2073': [SKIP],
+
+  ##############################################################################
+  # Tests verifying CHECK and ASSERT.
+  'verify-check-false': [FAIL, NO_VARIANTS],
+  'verify-assert-false': [NO_VARIANTS, ['mode == release', PASS], ['mode == debug', FAIL]],
+
+  ##############################################################################
+  # Tests with different versions for release and debug.
+  'compiler/alloc-number': [PASS, ['mode == debug', SKIP]],
+  'compiler/alloc-number-debug': [PASS, ['mode == release', SKIP]],
+  'regress/regress-634': [PASS, ['mode == debug', SKIP]],
+  'regress/regress-634-debug': [PASS, ['mode == release', SKIP]],
 }],  # ALWAYS
+
+##############################################################################
+['gc_stress == True', {
+  # Skip tests not suitable for GC stress.
+  'allocation-site-info': [SKIP],
+  'array-constructor-feedback': [SKIP],
+  'array-feedback': [SKIP],
+  'array-literal-feedback': [SKIP],
+  'd8-performance-now': [SKIP],
+  'elements-kind': [SKIP],
+  'fast-prototype': [SKIP],
+  'opt-elements-kind': [SKIP],
+  'osr-elements-kind': [SKIP],
+  'regress/regress-165637': [SKIP],
+  'regress/regress-2249': [SKIP],
+}],  # 'gc_stress == True'
 
 ##############################################################################
 ['arch == arm or arch == android_arm', {
@@ -126,30 +149,12 @@
   'string-indexof-2': [PASS, TIMEOUT],
   'mirror-object': [PASS, TIMEOUT],
 
-  # BUG(3251035): Timeouts in long looping crankshaft optimization
-  # tests. Skipping because having them timeout takes too long on the
-  # buildbot.
+  # Long running tests. Skipping because having them timeout takes too long on
+  # the buildbot.
   'compiler/alloc-number': [SKIP],
-  'compiler/array-length': [SKIP],
-  'compiler/assignment-deopt': [SKIP],
-  'compiler/deopt-args': [SKIP],
-  'compiler/inline-compare': [SKIP],
-  'compiler/inline-global-access': [SKIP],
-  'compiler/optimized-function-calls': [SKIP],
-  'compiler/pic': [SKIP],
-  'compiler/property-calls': [SKIP],
-  'compiler/recursive-deopt': [SKIP],
-  'compiler/regress-4': [SKIP],
-  'compiler/regress-funcaller': [SKIP],
-  'compiler/regress-rep-change': [SKIP],
-  'compiler/regress-arguments': [SKIP],
-  'compiler/regress-funarguments': [SKIP],
-  'compiler/regress-3249650': [SKIP],
-  'compiler/simple-deopt': [SKIP],
   'regress/regress-490': [SKIP],
   'regress/regress-634': [SKIP],
   'regress/regress-create-exception': [SKIP],
-  'regress/regress-3218915': [SKIP],
   'regress/regress-3247124': [SKIP],
 
   # Requires bigger stack size in the Genesis and if stack size is increased,
@@ -165,6 +170,18 @@
 
   # Currently always deopt on minus zero
   'math-floor-of-div-minus-zero': [SKIP],
+
+  ############################################################################
+  # Slow tests.
+  'regress/regress-2185-2': [PASS, SLOW],
+  'mirror-object': [PASS, SLOW],
+  'compiler/osr-with-args': [PASS, SLOW],
+  'array-sort': [PASS, SLOW],
+  'packed-elements': [PASS, SLOW],
+  'regress/regress-91008': [PASS, SLOW],
+  'regress/regress-2790': [PASS, SLOW],
+  'regress/regress-json-stringify-gc': [PASS, SLOW],
+  'regress/regress-1122': [PASS, SLOW],
 }],  # 'arch == arm or arch == android_arm'
 
 ##############################################################################
@@ -183,30 +200,12 @@
   'mirror-object': [PASS, TIMEOUT],
   'string-indexof-2': [PASS, TIMEOUT],
 
-  # BUG(3251035): Timeouts in long looping crankshaft optimization
-  # tests. Skipping because having them timeout takes too long on the
-  # buildbot.
+  # Long running tests. Skipping because having them timeout takes too long on
+  # the buildbot.
   'compiler/alloc-number': [SKIP],
-  'compiler/array-length': [SKIP],
-  'compiler/assignment-deopt': [SKIP],
-  'compiler/deopt-args': [SKIP],
-  'compiler/inline-compare': [SKIP],
-  'compiler/inline-global-access': [SKIP],
-  'compiler/optimized-function-calls': [SKIP],
-  'compiler/pic': [SKIP],
-  'compiler/property-calls': [SKIP],
-  'compiler/recursive-deopt': [SKIP],
-  'compiler/regress-4': [SKIP],
-  'compiler/regress-funcaller': [SKIP],
-  'compiler/regress-rep-change': [SKIP],
-  'compiler/regress-arguments': [SKIP],
-  'compiler/regress-funarguments': [SKIP],
-  'compiler/regress-3249650': [SKIP],
-  'compiler/simple-deopt': [SKIP],
   'regress/regress-490': [SKIP],
   'regress/regress-634': [SKIP],
   'regress/regress-create-exception': [SKIP],
-  'regress/regress-3218915': [SKIP],
   'regress/regress-3247124': [SKIP],
 
   # Requires bigger stack size in the Genesis and if stack size is increased,

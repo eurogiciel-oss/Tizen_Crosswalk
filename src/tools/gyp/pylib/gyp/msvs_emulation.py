@@ -163,6 +163,19 @@ class MsvsSettings(object):
 
     self.msvs_cygwin_dirs = spec.get('msvs_cygwin_dirs', ['.'])
 
+    unsupported_fields = [
+        'msvs_prebuild',
+        'msvs_postbuild',
+    ]
+    unsupported = []
+    for field in unsupported_fields:
+      for config in configs.values():
+        if field in config:
+          unsupported += ["%s not supported (target %s)." %
+                          (field, spec['target_name'])]
+    if unsupported:
+      raise Exception('\n'.join(unsupported))
+
   def GetVSMacroEnv(self, base_to_build=None, config=None):
     """Get a dict of variables mapping internal VS macro names to their gyp
     equivalents."""
@@ -317,15 +330,20 @@ class MsvsSettings(object):
           output_file, config=config))
     return output_file
 
-  def GetPDBName(self, config, expand_special):
-    """Gets the explicitly overridden pdb name for a target or returns None
-    if it's not overridden."""
+  def GetPDBName(self, config, expand_special, default):
+    """Gets the explicitly overridden pdb name for a target or returns
+    default if it's not overridden, or if no pdb will be generated."""
     config = self._TargetConfig(config)
     output_file = self._Setting(('VCLinkerTool', 'ProgramDatabaseFile'), config)
-    if output_file:
-      output_file = expand_special(self.ConvertVSMacros(
-          output_file, config=config))
-    return output_file
+    generate_debug_info = self._Setting(
+        ('VCLinkerTool', 'GenerateDebugInformation'), config)
+    if generate_debug_info:
+      if output_file:
+        return expand_special(self.ConvertVSMacros(output_file, config=config))
+      else:
+        return default
+    else:
+      return None
 
   def GetCflags(self, config):
     """Returns the flags that need to be added to .c and .cc compilations."""
@@ -442,8 +460,19 @@ class MsvsSettings(object):
     if def_file:
       ldflags.append('/DEF:"%s"' % def_file)
 
+  def GetPGDName(self, config, expand_special):
+    """Gets the explicitly overridden pgd name for a target or returns None
+    if it's not overridden."""
+    config = self._TargetConfig(config)
+    output_file = self._Setting(
+        ('VCLinkerTool', 'ProfileGuidedDatabase'), config)
+    if output_file:
+      output_file = expand_special(self.ConvertVSMacros(
+          output_file, config=config))
+    return output_file
+
   def GetLdflags(self, config, gyp_to_build_path, expand_special,
-                 manifest_base_name, is_executable):
+                 manifest_base_name, output_name, is_executable, build_dir):
     """Returns the flags that need to be added to link commands, and the
     manifest files."""
     config = self._TargetConfig(config)
@@ -456,12 +485,17 @@ class MsvsSettings(object):
     ldflags.extend(self._GetAdditionalLibraryDirectories(
         'VCLinkerTool', config, gyp_to_build_path))
     ld('DelayLoadDLLs', prefix='/DELAYLOAD:')
+    ld('TreatLinkerWarningAsErrors', prefix='/WX',
+       map={'true': '', 'false': ':NO'})
     out = self.GetOutputName(config, expand_special)
     if out:
       ldflags.append('/OUT:' + out)
-    pdb = self.GetPDBName(config, expand_special)
+    pdb = self.GetPDBName(config, expand_special, output_name + '.pdb')
     if pdb:
       ldflags.append('/PDB:' + pdb)
+    pgd = self.GetPGDName(config, expand_special)
+    if pgd:
+      ldflags.append('/PGD:' + pgd)
     map_file = self.GetMapFileName(config, expand_special)
     ld('GenerateMapFile', map={'true': '/MAP:' + map_file if map_file
         else '/MAP'})
@@ -486,8 +520,12 @@ class MsvsSettings(object):
     ld('DataExecutionPrevention',
         map={'1': ':NO', '2': ''}, prefix='/NXCOMPAT')
     ld('OptimizeReferences', map={'1': 'NOREF', '2': 'REF'}, prefix='/OPT:')
+    ld('ForceSymbolReferences', prefix='/INCLUDE:')
     ld('EnableCOMDATFolding', map={'1': 'NOICF', '2': 'ICF'}, prefix='/OPT:')
-    ld('LinkTimeCodeGeneration', map={'1': '/LTCG'})
+    ld('LinkTimeCodeGeneration',
+        map={'1': '', '2': ':PGINSTRUMENT', '3': ':PGOPTIMIZE',
+             '4': ':PGUPDATE'},
+        prefix='/LTCG')
     ld('IgnoreDefaultLibraryNames', prefix='/NODEFAULTLIB:')
     ld('ResourceOnlyDLL', map={'true': '/NOENTRY'})
     ld('EntryPointSymbol', prefix='/ENTRY:')
@@ -512,27 +550,55 @@ class MsvsSettings(object):
       ldflags.append('/NXCOMPAT')
 
     have_def_file = filter(lambda x: x.startswith('/DEF:'), ldflags)
-    manifest_flags, intermediate_manifest_file = self._GetLdManifestFlags(
-        config, manifest_base_name, is_executable and not have_def_file)
+    manifest_flags, intermediate_manifest, manifest_files = \
+        self._GetLdManifestFlags(config, manifest_base_name, gyp_to_build_path,
+                                 is_executable and not have_def_file, build_dir)
     ldflags.extend(manifest_flags)
-    manifest_files = self._GetAdditionalManifestFiles(config, gyp_to_build_path)
-    manifest_files.append(intermediate_manifest_file)
+    return ldflags, intermediate_manifest, manifest_files
 
-    return ldflags, manifest_files
+  def _GetLdManifestFlags(self, config, name, gyp_to_build_path,
+                          allow_isolation, build_dir):
+    """Returns a 3-tuple:
+    - the set of flags that need to be added to the link to generate
+      a default manifest
+    - the intermediate manifest that the linker will generate that should be
+      used to assert it doesn't add anything to the merged one.
+    - the list of all the manifest files to be merged by the manifest tool and
+      included into the link."""
+    generate_manifest = self._Setting(('VCLinkerTool', 'GenerateManifest'),
+                                      config,
+                                      default='true')
+    if generate_manifest != 'true':
+      # This means not only that the linker should not generate the intermediate
+      # manifest but also that the manifest tool should do nothing even when
+      # additional manifests are specified.
+      return ['/MANIFEST:NO'], [], []
 
-  def _GetLdManifestFlags(self, config, name, allow_isolation):
-    """Returns the set of flags that need to be added to the link to generate
-    a default manifest, as well as the name of the generated file."""
-    # The manifest is generated by default.
     output_name = name + '.intermediate.manifest'
     flags = [
       '/MANIFEST',
       '/ManifestFile:' + output_name,
     ]
 
+    # Instead of using the MANIFESTUAC flags, we generate a .manifest to
+    # include into the list of manifests. This allows us to avoid the need to
+    # do two passes during linking. The /MANIFEST flag and /ManifestFile are
+    # still used, and the intermediate manifest is used to assert that the
+    # final manifest we get from merging all the additional manifest files
+    # (plus the one we generate here) isn't modified by merging the
+    # intermediate into it.
+
+    # Always NO, because we generate a manifest file that has what we want.
+    flags.append('/MANIFESTUAC:NO')
+
     config = self._TargetConfig(config)
     enable_uac = self._Setting(('VCLinkerTool', 'EnableUAC'), config,
                                default='true')
+    manifest_files = []
+    generated_manifest_outer = \
+"<?xml version='1.0' encoding='UTF-8' standalone='yes'?>" \
+"<assembly xmlns='urn:schemas-microsoft-com:asm.v1' manifestVersion='1.0'>%s" \
+"</assembly>"
     if enable_uac == 'true':
       execution_level = self._Setting(('VCLinkerTool', 'UACExecutionLevel'),
                                       config, default='0')
@@ -544,14 +610,38 @@ class MsvsSettings(object):
 
       ui_access = self._Setting(('VCLinkerTool', 'UACUIAccess'), config,
                                 default='false')
-      flags.append('''/MANIFESTUAC:"level='%s' uiAccess='%s'"''' %
-          (execution_level_map[execution_level], ui_access))
+
+      inner = '''
+<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+  <security>
+    <requestedPrivileges>
+      <requestedExecutionLevel level='%s' uiAccess='%s' />
+    </requestedPrivileges>
+  </security>
+</trustInfo>''' % (execution_level_map[execution_level], ui_access)
     else:
-      flags.append('/MANIFESTUAC:NO')
+      inner = ''
+
+    generated_manifest_contents = generated_manifest_outer % inner
+    generated_name = name + '.generated.manifest'
+    # Need to join with the build_dir here as we're writing it during
+    # generation time, but we return the un-joined version because the build
+    # will occur in that directory. We only write the file if the contents
+    # have changed so that simply regenerating the project files doesn't
+    # cause a relink.
+    build_dir_generated_name = os.path.join(build_dir, generated_name)
+    gyp.common.EnsureDirExists(build_dir_generated_name)
+    f = gyp.common.WriteOnDiff(build_dir_generated_name)
+    f.write(generated_manifest_contents)
+    f.close()
+    manifest_files = [generated_name]
 
     if allow_isolation:
       flags.append('/ALLOWISOLATION')
-    return flags, output_name
+
+    manifest_files += self._GetAdditionalManifestFiles(config,
+                                                       gyp_to_build_path)
+    return flags, output_name, manifest_files
 
   def _GetAdditionalManifestFiles(self, config, gyp_to_build_path):
     """Gets additional manifest files that are added to the default one
@@ -574,7 +664,8 @@ class MsvsSettings(object):
   def IsEmbedManifest(self, config):
     """Returns whether manifest should be linked into binary."""
     config = self._TargetConfig(config)
-    embed = self._Setting(('VCManifestTool', 'EmbedManifest'), config)
+    embed = self._Setting(('VCManifestTool', 'EmbedManifest'), config,
+                          default='true')
     return embed == 'true'
 
   def IsLinkIncremental(self, config):

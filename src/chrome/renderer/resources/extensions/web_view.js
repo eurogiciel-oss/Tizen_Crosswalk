@@ -11,12 +11,14 @@
 
 var DocumentNatives = requireNative('document_natives');
 var EventBindings = require('event_bindings');
+var IdGenerator = requireNative('id_generator');
 var MessagingNatives = requireNative('messaging_natives');
 var WebRequestEvent = require('webRequestInternal').WebRequestEvent;
 var WebRequestSchema =
     requireNative('schema_registry').GetSchema('webRequest');
+var DeclarativeWebRequestSchema =
+    requireNative('schema_registry').GetSchema('declarativeWebRequest');
 var WebView = require('binding').Binding.create('webview').generate();
-var idGenerator = requireNative('id_generator');
 
 // This secret enables hiding <webview> private members from the outside scope.
 // Outside of this file, |secret| is inaccessible. The only way to access the
@@ -32,9 +34,10 @@ var WEB_VIEW_ATTRIBUTE_MINWIDTH = 'minwidth';
 
 /** @type {Array.<string>} */
 var WEB_VIEW_ATTRIBUTES = [
+    'allowtransparency',
+    'autosize',
     'name',
     'partition',
-    'autosize',
     WEB_VIEW_ATTRIBUTE_MINHEIGHT,
     WEB_VIEW_ATTRIBUTE_MINWIDTH,
     WEB_VIEW_ATTRIBUTE_MAXHEIGHT,
@@ -46,6 +49,20 @@ var CreateEvent = function(name) {
   return new EventBindings.Event(name, undefined, eventOpts);
 };
 
+// WEB_VIEW_EVENTS is a map of stable <webview> DOM event names to their
+//     associated extension event descriptor objects.
+// An event listener will be attached to the extension event |evt| specified in
+//     the descriptor.
+// |fields| specifies the public-facing fields in the DOM event that are
+//     accessible to <webview> developers.
+// |customHandler| allows a handler function to be called each time an extension
+//     event is caught by its event listener. The DOM event should be dispatched
+//     within this handler function. With no handler function, the DOM event
+//     will be dispatched by default each time the extension event is caught.
+// |cancelable| (default: false) specifies whether the event's default
+//     behavior can be canceled. If the default action associated with the event
+//     is prevented, then its dispatch function will return false in its event
+//     handler. The event must have a custom handler for this to be meaningful.
 var WEB_VIEW_EVENTS = {
   'close': {
     evt: CreateEvent('webview.onClose'),
@@ -202,11 +219,11 @@ WebViewInternal.prototype.createBrowserPluginNode_ = function() {
  */
 WebViewInternal.prototype.setupFocusPropagation_ = function() {
   if (!this.webviewNode_.hasAttribute('tabIndex')) {
-    // <webview> needs a tabIndex in order to respond to keyboard focus.
-    // TODO(fsamuel): This introduces unexpected tab ordering. We need to find
-    // a way to take keyboard focus without messing with tab ordering.
+    // <webview> needs a tabIndex in order to be focusable.
+    // TODO(fsamuel): It would be nice to avoid exposing a tabIndex attribute
+    // to allow <webview> to be focusable.
     // See http://crbug.com/231664.
-    this.webviewNode_.setAttribute('tabIndex', 0);
+    this.webviewNode_.setAttribute('tabIndex', -1);
   }
   var self = this;
   this.webviewNode_.addEventListener('focus', function(e) {
@@ -556,7 +573,7 @@ WebViewInternal.prototype.handleSizeChangedEvent_ =
  */
 WebViewInternal.prototype.setupWebviewNodeEvents_ = function() {
   var self = this;
-  this.viewInstanceId_ = idGenerator.GetNextId();
+  this.viewInstanceId_ = IdGenerator.GetNextId();
   var onInstanceIdAllocated = function(e) {
     var detail = e.detail ? JSON.parse(e.detail) : {};
     self.instanceId_ = detail.windowId;
@@ -637,7 +654,7 @@ WebViewInternal.prototype.setupEventProperty_ = function(eventName) {
  * @private
  */
 WebViewInternal.prototype.getPermissionTypes_ = function() {
-  return ['media', 'geolocation', 'pointerLock', 'download'];
+  return ['media', 'geolocation', 'pointerLock', 'download', 'loadplugin'];
 };
 
 /**
@@ -871,12 +888,20 @@ WebViewInternal.prototype.setupWebRequestEvents_ = function() {
             new WebRequestEvent(
                 'webview.' + webRequestEvent.name,
                 webRequestEvent.parameters,
-                webRequestEvent.extraParameters, null,
+                webRequestEvent.extraParameters, webRequestEvent.options,
                 self.viewInstanceId_);
       }
       return self[webRequestEvent.name + '_'];
     };
   };
+
+  for (var i = 0; i < DeclarativeWebRequestSchema.events.length; ++i) {
+    var eventSchema = DeclarativeWebRequestSchema.events[i];
+    var webRequestEvent = createWebRequestEvent(eventSchema);
+    this.maybeAttachWebRequestEventToObject_(request,
+                                             eventSchema.name,
+                                             webRequestEvent);
+  }
 
   // Populate the WebRequest events from the API definition.
   for (var i = 0; i < WebRequestSchema.events.length; ++i) {
@@ -889,8 +914,9 @@ WebViewInternal.prototype.setupWebRequestEvents_ = function() {
           enumerable: true
         }
     );
-    this.maybeAttachWebRequestEventToWebview_(WebRequestSchema.events[i].name,
-                                              webRequestEvent);
+    this.maybeAttachWebRequestEventToObject_(this.webviewNode_,
+                                             WebRequestSchema.events[i].name,
+                                             webRequestEvent);
   }
   Object.defineProperty(
       this.webviewNode_,
@@ -901,6 +927,28 @@ WebViewInternal.prototype.setupWebRequestEvents_ = function() {
         writable: false
       }
   );
+};
+
+/** @private */
+WebViewInternal.prototype.getUserAgent_ = function() {
+  return this.userAgentOverride_ || navigator.userAgent;
+};
+
+/** @private */
+WebViewInternal.prototype.isUserAgentOverridden_ = function() {
+  return !!this.userAgentOverride_ &&
+      this.userAgentOverride_ != navigator.userAgent;
+};
+
+/** @private */
+WebViewInternal.prototype.setUserAgentOverride_ = function(userAgentOverride) {
+  this.userAgentOverride_ = userAgentOverride;
+  if (!this.instanceId_) {
+    // If we are not attached yet, then we will pick up the user agent on
+    // attachment.
+    return;
+  }
+  WebView.overrideUserAgent(this.instanceId_, userAgentOverride);
 };
 
 // Registers browser plugin <object> custom element.
@@ -922,13 +970,18 @@ function registerBrowserPluginElement() {
     internal.handleBrowserPluginAttributeMutation_(name, newValue);
   };
 
+  proto.attachedCallback = function() {
+    // Load the plugin immediately.
+    var unused = this.nonExistentAttribute;
+  };
+
   WebViewInternal.BrowserPlugin =
       DocumentNatives.RegisterElement('browser-plugin', {extends: 'object',
                                                          prototype: proto});
 
   delete proto.createdCallback;
-  delete proto.enteredViewCallback;
-  delete proto.leftViewCallback;
+  delete proto.attachedCallback;
+  delete proto.detachedCallback;
   delete proto.attributeChangedCallback;
 }
 
@@ -941,6 +994,9 @@ function registerWebViewElement() {
   };
 
   proto.attributeChangedCallback = function(name, oldValue, newValue) {
+    if (!this.internal_) {
+      return;
+    }
     var internal = this.internal_(secret);
     internal.handleWebviewAttributeMutation_(name, oldValue, newValue);
   };
@@ -990,6 +1046,18 @@ function registerWebViewElement() {
     var internal = this.internal_(secret);
     $Function.apply(internal.insertCSS_, internal, arguments);
   };
+
+  proto.getUserAgent = function() {
+    return this.internal_(secret).getUserAgent_();
+  };
+
+  proto.isUserAgentOverridden = function() {
+    return this.internal_(secret).isUserAgentOverridden_();
+  };
+
+  proto.setUserAgentOverride = function(userAgentOverride) {
+    this.internal_(secret).setUserAgentOverride_(userAgentOverride);
+  };
   WebViewInternal.maybeRegisterExperimentalAPIs(proto, secret);
 
   window.WebView =
@@ -998,8 +1066,8 @@ function registerWebViewElement() {
   // Delete the callbacks so developers cannot call them and produce unexpected
   // behavior.
   delete proto.createdCallback;
-  delete proto.enteredViewCallback;
-  delete proto.leftViewCallback;
+  delete proto.attachedCallback;
+  delete proto.detachedCallback;
   delete proto.attributeChangedCallback;
 }
 
@@ -1023,7 +1091,7 @@ WebViewInternal.prototype.maybeGetExperimentalEvents_ = function() {};
  * Implemented when the experimental API is available.
  * @private
  */
-WebViewInternal.prototype.maybeAttachWebRequestEventToWebview_ = function() {};
+WebViewInternal.prototype.maybeAttachWebRequestEventToObject_ = function() {};
 
 /**
  * Implemented when the experimental API is available.

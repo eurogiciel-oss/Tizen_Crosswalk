@@ -30,6 +30,7 @@
 #include "platform/Timer.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/Vector.h"
+#include "wtf/text/AtomicString.h"
 
 namespace WebCore {
 
@@ -38,12 +39,13 @@ class EventTarget;
 
 enum ProgressEventAction {
     DoNotFlushProgressEvent,
+    FlushDeferredProgressEvent,
     FlushProgressEvent
 };
 
 // This implements the XHR2 progress event dispatching: "dispatch a progress event called progress
 // about every 50ms or for every byte received, whichever is least frequent".
-class XMLHttpRequestProgressEventThrottle : public TimerBase {
+class XMLHttpRequestProgressEventThrottle FINAL : public TimerBase {
 public:
     explicit XMLHttpRequestProgressEventThrottle(EventTarget*);
     virtual ~XMLHttpRequestProgressEventThrottle();
@@ -51,7 +53,7 @@ public:
     void dispatchProgressEvent(bool lengthComputable, unsigned long long loaded, unsigned long long total);
     void dispatchReadyStateChangeEvent(PassRefPtr<Event>, ProgressEventAction = DoNotFlushProgressEvent);
     void dispatchEvent(PassRefPtr<Event>);
-    void dispatchEventAndLoadEnd(PassRefPtr<Event>);
+    void dispatchEventAndLoadEnd(const AtomicString&, bool, unsigned long long, unsigned long long);
 
     void suspend();
     void resume();
@@ -59,9 +61,10 @@ public:
 private:
     static const double minimumProgressEventDispatchingIntervalInSeconds;
 
-    virtual void fired();
+    virtual void fired() OVERRIDE;
     void dispatchDeferredEvents(Timer<XMLHttpRequestProgressEventThrottle>*);
-    void flushProgressEvent();
+    bool flushDeferredProgressEvent();
+    void deliverProgressEvent();
 
     bool hasEventToDispatch() const;
 

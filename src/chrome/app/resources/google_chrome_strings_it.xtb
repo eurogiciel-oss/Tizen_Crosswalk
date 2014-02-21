@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="it">
+<translation id="3234920859344197194">Questo sito utilizza il plug-in Chrome Frame, che a breve smetterà di ricevere aggiornamenti su sicurezza e stabilità. Disinstallalo ed esegui l'upgrade a un browser più recente.</translation>
 <translation id="8914504000324227558">Riavvia Chrome</translation>
 <translation id="8000275528373650868">Google Chrome richiede Windows Vista o Windows XP con SP2 o versioni successive.</translation>
 <translation id="8485767968786176057">In questo caso l'indirizzo indicato nel certificato non corrisponde all'indirizzo del sito web a cui il browser ha tentato di accedere. Questa mancata corrispondenza può essere dovuta all'intercettazione delle comunicazioni da parte di un utente malintenzionato che presenta un certificato relativo a un altro sito web. È anche possibile che il server sia configurato in modo da restituire lo stesso certificato per più siti web, incluso quello che stai cercando di visitare, malgrado tale certificato non sia valido per tutti i siti. Google Chrome può garantire che hai raggiunto  &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, ma non può verificare che questo sito corrisponda a &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;. Se decidi di procedere, Chrome non verificherà eventuali altre mancate corrispondenze dei nomi.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">Lascia Google Chrome in esecuzione in background</translation>
 <translation id="2896252579017640304">Avvia app Chrome</translation>
 <translation id="2370289711218562573">Google Chrome sta importando i Preferiti/Segnalibri.</translation>
-<translation id="8762286861469007470">Rilevatore Chrome Captive Portal</translation>
 <translation id="2721687379934343312">Su Mac, le password vengono salvate su Keychain e sono accessibili o sincronizzate da parte degli utenti Chrome che condividono questo account OS X.</translation>
 <translation id="1761870329818521071">Impossibile installare la stessa versione di Google Chrome Frame attualmente in esecuzione. Chiudi Google Chrome Frame e riprova.</translation>
 <translation id="6014844626092547096">Hai eseguito l'accesso a Chrome. La sincronizzazione è stata disattivata dall'amministratore.</translation>
@@ -57,10 +57,10 @@
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">I tuoi dettagli di fatturazione sono stati salvati in Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome sta utilizzando il microfono.</translation>
-<translation id="3590194807845837023">Sblocca il profilo e riavvia</translation>
 <translation id="4053720452172726777">Personalizza e controlla Google Chrome</translation>
 <translation id="6423071462708908582">Hai tentato di visitare &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, ma il server ha presentato un certificato scaduto. Non sono disponibili informazioni che consentano di stabilire se il certificato sia stato compromesso dopo la sua scadenza. Ciò significa che Google Chrome non può garantire che tu stia comunicando con &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; e non con un malintenzionato. Al momento l'orologio del tuo computer è impostato su <ph name="CURRENT_TIME"/>. È giusto? In caso contrario, dovresti correggere l'errore e aggiornare la pagina.</translation>
 <translation id="3197823471738295152">Il dispositivo è aggiornato.</translation>
+<translation id="8286862437124483331">Google Chrome sta cercando di visualizzare le password. Per consentire la visualizzazione, digita la tua password Windows.</translation>
 <translation id="3889417619312448367">Disinstalla Google Chrome</translation>
 <translation id="1434626383986940139">Applicazioni Chrome Canary</translation>
 <translation id="8551886023433311834">Aggiornamento quasi completato. Riavvia il dispositivo per terminare l'aggiornamento.</translation>
@@ -180,7 +180,6 @@ Se esegui comunque l'accesso, le informazioni di Chrome come Preferiti, cronolog
 <translation id="7396375882099008034">Consenti a Chrome di accedere alla rete nelle impostazioni del firewall o del software
         antivirus.</translation>
 <translation id="9102715433345326100">Il file è dannoso ed è stato bloccato da Chrome.</translation>
-<translation id="3170677364322086041">Questo sito utilizza il plug-in Chrome Frame, che non riceve più aggiornamenti su sicurezza e stabilità perché è stato ritirato. Disinstallalo ed esegui l'upgrade a un browser moderno.</translation>
 <translation id="8205111949707227942">Facoltativo: aiutaci a migliorare Google Chrome OS inviando automaticamente a Google le statistiche sull'utilizzo e segnalazioni sugli arresti anomali.</translation>
 <translation id="7253415505590551024">Sono in corso dei download. Vuoi uscire da Google Chrome e annullare i download?</translation>
 <translation id="7196020411877309443">Perché visualizzo questo avviso?</translation>
@@ -197,6 +196,7 @@ Se esegui comunque l'accesso, le informazioni di Chrome come Preferiti, cronolog
           Impostazioni LAN
           e deseleziona la casella di controllo &quot;Utilizza un server proxy per le connessioni LAN&quot;.</translation>
 <translation id="7825851276765848807">Installazione non riuscita a causa di un errore non specificato. Scarica nuovamente Google Chrome.</translation>
+<translation id="4919523385405675060">Questo sito utilizza il plug-in Chrome Frame, che a breve smetterà di ricevere aggiornamenti su sicurezza e stabilità. Disinstallalo e scarica un browser compatibile.</translation>
 <translation id="1061257178446858647">Hai eseguito l'accesso a Chrome. I Preferiti, la cronologia e altre impostazioni verranno sincronizzati con il tuo account Google.</translation>
 <translation id="3335672657969596251"><ph name="OS_NAME"/> non è supportato da Google Chrome.</translation>
 <translation id="4458285410772214805">Esci ed esegui di nuovo l'accesso per applicare la modifica.</translation>

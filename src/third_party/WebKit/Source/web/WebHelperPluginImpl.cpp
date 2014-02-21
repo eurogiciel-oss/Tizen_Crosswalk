@@ -42,39 +42,28 @@
 #include "WebWidgetClient.h"
 #include "core/dom/NodeList.h"
 #include "core/html/HTMLPlugInElement.h"
-#include "core/loader/DocumentLoader.h"
 #include "core/loader/EmptyClients.h"
+#include "core/loader/FrameLoadRequest.h"
 #include "core/page/FocusController.h"
 #include "core/frame/FrameView.h"
 #include "core/page/Page.h"
-#include "core/page/Settings.h"
+#include "core/frame/Settings.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
-#define addLiteral(literal, writer)    writer->addData(literal, sizeof(literal) - 1)
+static const char documentStartLiteral[] = "<!DOCTYPE html><head><meta charset='UTF-8'></head><body>\n<object type=\"";
+static const char documentEndLiteral[] = "\"></object></body>\n";
 
-static inline void addString(const String& str, DocumentWriter* writer)
+static void writeDocument(const String& pluginType, const WebURL& url, WebCore::FrameLoader& loader)
 {
-    CString str8 = str.utf8();
-    writer->addData(str8.data(), str8.length());
-}
+    RefPtr<SharedBuffer> data = SharedBuffer::create();
+    data->append(documentStartLiteral, sizeof(documentStartLiteral) - 1);
+    data->append(pluginType.utf8().data(), pluginType.utf8().length());
+    data->append(documentEndLiteral, sizeof(documentEndLiteral) - 1);
 
-static void writeDocument(const String& pluginType, const WebDocument& hostDocument, WebCore::DocumentLoader* loader)
-{
-    // Give the new document the same URL as the hose document so that content
-    // settings and other decisions can be made based on the correct origin.
-    const WebURL& url = hostDocument.url();
-
-    DocumentWriter* writer = loader->beginWriting("text/html", "UTF-8", url);
-
-    addLiteral("<!DOCTYPE html><head><meta charset='UTF-8'></head><body>\n", writer);
-    String objectTag = "<object type=\"" + pluginType + "\"></object>";
-    addString(objectTag, writer);
-    addLiteral("</body>\n", writer);
-
-    loader->endWriting(writer);
+    loader.load(FrameLoadRequest(0, ResourceRequest(url.isValid() ? KURL(url) : blankURL()), SubstituteData(data, "text/html", "UTF-8", KURL(), ForceSynchronousLoad)));
 }
 
 class HelperPluginChromeClient : public EmptyChromeClient {
@@ -92,9 +81,8 @@ private:
     virtual void closeWindowSoon() OVERRIDE
     {
         // This should never be called since the only way to close the
-        // invisible page is via closeHelperPlugin().
-        ASSERT_NOT_REACHED();
-        m_widget->closeHelperPlugin();
+        // invisible page is via closeAndDelete().
+        RELEASE_ASSERT_NOT_REACHED();
     }
 
     virtual void* webView() const OVERRIDE
@@ -120,7 +108,7 @@ public:
     {
     }
 
-    virtual WebPlugin* createPlugin(WebKit::WebFrame* frame, const WebPluginParams& params)
+    virtual WebPlugin* createPlugin(blink::WebFrame* frame, const WebPluginParams& params)
     {
         return m_hostWebFrameClient->createPlugin(frame, params);
     }
@@ -143,6 +131,7 @@ WebHelperPluginImpl::WebHelperPluginImpl(WebWidgetClient* client)
 WebHelperPluginImpl::~WebHelperPluginImpl()
 {
     ASSERT(!m_page);
+    ASSERT(!m_widgetClient); // Should only be called via close().
 }
 
 bool WebHelperPluginImpl::initialize(const String& pluginType, const WebDocument& hostDocument, WebViewImpl* webView)
@@ -153,7 +142,7 @@ bool WebHelperPluginImpl::initialize(const String& pluginType, const WebDocument
     return initializePage(pluginType, hostDocument);
 }
 
-void WebHelperPluginImpl::closeHelperPlugin()
+void WebHelperPluginImpl::closeAndDelete()
 {
     if (m_page) {
         m_page->clearPageGroup();
@@ -165,12 +154,16 @@ void WebHelperPluginImpl::closeHelperPlugin()
     // destroyed by the time this->close() is called asynchronously.
     destroyPage();
 
-    // m_widgetClient might be 0 because this widget might be already closed.
-    if (m_widgetClient) {
-        // closeWidgetSoon() will call this->close() later.
-        m_widgetClient->closeWidgetSoon();
-    }
+    // closeWidgetSoon() will call this->close() later.
+    m_widgetClient->closeWidgetSoon();
+
     m_mainFrame->close();
+    m_mainFrame = 0;
+}
+
+void WebHelperPluginImpl::closeAndDeleteSoon()
+{
+    m_webView->closeAndDeleteHelperPluginSoon(this);
 }
 
 void WebHelperPluginImpl::initializeFrame(WebFrameClient* client)
@@ -196,7 +189,7 @@ WebPlugin* WebHelperPluginImpl::getPlugin()
     WebCore::Widget* widget = toHTMLPlugInElement(node)->pluginWidget();
     if (!widget)
         return 0;
-    WebPlugin* plugin = toPluginContainerImpl(widget)->plugin();
+    WebPlugin* plugin = toWebPluginContainerImpl(widget)->plugin();
     ASSERT(plugin);
     // If the plugin is a placeholder, it is not useful to the caller, and it
     // could be replaced at any time. Therefore, do not return it.
@@ -227,7 +220,7 @@ bool WebHelperPluginImpl::initializePage(const String& pluginType, const WebDocu
     frame->setView(FrameView::create(frame));
     // No need to set a size or make it not transparent.
 
-    writeDocument(pluginType, hostDocument, frame->loader().activeDocumentLoader());
+    writeDocument(pluginType, hostDocument.url(), frame->loader());
 
     return true;
 }
@@ -255,9 +248,10 @@ void WebHelperPluginImpl::setFocus(bool)
 
 void WebHelperPluginImpl::close()
 {
-    ASSERT(!m_page); // Should only be called via closePopup().
+    RELEASE_ASSERT(!m_page); // Should only be called via closeAndDelete().
+    RELEASE_ASSERT(!m_mainFrame); // This function must be called asynchronously, after closeAndDelete() completes.
     m_widgetClient = 0;
-    deref();
+    delete this;
 }
 
 // WebHelperPlugin ----------------------------------------------------------------
@@ -265,13 +259,11 @@ void WebHelperPluginImpl::close()
 WebHelperPlugin* WebHelperPlugin::create(WebWidgetClient* client)
 {
     RELEASE_ASSERT(client);
-    // A WebHelperPluginImpl instance usually has two references.
-    //  - One owned by the instance itself. It represents the visible widget.
-    //  - One owned by the hosting element. It's released when the hosting
-    //    element asks the WebHelperPluginImpl to close.
-    // We need them because the closing operation is asynchronous and the widget
-    // can be closed while the hosting element is unaware of it.
-    return adoptRef(new WebHelperPluginImpl(client)).leakRef();
+
+    // The returned object is owned by the caller, which must destroy it by
+    // calling closeAndDelete(). The WebWidgetClient must not call close()
+    // other than as a result of closeAndDelete().
+    return new WebHelperPluginImpl(client);
 }
 
-} // namespace WebKit
+} // namespace blink

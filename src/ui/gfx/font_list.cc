@@ -6,12 +6,22 @@
 
 #include <algorithm>
 
+#include "base/lazy_instance.h"
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 
 namespace {
+
+// Font description of the default font set.
+base::LazyInstance<std::string>::Leaky g_default_font_description =
+    LAZY_INSTANCE_INITIALIZER;
+
+// The default instance of gfx::FontList, whose metrics are pre-calculated.
+// The default ctor of gfx::FontList copies the metrics so it won't need to
+// scan the whole font list to calculate the metrics.
+const gfx::FontList* g_default_font_list = NULL;
 
 // Parses font description into |font_names|, |font_style| and |font_size|.
 void ParseFontDescriptionString(const std::string& font_description_string,
@@ -75,7 +85,29 @@ FontList::FontList()
       common_baseline_(-1),
       font_style_(-1),
       font_size_(-1) {
-  fonts_.push_back(Font());
+  // SetDefaultFontDescription() must be called and the default font description
+  // must be set earlier than any call of the default constructor.
+  DCHECK(!(g_default_font_description == NULL))  // != is not overloaded.
+      << "SetDefaultFontDescription has not been called.";
+
+  // Allocate the global instance of FontList for |g_default_font_list| without
+  // calling the default ctor.
+  static FontList default_font_list((Font()));
+
+  if (!g_default_font_list) {
+    default_font_list = g_default_font_description.Get().empty() ?
+        FontList(Font()) : FontList(g_default_font_description.Get());
+    // Pre-calculate the metrics if the underlying PlatformFont is supported.
+    // Note that not all the platforms support PlatformFont.
+    if (default_font_list.GetPrimaryFont().platform_font()) {
+      default_font_list.CacheCommonFontHeightAndBaseline();
+      default_font_list.CacheFontStyleAndSize();
+    }
+    g_default_font_list = &default_font_list;
+  }
+
+  // Copy the default font list specification and its pre-calculated metrics.
+  *this = *g_default_font_list;
 }
 
 FontList::FontList(const std::string& font_description_string)
@@ -130,6 +162,17 @@ FontList::FontList(const Font& font)
 FontList::~FontList() {
 }
 
+// static
+void FontList::SetDefaultFontDescription(const std::string& font_description) {
+  // The description string must end with "px" for size in pixel, or must be
+  // the empty string, which specifies to use a single default font.
+  DCHECK(font_description.empty() ||
+         EndsWith(font_description, "px", true));
+
+  g_default_font_description.Get() = font_description;
+  g_default_font_list = NULL;
+}
+
 FontList FontList::DeriveFontList(int font_style) const {
   return DeriveFontListWithSizeDeltaAndStyle(0, font_style);
 }
@@ -182,19 +225,6 @@ int FontList::GetCapHeight() const {
   return GetPrimaryFont().GetCapHeight();
 }
 
-int FontList::GetStringWidth(const base::string16& text) const {
-  // Rely on the primary font metrics for the time being.
-  // TODO(yukishiino): Not only the first font, all the fonts in the list should
-  // be taken into account to compute the pixels needed to display |text|.
-  // Also this method, including one in Font class, should be deprecated and
-  // client code should call Canvas::GetStringWidth(text, font_list) directly.
-  // Our plan is as follows:
-  //   1. Introduce the FontList version of Canvas::GetStringWidth().
-  //   2. Make client code call Canvas::GetStringWidth().
-  //   3. Retire {Font,FontList}::GetStringWidth().
-  return GetPrimaryFont().GetStringWidth(text);
-}
-
 int FontList::GetExpectedTextWidth(int length) const {
   // Rely on the primary font metrics for the time being.
   return GetPrimaryFont().GetExpectedTextWidth(length);
@@ -232,8 +262,15 @@ const std::vector<Font>& FontList::GetFonts() const {
     DCHECK(!font_description_string_.empty());
 
     std::vector<std::string> font_names;
+    // It's possible that gfx::Font::UNDERLINE is specified and it's already
+    // stored in |font_style_| but |font_description_string_| doesn't have the
+    // underline info.  So we should respect |font_style_| as long as it's
+    // valid.
+    int style = 0;
     ParseFontDescriptionString(font_description_string_, &font_names,
-                               &font_style_, &font_size_);
+                               &style, &font_size_);
+    if (font_style_ == -1)
+      font_style_ = style;
     for (size_t i = 0; i < font_names.size(); ++i) {
       DCHECK(!font_names[i].empty());
 

@@ -103,12 +103,6 @@ void BufferedSpdyFramer::OnSynReply(SpdyStreamId stream_id,
   InitHeaderStreaming(stream_id);
 }
 
-bool BufferedSpdyFramer::OnCredentialFrameData(const char* frame_data,
-                                               size_t len) {
-  DCHECK(false);
-  return false;
-}
-
 bool BufferedSpdyFramer::OnControlFrameHeaderData(SpdyStreamId stream_id,
                                                   const char* header_data,
                                                   size_t len) {
@@ -175,6 +169,7 @@ void BufferedSpdyFramer::OnDataFrameHeader(SpdyStreamId stream_id,
                                            bool fin) {
   frames_received_++;
   header_stream_id_ = stream_id;
+  visitor_->OnDataFrameHeader(stream_id, length, fin);
 }
 
 void BufferedSpdyFramer::OnStreamFrameData(SpdyStreamId stream_id,
@@ -217,7 +212,7 @@ void BufferedSpdyFramer::OnPushPromise(SpdyStreamId stream_id,
   visitor_->OnPushPromise(stream_id, promised_stream_id);
 }
 
-int BufferedSpdyFramer::protocol_version() {
+SpdyMajorVersion BufferedSpdyFramer::protocol_version() {
   return spdy_framer_.protocol_version();
 }
 
@@ -245,68 +240,108 @@ bool BufferedSpdyFramer::HasError() {
   return spdy_framer_.HasError();
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer
+// SpdySynStreamIR).
 SpdyFrame* BufferedSpdyFramer::CreateSynStream(
     SpdyStreamId stream_id,
     SpdyStreamId associated_stream_id,
     SpdyPriority priority,
     uint8 credential_slot,
     SpdyControlFlags flags,
-    bool compressed,
     const SpdyHeaderBlock* headers) {
-  return spdy_framer_.CreateSynStream(stream_id, associated_stream_id, priority,
-                                      credential_slot, flags, compressed,
-                                      headers);
+  SpdySynStreamIR syn_stream(stream_id);
+  syn_stream.set_associated_to_stream_id(associated_stream_id);
+  syn_stream.set_priority(priority);
+  syn_stream.set_slot(credential_slot);
+  syn_stream.set_fin((flags & CONTROL_FLAG_FIN) != 0);
+  syn_stream.set_unidirectional((flags & CONTROL_FLAG_UNIDIRECTIONAL) != 0);
+  // TODO(hkhalil): Avoid copy here.
+  syn_stream.set_name_value_block(*headers);
+  return spdy_framer_.SerializeSynStream(syn_stream);
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer
+// SpdySynReplyIR).
 SpdyFrame* BufferedSpdyFramer::CreateSynReply(
     SpdyStreamId stream_id,
     SpdyControlFlags flags,
-    bool compressed,
     const SpdyHeaderBlock* headers) {
-  return spdy_framer_.CreateSynReply(stream_id, flags, compressed, headers);
+  SpdySynReplyIR syn_reply(stream_id);
+  syn_reply.set_fin(flags & CONTROL_FLAG_FIN);
+  // TODO(hkhalil): Avoid copy here.
+  syn_reply.set_name_value_block(*headers);
+  return spdy_framer_.SerializeSynReply(syn_reply);
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer
+// SpdyRstStreamIR).
 SpdyFrame* BufferedSpdyFramer::CreateRstStream(
     SpdyStreamId stream_id,
     SpdyRstStreamStatus status) const {
-  return spdy_framer_.CreateRstStream(stream_id, status);
+  SpdyRstStreamIR rst_ir(stream_id, status, "RST");
+  return spdy_framer_.SerializeRstStream(rst_ir);
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer
+// SpdySettingsIR).
 SpdyFrame* BufferedSpdyFramer::CreateSettings(
     const SettingsMap& values) const {
-  return spdy_framer_.CreateSettings(values);
+  SpdySettingsIR settings_ir;
+  for (SettingsMap::const_iterator it = values.begin();
+       it != values.end();
+       ++it) {
+    settings_ir.AddSetting(
+        it->first,
+        (it->second.first & SETTINGS_FLAG_PLEASE_PERSIST) != 0,
+        (it->second.first & SETTINGS_FLAG_PERSISTED) != 0,
+        it->second.second);
+  }
+  return spdy_framer_.SerializeSettings(settings_ir);
 }
 
-SpdyFrame* BufferedSpdyFramer::CreatePingFrame(
-    uint32 unique_id) const {
-  return spdy_framer_.CreatePingFrame(unique_id);
+// TODO(jgraettinger): Eliminate uses of this method (prefer SpdyPingIR).
+SpdyFrame* BufferedSpdyFramer::CreatePingFrame(uint32 unique_id) const {
+  SpdyPingIR ping_ir(unique_id);
+  return spdy_framer_.SerializePing(ping_ir);
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer SpdyGoAwayIR).
 SpdyFrame* BufferedSpdyFramer::CreateGoAway(
     SpdyStreamId last_accepted_stream_id,
     SpdyGoAwayStatus status) const {
-  return spdy_framer_.CreateGoAway(last_accepted_stream_id, status);
+  SpdyGoAwayIR go_ir(last_accepted_stream_id, status, "");
+  return spdy_framer_.SerializeGoAway(go_ir);
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer SpdyHeadersIR).
 SpdyFrame* BufferedSpdyFramer::CreateHeaders(
     SpdyStreamId stream_id,
     SpdyControlFlags flags,
-    bool compressed,
     const SpdyHeaderBlock* headers) {
-  return spdy_framer_.CreateHeaders(stream_id, flags, compressed, headers);
+  SpdyHeadersIR headers_ir(stream_id);
+  headers_ir.set_fin((flags & CONTROL_FLAG_FIN) != 0);
+  headers_ir.set_name_value_block(*headers);
+  return spdy_framer_.SerializeHeaders(headers_ir);
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer
+// SpdyWindowUpdateIR).
 SpdyFrame* BufferedSpdyFramer::CreateWindowUpdate(
     SpdyStreamId stream_id,
     uint32 delta_window_size) const {
-  return spdy_framer_.CreateWindowUpdate(stream_id, delta_window_size);
+  SpdyWindowUpdateIR update_ir(stream_id, delta_window_size);
+  return spdy_framer_.SerializeWindowUpdate(update_ir);
 }
 
+// TODO(jgraettinger): Eliminate uses of this method (prefer SpdyDataIR).
 SpdyFrame* BufferedSpdyFramer::CreateDataFrame(SpdyStreamId stream_id,
                                                const char* data,
                                                uint32 len,
                                                SpdyDataFlags flags) {
-  return spdy_framer_.CreateDataFrame(stream_id, data, len, flags);
+  SpdyDataIR data_ir(stream_id,
+                     base::StringPiece(data, len));
+  data_ir.set_fin((flags & DATA_FLAG_FIN) != 0);
+  return spdy_framer_.SerializeData(data_ir);
 }
 
 SpdyPriority BufferedSpdyFramer::GetHighestPriority() const {

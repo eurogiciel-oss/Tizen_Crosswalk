@@ -5,7 +5,9 @@
 #include "base/message_loop/message_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chromeos/dbus/fake_bluetooth_adapter_client.h"
+#include "chromeos/dbus/fake_bluetooth_agent_manager_client.h"
 #include "chromeos/dbus/fake_bluetooth_device_client.h"
+#include "chromeos/dbus/fake_bluetooth_input_client.h"
 #include "chromeos/dbus/fake_dbus_thread_manager.h"
 #include "dbus/object_path.h"
 #include "device/bluetooth/bluetooth_adapter.h"
@@ -208,13 +210,19 @@ class TestPairingDelegate : public BluetoothDevice::PairingDelegate {
 class BluetoothChromeOSTest : public testing::Test {
  public:
   virtual void SetUp() {
-    fake_dbus_thread_manager_ = new FakeDBusThreadManager();
-    DBusThreadManager::InitializeForTesting(fake_dbus_thread_manager_);
-
-    fake_bluetooth_adapter_client_ =
-      fake_dbus_thread_manager_->fake_bluetooth_adapter_client();
-    fake_bluetooth_device_client_ =
-      fake_dbus_thread_manager_->fake_bluetooth_device_client();
+    FakeDBusThreadManager* fake_dbus_thread_manager = new FakeDBusThreadManager;
+    fake_bluetooth_adapter_client_ = new FakeBluetoothAdapterClient;
+    fake_dbus_thread_manager->SetBluetoothAdapterClient(
+        scoped_ptr<BluetoothAdapterClient>(fake_bluetooth_adapter_client_));
+    fake_bluetooth_device_client_ = new FakeBluetoothDeviceClient;
+    fake_dbus_thread_manager->SetBluetoothDeviceClient(
+        scoped_ptr<BluetoothDeviceClient>(fake_bluetooth_device_client_));
+    fake_dbus_thread_manager->SetBluetoothInputClient(
+        scoped_ptr<BluetoothInputClient>(new FakeBluetoothInputClient));
+    fake_dbus_thread_manager->SetBluetoothAgentManagerClient(
+        scoped_ptr<BluetoothAgentManagerClient>(
+            new FakeBluetoothAgentManagerClient));
+    DBusThreadManager::InitializeForTesting(fake_dbus_thread_manager);
 
     callback_count_ = 0;
     error_callback_count_ = 0;
@@ -256,7 +264,7 @@ class BluetoothChromeOSTest : public testing::Test {
     ASSERT_TRUE(adapter_.get() != NULL);
 
     if (base::MessageLoop::current() == NULL) {
-      base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+      base::MessageLoop message_loop;
       DiscoverDevices();
       return;
     }
@@ -312,7 +320,6 @@ class BluetoothChromeOSTest : public testing::Test {
  protected:
   FakeBluetoothAdapterClient* fake_bluetooth_adapter_client_;
   FakeBluetoothDeviceClient* fake_bluetooth_device_client_;
-  FakeDBusThreadManager* fake_dbus_thread_manager_;
   scoped_refptr<BluetoothAdapter> adapter_;
 
   int callback_count_;
@@ -501,7 +508,7 @@ TEST_F(BluetoothChromeOSTest, BecomeNotPowered) {
 }
 
 TEST_F(BluetoothChromeOSTest, StopDiscovery) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
 
   GetAdapter();
 
@@ -544,7 +551,7 @@ TEST_F(BluetoothChromeOSTest, StopDiscovery) {
 }
 
 TEST_F(BluetoothChromeOSTest, StopDiscoveryAfterTwoStarts) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
 
   GetAdapter();
 
@@ -616,7 +623,7 @@ TEST_F(BluetoothChromeOSTest, StopDiscoveryAfterTwoStarts) {
 
 TEST_F(BluetoothChromeOSTest, Discovery) {
   // Test a simulated discovery session.
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
 
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
   GetAdapter();
@@ -663,7 +670,7 @@ TEST_F(BluetoothChromeOSTest, Discovery) {
 }
 
 TEST_F(BluetoothChromeOSTest, PoweredAndDiscovering) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
 
   GetAdapter();
   adapter_->SetPowered(
@@ -742,7 +749,7 @@ TEST_F(BluetoothChromeOSTest, DeviceProperties) {
             devices[0]->GetAddress());
 
   // Verify the other device properties.
-  EXPECT_EQ(UTF8ToUTF16(FakeBluetoothDeviceClient::kPairedDeviceName),
+  EXPECT_EQ(base::UTF8ToUTF16(FakeBluetoothDeviceClient::kPairedDeviceName),
             devices[0]->GetName());
   EXPECT_EQ(BluetoothDevice::DEVICE_COMPUTER, devices[0]->GetDeviceType());
   EXPECT_TRUE(devices[0]->IsPaired());
@@ -798,7 +805,7 @@ TEST_F(BluetoothChromeOSTest, DeviceNameChanged) {
   ASSERT_EQ(1U, devices.size());
   ASSERT_EQ(FakeBluetoothDeviceClient::kPairedDeviceAddress,
             devices[0]->GetAddress());
-  ASSERT_EQ(UTF8ToUTF16(FakeBluetoothDeviceClient::kPairedDeviceName),
+  ASSERT_EQ(base::UTF8ToUTF16(FakeBluetoothDeviceClient::kPairedDeviceName),
             devices[0]->GetName());
 
   // Install an observer; expect the DeviceChanged method to be called when
@@ -816,7 +823,7 @@ TEST_F(BluetoothChromeOSTest, DeviceNameChanged) {
   EXPECT_EQ(1, observer.device_changed_count_);
   EXPECT_EQ(devices[0], observer.last_device_);
 
-  EXPECT_EQ(UTF8ToUTF16(new_name), devices[0]->GetName());
+  EXPECT_EQ(base::UTF8ToUTF16(new_name), devices[0]->GetName());
 }
 
 TEST_F(BluetoothChromeOSTest, DeviceUuidsChanged) {
@@ -1162,7 +1169,7 @@ TEST_F(BluetoothChromeOSTest, DisconnectUnconnectedDevice) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairAppleMouse) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1223,7 +1230,7 @@ TEST_F(BluetoothChromeOSTest, PairAppleMouse) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairAppleKeyboard) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1285,7 +1292,7 @@ TEST_F(BluetoothChromeOSTest, PairAppleKeyboard) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairMotorolaKeyboard) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1368,7 +1375,7 @@ TEST_F(BluetoothChromeOSTest, PairMotorolaKeyboard) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairSonyHeadphones) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1431,7 +1438,7 @@ TEST_F(BluetoothChromeOSTest, PairSonyHeadphones) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairPhone) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1491,7 +1498,7 @@ TEST_F(BluetoothChromeOSTest, PairPhone) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairWeirdDevice) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1552,7 +1559,7 @@ TEST_F(BluetoothChromeOSTest, PairWeirdDevice) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairUnpairableDeviceFails) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1595,7 +1602,7 @@ TEST_F(BluetoothChromeOSTest, PairUnpairableDeviceFails) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingFails) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1639,7 +1646,7 @@ TEST_F(BluetoothChromeOSTest, PairingFails) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingFailsAtConnection) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1696,7 +1703,7 @@ TEST_F(BluetoothChromeOSTest, PairingFailsAtConnection) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingRejectedAtPinCode) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1743,7 +1750,7 @@ TEST_F(BluetoothChromeOSTest, PairingRejectedAtPinCode) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingCancelledAtPinCode) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1790,7 +1797,7 @@ TEST_F(BluetoothChromeOSTest, PairingCancelledAtPinCode) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingRejectedAtPasskey) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1837,7 +1844,7 @@ TEST_F(BluetoothChromeOSTest, PairingRejectedAtPasskey) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingCancelledAtPasskey) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1884,7 +1891,7 @@ TEST_F(BluetoothChromeOSTest, PairingCancelledAtPasskey) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingRejectedAtConfirmation) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1931,7 +1938,7 @@ TEST_F(BluetoothChromeOSTest, PairingRejectedAtConfirmation) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingCancelledAtConfirmation) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();
@@ -1978,7 +1985,7 @@ TEST_F(BluetoothChromeOSTest, PairingCancelledAtConfirmation) {
 }
 
 TEST_F(BluetoothChromeOSTest, PairingCancelledInFlight) {
-  base::MessageLoop message_loop(base::MessageLoop::TYPE_DEFAULT);
+  base::MessageLoop message_loop;
   fake_bluetooth_device_client_->SetSimulationIntervalMs(10);
 
   GetAdapter();

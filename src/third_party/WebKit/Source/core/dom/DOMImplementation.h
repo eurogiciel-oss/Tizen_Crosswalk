@@ -38,20 +38,22 @@ class ExceptionState;
 class Frame;
 class HTMLDocument;
 class KURL;
+class XMLDocument;
 
 class DOMImplementation : public ScriptWrappable {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static PassOwnPtr<DOMImplementation> create(Document* document) { return adoptPtr(new DOMImplementation(document)); }
+    static PassOwnPtr<DOMImplementation> create(Document& document) { return adoptPtr(new DOMImplementation(document)); }
 
-    void ref() { m_document->ref(); }
-    void deref() { m_document->deref(); }
-    Document* document() { return m_document; }
+    void ref() { m_document.ref(); }
+    void deref() { m_document.deref(); }
+    Document* document() { return &m_document; }
 
     // DOM methods & attributes for DOMImplementation
     static bool hasFeature(const String& feature, const String& version);
-    PassRefPtr<DocumentType> createDocumentType(const String& qualifiedName, const String& publicId, const String& systemId, ExceptionState&);
-    PassRefPtr<Document> createDocument(const String& namespaceURI, const String& qualifiedName, DocumentType*, ExceptionState&);
+    bool hasFeatureForBindings(const String& feature, const String& version);
+    PassRefPtr<DocumentType> createDocumentType(const AtomicString& qualifiedName, const String& publicId, const String& systemId, ExceptionState&);
+    PassRefPtr<XMLDocument> createDocument(const AtomicString& namespaceURI, const AtomicString& qualifiedName, DocumentType*, ExceptionState&);
 
     DOMImplementation* getInterface(const String& feature);
 
@@ -62,16 +64,17 @@ public:
     PassRefPtr<HTMLDocument> createHTMLDocument(const String& title);
 
     // Other methods (not part of DOM)
-    static PassRefPtr<Document> createDocument(const String& MIMEType, Frame*, const KURL&, bool inViewSourceMode);
-    static PassRefPtr<Document> createDocument(const String& type, const DocumentInit&, bool inViewSourceMode);
+    static PassRefPtr<Document> createDocument(const String& mimeType, Frame*, const KURL&, bool inViewSourceMode);
+    static PassRefPtr<Document> createDocument(const String& mimeType, const DocumentInit&, bool inViewSourceMode);
 
-    static bool isXMLMIMEType(const String& MIMEType);
-    static bool isTextMIMEType(const String& MIMEType);
+    static bool isXMLMIMEType(const String&);
+    static bool isTextMIMEType(const String&);
+    static bool isJSONMIMEType(const String&);
 
 private:
-    explicit DOMImplementation(Document*);
+    explicit DOMImplementation(Document&);
 
-    Document* m_document;
+    Document& m_document;
 };
 
 } // namespace WebCore

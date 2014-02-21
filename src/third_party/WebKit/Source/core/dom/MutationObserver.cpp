@@ -33,7 +33,6 @@
 
 #include <algorithm>
 #include "bindings/v8/Dictionary.h"
-#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
 #include "core/dom/Document.h"
 #include "core/dom/ExceptionCode.h"
@@ -41,9 +40,8 @@
 #include "core/dom/MutationObserverRegistration.h"
 #include "core/dom/MutationRecord.h"
 #include "core/dom/Node.h"
-#include "wtf/HashSet.h"
+#include "core/inspector/InspectorInstrumentation.h"
 #include "wtf/MainThread.h"
-#include "wtf/Vector.h"
 
 namespace WebCore {
 
@@ -56,13 +54,13 @@ struct MutationObserver::ObserverLessThan {
     }
 };
 
-PassRefPtr<MutationObserver> MutationObserver::create(PassRefPtr<MutationCallback> callback)
+PassRefPtr<MutationObserver> MutationObserver::create(PassOwnPtr<MutationCallback> callback)
 {
     ASSERT(isMainThread());
     return adoptRef(new MutationObserver(callback));
 }
 
-MutationObserver::MutationObserver(PassRefPtr<MutationCallback> callback)
+MutationObserver::MutationObserver(PassOwnPtr<MutationCallback> callback)
     : m_callback(callback)
     , m_priority(s_observerPriority++)
 {
@@ -72,53 +70,69 @@ MutationObserver::MutationObserver(PassRefPtr<MutationCallback> callback)
 MutationObserver::~MutationObserver()
 {
     ASSERT(m_registrations.isEmpty());
+    if (!m_records.isEmpty())
+        InspectorInstrumentation::didClearAllMutationRecords(m_callback->executionContext(), this);
 }
 
-void MutationObserver::observe(Node* node, const Dictionary& optionsDictionary, ExceptionState& es)
+void MutationObserver::observe(Node* node, const Dictionary& optionsDictionary, ExceptionState& exceptionState)
 {
     if (!node) {
-        es.throwDOMException(NotFoundError, ExceptionMessages::failedToExecute("observe", "MutationObserver", "The provided node was null."));
+        exceptionState.throwDOMException(NotFoundError, "The provided node was null.");
         return;
     }
 
-    static const struct {
-        const char* name;
-        MutationObserverOptions value;
-    } booleanOptions[] = {
-        { "childList", ChildList },
-        { "attributes", Attributes },
-        { "characterData", CharacterData },
-        { "subtree", Subtree },
-        { "attributeOldValue", AttributeOldValue },
-        { "characterDataOldValue", CharacterDataOldValue }
-    };
     MutationObserverOptions options = 0;
-    for (unsigned i = 0; i < sizeof(booleanOptions) / sizeof(booleanOptions[0]); ++i) {
-        bool value = false;
-        if (optionsDictionary.get(booleanOptions[i].name, value) && value)
-            options |= booleanOptions[i].value;
-    }
+
+    bool attributeOldValue = false;
+    bool attributeOldValuePresent = optionsDictionary.get("attributeOldValue", attributeOldValue);
+    if (attributeOldValue)
+        options |= AttributeOldValue;
 
     HashSet<AtomicString> attributeFilter;
-    if (optionsDictionary.get("attributeFilter", attributeFilter))
+    bool attributeFilterPresent = optionsDictionary.get("attributeFilter", attributeFilter);
+    if (attributeFilterPresent)
         options |= AttributeFilter;
 
-    if (!(options & (Attributes | CharacterData | ChildList))) {
-        es.throwDOMException(SyntaxError, ExceptionMessages::failedToExecute("observe", "MutationObserver", "The options object must set at least one of 'attributes', 'characterData', or 'childList' to true."));
-        return;
-    }
+    bool attributes = false;
+    bool attributesPresent = optionsDictionary.get("attributes", attributes);
+    if (attributes || (!attributesPresent && (attributeOldValuePresent || attributeFilterPresent)))
+        options |= Attributes;
+
+    bool characterDataOldValue = false;
+    bool characterDataOldValuePresent = optionsDictionary.get("characterDataOldValue", characterDataOldValue);
+    if (characterDataOldValue)
+        options |= CharacterDataOldValue;
+
+    bool characterData = false;
+    bool characterDataPresent = optionsDictionary.get("characterData", characterData);
+    if (characterData || (!characterDataPresent && characterDataOldValuePresent))
+        options |= CharacterData;
+
+    bool childListValue = false;
+    if (optionsDictionary.get("childList", childListValue) && childListValue)
+        options |= ChildList;
+
+    bool subtreeValue = false;
+    if (optionsDictionary.get("subtree", subtreeValue) && subtreeValue)
+        options |= Subtree;
+
     if (!(options & Attributes)) {
         if (options & AttributeOldValue) {
-            es.throwDOMException(SyntaxError, ExceptionMessages::failedToExecute("observe", "MutationObserver", "The options object may only set 'attributeOldValue' to true when 'attributes' is also true."));
+            exceptionState.throwDOMException(TypeError, "The options object may only set 'attributeOldValue' to true when 'attributes' is true or not present.");
             return;
         }
         if (options & AttributeFilter) {
-            es.throwDOMException(SyntaxError, ExceptionMessages::failedToExecute("observe", "MutationObserver", "The options object may only set 'attributeFilter' when 'attributes' is also true."));
+            exceptionState.throwDOMException(TypeError, "The options object may only set 'attributeFilter' when 'attributes' is true or not present.");
             return;
         }
     }
     if (!((options & CharacterData) || !(options & CharacterDataOldValue))) {
-        es.throwDOMException(SyntaxError, ExceptionMessages::failedToExecute("observe", "MutationObserver", "The options object may only set 'characterDataOldValue' to true when 'characterData' is also true."));
+        exceptionState.throwDOMException(TypeError, "The options object may only set 'characterDataOldValue' to true when 'characterData' is true or not present.");
+        return;
+    }
+
+    if (!(options & (Attributes | CharacterData | ChildList))) {
+        exceptionState.throwDOMException(TypeError, "The options object must set at least one of 'attributes', 'characterData', or 'childList' to true.");
         return;
     }
 
@@ -129,12 +143,14 @@ Vector<RefPtr<MutationRecord> > MutationObserver::takeRecords()
 {
     Vector<RefPtr<MutationRecord> > records;
     records.swap(m_records);
+    InspectorInstrumentation::didClearAllMutationRecords(m_callback->executionContext(), this);
     return records;
 }
 
 void MutationObserver::disconnect()
 {
     m_records.clear();
+    InspectorInstrumentation::didClearAllMutationRecords(m_callback->executionContext(), this);
     HashSet<MutationObserverRegistration*> registrations(m_registrations);
     for (HashSet<MutationObserverRegistration*>::iterator iter = registrations.begin(); iter != registrations.end(); ++iter)
         (*iter)->unregister();
@@ -171,6 +187,7 @@ void MutationObserver::enqueueMutationRecord(PassRefPtr<MutationRecord> mutation
     ASSERT(isMainThread());
     m_records.append(mutation);
     activeMutationObservers().add(this);
+    InspectorInstrumentation::didEnqueueMutationRecord(m_callback->executionContext(), this);
 }
 
 void MutationObserver::setHasTransientRegistration()
@@ -212,7 +229,9 @@ void MutationObserver::deliver()
     Vector<RefPtr<MutationRecord> > records;
     records.swap(m_records);
 
+    InspectorInstrumentation::willDeliverMutationRecords(m_callback->executionContext(), this);
     m_callback->call(records, this);
+    InspectorInstrumentation::didDeliverMutationRecords(m_callback->executionContext());
 }
 
 void MutationObserver::deliverAllMutations()

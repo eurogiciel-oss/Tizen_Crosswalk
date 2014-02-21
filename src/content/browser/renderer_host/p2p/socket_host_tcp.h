@@ -13,7 +13,7 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/message_loop/message_loop.h"
 #include "content/browser/renderer_host/p2p/socket_host.h"
-#include "content/common/p2p_sockets.h"
+#include "content/public/common/p2p_socket_type.h"
 #include "net/base/completion_callback.h"
 #include "net/base/ip_endpoint.h"
 
@@ -46,6 +46,7 @@ class CONTENT_EXPORT P2PSocketHostTcpBase : public P2PSocketHost {
                     uint64 packet_id) OVERRIDE;
   virtual P2PSocketHost* AcceptIncomingTcpConnection(
       const net::IPEndPoint& remote_address, int id) OVERRIDE;
+  virtual bool SetOption(P2PSocketOption option, int value) OVERRIDE;
 
  protected:
   // Derived classes will provide the implementation.

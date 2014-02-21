@@ -7,24 +7,12 @@ var MIN_VERSION_TARGET_ID = 26;
 var MIN_VERSION_NEW_TAB = 29;
 var MIN_VERSION_TAB_ACTIVATE = 30;
 
-function inspect(data) {
-  chrome.send('inspect', [data]);
+function sendCommand(command, args) {
+  chrome.send(command, Array.prototype.slice.call(arguments, 1));
 }
 
-function activate(data) {
-  chrome.send('activate', [data]);
-}
-
-function close(data) {
-  chrome.send('close', [data]);
-}
-
-function reload(data) {
-  chrome.send('reload', [data]);
-}
-
-function open(browserId, url) {
-  chrome.send('open', [browserId, url]);
+function sendTargetCommand(command, target) {
+  sendCommand(command, target.source, target.id);
 }
 
 function removeChildren(element_id) {
@@ -46,27 +34,52 @@ function onload() {
     tabHeader.addEventListener('click', selectTab.bind(null, tabContent.id));
     $('navigation').appendChild(tabHeader);
   }
-  var selectedTabName = window.location.hash.slice(1) || 'devices';
-  selectTab(selectedTabName);
+  onHashChange();
   initSettings();
-  chrome.send('init-ui');
+  sendCommand('init-ui');
 }
 
+function onHashChange() {
+  var hash = window.location.hash.slice(1).toLowerCase();
+  if (!selectTab(hash))
+    selectTab('devices');
+}
+
+/**
+ * @param {string} id Tab id.
+ * @return {boolean} True if successful.
+ */
 function selectTab(id) {
   var tabContents = document.querySelectorAll('#content > div');
   var tabHeaders = $('navigation').querySelectorAll('.tab-header');
+  var found = false;
   for (var i = 0; i != tabContents.length; i++) {
     var tabContent = tabContents[i];
     var tabHeader = tabHeaders[i];
     if (tabContent.id == id) {
       tabContent.classList.add('selected');
       tabHeader.classList.add('selected');
+      found = true;
     } else {
       tabContent.classList.remove('selected');
       tabHeader.classList.remove('selected');
     }
   }
+  if (!found)
+    return false;
   window.location.hash = id;
+  return true;
+}
+
+function populateTargets(source, data) {
+  if (source == 'renderers')
+    populateWebContentsTargets(data);
+  else if (source == 'workers')
+    populateWorkerTargets(data);
+  else if (source == 'adb')
+    populateRemoteTargets(data);
+  else
+    console.error('Unknown source type: ' + source);
 }
 
 function populateWebContentsTargets(data) {
@@ -132,18 +145,20 @@ function populateRemoteTargets(devices) {
       section.remove();
   }
 
-  var newDeviceIds = devices.map(function(d) { return d.adbGlobalId });
+  var newDeviceIds = devices.map(function(d) { return d.id });
   Array.prototype.forEach.call(
       deviceList.querySelectorAll('.device'),
       removeObsolete.bind(null, newDeviceIds));
 
+  $('devices-help').hidden = !!devices.length;
+
   for (var d = 0; d < devices.length; d++) {
     var device = devices[d];
 
-    var deviceSection = $(device.adbGlobalId);
+    var deviceSection = $(device.id);
     if (!deviceSection) {
       deviceSection = document.createElement('div');
-      deviceSection.id = device.adbGlobalId;
+      deviceSection.id = device.id;
       deviceSection.className = 'device';
       deviceList.appendChild(deviceSection);
 
@@ -155,12 +170,10 @@ function populateRemoteTargets(devices) {
       deviceName.className = 'device-name';
       deviceHeader.appendChild(deviceName);
 
-      if (device.adbSerial) {
-        var deviceSerial = document.createElement('div');
-        deviceSerial.className = 'device-serial';
-        deviceSerial.textContent = '#' + device.adbSerial.toUpperCase();
-        deviceHeader.appendChild(deviceSerial);
-      }
+      var deviceSerial = document.createElement('div');
+      deviceSerial.className = 'device-serial';
+      deviceSerial.textContent = '#' + device.adbSerial.toUpperCase();
+      deviceHeader.appendChild(deviceSerial);
 
       var devicePorts = document.createElement('div');
       devicePorts.className = 'device-ports';
@@ -209,7 +222,7 @@ function populateRemoteTargets(devices) {
 
     var browserList = deviceSection.querySelector('.browsers');
     var newBrowserIds =
-        device.browsers.map(function(b) { return b.adbGlobalId });
+        device.browsers.map(function(b) { return b.id });
     Array.prototype.forEach.call(
         browserList.querySelectorAll('.browser'),
         removeObsolete.bind(null, newBrowserIds));
@@ -217,23 +230,15 @@ function populateRemoteTargets(devices) {
     for (var b = 0; b < device.browsers.length; b++) {
       var browser = device.browsers[b];
 
-      var isChrome = browser.adbBrowserProduct &&
-          browser.adbBrowserProduct.match(/^Chrome/);
-
-      var majorChromeVersion = 0;
-      if (isChrome && browser.adbBrowserVersion) {
-        var match = browser.adbBrowserVersion.match(/^(\d+)/);
-        if (match)
-          majorChromeVersion = parseInt(match[1]);
-      }
+      var majorChromeVersion = browser.adbBrowserChromeVersion;
 
       var pageList;
-      var browserSection = $(browser.adbGlobalId);
+      var browserSection = $(browser.id);
       if (browserSection) {
         pageList = browserSection.querySelector('.pages');
       } else {
         browserSection = document.createElement('div');
-        browserSection.id = browser.adbGlobalId;
+        browserSection.id = browser.id;
         browserSection.className = 'browser';
         insertChildSortedById(browserList, browserSection);
 
@@ -243,10 +248,7 @@ function populateRemoteTargets(devices) {
         var browserName = document.createElement('div');
         browserName.className = 'browser-name';
         browserHeader.appendChild(browserName);
-        if (browser.adbBrowserPackage && !isChrome)
-          browserName.textContent = browser.adbBrowserPackage;
-        else
-          browserName.textContent = browser.adbBrowserProduct;
+        browserName.textContent = browser.adbBrowserName;
         if (browser.adbBrowserVersion)
           browserName.textContent += ' (' + browser.adbBrowserVersion + ')';
         browserSection.appendChild(browserHeader);
@@ -260,10 +262,11 @@ function populateRemoteTargets(devices) {
           newPageUrl.placeholder = 'Open tab with url';
           newPage.appendChild(newPageUrl);
 
-          var openHandler = function(browserId, input) {
-            open(browserId, input.value || 'about:blank');
+          var openHandler = function(sourceId, browserId, input) {
+            sendCommand(
+                'open', sourceId, browserId, input.value || 'about:blank');
             input.value = '';
-          }.bind(null, browser.adbGlobalId, newPageUrl);
+          }.bind(null, browser.source, browser.id, newPageUrl);
           newPageUrl.addEventListener('keyup', function(handler, event) {
             if (event.keyIdentifier == 'Enter' && event.target.value)
               handler();
@@ -291,21 +294,23 @@ function populateRemoteTargets(devices) {
         // Attached targets have no unique id until Chrome 26. For such targets
         // it is impossible to activate existing DevTools window.
         page.hasNoUniqueId = page.attached &&
-            majorChromeVersion < MIN_VERSION_TARGET_ID;
+            (majorChromeVersion && majorChromeVersion < MIN_VERSION_TARGET_ID);
         var row = addTargetToList(page, pageList, ['name', 'url']);
         if (page['description'])
           addWebViewDetails(row, page);
         else
           addFavicon(row, page);
-        if (isChrome) {
-          if (majorChromeVersion >= MIN_VERSION_TAB_ACTIVATE) {
-            addActionLink(row, 'focus tab', activate.bind(null, page), false);
-          }
-          addActionLink(row, 'reload', reload.bind(null, page), page.attached);
-          if (majorChromeVersion >= MIN_VERSION_TAB_CLOSE) {
-            addActionLink(
-                row, 'close', close.bind(null, page), page.attached);
-          }
+        if (majorChromeVersion >= MIN_VERSION_TAB_ACTIVATE) {
+          addActionLink(row, 'focus tab',
+              sendTargetCommand.bind(null, 'activate', page), false);
+        }
+        if (majorChromeVersion) {
+          addActionLink(row, 'reload',
+              sendTargetCommand.bind(null, 'reload', page), page.attached);
+        }
+        if (majorChromeVersion >= MIN_VERSION_TAB_CLOSE) {
+          addActionLink(row, 'close',
+              sendTargetCommand.bind(null, 'close', page), page.attached);
         }
       }
     }
@@ -315,29 +320,37 @@ function populateRemoteTargets(devices) {
 function addToPagesList(data) {
   var row = addTargetToList(data, $('pages-list'), ['name', 'url']);
   addFavicon(row, data);
+  if (data.guests)
+    addGuestViews(row, data.guests);
 }
 
 function addToExtensionsList(data) {
   var row = addTargetToList(data, $('extensions-list'), ['name', 'url']);
   addFavicon(row, data);
+  if (data.guests)
+    addGuestViews(row, data.guests);
 }
 
 function addToAppsList(data) {
   var row = addTargetToList(data, $('apps-list'), ['name', 'url']);
   addFavicon(row, data);
-  if (data.guests) {
-    Array.prototype.forEach.call(data.guests, function(guest) {
-      var guestRow = addTargetToList(guest, row, ['name', 'url']);
-      guestRow.classList.add('guest');
-      addFavicon(guestRow, guest);
-    });
-  }
+  if (data.guests)
+    addGuestViews(row, data.guests);
+}
+
+function addGuestViews(row, guests) {
+  Array.prototype.forEach.call(guests, function(guest) {
+    var guestRow = addTargetToList(guest, row, ['name', 'url']);
+    guestRow.classList.add('guest');
+    addFavicon(guestRow, guest);
+  });
 }
 
 function addToWorkersList(data) {
   var row =
       addTargetToList(data, $('workers-list'), ['name', 'description', 'url']);
-  addActionLink(row, 'terminate', close.bind(null, data), data.attached);
+  addActionLink(row, 'terminate',
+      sendTargetCommand.bind(null, 'close', data), data.attached);
 }
 
 function addToOthersList(data) {
@@ -482,7 +495,7 @@ function addTargetToList(data, list, properties) {
   actionBox.className = 'actions';
   subrowBox.appendChild(actionBox);
 
-  addActionLink(row, 'inspect', inspect.bind(null, data),
+  addActionLink(row, 'inspect', sendTargetCommand.bind(null, 'inspect', data),
       data.hasNoUniqueId || data.adbAttachedForeign);
 
   list.appendChild(row);
@@ -490,13 +503,13 @@ function addTargetToList(data, list, properties) {
 }
 
 function addActionLink(row, text, handler, opt_disabled) {
-  var link = document.createElement('a');
+  var link = document.createElement('span');
+  link.classList.add('action');
   if (opt_disabled)
     link.classList.add('disabled');
   else
     link.classList.remove('disabled');
 
-  link.setAttribute('href', '#');
   link.textContent = text;
   link.addEventListener('click', handler, true);
   row.querySelector('.actions').appendChild(link);
@@ -517,11 +530,11 @@ function initSettings() {
 }
 
 function enableDiscoverUsbDevices(event) {
-  chrome.send('set-discover-usb-devices-enabled', [event.target.checked]);
+  sendCommand('set-discover-usb-devices-enabled', event.target.checked);
 }
 
 function enablePortForwarding(event) {
-  chrome.send('set-port-forwarding-enabled', [event.target.checked]);
+  sendCommand('set-port-forwarding-enabled', event.target.checked);
 }
 
 function handleKey(event) {
@@ -632,7 +645,7 @@ function commitPortForwardingConfig(closeConfig) {
     if (port && location)
       config[port] = location;
   }
-  chrome.send('set-port-forwarding-config', [config]);
+  sendCommand('set-port-forwarding-config', config);
 }
 
 function updateDiscoverUsbDevicesEnabled(enabled) {
@@ -668,8 +681,8 @@ function createConfigLine(port, location) {
         line.classList.contains('fresh') &&
         !line.classList.contains('empty')) {
       // Tabbing forward on the fresh line, try create a new empty one.
-      commitFreshLineIfValid(true);
-      e.preventDefault();
+      if (commitFreshLineIfValid(true))
+        e.preventDefault();
     }
   });
 
@@ -695,7 +708,7 @@ function validatePort(input) {
   if (!match)
     return false;
   var port = parseInt(match[1]);
-  if (port < 5000 || 10000 < port)
+  if (port < 1024 || 65535 < port)
     return false;
 
   var inputs = document.querySelectorAll('input.port:not(.invalid)');
@@ -713,7 +726,7 @@ function validateLocation(input) {
   if (!match)
     return false;
   var port = parseInt(match[2]);
-  return port <= 10000;
+  return port <= 65535;
 }
 
 function createEmptyConfigLine() {
@@ -784,12 +797,15 @@ function unselectLine() {
 function commitFreshLineIfValid(opt_selectNew) {
   var line = document.querySelector('.port-forwarding-pair.fresh');
   if (line.querySelector('.invalid'))
-    return;
+    return false;
   line.classList.remove('fresh');
   var freshLine = createEmptyConfigLine();
   line.parentNode.appendChild(freshLine);
   if (opt_selectNew)
     freshLine.querySelector('.port').focus();
+  return true;
 }
 
 document.addEventListener('DOMContentLoaded', onload);
+
+window.addEventListener('hashchange', onHashChange);

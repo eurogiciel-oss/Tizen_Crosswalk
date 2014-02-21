@@ -12,7 +12,7 @@
 #import "chrome/browser/ui/cocoa/location_bar/button_decoration.h"
 #import "chrome/browser/ui/cocoa/location_bar/location_bar_decoration.h"
 #import "chrome/browser/ui/cocoa/nsview_additions.h"
-#import "chrome/common/extensions/feature_switch.h"
+#import "extensions/common/feature_switch.h"
 #include "grit/theme_resources.h"
 #import "third_party/mozilla/NSPasteboard+Utils.h"
 #import "ui/base/cocoa/appkit_utils.h"
@@ -26,58 +26,40 @@ namespace {
 // Matches the clipping radius of |GradientButtonCell|.
 const CGFloat kCornerRadius = 3.0;
 
-// How far to inset the left-hand decorations from the field's bounds.
+// How far to inset the left- and right-hand decorations from the field's
+// bounds.
 const CGFloat kLeftDecorationXOffset = 5.0;
+const CGFloat kRightDecorationXOffset = 5.0;
+
+// The amount of padding on either side reserved for drawing
+// decorations.  [Views has |kItemPadding| == 3.]
+const CGFloat kDecorationHorizontalPad = 3.0;
 
 NSString* const kButtonDecorationKey = @"ButtonDecoration";
 
 const ui::NinePartImageIds kPopupBorderImageIds = {
-  IDR_OMNIBOX_POPUP_BORDER_TOP_LEFT,
-  IDR_OMNIBOX_POPUP_BORDER_TOP,
-  IDR_OMNIBOX_POPUP_BORDER_TOP_RIGHT,
-  IDR_OMNIBOX_POPUP_BORDER_LEFT,
-  IDR_OMNIBOX_POPUP_BORDER_CENTER,
-  IDR_OMNIBOX_POPUP_BORDER_RIGHT,
-  IDR_OMNIBOX_POPUP_BORDER_BOTTOM_LEFT,
-  IDR_OMNIBOX_POPUP_BORDER_BOTTOM,
-  IDR_OMNIBOX_POPUP_BORDER_BOTTOM_RIGHT
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_TOP_LEFT,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_TOP,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_TOP_RIGHT,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_LEFT,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_CENTER,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_RIGHT,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_BOTTOM_LEFT,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_BOTTOM,
+  IDR_OMNIBOX_POPUP_BORDER_AND_SHADOW_BOTTOM_RIGHT
 };
 
 const ui::NinePartImageIds kNormalBorderImageIds = {
-  IDR_OMNIBOX_BORDER_TOP_LEFT,
-  IDR_OMNIBOX_BORDER_TOP,
-  IDR_OMNIBOX_BORDER_TOP_RIGHT,
-  IDR_OMNIBOX_BORDER_LEFT,
-  IDR_OMNIBOX_BORDER_CENTER,
-  IDR_OMNIBOX_BORDER_RIGHT,
-  IDR_OMNIBOX_BORDER_BOTTOM_LEFT,
-  IDR_OMNIBOX_BORDER_BOTTOM,
-  IDR_OMNIBOX_BORDER_BOTTOM_RIGHT
+  IDR_OMNIBOX_BORDER_AND_SHADOW_TOP_LEFT,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_TOP,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_TOP_RIGHT,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_LEFT,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_CENTER,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_RIGHT,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_BOTTOM_LEFT,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_BOTTOM,
+  IDR_OMNIBOX_BORDER_AND_SHADOW_BOTTOM_RIGHT
 };
-
-// How far to inset the right-hand decorations from the field's bounds.
-// TODO(shess): Why is this different from |kLeftDecorationXOffset|?
-// |kDecorationOuterXOffset|?
-CGFloat RightDecorationXOffset() {
-  const CGFloat kRightDecorationXOffset = 5.0;
-  const CGFloat kScriptBadgeRightDecorationXOffset = 9.0;
-
-  if (FeatureSwitch::script_badges()->IsEnabled()) {
-    return kScriptBadgeRightDecorationXOffset;
-  } else {
-    return kRightDecorationXOffset;
-  }
-}
-
-// The amount of padding on either side reserved for drawing
-// decorations.  [Views has |kItemPadding| == 3.]
-CGFloat DecorationHorizontalPad() {
-  const CGFloat kDecorationHorizontalPad = 3.0;
-  const CGFloat kScriptBadgeDecorationHorizontalPad = 9.0;
-
-  return FeatureSwitch::script_badges()->IsEnabled() ?
-      kScriptBadgeDecorationHorizontalPad : kDecorationHorizontalPad;
-}
 
 // How long to wait for mouse-up on the location icon before assuming
 // that the user wants to drag.
@@ -94,7 +76,7 @@ const NSTimeInterval kLocationIconDragTimeout = 0.25;
 // from the edge of |cell_frame| to use when the first visible decoration
 // is a regular decoration. |action_padding| is the padding to use when the
 // first decoration is a button decoration, ie. the action box button.
-// (|DecorationHorizontalPad()| is used between decorations).
+// (|kDecorationHorizontalPad| is used between decorations).
 void CalculatePositionsHelper(
     NSRect frame,
     const std::vector<LocationBarDecoration*>& all_decorations,
@@ -113,7 +95,7 @@ void CalculatePositionsHelper(
 
   for (size_t i = 0; i < all_decorations.size(); ++i) {
     if (all_decorations[i]->IsVisible()) {
-      CGFloat padding = DecorationHorizontalPad();
+      CGFloat padding = kDecorationHorizontalPad;
       if (is_first_visible_decoration) {
         padding = all_decorations[i]->AsButtonDecoration() ?
             action_padding : regular_padding;
@@ -144,7 +126,7 @@ void CalculatePositionsHelper(
         DCHECK_EQ(decorations->size(), decoration_frames->size());
 
         // Adjust padding for between decorations.
-        padding = DecorationHorizontalPad();
+        padding = kDecorationHorizontalPad;
       }
     }
   }
@@ -185,7 +167,7 @@ size_t CalculatePositionsInFrame(
 
   // Layout |right_decorations| against the RHS.
   CalculatePositionsHelper(frame, right_decorations, NSMaxXEdge,
-                           RightDecorationXOffset(), edge_width, decorations,
+                           kRightDecorationXOffset, edge_width, decorations,
                            decoration_frames, &frame);
   DCHECK_EQ(decorations->size(), decoration_frames->size());
 
@@ -196,14 +178,6 @@ size_t CalculatePositionsInFrame(
                decoration_frames->end());
 
   *remaining_frame = frame;
-  if (FeatureSwitch::script_badges()->IsEnabled()) {
-    // Keep the padding distance between the right-most decoration and the edit
-    // box, so that any decoration background isn't overwritten by the edit
-    // box's background.
-    NSRect dummy;
-    NSDivideRect(frame, &dummy, remaining_frame,
-                 DecorationHorizontalPad(), NSMaxXEdge);
-  }
   return left_count;
 }
 
@@ -331,7 +305,7 @@ size_t CalculatePositionsInFrame(
     if (!index) {
       minX = NSMinX(cellFrame);
     } else {
-      minX = NSMinX(decorationFrames[index]) - DecorationHorizontalPad();
+      minX = NSMinX(decorationFrames[index]) - kDecorationHorizontalPad;
     }
   }
 
@@ -345,7 +319,7 @@ size_t CalculatePositionsInFrame(
     if (index == decorations.size() - 1) {
       maxX = NSMaxX(cellFrame);
     } else {
-      maxX = NSMaxX(decorationFrames[index]) + DecorationHorizontalPad();
+      maxX = NSMaxX(decorationFrames[index]) + kDecorationHorizontalPad;
     }
   }
 
@@ -368,6 +342,9 @@ size_t CalculatePositionsInFrame(
                                      yRadius:kCornerRadius] fill];
   }
 
+  // Interior contents.
+  [self drawInteriorWithFrame:frame inView:controlView];
+
   // Border.
   ui::DrawNinePartImage(frame,
                         isPopupMode_ ? kPopupBorderImageIds
@@ -375,9 +352,6 @@ size_t CalculatePositionsInFrame(
                         NSCompositeSourceOver,
                         1.0,
                         true);
-
-  // Interior contents.
-  [self drawInteriorWithFrame:frame inView:controlView];
 
   // Focus ring.
   if ([self showsFirstResponder]) {
@@ -405,7 +379,7 @@ size_t CalculatePositionsInFrame(
   for (size_t i = 0; i < decorations.size(); ++i) {
     if (decorations[i]) {
       NSRect background_frame = NSInsetRect(
-          decorationFrames[i], -(DecorationHorizontalPad() + 1) / 2, 2);
+          decorationFrames[i], -(kDecorationHorizontalPad + 1) / 2, 2);
       decorations[i]->DrawWithBackgroundInFrame(
           background_frame, decorationFrames[i], controlView);
     }
@@ -513,13 +487,33 @@ size_t CalculatePositionsInFrame(
 
   bool handled;
   if (decoration->AsButtonDecoration()) {
-    handled = decoration->AsButtonDecoration()->OnMousePressedWithView(
-        decorationRect, controlView);
+    ButtonDecoration* button = decoration->AsButtonDecoration();
 
-    // Update tracking areas and make sure the button's state is consistent with
-    // the mouse's location (e.g. "normal" if the mouse is no longer over the
-    // decoration, "hover" otherwise).
-    [self setUpTrackingAreasInRect:cellFrame ofView:controlView];
+    button->SetButtonState(ButtonDecoration::kButtonStatePressed);
+    [controlView setNeedsDisplay:YES];
+
+    // Track the mouse until the user releases the button.
+    [self trackMouse:theEvent
+              inRect:cellFrame
+              ofView:controlView
+        untilMouseUp:YES];
+
+    // Set the proper state (hover or normal) once the mouse has been released,
+    // and call |OnMousePressed| if the button was released while the mouse was
+    // within the bounds of the button.
+    const NSPoint mouseLocation =
+        [[controlView window] mouseLocationOutsideOfEventStream];
+    const NSPoint point = [controlView convertPoint:mouseLocation fromView:nil];
+    if (NSMouseInRect(point, cellFrame, [controlView isFlipped])) {
+      button->SetButtonState(ButtonDecoration::kButtonStateHover);
+      [controlView setNeedsDisplay:YES];
+      handled = decoration->AsButtonDecoration()->OnMousePressed(
+          [self frameForDecoration:decoration inFrame:cellFrame]);
+    } else {
+      button->SetButtonState(ButtonDecoration::kButtonStateNormal);
+      [controlView setNeedsDisplay:YES];
+      handled = true;
+    }
   } else {
     handled = decoration->OnMousePressed(decorationRect);
   }

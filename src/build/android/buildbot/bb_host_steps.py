@@ -15,7 +15,6 @@ from pylib import constants
 
 SLAVE_SCRIPTS_DIR = os.path.join(bb_utils.BB_BUILD_DIR, 'scripts', 'slave')
 VALID_HOST_TESTS = set(['check_webview_licenses', 'findbugs'])
-EXPERIMENTAL_TARGETS = ['android_experimental']
 
 DIR_BUILD_ROOT = os.path.dirname(constants.DIR_SOURCE_ROOT)
 
@@ -63,12 +62,6 @@ def Compile(options):
     RunCmd(cmd + ['--build-args=%s' % build_target],
         halt_on_failure=True,
         cwd=DIR_BUILD_ROOT)
-  if options.experimental:
-    for compile_target in EXPERIMENTAL_TARGETS:
-      bb_annotations.PrintNamedStep('Experimental Compile %s' % compile_target)
-      RunCmd(cmd + ['--build-args=%s' % compile_target],
-             flunk_on_failure=False,
-             cwd=DIR_BUILD_ROOT)
 
 
 def ZipBuild(options):
@@ -76,18 +69,15 @@ def ZipBuild(options):
   RunCmd([
       os.path.join(SLAVE_SCRIPTS_DIR, 'zip_build.py'),
       '--src-dir', constants.DIR_SOURCE_ROOT,
-      '--build-dir', SrcPath('out'),
       '--exclude-files', 'lib.target,gen,android_webview,jingle_unittests']
       + bb_utils.EncodeProperties(options), cwd=DIR_BUILD_ROOT)
 
 
 def ExtractBuild(options):
   bb_annotations.PrintNamedStep('extract_build')
-  RunCmd(
-      [os.path.join(SLAVE_SCRIPTS_DIR, 'extract_build.py'),
-       '--build-dir', SrcPath('build'), '--build-output-dir',
-       SrcPath('out')] + bb_utils.EncodeProperties(options),
-       warning_code=1, cwd=DIR_BUILD_ROOT)
+  RunCmd([os.path.join(SLAVE_SCRIPTS_DIR, 'extract_build.py')]
+         + bb_utils.EncodeProperties(options),
+         warning_code=1, cwd=DIR_BUILD_ROOT)
 
 
 def FindBugs(options):
@@ -108,19 +98,12 @@ def BisectPerfRegression(_):
           '-w', os.path.join(constants.DIR_SOURCE_ROOT, os.pardir)])
 
 
-def DownloadWebRTCResources(_):
-  bb_annotations.PrintNamedStep('download_resources')
-  RunCmd([SrcPath('third_party', 'webrtc', 'tools', 'update_resources.py'),
-          '-p', '../../../'], halt_on_failure=True)
-
-
 def GetHostStepCmds():
   return [
       ('compile', Compile),
       ('extract_build', ExtractBuild),
       ('check_webview_licenses', CheckWebViewLicenses),
       ('bisect_perf_regression', BisectPerfRegression),
-      ('download_webrtc_resources', DownloadWebRTCResources),
       ('findbugs', FindBugs),
       ('zip_build', ZipBuild)
   ]

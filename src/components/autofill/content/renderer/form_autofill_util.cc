@@ -12,6 +12,7 @@
 #include "base/metrics/field_trial.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "components/autofill/core/common/autofill_data_validation.h"
 #include "components/autofill/core/common/autofill_switches.h"
 #include "components/autofill/core/common/form_data.h"
 #include "components/autofill/core/common/form_field_data.h"
@@ -32,27 +33,24 @@
 #include "third_party/WebKit/public/web/WebSelectElement.h"
 #include "third_party/WebKit/public/web/WebTextAreaElement.h"
 
-using WebKit::WebDocument;
-using WebKit::WebElement;
-using WebKit::WebExceptionCode;
-using WebKit::WebFormControlElement;
-using WebKit::WebFormElement;
-using WebKit::WebFrame;
-using WebKit::WebInputElement;
-using WebKit::WebLabelElement;
-using WebKit::WebNode;
-using WebKit::WebNodeList;
-using WebKit::WebOptionElement;
-using WebKit::WebSelectElement;
-using WebKit::WebTextAreaElement;
-using WebKit::WebString;
-using WebKit::WebVector;
+using blink::WebDocument;
+using blink::WebElement;
+using blink::WebExceptionCode;
+using blink::WebFormControlElement;
+using blink::WebFormElement;
+using blink::WebFrame;
+using blink::WebInputElement;
+using blink::WebLabelElement;
+using blink::WebNode;
+using blink::WebNodeList;
+using blink::WebOptionElement;
+using blink::WebSelectElement;
+using blink::WebTextAreaElement;
+using blink::WebString;
+using blink::WebVector;
 
 namespace autofill {
 namespace {
-
-// The maximum length allowed for form data.
-const size_t kMaxDataLength = 1024;
 
 // A bit field mask for FillForm functions to not fill some fields.
 enum FieldFilterMask {
@@ -80,7 +78,7 @@ bool IsNoScriptElement(const WebElement& element) {
   return element.hasTagName(kNoScript);
 }
 
-bool HasTagName(const WebNode& node, const WebKit::WebString& tag) {
+bool HasTagName(const WebNode& node, const blink::WebString& tag) {
   return node.isElementNode() && node.toConst<WebElement>().hasHTMLTagName(tag);
 }
 
@@ -125,7 +123,7 @@ const base::string16 CombineAndCollapseWhitespace(
 
   if (prefix_trailing_whitespace || suffix_leading_whitespace ||
       force_whitespace) {
-    return prefix_trimmed + ASCIIToUTF16(" ") + suffix_trimmed;
+    return prefix_trimmed + base::ASCIIToUTF16(" ") + suffix_trimmed;
   } else {
     return prefix_trimmed + suffix_trimmed;
   }
@@ -462,7 +460,7 @@ void GetOptionStringsFromElement(const WebSelectElement& select_element,
 // The callback type used by |ForEachMatchingFormField()|.
 typedef void (*Callback)(const FormFieldData&,
                          bool, /* is_initiating_element */
-                         WebKit::WebFormControlElement*);
+                         blink::WebFormControlElement*);
 
 // For each autofillable field in |data| that matches a field in the |form|,
 // the |callback| is invoked with the corresponding |form| field data.
@@ -526,7 +524,7 @@ void ForEachMatchingFormField(const WebFormElement& form_element,
 // Also sets the "autofilled" attribute, causing the background to be yellow.
 void FillFormField(const FormFieldData& data,
                    bool is_initiating_node,
-                   WebKit::WebFormControlElement* field) {
+                   blink::WebFormControlElement* field) {
   // Nothing to fill.
   if (data.value.empty())
     return;
@@ -567,26 +565,31 @@ void FillFormField(const FormFieldData& data,
 // Also sets the "autofilled" attribute, causing the background to be yellow.
 void PreviewFormField(const FormFieldData& data,
                       bool is_initiating_node,
-                      WebKit::WebFormControlElement* field) {
+                      blink::WebFormControlElement* field) {
   // Nothing to preview.
   if (data.value.empty())
     return;
 
-  // Only preview input fields. Excludes checkboxes and radio buttons, as there
-  // is no provision for setSuggestedCheckedValue in WebInputElement.
+  // Preview input and textarea fields. For input fields, excludes checkboxes
+  // and radio buttons, as there is no provision for setSuggestedCheckedValue
+  // in WebInputElement.
   WebInputElement* input_element = toWebInputElement(field);
-  if (!IsTextInput(input_element))
-    return;
-
-  // If the maxlength attribute contains a negative value, maxLength()
-  // returns the default maxlength value.
-  input_element->setSuggestedValue(
+  if (IsTextInput(input_element)) {
+    // If the maxlength attribute contains a negative value, maxLength()
+    // returns the default maxlength value.
+    input_element->setSuggestedValue(
       data.value.substr(0, input_element->maxLength()));
-  input_element->setAutofilled(true);
-  if (is_initiating_node) {
-    // Select the part of the text that the user didn't type.
-    input_element->setSelectionRange(input_element->value().length(),
-                                     input_element->suggestedValue().length());
+    input_element->setAutofilled(true);
+    if (is_initiating_node) {
+      // Select the part of the text that the user didn't type.
+      input_element->setSelectionRange(
+          input_element->value().length(),
+          input_element->suggestedValue().length());
+    }
+  } else if (IsTextAreaElement(*field)) {
+    WebTextAreaElement textarea = field->to<WebTextAreaElement>();
+    textarea.setSuggestedValue(data.value);
+    field->setAutofilled(true);
   }
 }
 
@@ -606,7 +609,7 @@ std::string RetrievalMethodToString(
 
 // Recursively checks whether |node| or any of its children have a non-empty
 // bounding box. The recursion depth is bounded by |depth|.
-bool IsWebNodeVisibleImpl(const WebKit::WebNode& node, const int depth) {
+bool IsWebNodeVisibleImpl(const blink::WebNode& node, const int depth) {
   if (depth < 0)
     return false;
   if (node.hasNonEmptyBoundingBox())
@@ -614,11 +617,11 @@ bool IsWebNodeVisibleImpl(const WebKit::WebNode& node, const int depth) {
 
   // The childNodes method is not a const method. Therefore it cannot be called
   // on a const reference. Therefore we need a const cast.
-  const WebKit::WebNodeList& children =
-      const_cast<WebKit::WebNode&>(node).childNodes();
+  const blink::WebNodeList& children =
+      const_cast<blink::WebNode&>(node).childNodes();
   size_t length = children.length();
   for (size_t i = 0; i < length; ++i) {
-    const WebKit::WebNode& item = children.item(i);
+    const blink::WebNode& item = children.item(i);
     if (IsWebNodeVisibleImpl(item, depth - 1))
       return true;
   }
@@ -673,7 +676,7 @@ const base::string16 GetFormIdentifier(const WebFormElement& form) {
   return identifier;
 }
 
-bool IsWebNodeVisible(const WebKit::WebNode& node) {
+bool IsWebNodeVisible(const blink::WebNode& node) {
   // In the bug http://crbug.com/237216 the form's bounding box is empty
   // however the form has non empty children. Thus we need to look at the
   // form's children.
@@ -684,7 +687,7 @@ bool IsWebNodeVisible(const WebKit::WebNode& node) {
 bool ClickElement(const WebDocument& document,
                   const WebElementDescriptor& element_descriptor) {
   WebString web_descriptor = WebString::fromUTF8(element_descriptor.descriptor);
-  WebKit::WebElement element;
+  blink::WebElement element;
 
   switch (element_descriptor.retrieval_method) {
     case WebElementDescriptor::CSS_SELECTOR: {
@@ -753,9 +756,9 @@ void WebFormControlElementToFormField(const WebFormControlElement& element,
   // labels for all form control elements are scraped from the DOM and set in
   // WebFormElementToFormData.
   field->name = element.nameForAutofill();
-  field->form_control_type = UTF16ToUTF8(element.formControlType());
+  field->form_control_type = base::UTF16ToUTF8(element.formControlType());
   field->autocomplete_attribute =
-      UTF16ToUTF8(element.getAttribute(kAutocomplete));
+      base::UTF16ToUTF8(element.getAttribute(kAutocomplete));
   if (field->autocomplete_attribute.size() > kMaxDataLength) {
     // Discard overly long attribute values to avoid DOS-ing the browser
     // process.  However, send over a default string to indicate that the
@@ -827,8 +830,8 @@ void WebFormControlElementToFormField(const WebFormControlElement& element,
 }
 
 bool WebFormElementToFormData(
-    const WebKit::WebFormElement& form_element,
-    const WebKit::WebFormControlElement& form_control_element,
+    const blink::WebFormElement& form_element,
+    const blink::WebFormControlElement& form_control_element,
     RequirementsMask requirements,
     ExtractMask extract_mask,
     FormData* form,
@@ -929,7 +932,7 @@ bool WebFormElementToFormData(
       // Concatenate labels because some sites might have multiple label
       // candidates.
       if (!iter->second->label.empty() && !label_text.empty())
-        iter->second->label += ASCIIToUTF16(" ");
+        iter->second->label += base::ASCIIToUTF16(" ");
       iter->second->label += label_text;
     }
   }
@@ -1049,38 +1052,53 @@ bool ClearPreviewedFormWithElement(const WebInputElement& element,
   ExtractAutofillableElements(form_element, REQUIRE_AUTOCOMPLETE,
                               &control_elements);
   for (size_t i = 0; i < control_elements.size(); ++i) {
-    // Only text input elements can be previewed.
-    WebInputElement* input_element = toWebInputElement(&control_elements[i]);
-    if (!IsTextInput(input_element))
-      continue;
-
-    // If the input element is not auto-filled, we did not preview it, so there
-    // is nothing to reset.
-    if (!input_element->isAutofilled())
-      continue;
-
     // There might be unrelated elements in this form which have already been
     // auto-filled.  For example, the user might have already filled the address
     // part of a form and now be dealing with the credit card section.  We only
     // want to reset the auto-filled status for fields that were previewed.
-    if (input_element->suggestedValue().isEmpty())
+    WebFormControlElement control_element = control_elements[i];
+
+    // Only text input and textarea elements can be previewed.
+    WebInputElement* input_element = toWebInputElement(&control_element);
+    if (!IsTextInput(input_element) && !IsTextAreaElement(control_element))
+      continue;
+
+    // If the element is not auto-filled, we did not preview it,
+    // so there is nothing to reset.
+    if(!control_element.isAutofilled())
+      continue;
+
+    if ((IsTextInput(input_element) &&
+         input_element->suggestedValue().isEmpty()) ||
+        (IsTextAreaElement(control_element) &&
+         control_element.to<WebTextAreaElement>().suggestedValue().isEmpty()))
       continue;
 
     // Clear the suggested value. For the initiating node, also restore the
     // original value.
-    input_element->setSuggestedValue(WebString());
-    bool is_initiating_node = (element == *input_element);
-    if (is_initiating_node)
-      input_element->setAutofilled(was_autofilled);
-    else
-      input_element->setAutofilled(false);
+    if (IsTextInput(input_element)) {
+      input_element->setSuggestedValue(WebString());
+      bool is_initiating_node = (element == *input_element);
+      if (is_initiating_node)
+        input_element->setAutofilled(was_autofilled);
+      else
+        input_element->setAutofilled(false);
 
-    // Clearing the suggested value in the focused node (above) can cause
-    // selection to be lost. We force selection range to restore the text
-    // cursor.
-    if (is_initiating_node) {
-      int length = input_element->value().length();
-      input_element->setSelectionRange(length, length);
+      // Clearing the suggested value in the focused node (above) can cause
+      // selection to be lost. We force selection range to restore the text
+      // cursor.
+      if (is_initiating_node) {
+        int length = input_element->value().length();
+        input_element->setSelectionRange(length, length);
+      }
+    } else if (IsTextAreaElement(control_element)) {
+      WebTextAreaElement text_area = control_element.to<WebTextAreaElement>();
+      text_area.setSuggestedValue(WebString());
+      bool is_initiating_node = (element == text_area);
+      if (is_initiating_node)
+        control_element.setAutofilled(was_autofilled);
+      else
+        control_element.setAutofilled(false);
     }
   }
 
@@ -1107,14 +1125,14 @@ bool FormWithElementIsAutofilled(const WebInputElement& element) {
   return false;
 }
 
-bool IsWebpageEmpty(const WebKit::WebFrame* frame) {
-  WebKit::WebDocument document = frame->document();
+bool IsWebpageEmpty(const blink::WebFrame* frame) {
+  blink::WebDocument document = frame->document();
 
   return IsWebElementEmpty(document.head()) &&
          IsWebElementEmpty(document.body());
 }
 
-bool IsWebElementEmpty(const WebKit::WebElement& element) {
+bool IsWebElementEmpty(const blink::WebElement& element) {
   // This array contains all tags which can be present in an empty page.
   const char* const kAllowedValue[] = {
     "script",
@@ -1127,10 +1145,10 @@ bool IsWebElementEmpty(const WebKit::WebElement& element) {
     return true;
   // The childNodes method is not a const method. Therefore it cannot be called
   // on a const reference. Therefore we need a const cast.
-  const WebKit::WebNodeList& children =
-      const_cast<WebKit::WebElement&>(element).childNodes();
+  const blink::WebNodeList& children =
+      const_cast<blink::WebElement&>(element).childNodes();
   for (size_t i = 0; i < children.length(); ++i) {
-    const WebKit::WebNode& item = children.item(i);
+    const blink::WebNode& item = children.item(i);
 
     if (item.isTextNode() &&
         !ContainsOnlyWhitespaceASCII(item.nodeValue().utf8()))

@@ -32,10 +32,9 @@
 #include "core/html/HTMLFormElement.h"
 #include "core/html/HTMLInputElement.h"
 #include "core/html/HTMLLegendElement.h"
-#include "core/html/HTMLTextAreaElement.h"
 #include "core/html/ValidityState.h"
 #include "core/html/forms/ValidationMessage.h"
-#include "core/page/UseCounter.h"
+#include "core/frame/UseCounter.h"
 #include "core/rendering/RenderBox.h"
 #include "core/rendering/RenderTheme.h"
 #include "wtf/Vector.h"
@@ -59,10 +58,9 @@ HTMLFormControlElement::HTMLFormControlElement(const QualifiedName& tagName, Doc
     , m_isValid(true)
     , m_wasChangedSinceLastFormControlChangeEvent(false)
     , m_wasFocusedByMouse(false)
-    , m_hasAutofocused(false)
 {
-    setForm(form ? form : findFormAncestor());
     setHasCustomStyleCallbacks();
+    associateByParser(form);
 }
 
 HTMLFormControlElement::~HTMLFormControlElement()
@@ -78,7 +76,7 @@ String HTMLFormControlElement::formEnctype() const
     return FormSubmission::Attributes::parseEncodingType(formEnctypeAttr);
 }
 
-void HTMLFormControlElement::setFormEnctype(const String& value)
+void HTMLFormControlElement::setFormEnctype(const AtomicString& value)
 {
     setAttribute(formenctypeAttr, value);
 }
@@ -91,7 +89,7 @@ String HTMLFormControlElement::formMethod() const
     return FormSubmission::Attributes::methodString(FormSubmission::Attributes::parseMethodType(formMethodAttr));
 }
 
-void HTMLFormControlElement::setFormMethod(const String& value)
+void HTMLFormControlElement::setFormMethod(const AtomicString& value)
 {
     setAttribute(formmethodAttr, value);
 }
@@ -181,30 +179,14 @@ void HTMLFormControlElement::requiredAttributeChanged()
     setNeedsStyleRecalc();
 }
 
-static void focusPostAttach(Node* element)
+bool HTMLFormControlElement::supportsAutofocus() const
 {
-    toElement(element)->focus();
-    element->deref();
+    return false;
 }
 
 bool HTMLFormControlElement::isAutofocusable() const
 {
-    if (!fastHasAttribute(autofocusAttr))
-        return false;
-
-    // FIXME: Should this set of hasTagName checks be replaced by a
-    // virtual member function?
-    if (hasTagName(inputTag))
-        return !toHTMLInputElement(this)->isInputTypeHidden();
-    if (hasTagName(selectTag))
-        return true;
-    if (hasTagName(keygenTag))
-        return true;
-    if (hasTagName(buttonTag))
-        return true;
-    if (isHTMLTextAreaElement(this))
-        return true;
-    return false;
+    return fastHasAttribute(autofocusAttr) && supportsAutofocus();
 }
 
 void HTMLFormControlElement::setAutofilled(bool autofilled)
@@ -219,8 +201,6 @@ void HTMLFormControlElement::setAutofilled(bool autofilled)
 static bool shouldAutofocusOnAttach(const HTMLFormControlElement* element)
 {
     if (!element->isAutofocusable())
-        return false;
-    if (element->hasAutofocused())
         return false;
     if (element->document().isSandboxed(SandboxAutomaticFeatures)) {
         // FIXME: This message should be moved off the console once a solution to https://bugs.webkit.org/show_bug.cgi?id=103274 exists.
@@ -243,11 +223,10 @@ void HTMLFormControlElement::attach(const AttachContext& context)
     // on the renderer.
     renderer()->updateFromElement();
 
-    if (shouldAutofocusOnAttach(this)) {
-        setAutofocused();
-        ref();
-        PostAttachCallbacks::queueCallback(focusPostAttach, this);
-    }
+    // FIXME: Autofocus handling should be moved to insertedInto according to
+    // the standard.
+    if (shouldAutofocusOnAttach(this))
+        document().setAutofocusElement(this);
 }
 
 void HTMLFormControlElement::didMoveToNewDocument(Document& oldDocument)
@@ -285,9 +264,14 @@ void HTMLFormControlElement::setChangedSinceLastFormControlChangeEvent(bool chan
     m_wasChangedSinceLastFormControlChangeEvent = changed;
 }
 
+void HTMLFormControlElement::dispatchChangeEvent()
+{
+    dispatchScopedEvent(Event::createBubble(EventTypeNames::change));
+}
+
 void HTMLFormControlElement::dispatchFormControlChangeEvent()
 {
-    HTMLElement::dispatchChangeEvent();
+    dispatchChangeEvent();
     setChangedSinceLastFormControlChangeEvent(false);
 }
 
@@ -295,6 +279,11 @@ void HTMLFormControlElement::dispatchFormControlInputEvent()
 {
     setChangedSinceLastFormControlChangeEvent(true);
     HTMLElement::dispatchInputEvent();
+}
+
+HTMLFormElement* HTMLFormControlElement::formOwner() const
+{
+    return FormAssociatedElement::form();
 }
 
 bool HTMLFormControlElement::isDisabledFormControl() const
@@ -317,20 +306,10 @@ String HTMLFormControlElement::resultForDialogSubmit()
     return fastGetAttribute(valueAttr);
 }
 
-static void updateFromElementCallback(Node* node)
-{
-    ASSERT_ARG(node, node->isElementNode());
-    ASSERT_ARG(node, toElement(node)->isFormControlElement());
-    if (RenderObject* renderer = node->renderer())
-        renderer->updateFromElement();
-}
-
 void HTMLFormControlElement::didRecalcStyle(StyleRecalcChange)
 {
-    // updateFromElement() can cause the selection to change, and in turn
-    // trigger synchronous layout, so it must not be called during style recalc.
-    if (renderer())
-        PostAttachCallbacks::queueCallback(updateFromElementCallback, this);
+    if (RenderObject* renderer = this->renderer())
+        renderer->updateFromElement();
 }
 
 bool HTMLFormControlElement::supportsFocus() const
@@ -498,9 +477,9 @@ void HTMLFormControlElement::dispatchBlurEvent(Element* newFocusedElement)
     hideVisibleValidationMessage();
 }
 
-HTMLFormElement* HTMLFormControlElement::virtualForm() const
+bool HTMLFormControlElement::isSuccessfulSubmitButton() const
 {
-    return FormAssociatedElement::form();
+    return canBeSuccessfulSubmitButton() && !isDisabledFormControl();
 }
 
 bool HTMLFormControlElement::isDefaultButtonForForm() const
@@ -515,6 +494,17 @@ HTMLFormControlElement* HTMLFormControlElement::enclosingFormControlElement(Node
             return toHTMLFormControlElement(node);
     }
     return 0;
+}
+
+String HTMLFormControlElement::nameForAutofill() const
+{
+    String fullName = name();
+    String trimmedName = fullName.stripWhiteSpace();
+    if (!trimmedName.isEmpty())
+        return trimmedName;
+    fullName = getIdAttribute();
+    trimmedName = fullName.stripWhiteSpace();
+    return trimmedName;
 }
 
 } // namespace Webcore

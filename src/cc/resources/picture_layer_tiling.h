@@ -28,13 +28,13 @@ class CC_EXPORT PictureLayerTilingClient {
   // tiling) This might return null if the client cannot create such a tile.
   virtual scoped_refptr<Tile> CreateTile(
     PictureLayerTiling* tiling,
-    gfx::Rect content_rect) = 0;
+    const gfx::Rect& content_rect) = 0;
   virtual void UpdatePile(Tile* tile) = 0;
   virtual gfx::Size CalculateTileSize(
     gfx::Size content_bounds) const = 0;
   virtual const Region* GetInvalidation() = 0;
   virtual const PictureLayerTiling* GetTwinTiling(
-      const PictureLayerTiling* tiling) = 0;
+      const PictureLayerTiling* tiling) const = 0;
 
  protected:
   virtual ~PictureLayerTilingClient() {}
@@ -78,6 +78,8 @@ class CC_EXPORT PictureLayerTiling {
     return all_tiles;
   }
 
+  Tile* TileAt(int i, int j) const;
+
   // Iterate over all tiles to fill content_rect.  Even if tiles are invalid
   // (i.e. no valid resource) this tiling should still iterate over them.
   // The union of all geometry_rect calls for each element iterated over should
@@ -87,7 +89,7 @@ class CC_EXPORT PictureLayerTiling {
     CoverageIterator();
     CoverageIterator(const PictureLayerTiling* tiling,
         float dest_scale,
-        gfx::Rect rect);
+        const gfx::Rect& rect);
     ~CoverageIterator();
 
     // Visible rect (no borders), always in the space of content_rect,
@@ -107,6 +109,9 @@ class CC_EXPORT PictureLayerTiling {
     CoverageIterator& operator++();
     operator bool() const { return tile_j_ <= bottom_; }
 
+    int i() const { return tile_i_; }
+    int j() const { return tile_j_; }
+
    private:
     const PictureLayerTiling* tiling_;
     gfx::Rect dest_rect_;
@@ -124,15 +129,15 @@ class CC_EXPORT PictureLayerTiling {
     friend class PictureLayerTiling;
   };
 
-  Region OpaqueRegionInContentRect(gfx::Rect content_rect) const;
+  Region OpaqueRegionInContentRect(const gfx::Rect& content_rect) const;
 
   void Reset();
 
   void UpdateTilePriorities(
       WhichTree tree,
       gfx::Size device_viewport,
-      gfx::Rect viewport_in_layer_space,
-      gfx::Rect visible_layer_rect,
+      const gfx::Rect& viewport_in_layer_space,
+      const gfx::Rect& visible_layer_rect,
       gfx::Size last_layer_bounds,
       gfx::Size current_layer_bounds,
       float last_layer_contents_scale,
@@ -174,9 +179,9 @@ class CC_EXPORT PictureLayerTiling {
 
   static
   gfx::Rect ExpandRectEquallyToAreaBoundedBy(
-      gfx::Rect starting_rect,
+      const gfx::Rect& starting_rect,
       int64 target_area,
-      gfx::Rect bounding_rect,
+      const gfx::Rect& bounding_rect,
       RectExpansionCache* cache);
 
   bool has_ever_been_updated() const {
@@ -190,9 +195,8 @@ class CC_EXPORT PictureLayerTiling {
   PictureLayerTiling(float contents_scale,
                      gfx::Size layer_bounds,
                      PictureLayerTilingClient* client);
-  void SetLiveTilesRect(gfx::Rect live_tiles_rect);
+  void SetLiveTilesRect(const gfx::Rect& live_tiles_rect);
   void CreateTile(int i, int j, const PictureLayerTiling* twin_tiling);
-  Tile* TileAt(int, int) const;
 
   // Given properties.
   float contents_scale_;

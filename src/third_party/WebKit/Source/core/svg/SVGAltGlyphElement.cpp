@@ -27,6 +27,7 @@
 
 #include "SVGNames.h"
 #include "XLinkNames.h"
+#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
 #include "core/dom/ExceptionCode.h"
 #include "core/rendering/svg/RenderSVGTSpan.h"
@@ -42,22 +43,21 @@ BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGAltGlyphElement)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGTextPositioningElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGAltGlyphElement::SVGAltGlyphElement(const QualifiedName& tagName, Document& document)
-    : SVGTextPositioningElement(tagName, document)
+inline SVGAltGlyphElement::SVGAltGlyphElement(Document& document)
+    : SVGTextPositioningElement(SVGNames::altGlyphTag, document)
 {
-    ASSERT(hasTagName(SVGNames::altGlyphTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGAltGlyphElement();
 }
 
-PassRefPtr<SVGAltGlyphElement> SVGAltGlyphElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGAltGlyphElement> SVGAltGlyphElement::create(Document& document)
 {
-    return adoptRef(new SVGAltGlyphElement(tagName, document));
+    return adoptRef(new SVGAltGlyphElement(document));
 }
 
-void SVGAltGlyphElement::setGlyphRef(const AtomicString&, ExceptionState& es)
+void SVGAltGlyphElement::setGlyphRef(const AtomicString&, ExceptionState& exceptionState)
 {
-    es.throwUninformativeAndGenericDOMException(NoModificationAllowedError);
+    exceptionState.throwDOMException(NoModificationAllowedError, ExceptionMessages::readOnly());
 }
 
 const AtomicString& SVGAltGlyphElement::glyphRef() const
@@ -65,9 +65,9 @@ const AtomicString& SVGAltGlyphElement::glyphRef() const
     return fastGetAttribute(SVGNames::glyphRefAttr);
 }
 
-void SVGAltGlyphElement::setFormat(const AtomicString&, ExceptionState& es)
+void SVGAltGlyphElement::setFormat(const AtomicString&, ExceptionState& exceptionState)
 {
-    es.throwUninformativeAndGenericDOMException(NoModificationAllowedError);
+    exceptionState.throwDOMException(NoModificationAllowedError, ExceptionMessages::readOnly());
 }
 
 const AtomicString& SVGAltGlyphElement::format() const
@@ -75,21 +75,14 @@ const AtomicString& SVGAltGlyphElement::format() const
     return fastGetAttribute(SVGNames::formatAttr);
 }
 
-bool SVGAltGlyphElement::childShouldCreateRenderer(const Node& child) const
-{
-    if (child.isTextNode())
-        return true;
-    return false;
-}
-
 RenderObject* SVGAltGlyphElement::createRenderer(RenderStyle*)
 {
     return new RenderSVGTSpan(this);
 }
 
-bool SVGAltGlyphElement::hasValidGlyphElements(Vector<String>& glyphNames) const
+bool SVGAltGlyphElement::hasValidGlyphElements(Vector<AtomicString>& glyphNames) const
 {
-    String target;
+    AtomicString target;
     Element* element = targetElementFromIRIString(getAttribute(XLinkNames::hrefAttr), document(), &target);
     if (!element)
         return false;
@@ -100,7 +93,7 @@ bool SVGAltGlyphElement::hasValidGlyphElements(Vector<String>& glyphNames) const
     }
 
     if (element->hasTagName(SVGNames::altGlyphDefTag)
-        && static_cast<SVGAltGlyphDefElement*>(element)->hasValidGlyphElements(glyphNames))
+        && toSVGAltGlyphDefElement(element)->hasValidGlyphElements(glyphNames))
         return true;
 
     return false;

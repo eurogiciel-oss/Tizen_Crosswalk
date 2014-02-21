@@ -22,6 +22,7 @@
 #include "third_party/icu/source/i18n/unicode/datefmt.h"
 #include "third_party/icu/source/i18n/unicode/dtfmtsym.h"
 
+using base::ASCIIToUTF16;
 using base::StringPiece16;
 
 // For examples of Unix<->VMS path conversions, see the unit test file. On VMS
@@ -251,7 +252,7 @@ bool FtpUtil::LsDateListingToTime(const base::string16& month,
       return false;
 
     size_t colon_pos = rest.find(':');
-    if (colon_pos == string16::npos)
+    if (colon_pos == base::string16::npos)
       return false;
     if (colon_pos > 2)
       return false;

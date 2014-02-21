@@ -17,9 +17,9 @@
 #import "chrome/browser/ui/cocoa/tabs/tab_controller_target.h"
 #import "chrome/browser/ui/cocoa/tabs/tab_view.h"
 #import "chrome/browser/ui/cocoa/themed_window.h"
-#import "chrome/common/extensions/extension.h"
+#import "extensions/common/extension.h"
 #include "grit/generated_resources.h"
-#import "third_party/GTM/AppKit/GTMFadeTruncatingTextFieldCell.h"
+#import "third_party/google_toolbox_for_mac/src/AppKit/GTMFadeTruncatingTextFieldCell.h"
 #import "ui/base/cocoa/menu_controller.h"
 #include "ui/base/l10n/l10n_util_mac.h"
 

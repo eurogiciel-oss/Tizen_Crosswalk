@@ -27,7 +27,7 @@ AwContentsClientBridge::AwContentsClientBridge(JNIEnv* env, jobject obj)
     : java_ref_(env, obj) {
   DCHECK(obj);
   Java_AwContentsClientBridge_setNativeContentsClientBridge(
-      env, obj, reinterpret_cast<jint>(this));
+      env, obj, reinterpret_cast<intptr_t>(this));
 }
 
 AwContentsClientBridge::~AwContentsClientBridge() {
@@ -90,8 +90,8 @@ void AwContentsClientBridge::ProceedSslError(JNIEnv* env, jobject obj,
 void AwContentsClientBridge::RunJavaScriptDialog(
     content::JavaScriptMessageType message_type,
     const GURL& origin_url,
-    const string16& message_text,
-    const string16& default_prompt_text,
+    const base::string16& message_text,
+    const base::string16& default_prompt_text,
     const content::JavaScriptDialogManager::DialogClosedCallback& callback) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   JNIEnv* env = AttachCurrentThread();
@@ -134,7 +134,7 @@ void AwContentsClientBridge::RunJavaScriptDialog(
 
 void AwContentsClientBridge::RunBeforeUnloadDialog(
     const GURL& origin_url,
-    const string16& message_text,
+    const base::string16& message_text,
     const content::JavaScriptDialogManager::DialogClosedCallback& callback) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   JNIEnv* env = AttachCurrentThread();
@@ -154,6 +154,18 @@ void AwContentsClientBridge::RunBeforeUnloadDialog(
       env, obj.obj(), jurl.obj(), jmessage.obj(), callback_id);
 }
 
+bool AwContentsClientBridge::ShouldOverrideUrlLoading(
+    const base::string16& url) {
+  JNIEnv* env = AttachCurrentThread();
+  ScopedJavaLocalRef<jobject> obj = java_ref_.get(env);
+  if (obj.is_null())
+    return false;
+  ScopedJavaLocalRef<jstring> jurl = ConvertUTF16ToJavaString(env, url);
+  return Java_AwContentsClientBridge_shouldOverrideUrlLoading(
+      env, obj.obj(),
+      jurl.obj());
+}
+
 void AwContentsClientBridge::ConfirmJsResult(JNIEnv* env,
                                              jobject,
                                              int id,
@@ -165,7 +177,7 @@ void AwContentsClientBridge::ConfirmJsResult(JNIEnv* env,
     LOG(WARNING) << "Unexpected JS dialog confirm. " << id;
     return;
   }
-  string16 prompt_text;
+  base::string16 prompt_text;
   if (prompt) {
     prompt_text = ConvertJavaStringToUTF16(env, prompt);
   }
@@ -181,7 +193,7 @@ void AwContentsClientBridge::CancelJsResult(JNIEnv*, jobject, int id) {
     LOG(WARNING) << "Unexpected JS dialog cancel. " << id;
     return;
   }
-  callback->Run(false, string16());
+  callback->Run(false, base::string16());
   pending_js_dialog_callbacks_.Remove(id);
 }
 

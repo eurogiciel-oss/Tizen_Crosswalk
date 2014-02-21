@@ -53,12 +53,8 @@ class DataChannelProviderInterface {
   virtual bool ConnectDataChannel(DataChannel* data_channel) = 0;
   // Disconnects from the transport signals.
   virtual void DisconnectDataChannel(DataChannel* data_channel) = 0;
-  // Adds the send and receive stream ssrc to the transport for RTP.
-  virtual void AddRtpDataStream(uint32 send_ssrc, uint32 recv_ssrc) = 0;
   // Adds the data channel SID to the transport for SCTP.
   virtual void AddSctpDataStream(uint32 sid) = 0;
-  // Removes the data channel ssrcs from the transport for RTP.
-  virtual void RemoveRtpDataStream(uint32 send_ssrc, uint32 recv_ssrc) = 0;
   // Removes the data channel SID from the transport for SCTP.
   virtual void RemoveSctpDataStream(uint32 sid) = 0;
   // Returns true if the transport channel is ready to send data.
@@ -66,6 +62,25 @@ class DataChannelProviderInterface {
 
  protected:
   virtual ~DataChannelProviderInterface() {}
+};
+
+struct InternalDataChannelInit : public DataChannelInit {
+  enum OpenHandshakeRole {
+    kOpener,
+    kAcker,
+    kNone
+  };
+  // The default role is kOpener because the default |negotiated| is false.
+  InternalDataChannelInit() : open_handshake_role(kOpener) {}
+  explicit InternalDataChannelInit(const DataChannelInit& base)
+      : DataChannelInit(base), open_handshake_role(kOpener) {
+    // If the channel is externally negotiated, do not send the OPEN message.
+    if (base.negotiated) {
+      open_handshake_role = kNone;
+    }
+  }
+
+  OpenHandshakeRole open_handshake_role;
 };
 
 // DataChannel is a an implementation of the DataChannelInterface based on
@@ -91,7 +106,7 @@ class DataChannel : public DataChannelInterface,
       DataChannelProviderInterface* provider,
       cricket::DataChannelType dct,
       const std::string& label,
-      const DataChannelInit* config);
+      const InternalDataChannelInit& config);
 
   virtual void RegisterObserver(DataChannelObserver* observer);
   virtual void UnregisterObserver();
@@ -149,6 +164,10 @@ class DataChannel : public DataChannelInterface,
   // underlying data engine.
   void SetReceiveSsrc(uint32 receive_ssrc);
 
+  cricket::DataChannelType data_channel_type() const {
+    return data_channel_type_;
+  }
+
  protected:
   DataChannel(DataChannelProviderInterface* client,
               cricket::DataChannelType dct,
@@ -156,7 +175,7 @@ class DataChannel : public DataChannelInterface,
   virtual ~DataChannel();
 
  private:
-  bool Init(const DataChannelInit* config);
+  bool Init(const InternalDataChannelInit& config);
   void DoClose();
   void UpdateState();
   void SetState(DataState state);
@@ -172,19 +191,20 @@ class DataChannel : public DataChannelInterface,
                                    cricket::SendDataResult* send_result);
   bool QueueSendData(const DataBuffer& buffer);
   bool SendOpenMessage(const talk_base::Buffer* buffer);
-
+  bool SendOpenAckMessage(const talk_base::Buffer* buffer);
 
   std::string label_;
-  DataChannelInit config_;
+  InternalDataChannelInit config_;
   DataChannelObserver* observer_;
   DataState state_;
-  bool was_ever_writable_;
-  bool connected_to_provider_;
   cricket::DataChannelType data_channel_type_;
   DataChannelProviderInterface* provider_;
+  bool waiting_for_open_ack_;
+  bool was_ever_writable_;
+  bool connected_to_provider_;
   bool send_ssrc_set_;
-  uint32 send_ssrc_;
   bool receive_ssrc_set_;
+  uint32 send_ssrc_;
   uint32 receive_ssrc_;
   // Control messages that always have to get sent out before any queued
   // data.
@@ -197,7 +217,7 @@ class DataChannelFactory {
  public:
   virtual talk_base::scoped_refptr<DataChannel> CreateDataChannel(
       const std::string& label,
-      const DataChannelInit* config) = 0;
+      const InternalDataChannelInit* config) = 0;
 
  protected:
   virtual ~DataChannelFactory() {}

@@ -34,7 +34,7 @@
 #include "../platform/WebCommon.h"
 #include "WebWidget.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebFrameClient;
 class WebPlugin;
@@ -51,10 +51,27 @@ public:
     // If not 0, the returned pointer is valid for the lifetime of this object.
     virtual WebPlugin* getPlugin() = 0;
 
+    // Initiate the process of closing and destroying the helper plugin.
+    // Must be called before WebView is closed.
+    virtual void closeAndDeleteSoon() = 0;
+
 protected:
     ~WebHelperPlugin() { }
 };
 
-} // namespace WebKit
+} // namespace blink
+
+namespace WTF {
+
+template<typename T> struct OwnedPtrDeleter;
+template<> struct OwnedPtrDeleter<blink::WebHelperPlugin> {
+    static void deletePtr(blink::WebHelperPlugin* plugin)
+    {
+        if (plugin)
+            plugin->closeAndDeleteSoon();
+    }
+};
+
+} // namespace WTF
 
 #endif

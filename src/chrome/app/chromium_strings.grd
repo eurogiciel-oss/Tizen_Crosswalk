@@ -238,9 +238,6 @@ be available for now. -->
         </message>
       </if>
       <if expr="is_win">
-        <message name="IDS_PRODUCT_FRAME_NAME" desc="The Chrome Frame application name">
-          Chromium Frame
-        </message>
         <message name="IDS_PRODUCT_APP_LAUNCHER_NAME" desc="The Chrome App Launcher application name">
           Chromium App Launcher
         </message>
@@ -258,21 +255,6 @@ be available for now. -->
         </message>
         <message name="IDS_PRODUCT_BINARIES_NAME" desc="The Chrome Binaries application name">
           Chromium Binaries
-        </message>
-        <message name="IDS_VERSIONMISMATCH_HEADER">
-          Chromium Frame Update.
-        </message>
-        <message name="IDS_VERSIONMISMATCH">
-          Chromium Frame has been updated. Please relaunch your browser. Chromium version: <ph name="TODO_0001">%ls<ex>TODO</ex></ph>, Chromium Frame version: <ph name="TODO_0002">%ls<ex>TODO</ex></ph>
-        </message>
-        <message name="IDS_VERSIONUNKNOWN">
-          Unknown version.
-        </message>
-        <message name="IDS_CHROME_FRAME_MENU_ABOUT" desc="About Chrome Frame label">
-          About Chromium Frame...
-        </message>
-        <message name="IDS_CHROME_FRAME_READY_MODE_LEARN_MORE_URL" desc="Link to knowledge-base article about Chromium Frame Ready Mode">
-          http://www.google.com/support/chrome/bin/answer.py?hl=[GRITLANGCODE]&amp;answer=161796
         </message>
         <message name="IDS_CHROME_FRAME_TURNDOWN_LEARN_MORE_URL" desc="Link to knowledge-base article about Chromium Frame's turndown">
           http://support.google.com/chrome/?p=ib_chromeframe
@@ -347,6 +329,15 @@ name="DOMAIN">$1<ex>paypal.com</ex></ph>&lt;/strong&gt;, but the server presente
       <message name="IDS_ABOUT_TERMS_OF_SERVICE" desc="The terms of service label in the About box.">
         Not used in Chromium. Placeholder to keep resource maps in sync. It expects one argument: $1.
       </message>
+      <if expr="is_macosx">
+        <!-- Mac 32-bit deprecation -->
+        <message name="IDS_MAC_32_BIT_OBSOLETE_SOON" desc="A message displayed on an at-launch infobar and About (Help) page warning the user that the computer they are using is about to become unsupported.">
+          This computer will soon stop receiving Chromium updates because its hardware is no longer supported.
+        </message>
+        <message name="IDS_MAC_32_BIT_OBSOLETE_NOW" desc="A message displayed on an at-launch infobar and About (Help) page warning the user that the computer they are using is no longer supported.">
+          This computer will no longer receive Chromium updates because its hardware is no longer supported.
+        </message>
+      </if>
       <message name="IDS_ACCNAME_APP" desc="The accessible name for the app menu.">
         Chromium
       </message>
@@ -502,6 +493,11 @@ Chromium is unable to recover your settings.
           Chromium is trying to show passwords.
         </message>
       </if>
+      <if expr="is_win">
+        <message name="IDS_PASSWORDS_PAGE_AUTHENTICATION_PROMPT" desc="Text for the dialog box that prompts the user for their OS account password before revealing plaintext passwords on the password page.">
+          Chromium is trying to show passwords. Type your Windows password to allow this.
+        </message>
+      </if>
       <message name="IDS_CANT_WRITE_USER_DIRECTORY_EXIT_BUTTON" desc="Text on button of dialog that closes Chrome if we can't create a directory for this user.">
         Exit Chromium
       </message>
@@ -514,23 +510,11 @@ Chromium is unable to recover your settings.
       <message name="IDS_INSTALL_HIGHER_VERSION_APP_LAUNCHER" desc="Error displayed when higher version of the Chromium App Launcher already exists.">
         This computer already has a more recent version of the Chromium components. Please use a more recent installer.
       </message>
-      <message name="IDS_INSTALL_HIGHER_VERSION_CF" desc="Error displayed when higher version already exists.">
-        This computer already has a more recent version of Chromium Frame. If the software is not working, please uninstall Chromium Frame and try again.
-      </message>
-      <message name="IDS_INSTALL_HIGHER_VERSION_CB_CF" desc="Error displayed when higher version of Chromium and Chromium Frame already exists">
-        This computer already has a more recent version of Chromium and Chromium Frame. If the software is not working, please uninstall both Chromium and Chromium Frame and try again.
-      </message>
-      <message name="IDS_INSTALL_SYSTEM_LEVEL_EXISTS" desc="Error displayed during user level install if system level Chromium Frame is already installed.">
-        Chromium Frame is already installed and available to all users of this computer. If you want to install Chromium Frame at the user level, you must first uninstall the system-level version installed by an administrator.
-      </message>
       <message name="IDS_INSTALL_FAILED" desc="Error displayed if installation fails due to some unknown error.">
         Installation failed due to unspecified error. If Chromium is currently running, please close it and try again.
       </message>
       <message name="IDS_SAME_VERSION_REPAIR_FAILED" desc="Error displayed if installation fails due to Chrome running.">
         Can not install the same Chromium version that is currently running. Please close Chromium and try again.
-      </message>
-      <message name="IDS_SAME_VERSION_REPAIR_FAILED_CF" desc="Error displayed if installation fails due to Chrome running.">
-        Can not install the same Chromium Frame version that is currently running. Please close Chromium Frame and try again.
       </message>
       <message name="IDS_SETUP_PATCH_FAILED" desc="Error message when setup.exe fails to patch itself.">
         Installation failed due to unspecified error. Please download Chromium again.
@@ -554,7 +538,7 @@ Chromium is unable to recover your settings.
         You do not have appropriate rights for system-level install. Try running the installer again as Administrator.
       </message>
       <message name="IDS_INSTALL_NO_PRODUCTS_TO_UPDATE" desc="Error displayed if the installer is not provided one or more products to install/update.">
-        No installation of Chromium or Chromium Frame found to update.
+        No installation of Chromium found to update.
       </message>
       <message name="IDS_UNINSTALL_COMPLETE" desc="Text displayed on dialog that is shown when uninstall is complete and no reboot is required.">
         Uninstallation complete.
@@ -562,14 +546,8 @@ Chromium is unable to recover your settings.
       <message name="IDS_INSTALL_DIR_IN_USE" desc="Error during install if Chromium version is missing from registry but the installation directory exists and can not be deleted.">
         Chromium installation directory seems to be in use. Please reboot your computer and try again.
       </message>
-      <message name="IDS_INSTALL_NON_MULTI_INSTALLATION_EXISTS" desc="Error during install if a single-install Chromium or Chromium Frame is present, thereby preventing the installation of a multi-install Chromium or Chromium Frame.">
-        A conflicting installation of Chromium or Chromium Frame was found on the system. Please uninstall it and try again.
-      </message>
-      <message name="IDS_INSTALL_MULTI_INSTALLATION_EXISTS" desc="Error during install if a multi-install Chromium or Chromium Frame is present, thereby preventing the installation of a single-install Chromium or Chromium Frame.">
-        A conflicting installation of Chromium or Chromium Frame was found on the system. Please uninstall it and try again.
-      </message>
-      <message name="IDS_INSTALL_READY_MODE_REQUIRES_CHROME" desc="Chrome Frame in ready mode requires Chrome.">
-        Invalid arguments. Chromium Frame cannot be installed in ready mode without also installing Chromium.
+      <message name="IDS_INSTALL_MULTI_INSTALLATION_EXISTS" desc="Error during install if a multi-install Chromium is present, thereby preventing the installation of a single-install Chromium.">
+        A conflicting installation of Chromium was found on the system. Please uninstall it and try again.
       </message>
       <message name="IDS_INSTALL_INCONSISTENT_UPDATE_POLICY" desc="This message does not apply to Chromium.">
       </message>
@@ -706,9 +684,6 @@ Chromium is unable to recover your settings.
       <if expr="pp_ifdef('chromeos')">
         <message name="IDS_FLAGS_RELAUNCH_NOTICE" desc="Notifies the user that he needs to restart Chromium OS. Shown next to a button that says 'Restart Now'.">
           Your changes will take effect the next time you restart your device.
-        </message>
-        <message name="IDS_FLAGS_CHROME_CAPTIVE_PORTAL_DETECTOR" desc="Description for the option of Captive Portal detector.">
-          Chromium Captive Portal detector
         </message>
       </if>
 
@@ -854,6 +829,11 @@ For Chromium, processes used to display diagnostics information (such as this "a
         </message>
       </if>
 
+      <!-- Chrome sign in page -->
+      <message name="IDS_CHROME_SIGNIN_TITLE" desc="Title on the about:chrome-signin page">
+        Chromium
+      </message>
+
       <!-- Sync Promo New Tab Page bubble strings -->
       <message name="IDS_SYNC_PROMO_NTP_BUBBLE_MESSAGE_NEW" desc="The body of the sync promo NTP bubble.">
         Now that you're signed in, you can get your tabs, bookmarks and other Chromium stuff across your laptop, phone and tablet. You will also receive more relevant suggestions and features on Google services.
@@ -868,7 +848,7 @@ For Chromium, processes used to display diagnostics information (such as this "a
         <message name="IDS_ONE_CLICK_SIGNIN_DIALOG_MESSAGE_NEW" desc="The message of the one click sign in dialog.">
           You're signed in as <ph name="USER_EMAIL_ADDRESS">$1<ex>foo@gmail.com</ex></ph>. Now you can access your bookmarks, history, and other settings on all your signed in devices.
         </message>
-        <message name="IDS_ONE_CLICK_SIGNIN_BUBBLE_MESSAGE" desc="The body of the sync promo NTP bubble.">
+        <message name="IDS_ONE_CLICK_SIGNIN_BUBBLE_MESSAGE_FULL" desc="The entire message of the one click sign in bubble.">
           You're now signed in to Chromium! Your bookmarks, history, and other settings will be synced to your Google Account.
         </message>
         <message name="IDS_ONE_CLICK_SIGNIN_BUBBLE_MESSAGE_NEW" desc="The body of the sync promo NTP bubble.">
@@ -1059,9 +1039,6 @@ Signing in anyway will merge Chromium information like bookmarks, history, and o
       <!-- ProcessSingleton -->
       <message name="IDS_PROFILE_IN_USE_LINUX" desc="Message shown when the browser cannot start because the profile is in use on a different host.">
         The profile appears to be in use by another Chromium process (<ph name="PROCESS_ID">$1<ex>12345</ex></ph>) on another computer (<ph name="HOST_NAME">$2<ex>example.com</ex></ph>). Chromium has locked the profile so that it doesn't get corrupted. If you are sure no other processes are using this profile, you can unlock the profile and relaunch Chromium.
-      </message>
-      <message name="IDS_PROFILE_IN_USE_LINUX_RELAUNCH" desc="Text of button in dialog to delete the profile lock file.">
-        Unlock Profile and Relaunch
       </message>
 
     </messages>

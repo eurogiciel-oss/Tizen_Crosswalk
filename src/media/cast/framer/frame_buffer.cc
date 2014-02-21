@@ -4,6 +4,8 @@
 
 #include "media/cast/framer/frame_buffer.h"
 
+#include "base/logging.h"
+
 namespace media {
 namespace cast {
 
@@ -29,7 +31,7 @@ void FrameBuffer::InsertPacket(const uint8* payload_data,
     if (rtp_header.is_reference) {
       last_referenced_frame_id_ = rtp_header.reference_frame_id;
     } else {
-      last_referenced_frame_id_ = static_cast<uint8>(rtp_header.frame_id - 1);
+      last_referenced_frame_id_ = rtp_header.frame_id - 1;
     }
 
     rtp_timestamp_ = rtp_header.webrtc.header.timestamp;
@@ -38,7 +40,9 @@ void FrameBuffer::InsertPacket(const uint8* payload_data,
   if (rtp_header.frame_id != frame_id_) return;
 
   // Insert every packet only once.
-  if (packets_.find(rtp_header.packet_id) != packets_.end()) return;
+  if (packets_.find(rtp_header.packet_id) != packets_.end()) {
+    return;
+  }
 
   std::vector<uint8> data;
   std::pair<PacketMap::iterator, bool> retval =
@@ -57,8 +61,9 @@ bool FrameBuffer::Complete() const {
   return num_packets_received_ - 1 == max_packet_id_;
 }
 
-bool FrameBuffer::GetEncodedAudioFrame(EncodedAudioFrame* audio_frame,
-                                       uint32* rtp_timestamp) const {
+bool FrameBuffer::GetEncodedAudioFrame(
+    transport::EncodedAudioFrame* audio_frame,
+    uint32* rtp_timestamp) const {
   if (!Complete()) return false;
 
   *rtp_timestamp = rtp_timestamp_;
@@ -77,8 +82,9 @@ bool FrameBuffer::GetEncodedAudioFrame(EncodedAudioFrame* audio_frame,
   return true;
 }
 
-bool FrameBuffer::GetEncodedVideoFrame(EncodedVideoFrame* video_frame,
-                                       uint32* rtp_timestamp) const {
+bool FrameBuffer::GetEncodedVideoFrame(
+    transport::EncodedVideoFrame* video_frame,
+    uint32* rtp_timestamp) const {
   if (!Complete()) return false;
 
   *rtp_timestamp = rtp_timestamp_;

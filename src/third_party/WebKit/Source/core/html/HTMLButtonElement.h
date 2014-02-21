@@ -30,47 +30,48 @@ namespace WebCore {
 
 class HTMLButtonElement FINAL : public HTMLFormControlElement {
 public:
-    static PassRefPtr<HTMLButtonElement> create(const QualifiedName&, Document&, HTMLFormElement*);
+    static PassRefPtr<HTMLButtonElement> create(Document&, HTMLFormElement*);
 
     void setType(const AtomicString&);
 
-    String value() const;
+    const AtomicString& value() const;
 
     virtual bool willRespondToMouseClickEvents() OVERRIDE;
 
 private:
-    HTMLButtonElement(const QualifiedName& tagName, Document&, HTMLFormElement*);
+    HTMLButtonElement(Document&, HTMLFormElement*);
 
     enum Type { SUBMIT, RESET, BUTTON };
 
-    virtual const AtomicString& formControlType() const;
+    virtual const AtomicString& formControlType() const OVERRIDE;
 
-    virtual RenderObject* createRenderer(RenderStyle*);
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
 
     // HTMLFormControlElement always creates one, but buttons don't need it.
     virtual bool alwaysCreateUserAgentShadowRoot() const OVERRIDE { return false; }
 
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
     virtual bool isPresentationAttribute(const QualifiedName&) const OVERRIDE;
-    virtual void defaultEventHandler(Event*);
+    virtual void defaultEventHandler(Event*) OVERRIDE;
 
-    virtual bool appendFormData(FormDataList&, bool);
+    virtual bool appendFormData(FormDataList&, bool) OVERRIDE;
 
-    virtual bool isEnumeratable() const { return true; }
+    virtual bool isEnumeratable() const OVERRIDE { return true; }
     virtual bool supportLabels() const OVERRIDE { return true; }
     virtual bool isInteractiveContent() const OVERRIDE;
+    virtual bool supportsAutofocus() const OVERRIDE;
 
-    virtual bool isSuccessfulSubmitButton() const;
-    virtual bool isActivatedSubmit() const;
-    virtual void setActivatedSubmit(bool flag);
+    virtual bool canBeSuccessfulSubmitButton() const OVERRIDE;
+    virtual bool isActivatedSubmit() const OVERRIDE;
+    virtual void setActivatedSubmit(bool flag) OVERRIDE;
 
-    virtual void accessKeyAction(bool sendMouseEvents);
+    virtual void accessKeyAction(bool sendMouseEvents) OVERRIDE;
     virtual bool isURLAttribute(const Attribute&) const OVERRIDE;
 
-    virtual bool canStartSelection() const { return false; }
+    virtual bool canStartSelection() const OVERRIDE { return false; }
 
-    virtual bool isOptionalFormControl() const { return true; }
-    virtual bool recalcWillValidate() const;
+    virtual bool isOptionalFormControl() const OVERRIDE { return true; }
+    virtual bool recalcWillValidate() const OVERRIDE;
 
     Type m_type;
     bool m_isActivatedSubmit;

@@ -5,12 +5,15 @@
 from metrics import Metric
 from metrics import rendering_stats
 from metrics import statistics
-from telemetry.core.timeline.model import MarkerMismatchError
-from telemetry.core.timeline.model import MarkerOverlapError
 from telemetry.page import page_measurement
 
-TIMELINE_MARKER = 'SmoothnessMetric'
+TIMELINE_MARKER = 'Smoothness'
 
+
+class MissingDisplayFrameRateError(page_measurement.MeasurementFailure):
+  def __init__(self, name):
+    super(MissingDisplayFrameRateError, self).__init__(
+        'Missing display frame rate metrics: ' + name)
 
 class NotEnoughFramesError(page_measurement.MeasurementFailure):
   def __init__(self):
@@ -24,52 +27,54 @@ class NoSupportedActionError(page_measurement.MeasurementFailure):
         'None of the actions is supported by smoothness measurement')
 
 
-def GetTimelineMarkerLabelsFromAction(compound_action):
-  timeline_marker_labels = []
-  if not isinstance(compound_action, list):
-    compound_action = [compound_action]
-  for action in compound_action:
-    if action.GetTimelineMarkerLabel():
-      timeline_marker_labels.append(action.GetTimelineMarkerLabel())
-  if not timeline_marker_labels:
-    raise NoSupportedActionError()
-  return timeline_marker_labels
+def _GetSyntheticDelayCategoriesFromPage(page):
+  if not hasattr(page, 'synthetic_delays'):
+    return []
+  result = []
+  for delay, options in page.synthetic_delays.items():
+    options = '%f;%s' % (options.get('target_duration', 0),
+                         options.get('mode', 'static'))
+    result.append('DELAY(%s;%s)' % (delay, options))
+  return result
 
 
 class SmoothnessMetric(Metric):
-  def __init__(self, compound_action):
+  def __init__(self):
     super(SmoothnessMetric, self).__init__()
     self._stats = None
-    self._compound_action = compound_action
+    self._actions = []
+
+  def AddActionToIncludeInMetric(self, action):
+    self._actions.append(action)
 
   def Start(self, page, tab):
-    # TODO(ermst): Remove "webkit" category after Blink r157377 is picked up by
-    # the reference builds.
-    tab.browser.StartTracing('webkit,webkit.console,benchmark', 60)
+    custom_categories = ['webkit.console', 'benchmark']
+    custom_categories += _GetSyntheticDelayCategoriesFromPage(page)
+    tab.browser.StartTracing(','.join(custom_categories), 60)
     tab.ExecuteJavaScript('console.time("' + TIMELINE_MARKER + '")')
+    if tab.browser.platform.IsRawDisplayFrameRateSupported():
+      tab.browser.platform.StartRawDisplayFrameRateMeasurement()
 
   def Stop(self, page, tab):
+    if tab.browser.platform.IsRawDisplayFrameRateSupported():
+      tab.browser.platform.StopRawDisplayFrameRateMeasurement()
     tab.ExecuteJavaScript('console.timeEnd("' + TIMELINE_MARKER + '")')
     timeline_model = tab.browser.StopTracing().AsTimelineModel()
-    render_process_marker = timeline_model.FindTimelineMarkers(TIMELINE_MARKER)
-    timeline_marker_labels = GetTimelineMarkerLabelsFromAction(
-        self._compound_action)
-    try:
-      timeline_markers = timeline_model.FindTimelineMarkers(
-          timeline_marker_labels)
-    except MarkerMismatchError:
-      # TODO(ernstm): re-raise exception as MeasurementFailure when the
-      # reference build was updated.
-      timeline_markers = render_process_marker
-    except MarkerOverlapError as e:
-      raise page_measurement.MeasurementFailure(str(e))
+    timeline_ranges = [ action.GetActiveRangeOnTimeline(timeline_model)
+                        for action in self._actions ]
 
+    renderer_process = timeline_model.GetRendererProcessFromTab(tab)
     self._stats = rendering_stats.RenderingStats(
-        render_process_marker, timeline_markers)
+        renderer_process, timeline_ranges)
 
     if not self._stats.frame_times:
       raise NotEnoughFramesError()
 
+  def SetStats(self, stats):
+    """ Pass in a RenderingStats object directly. For unittests that don't call
+        Start/Stop.
+    """
+    self._stats = stats
 
   def AddResults(self, tab, results):
     # List of raw frame times.
@@ -84,7 +89,13 @@ class SmoothnessMetric(Metric):
     jank = statistics.FrameDiscrepancy(self._stats.frame_timestamps)
     results.Add('jank', '', round(jank, 4))
 
-    # Are we hitting 60 fps for 95 percent of all frames? (Boolean value)
-    # We use 17ms as a slightly looser threshold, instead of 1000.0/60.0.
-    results.Add('mostly_smooth', '',
-        statistics.Percentile(self._stats.frame_times, 95.0) < 17.0)
+    # Are we hitting 60 fps for 95 percent of all frames?
+    # We use 19ms as a somewhat looser threshold, instead of 1000.0/60.0.
+    percentile_95 = statistics.Percentile(self._stats.frame_times, 95.0)
+    results.Add('mostly_smooth', 'score', 1.0 if percentile_95 < 19.0 else 0.0)
+
+    if tab.browser.platform.IsRawDisplayFrameRateSupported():
+      for r in tab.browser.platform.GetRawDisplayFrameRateMeasurements():
+        if r.value is None:
+          raise MissingDisplayFrameRateError(r.name)
+        results.Add(r.name, r.unit, r.value)

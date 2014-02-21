@@ -32,6 +32,7 @@
 #include "core/html/HTMLImport.h"
 
 #include "core/dom/Document.h"
+#include "core/html/HTMLImportStateResolver.h"
 
 namespace WebCore {
 
@@ -52,104 +53,102 @@ HTMLImportsController* HTMLImport::controller()
 
 void HTMLImport::appendChild(HTMLImport* child)
 {
-    ASSERT(child->parent() == this);
-    ASSERT(!child->hasChildren());
+    TreeNode<HTMLImport>::appendChild(child);
 
-    if (isBlocked())
-        child->block();
-    m_children.append(child);
-    blockAfter(child);
+    // This prevents HTML parser from going beyond the
+    // blockage line before the precise state is computed by recalcState().
+    if (child->isCreatedByParser())
+        forceBlock();
+
+    stateWillChange();
 }
 
-bool HTMLImport::areChilrenLoaded() const
+void HTMLImport::stateDidChange()
 {
-    for (size_t i = 0; i < m_children.size(); ++i) {
-        if (!m_children[i]->isLoaded())
-            return false;
+    if (!isStateBlockedFromRunningScript()) {
+        if (Document* document = this->document())
+            document->didLoadAllImports();
+    }
+}
+
+void HTMLImport::recalcState()
+{
+    ASSERT(!isStateCacheValid());
+    m_cachedState = HTMLImportStateResolver(this).resolve();
+}
+
+void HTMLImport::forceBlock()
+{
+    ASSERT(m_cachedState != Ready);
+    m_cachedState = BlockedFromCreatingDocument;
+}
+
+void HTMLImport::stateWillChange()
+{
+    root()->scheduleRecalcState();
+}
+
+void HTMLImport::recalcTreeState(HTMLImport* root)
+{
+    ASSERT(root == root->root());
+
+    HashMap<HTMLImport*, State> snapshot;
+    Vector<HTMLImport*> updated;
+
+    for (HTMLImport* i = root; i; i = traverseNext(i)) {
+        snapshot.add(i, i->state());
+        i->invalidateCachedState();
     }
 
-    return true;
+    // The post-visit DFS order matters here because
+    // HTMLImportStateResolver in recalcState() Depends on
+    // |m_cachedState| of its children and precedents of ancestors.
+    // Accidental cycle dependency of state computation is prevented
+    // by invalidateCachedState() and isStateCacheValid() check.
+    for (HTMLImport* i = traverseFirstPostOrder(root); i; i = traverseNextPostOrder(i)) {
+        i->recalcState();
+
+        State newState = i->state();
+        State oldState = snapshot.get(i);
+        // Once the state reaches Ready, it shouldn't go back.
+        ASSERT(oldState != Ready || oldState <= newState);
+        if (newState != oldState)
+            updated.append(i);
+    }
+
+    for (size_t i = 0; i < updated.size(); ++i)
+        updated[i]->stateDidChange();
 }
 
-bool HTMLImport::arePredecessorsLoaded() const
+bool HTMLImport::isMaster(Document* document)
 {
-    HTMLImport* parent = this->parent();
-    if (!parent)
+    if (!document->import())
         return true;
-
-    for (size_t i = 0; i < parent->m_children.size(); ++i) {
-        HTMLImport* sibling = parent->m_children[i];
-        if (sibling == this)
-            break;
-        if (!sibling->isLoaded())
-            return false;
-    }
-
-    return true;
+    return (document->import()->master() == document);
 }
 
-void HTMLImport::block()
+#if !defined(NDEBUG)
+void HTMLImport::show()
 {
-    m_blocked = true;
+    root()->showTree(this, 0);
 }
 
-void HTMLImport::unblock()
+void HTMLImport::showTree(HTMLImport* highlight, unsigned depth)
 {
-    bool wasBlocked = m_blocked;
-    m_blocked = false;
-    if (wasBlocked)
-        didUnblock();
+    for (unsigned i = 0; i < depth*4; ++i)
+        fprintf(stderr, " ");
+
+    fprintf(stderr, "%s", this == highlight ? "*" : " ");
+    showThis();
+    fprintf(stderr, "\n");
+    for (HTMLImport* child = firstChild(); child; child = child->next())
+        child->showTree(highlight, depth + 1);
 }
 
-void HTMLImport::didUnblock()
+void HTMLImport::showThis()
 {
-    ASSERT(!isBlocked());
-    if (!isProcessing())
-        return;
-
-    if (Document* document = this->document())
-        document->didLoadAllImports();
+    fprintf(stderr, "%p state=%d", this, m_cachedState);
 }
-
-bool HTMLImport::unblock(HTMLImport* import)
-{
-    ASSERT(import->arePredecessorsLoaded());
-    ASSERT(import->isBlocked() || import->areChilrenLoaded());
-
-    if (import->isBlocked()) {
-        for (size_t i = 0; i < import->m_children.size(); ++i) {
-            if (!unblock(import->m_children[i]))
-                return false;
-        }
-    }
-
-    import->unblock();
-    return import->isLoaded();
-}
-
-void HTMLImport::block(HTMLImport* import)
-{
-    import->block();
-    for (size_t i = 0; i < import->m_children.size(); ++i)
-        block(import->m_children[i]);
-}
-
-void HTMLImport::blockAfter(HTMLImport* child)
-{
-    ASSERT(child->parent() == this);
-
-    for (size_t i = 0; i < m_children.size(); ++i) {
-        HTMLImport* sibling = m_children[m_children.size() - i - 1];
-        if (sibling == child)
-            break;
-        HTMLImport::block(sibling);
-    }
-
-    this->block();
-
-    if (HTMLImport* parent = this->parent())
-        parent->blockAfter(this);
-}
-
+#endif
 
 } // namespace WebCore

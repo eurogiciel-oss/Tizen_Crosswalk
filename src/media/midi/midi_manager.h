@@ -9,15 +9,9 @@
 #include <vector>
 
 #include "base/basictypes.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/message_loop/message_loop_proxy.h"
 #include "base/synchronization/lock.h"
 #include "media/base/media_export.h"
 #include "media/midi/midi_port_info.h"
-
-namespace base {
-class Thread;
-}
 
 namespace media {
 
@@ -63,17 +57,19 @@ class MEDIA_EXPORT MIDIManager {
   // A client calls ReleaseSession() to stop receiving MIDI data.
   void EndSession(MIDIManagerClient* client);
 
-  // DispatchSendMIDIData() schedules one or more messages to be sent
-  // at the given time on a dedicated thread.
+  // DispatchSendMIDIData() is called when MIDI data should be sent to the MIDI
+  // system.
+  // This method is supposed to return immediately and should not block.
   // |port_index| represents the specific output port from output_ports().
   // |data| represents a series of bytes encoding one or more MIDI messages.
   // |length| is the number of bytes in |data|.
   // |timestamp| is the time to send the data, in seconds. A value of 0
   // means send "now" or as soon as possible.
-  void DispatchSendMIDIData(MIDIManagerClient* client,
-                            uint32 port_index,
-                            const std::vector<uint8>& data,
-                            double timestamp);
+  // The default implementation is for unsupported platforms.
+  virtual void DispatchSendMIDIData(MIDIManagerClient* client,
+                                    uint32 port_index,
+                                    const std::vector<uint8>& data,
+                                    double timestamp);
 
   // input_ports() is a list of MIDI ports for receiving MIDI data.
   // Each individual port in this list can be identified by its
@@ -87,14 +83,8 @@ class MEDIA_EXPORT MIDIManager {
 
  protected:
   // Initializes the MIDI system, returning |true| on success.
-  virtual bool Initialize() = 0;
-
-  // Implements the platform-specific details of sending MIDI data.
-  // This function runs on MIDISendThread.
-  virtual void SendMIDIData(MIDIManagerClient* client,
-                            uint32 port_index,
-                            const std::vector<uint8>& data,
-                            double timestamp) = 0;
+  // The default implementation is for unsupported platforms.
+  virtual bool Initialize();
 
   void AddInputPort(const MIDIPortInfo& info);
   void AddOutputPort(const MIDIPortInfo& info);
@@ -104,9 +94,6 @@ class MEDIA_EXPORT MIDIManager {
                        const uint8* data,
                        size_t length,
                        double timestamp);
-
-  // Checks if current thread is MIDISendThread.
-  bool CurrentlyOnMIDISendThread();
 
   bool initialized_;
 
@@ -119,11 +106,6 @@ class MEDIA_EXPORT MIDIManager {
 
   MIDIPortInfoList input_ports_;
   MIDIPortInfoList output_ports_;
-
-  // |send_thread_| is used to send MIDI data by calling the platform-specific
-  // API.
-  scoped_ptr<base::Thread> send_thread_;
-  scoped_refptr<base::MessageLoopProxy> send_message_loop_;
 
   DISALLOW_COPY_AND_ASSIGN(MIDIManager);
 };

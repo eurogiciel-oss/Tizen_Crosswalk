@@ -12,7 +12,7 @@ namespace content {
 namespace {
 
 base::NullableString16 ToNullableString16(const std::string& utf8) {
-  return base::NullableString16(UTF8ToUTF16(utf8), false);
+  return base::NullableString16(base::UTF8ToUTF16(utf8), false);
 }
 
 base::FilePath ToFilePath(const base::NullableString16& s) {
@@ -42,6 +42,15 @@ void RecursivelyRemovePasswordData(ExplodedFrameState* state) {
 
 void RecursivelyRemoveScrollOffset(ExplodedFrameState* state) {
   state->scroll_offset = gfx::Point();
+}
+
+void RecursivelyRemoveReferrer(ExplodedFrameState* state) {
+  state->referrer = base::NullableString16();
+  for (std::vector<ExplodedFrameState>::iterator it = state->children.begin();
+       it != state->children.end();
+       ++it) {
+    RecursivelyRemoveReferrer(&*it);
+  }
 }
 
 }  // namespace
@@ -76,13 +85,13 @@ PageState PageState::CreateForTesting(
     state.top.http_body.is_null = false;
     if (optional_body_data) {
       ExplodedHttpBodyElement element;
-      element.type = WebKit::WebHTTPBody::Element::TypeData;
+      element.type = blink::WebHTTPBody::Element::TypeData;
       element.data = optional_body_data;
       state.top.http_body.elements.push_back(element);
     }
     if (optional_body_file_path) {
       ExplodedHttpBodyElement element;
-      element.type = WebKit::WebHTTPBody::Element::TypeFile;
+      element.type = blink::WebHTTPBody::Element::TypeFile;
       element.file_path =
           ToNullableString16(optional_body_file_path->AsUTF8Unsafe());
       state.top.http_body.elements.push_back(element);
@@ -136,6 +145,16 @@ PageState PageState::RemoveScrollOffset() const {
     return PageState();  // Oops!
 
   RecursivelyRemoveScrollOffset(&state.top);
+
+  return ToPageState(state);
+}
+
+PageState PageState::RemoveReferrer() const {
+  ExplodedPageState state;
+  if (!DecodePageState(data_, &state))
+    return PageState();  // Oops!
+
+  RecursivelyRemoveReferrer(&state.top);
 
   return ToPageState(state);
 }

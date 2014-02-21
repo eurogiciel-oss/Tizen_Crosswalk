@@ -4,6 +4,8 @@ debug("Test getting grid-definition-columns and grid-definition-rows set through
 testGridDefinitionsValues(document.getElementById("gridWithNoneElement"), "none", "none");
 testGridDefinitionsValues(document.getElementById("gridWithFixedElement"), "10px", "15px");
 testGridDefinitionsValues(document.getElementById("gridWithPercentElement"), "400px", "150px");
+testGridDefinitionsValues(document.getElementById("gridWithPercentWithoutSize"), "0px", "0px");
+testGridDefinitionsValues(document.getElementById("gridWithPercentWithoutSizeWithChildren"), "7px", "11px");
 testGridDefinitionsValues(document.getElementById("gridWithAutoElement"), "0px", "0px");
 testGridDefinitionsValues(document.getElementById("gridWithAutoWithoutSizeElement"), "0px", "0px");
 testGridDefinitionsValues(document.getElementById("gridWithAutoWithChildrenElement"), "7px", "11px");
@@ -15,6 +17,10 @@ testGridDefinitionsValues(document.getElementById("gridWithMinContentWithChildre
 testGridDefinitionsValues(document.getElementById("gridWithMaxContentElement"), "0px", "0px");
 testGridDefinitionsValues(document.getElementById("gridWithMaxContentWithChildrenElement"), "17px", "11px");
 testGridDefinitionsValues(document.getElementById("gridWithFractionElement"), "800px", "600px");
+testGridDefinitionsValues(document.getElementById("gridWithCalcElement"), "150px", "75px");
+testGridDefinitionsValues(document.getElementById("gridWithCalcComplexElement"), "550px", "465px");
+testGridDefinitionsValues(document.getElementById("gridWithCalcInsideMinMaxElement"), "minmax(10%, 15px)", "minmax(20px, 50%)", "80px", "300px");
+testGridDefinitionsValues(document.getElementById("gridWithCalcComplexInsideMinMaxElement"), "minmax(10%, 415px)", "minmax(80px, 50%)", "415px", "300px");
 
 debug("");
 debug("Test getting wrong values for grid-definition-columns and grid-definition-rows through CSS (they should resolve to the default: 'none')");
@@ -56,6 +62,13 @@ testGridDefinitionsSetJSValues("3.1459fr", "2.718fr", "800px", "600px");
 testGridDefinitionsSetJSValues("+3fr", "+4fr", "800px", "600px", "3fr", "4fr");
 
 debug("");
+debug("Test getting and setting grid-definition-columns and grid-definition-rows to calc() values through JS");
+testGridDefinitionsSetJSValues("calc(150px)", "calc(75px)", "150px", "75px");
+testGridDefinitionsSetJSValues("calc(50% - 30px)", "calc(75px + 10%)", "370px", "135px");
+testGridDefinitionsSetJSValues("minmax(25%, calc(30px))", "minmax(calc(75%), 40px)", "200px", "450px", "minmax(25%, calc(30px))", "minmax(calc(75%), 40px)");
+testGridDefinitionsSetJSValues("minmax(10%, calc(30px + 10%))", "minmax(calc(25% - 50px), 200px)", "110px", "200px", "minmax(10%, calc(30px + 10%))", "minmax(calc(25% - 50px), 200px)");
+
+debug("");
 debug("Test setting grid-definition-columns and grid-definition-rows to bad values through JS");
 // No comma and only 1 argument provided.
 testGridDefinitionsSetBadJSValues("minmax(10px 20px)", "minmax(10px)")
@@ -74,6 +87,9 @@ testGridDefinitionsSetBadJSValues("7.-fr", "-8,0fr");
 // Negative values are not allowed.
 testGridDefinitionsSetBadJSValues("-1px", "-6em");
 testGridDefinitionsSetBadJSValues("minmax(-1%, 32%)", "minmax(2vw, -6em)");
+// Invalid expressions with calc
+testGridDefinitionsSetBadJSValues("calc(16px 30px)", "calc(25px + auto)");
+testGridDefinitionsSetBadJSValues("minmax(min-content, calc())", "calc(10%(");
 
 debug("");
 debug("Test setting grid-definition-columns and grid-definition-rows back to 'none' through JS");
@@ -84,8 +100,8 @@ function testInherit()
 {
     var parentElement = document.createElement("div");
     document.body.appendChild(parentElement);
-    parentElement.style.gridDefinitionColumns = "50px 'last'";
-    parentElement.style.gridDefinitionRows = "'first' 101%";
+    parentElement.style.gridDefinitionColumns = "50px (last)";
+    parentElement.style.gridDefinitionRows = "(first) 101%";
 
     element = document.createElement("div");
     parentElement.appendChild(element);
@@ -93,8 +109,8 @@ function testInherit()
     element.style.height = "100px";
     element.style.gridDefinitionColumns = "inherit";
     element.style.gridDefinitionRows = "inherit";
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'50px last'");
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'first 101px'");
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'50px (last)'");
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'(first) 101px'");
 
     document.body.removeChild(parentElement);
 }
@@ -109,10 +125,10 @@ function testInitial()
     element.style.display = "grid";
     element.style.width = "300px";
     element.style.height = "150px";
-    element.style.gridDefinitionColumns = "150% 'last'";
-    element.style.gridDefinitionRows = "'first' 1fr";
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'450px last'");
-    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'first 150px'");
+    element.style.gridDefinitionColumns = "150% (last)";
+    element.style.gridDefinitionRows = "(first) 1fr";
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-columns')", "'450px (last)'");
+    shouldBe("getComputedStyle(element, '').getPropertyValue('grid-definition-rows')", "'(first) 150px'");
 
     element.style.display = "grid";
     element.style.gridDefinitionColumns = "initial";

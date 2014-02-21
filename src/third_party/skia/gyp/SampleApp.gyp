@@ -1,3 +1,4 @@
+#
 {
   'variables': {
     #manually set sample_pdf_file_viewer to 1 to have the PdfViewer in SampleApp
@@ -11,6 +12,8 @@
       'include_dirs' : [
         '../src/core',
         '../src/effects', #needed for BlurMask.h
+        '../src/images',
+        '../src/lazy',
         '../gm',       # needed to pull gm.h
         '../samplecode', # To pull SampleApp.h and SampleCode.h
         '../src/pipe/utils', # For TiledPipeController
@@ -87,7 +90,6 @@
         '../samplecode/SampleMipMap.cpp',
         '../samplecode/SampleMovie.cpp',
         '../samplecode/SampleOvalTest.cpp',
-        '../samplecode/SampleOverflow.cpp',
         '../samplecode/SamplePatch.cpp',
         '../samplecode/SamplePath.cpp',
         '../samplecode/SamplePathClip.cpp',
@@ -106,7 +108,6 @@
         '../samplecode/SampleSlides.cpp',
         '../samplecode/SampleStringArt.cpp',
         '../samplecode/SampleStrokePath.cpp',
-        '../samplecode/SampleTests.cpp',
         '../samplecode/SampleText.cpp',
         '../samplecode/SampleTextAlpha.cpp',
         '../samplecode/SampleTextBox.cpp',
@@ -144,7 +145,6 @@
       ],
       'sources!': [
         '../samplecode/SampleSkLayer.cpp', #relies on SkMatrix44 which doesn't compile
-        '../samplecode/SampleTests.cpp',   #includes unknown file SkShaderExtras.h
         '../samplecode/SampleWarp.cpp',
         '../samplecode/SampleFontCache.cpp',
       ],
@@ -167,7 +167,7 @@
            'pdfviewer_lib.gyp:pdfviewer_lib',
          ],
          'include_dirs' : [
-           '../experimental/PdfViewer/',
+           '../experimental/PdfViewer/inc',
          ],
          'sources': [
            '../samplecode/SamplePdfFileViewer.cpp',
@@ -321,9 +321,3 @@
     },
   ],
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

@@ -7,6 +7,7 @@
 #include "base/bind.h"
 #include "base/command_line.h"
 #include "base/json/json_reader.h"
+#include "base/location.h"
 #include "base/strings/string_number_conversions.h"
 #include "chromeos/chromeos_switches.h"
 #include "chromeos/dbus/dbus_thread_manager.h"
@@ -79,7 +80,7 @@ bool VPNRequiresCredentials(const std::string& service_path,
   return false;
 }
 
-std::string GetDefaultProfilePath(const NetworkState* network) {
+std::string GetDefaultUserProfilePath(const NetworkState* network) {
   if (!NetworkHandler::IsInitialized() ||
       !LoginState::Get()->IsUserAuthenticated() ||
       (network && network->type() == shill::kTypeWifi &&
@@ -190,9 +191,15 @@ void NetworkConnectionHandler::OnCertificatesLoaded(
   if (queued_connect_) {
     NET_LOG_EVENT("Connecting to Queued Network",
                   queued_connect_->service_path);
-    ConnectToNetwork(queued_connect_->service_path,
-                     queued_connect_->success_callback,
-                     queued_connect_->error_callback,
+
+    // Make a copy of |queued_connect_| parameters, because |queued_connect_|
+    // will get reset at the beginning of |ConnectToNetwork|.
+    std::string service_path = queued_connect_->service_path;
+    base::Closure success_callback = queued_connect_->success_callback;
+    network_handler::ErrorCallback error_callback =
+        queued_connect_->error_callback;
+
+    ConnectToNetwork(service_path, success_callback, error_callback,
                      false /* check_error_state */);
   } else if (initial_load) {
     // Once certificates have loaded, connect to the "best" available network.
@@ -256,7 +263,7 @@ void NetworkConnectionHandler::ConnectToNetwork(
   // indicate that it does not need to be set.
   std::string profile_path;
   if (!network || network->profile_path().empty())
-    profile_path = GetDefaultProfilePath(network);
+    profile_path = GetDefaultUserProfilePath(network);
 
   // All synchronous checks passed, add |service_path| to connecting list.
   pending_requests_.insert(std::make_pair(

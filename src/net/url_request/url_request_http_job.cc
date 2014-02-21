@@ -32,7 +32,6 @@
 #include "net/http/http_response_info.h"
 #include "net/http/http_status_code.h"
 #include "net/http/http_transaction.h"
-#include "net/http/http_transaction_delegate.h"
 #include "net/http/http_transaction_factory.h"
 #include "net/http/http_util.h"
 #include "net/ssl/ssl_cert_request_info.h"
@@ -46,6 +45,7 @@
 #include "net/url_request/url_request_redirect_job.h"
 #include "net/url_request/url_request_throttler_header_adapter.h"
 #include "net/url_request/url_request_throttler_manager.h"
+#include "net/websockets/websocket_handshake_stream_base.h"
 
 static const char kAvailDictionaryHeader[] = "Avail-Dictionary";
 
@@ -75,84 +75,6 @@ class URLRequestHttpJob::HttpFilterContext : public FilterContext {
   URLRequestHttpJob* job_;
 
   DISALLOW_COPY_AND_ASSIGN(HttpFilterContext);
-};
-
-class URLRequestHttpJob::HttpTransactionDelegateImpl
-    : public HttpTransactionDelegate {
- public:
-  HttpTransactionDelegateImpl(URLRequest* request,
-                              NetworkDelegate* network_delegate)
-      : request_(request),
-        network_delegate_(network_delegate),
-        state_(NONE_ACTIVE) {}
-  virtual ~HttpTransactionDelegateImpl() { OnDetachRequest(); }
-  void OnDetachRequest() {
-    if (!IsRequestAndDelegateActive())
-      return;
-    NotifyStateChange(NetworkDelegate::REQUEST_WAIT_STATE_RESET);
-    state_ = NONE_ACTIVE;
-    request_ = NULL;
-  }
-  virtual void OnCacheActionStart() OVERRIDE {
-    HandleStateChange(NONE_ACTIVE,
-                      CACHE_ACTIVE,
-                      NetworkDelegate::REQUEST_WAIT_STATE_CACHE_START);
-  }
-  virtual void OnCacheActionFinish() OVERRIDE {
-    HandleStateChange(CACHE_ACTIVE,
-                      NONE_ACTIVE,
-                      NetworkDelegate::REQUEST_WAIT_STATE_CACHE_FINISH);
-  }
-  virtual void OnNetworkActionStart() OVERRIDE {
-    HandleStateChange(NONE_ACTIVE,
-                      NETWORK_ACTIVE,
-                      NetworkDelegate::REQUEST_WAIT_STATE_NETWORK_START);
-  }
-  virtual void OnNetworkActionFinish() OVERRIDE {
-    HandleStateChange(NETWORK_ACTIVE,
-                      NONE_ACTIVE,
-                      NetworkDelegate::REQUEST_WAIT_STATE_NETWORK_FINISH);
-  }
-
- private:
-  enum State {
-    NONE_ACTIVE,
-    CACHE_ACTIVE,
-    NETWORK_ACTIVE
-  };
-
-  // Returns true if this object still has an active request and network
-  // delegate.
-  bool IsRequestAndDelegateActive() const {
-    return request_ && network_delegate_;
-  }
-
-  // Notifies the |network_delegate_| object of a change in the state of the
-  // |request_| to the state given by the |request_wait_state| argument.
-  void NotifyStateChange(NetworkDelegate::RequestWaitState request_wait_state) {
-    network_delegate_->NotifyRequestWaitStateChange(*request_,
-                                                    request_wait_state);
-  }
-
-  // Checks the request and delegate are still active, changes |state_| from
-  // |expected_state| to |next_state|, and then notifies the network delegate of
-  // the change to |request_wait_state|.
-  void HandleStateChange(State expected_state,
-                         State next_state,
-                         NetworkDelegate::RequestWaitState request_wait_state) {
-    if (!IsRequestAndDelegateActive())
-      return;
-    DCHECK_EQ(expected_state, state_);
-    state_ = next_state;
-    NotifyStateChange(request_wait_state);
-  }
-
-  URLRequest* request_;
-  NetworkDelegate* network_delegate_;
-  // Internal state tracking, for sanity checking.
-  State state_;
-
-  DISALLOW_COPY_AND_ASSIGN(HttpTransactionDelegateImpl);
 };
 
 URLRequestHttpJob::HttpFilterContext::HttpFilterContext(URLRequestHttpJob* job)
@@ -214,7 +136,8 @@ void URLRequestHttpJob::HttpFilterContext::RecordPacketStats(
 URLRequestJob* URLRequestHttpJob::Factory(URLRequest* request,
                                           NetworkDelegate* network_delegate,
                                           const std::string& scheme) {
-  DCHECK(scheme == "http" || scheme == "https");
+  DCHECK(scheme == "http" || scheme == "https" || scheme == "ws" ||
+         scheme == "wss");
 
   if (!request->context()->http_transaction_factory()) {
     NOTREACHED() << "requires a valid context";
@@ -267,8 +190,6 @@ URLRequestHttpJob::URLRequestHttpJob(
           base::Bind(&URLRequestHttpJob::OnHeadersReceivedCallback,
                      base::Unretained(this))),
       awaiting_callback_(false),
-      http_transaction_delegate_(
-          new HttpTransactionDelegateImpl(request, network_delegate)),
       http_user_agent_settings_(http_user_agent_settings) {
   URLRequestThrottlerManager* manager = request->context()->throttler_manager();
   if (manager)
@@ -351,15 +272,13 @@ void URLRequestHttpJob::Start() {
       HttpRequestHeaders::kUserAgent,
       http_user_agent_settings_ ?
           http_user_agent_settings_->GetUserAgent(request_->url()) :
-          EmptyString());
+          std::string());
 
   AddExtraHeaders();
   AddCookieHeaderAndStart();
 }
 
 void URLRequestHttpJob::Kill() {
-  http_transaction_delegate_->OnDetachRequest();
-
   if (!transaction_.get())
     return;
 
@@ -493,8 +412,26 @@ void URLRequestHttpJob::StartTransactionInternal() {
     DCHECK(request_->context()->http_transaction_factory());
 
     rv = request_->context()->http_transaction_factory()->CreateTransaction(
-        priority_, &transaction_, http_transaction_delegate_.get());
+        priority_, &transaction_);
+
+    if (rv == OK && request_info_.url.SchemeIsWSOrWSS()) {
+      // TODO(ricea): Implement WebSocket throttling semantics as defined in
+      // RFC6455 Section 4.1.
+      base::SupportsUserData::Data* data = request_->GetUserData(
+          WebSocketHandshakeStreamBase::CreateHelper::DataKey());
+      if (data) {
+        transaction_->SetWebSocketHandshakeStreamCreateHelper(
+            static_cast<WebSocketHandshakeStreamBase::CreateHelper*>(data));
+      } else {
+        rv = ERR_DISALLOWED_URL_SCHEME;
+      }
+    }
+
     if (rv == OK) {
+      transaction_->SetBeforeNetworkStartCallback(
+          base::Bind(&URLRequestHttpJob::NotifyBeforeNetworkStart,
+                     base::Unretained(this)));
+
       if (!throttling_entry_.get() ||
           !throttling_entry_->ShouldRejectRequest(*request_)) {
         rv = transaction_->Start(
@@ -916,6 +853,10 @@ void URLRequestHttpJob::OnStartCompleted(int result) {
     NotifyCertificateRequested(
         transaction_->GetResponseInfo()->cert_request_info.get());
   } else {
+    // Even on an error, there may be useful information in the response
+    // info (e.g. whether there's a cached copy).
+    if (transaction_.get())
+      response_info_ = transaction_->GetResponseInfo();
     NotifyStartError(URLRequestStatus(URLRequestStatus::FAILED, result));
   }
 }
@@ -1007,9 +948,10 @@ bool URLRequestHttpJob::GetCharset(std::string* charset) {
 
 void URLRequestHttpJob::GetResponseInfo(HttpResponseInfo* info) {
   DCHECK(request_);
-  DCHECK(transaction_.get());
 
   if (response_info_) {
+    DCHECK(transaction_.get());
+
     *info = *response_info_;
     if (override_response_headers_.get())
       info->headers = override_response_headers_;
@@ -1234,6 +1176,11 @@ void URLRequestHttpJob::ContinueDespiteLastError() {
                  weak_factory_.GetWeakPtr(), rv));
 }
 
+void URLRequestHttpJob::ResumeNetworkStart() {
+  DCHECK(transaction_.get());
+  transaction_->ResumeNetworkStart();
+}
+
 bool URLRequestHttpJob::ShouldFixMismatchedContentLength(int rv) const {
   // Some servers send the body compressed, but specify the content length as
   // the uncompressed size.  Although this violates the HTTP spec we want to
@@ -1298,6 +1245,13 @@ bool URLRequestHttpJob::GetFullRequestHeaders(
     return false;
 
   return transaction_->GetFullRequestHeaders(headers);
+}
+
+int64 URLRequestHttpJob::GetTotalReceivedBytes() const {
+  if (!transaction_)
+    return 0;
+
+  return transaction_->GetTotalReceivedBytes();
 }
 
 void URLRequestHttpJob::DoneReading() {
@@ -1517,10 +1471,6 @@ HttpResponseHeaders* URLRequestHttpJob::GetResponseHeaders() const {
 
 void URLRequestHttpJob::NotifyURLRequestDestroyed() {
   awaiting_callback_ = false;
-}
-
-void URLRequestHttpJob::OnDetachRequest() {
-  http_transaction_delegate_->OnDetachRequest();
 }
 
 }  // namespace net

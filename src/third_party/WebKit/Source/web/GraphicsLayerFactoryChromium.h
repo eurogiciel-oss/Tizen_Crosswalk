@@ -26,12 +26,12 @@
 #ifndef GraphicsLayerFactoryChromium_h
 #define GraphicsLayerFactoryChromium_h
 
-#include "core/platform/graphics/GraphicsLayerFactory.h"
+#include "platform/graphics/GraphicsLayerFactory.h"
 
-namespace WebKit {
+namespace blink {
 class WebViewImpl;
 
-class GraphicsLayerFactoryChromium : public WebCore::GraphicsLayerFactory {
+class GraphicsLayerFactoryChromium FINAL : public WebCore::GraphicsLayerFactory {
 public:
     explicit GraphicsLayerFactoryChromium(WebViewImpl*);
 
@@ -44,6 +44,6 @@ private:
     WebViewImpl* m_webView;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

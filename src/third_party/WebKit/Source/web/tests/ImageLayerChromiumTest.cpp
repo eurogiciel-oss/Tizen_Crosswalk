@@ -25,9 +25,9 @@
 #include "config.h"
 
 #include <gtest/gtest.h>
-#include "core/platform/graphics/GraphicsLayer.h"
-#include "core/platform/graphics/Image.h"
-#include "core/platform/graphics/skia/NativeImageSkia.h"
+#include "platform/graphics/GraphicsLayer.h"
+#include "platform/graphics/Image.h"
+#include "platform/graphics/skia/NativeImageSkia.h"
 #include "public/platform/WebImageLayer.h"
 #include "wtf/PassOwnPtr.h"
 
@@ -37,7 +37,7 @@ namespace {
 
 class MockGraphicsLayerClient : public GraphicsLayerClient {
   public:
-    virtual void notifyAnimationStarted(const GraphicsLayer*, double time) OVERRIDE { }
+    virtual void notifyAnimationStarted(const GraphicsLayer*, double wallClockTime, double monotonicTime) OVERRIDE { }
     virtual void paintContents(const GraphicsLayer*, GraphicsContext&, GraphicsLayerPaintingPhase, const IntRect& inClip) OVERRIDE { }
     virtual String debugName(const GraphicsLayer*) OVERRIDE { return String(); }
 };
@@ -87,7 +87,7 @@ public:
     {
     }
 
-    virtual void draw(GraphicsContext*, const FloatRect&, const FloatRect&, CompositeOperator, BlendMode) OVERRIDE
+    virtual void draw(GraphicsContext*, const FloatRect&, const FloatRect&, CompositeOperator, blink::WebBlendMode) OVERRIDE
     {
     }
 
@@ -102,6 +102,8 @@ class GraphicsLayerForTesting : public GraphicsLayer {
 public:
     explicit GraphicsLayerForTesting(GraphicsLayerClient* client)
         : GraphicsLayer(client) { };
+
+    virtual blink::WebLayer* contentsLayer() const { return GraphicsLayer::contentsLayer(); }
 };
 
 TEST(ImageLayerChromiumTest, opaqueImages)

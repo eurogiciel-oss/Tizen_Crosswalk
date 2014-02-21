@@ -884,10 +884,10 @@ class SettingGetterImplKDE : public ProxyConfigServiceLinux::SettingGetter,
         base::FilePath kde4_config = KDEHomeToConfigPath(kde4_path);
         bool use_kde4 = false;
         if (base::DirectoryExists(kde4_path)) {
-          base::PlatformFileInfo kde3_info;
-          base::PlatformFileInfo kde4_info;
-          if (file_util::GetFileInfo(kde4_config, &kde4_info)) {
-            if (file_util::GetFileInfo(kde3_config, &kde3_info)) {
+          base::File::Info kde3_info;
+          base::File::Info kde4_info;
+          if (base::GetFileInfo(kde4_config, &kde4_info)) {
+            if (base::GetFileInfo(kde3_config, &kde3_info)) {
               use_kde4 = kde4_info.last_modified >= kde3_info.last_modified;
             } else {
               use_kde4 = true;
@@ -1171,7 +1171,7 @@ class SettingGetterImplKDE : public ProxyConfigServiceLinux::SettingGetter,
   // each relevant name-value pair to the appropriate value table.
   void UpdateCachedSettings() {
     base::FilePath kioslaverc = kde_config_dir_.Append("kioslaverc");
-    file_util::ScopedFILE input(file_util::OpenFile(kioslaverc, "r"));
+    file_util::ScopedFILE input(base::OpenFile(kioslaverc, "r"));
     if (!input.get())
       return;
     ResetCachedSettings();

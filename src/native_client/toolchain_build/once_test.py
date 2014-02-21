@@ -10,6 +10,7 @@ import toolchain_env
 
 import os
 import subprocess
+import shutil
 import sys
 import unittest
 
@@ -47,9 +48,9 @@ class TestOnce(unittest.TestCase):
     # Test that the computation is always performed if the cache is empty.
     with working_directory.TemporaryWorkingDirectory() as work_dir:
       self.GenerateTestData('FirstTime', work_dir)
-      o = once.Once(storage=fake_storage.FakeStorage())
+      o = once.Once(storage=fake_storage.FakeStorage(), system_summary='test')
       o.Run('test', self._input_dirs, self._output_dirs[0],
-            [command.Copy('%(input0)s/in0', '%(output)s/out', cwd=work_dir)]),
+            [command.Copy('%(input0)s/in0', '%(output)s/out')])
       self.assertEquals('FirstTimedata0',
                         file_tools.ReadFile(self._output_files[0]))
 
@@ -58,20 +59,21 @@ class TestOnce(unittest.TestCase):
     with working_directory.TemporaryWorkingDirectory() as work_dir:
       self.GenerateTestData('HitsCacheSecondTime', work_dir)
       self._tally = 0
-      def check_call(cmd, **kwargs):
+      def Copy(subst, src, dst):
         self._tally += 1
-        subprocess.check_call(cmd, **kwargs)
+        shutil.copyfile(subst.SubstituteAbsPaths(src),
+                        subst.SubstituteAbsPaths(dst))
       self._url = None
       def stash_url(urls):
         self._url = urls
-      o = once.Once(storage=fake_storage.FakeStorage(), check_call=check_call,
-                    print_url=stash_url)
+      o = once.Once(storage=fake_storage.FakeStorage(),
+                    print_url=stash_url, system_summary='test')
       o.Run('test', self._input_dirs, self._output_dirs[0],
-            [command.Copy('%(input0)s/in0', '%(output)s/out', cwd=work_dir)])
+            [command.Runnable(Copy,'%(input0)s/in0', '%(output)s/out')])
       initial_url = self._url
       self._url = None
       o.Run('test', self._input_dirs, self._output_dirs[1],
-            [command.Copy('%(input0)s/in0', '%(output)s/out', cwd=work_dir)])
+            [command.Runnable(Copy,'%(input0)s/in0', '%(output)s/out')])
       self.assertEquals(file_tools.ReadFile(self._input_files[0]),
                         file_tools.ReadFile(self._output_files[0]))
       self.assertEquals(file_tools.ReadFile(self._input_files[0]),
@@ -95,13 +97,13 @@ class TestOnce(unittest.TestCase):
       self.GenerateTestData('RecomputeHashMatches', work_dir)
       fs = fake_storage.FakeStorage()
       ds = directory_storage.DirectoryStorageAdapter(storage=fs)
-      o = once.Once(storage=fs)
+      o = once.Once(storage=fs, system_summary='test')
 
       # Run the computation (compute the length of a file) from input0 to
       # output0.
       o.Run('test', self._input_dirs, self._output_dirs[0],
             [self.FileLength(
-                '%(input0)s/in0', '%(output)s/out', cwd=work_dir)])
+                '%(input0)s/in0', '%(output)s/out')])
 
       # Check that 2 writes have occurred. One to write a mapping from in->out,
       # and one for the output data.
@@ -111,7 +113,7 @@ class TestOnce(unittest.TestCase):
       # (These should have the same length.)
       o.Run('test', self._input_dirs, self._output_dirs[1],
             [self.FileLength(
-                '%(input1)s/in1', '%(output)s/out', cwd=work_dir)])
+                '%(input1)s/in1', '%(output)s/out')])
 
       # Write count goes up by one as an in->out hash is added,
       # but no new output is stored (as it is the same).
@@ -140,7 +142,7 @@ class TestOnce(unittest.TestCase):
           write_bucket='mybucket',
           read_buckets=[],
           call=call)
-      o = once.Once(storage=bad_storage)
+      o = once.Once(storage=bad_storage, system_summary='test')
       self.assertRaises(gsd_storage.GSDStorageError, o.Run, 'test',
           self._input_dirs, self._output_dirs[0],
           [command.Copy('%(input0)s/in0', '%(output)s/out')])
@@ -151,15 +153,17 @@ class TestOnce(unittest.TestCase):
     with working_directory.TemporaryWorkingDirectory() as work_dir:
       self.GenerateTestData('UseCachedResultsFalse', work_dir)
       self._tally = 0
-      def check_call(cmd, **kwargs):
-        subprocess.check_call(cmd, **kwargs)
+      def Copy(subst, src, dst):
         self._tally += 1
+        shutil.copyfile(subst.SubstituteAbsPaths(src),
+                        subst.SubstituteAbsPaths(dst))
       o = once.Once(storage=fake_storage.FakeStorage(),
-                    use_cached_results=False, check_call=check_call)
+                    use_cached_results=False,
+                    system_summary='test')
       o.Run('test', self._input_dirs, self._output_dirs[0],
-            [command.Copy('%(input0)s/in0', '%(output)s/out', cwd=work_dir)])
+            [command.Runnable(Copy,'%(input0)s/in0', '%(output)s/out')])
       o.Run('test', self._input_dirs, self._output_dirs[1],
-            [command.Copy('%(input0)s/in0', '%(output)s/out', cwd=work_dir)])
+            [command.Runnable(Copy,'%(input0)s/in0', '%(output)s/out')])
       self.assertEquals(2, self._tally)
       self.assertEquals(file_tools.ReadFile(self._input_files[0]),
                         file_tools.ReadFile(self._output_files[0]))
@@ -172,9 +176,9 @@ class TestOnce(unittest.TestCase):
     with working_directory.TemporaryWorkingDirectory() as work_dir:
       self.GenerateTestData('CacheResultsFalse', work_dir)
       storage = fake_storage.FakeStorage()
-      o = once.Once(storage=storage, cache_results=False)
+      o = once.Once(storage=storage, cache_results=False, system_summary='test')
       o.Run('test', self._input_dirs, self._output_dirs[0],
-            [command.Copy('%(input0)s/in0', '%(output)s/out', cwd=work_dir)])
+            [command.Copy('%(input0)s/in0', '%(output)s/out')])
       self.assertEquals(0, storage.ItemCount())
       self.assertEquals(file_tools.ReadFile(self._input_files[0]),
                         file_tools.ReadFile(self._output_files[0]))
@@ -185,50 +189,33 @@ class TestOnce(unittest.TestCase):
       self.GenerateTestData('Mkdir', work_dir)
       foo = os.path.join(work_dir, 'foo')
       o = once.Once(storage=fake_storage.FakeStorage(),
-                    cache_results=False)
+                    cache_results=False, system_summary='test')
       o.Run('test', self._input_dirs, foo,
-            [command.Mkdir('hi')],
-            working_dir=foo)
+            [command.Mkdir('%(output)s/hi')])
       self.assertTrue(os.path.isdir(os.path.join(foo, 'hi')))
 
   def test_Command(self):
     # Test a plain command.
     with working_directory.TemporaryWorkingDirectory() as work_dir:
       self.GenerateTestData('Command', work_dir)
-      o = once.Once(storage=fake_storage.FakeStorage())
+      o = once.Once(storage=fake_storage.FakeStorage(), system_summary='test')
       o.Run('test', self._input_dirs, self._output_dirs[0],
             [command.Command([
                 sys.executable, '-c',
                 'import sys; open(sys.argv[1], "wb").write("hello")',
-                '%(output)s/out'], cwd=work_dir)])
+                '%(output)s/out'])])
       self.assertEquals('hello', file_tools.ReadFile(self._output_files[0]))
 
-  def test_UnpackCommands(self):
-    # Test that unpack commnds get run first and hashed_inputs get
-    # used when present.
+  def test_NumCores(self):
+    # Test that the core count is substituted. Since we don't know how many
+    # cores the test machine will have, just check that it's an integer.
     with working_directory.TemporaryWorkingDirectory() as work_dir:
-      self.GenerateTestData('UnpackCommands', work_dir)
-      self._tally = 0
-      def check_call(cmd, **kwargs):
-        self._tally += 1
-        subprocess.check_call(cmd, **kwargs)
-      o = once.Once(storage=fake_storage.FakeStorage(), check_call=check_call)
-      alt_inputs = {'input0': os.path.join(work_dir, 'alt_input')}
-      unpack_commands = [command.Copy('%(input0)s/in0', alt_inputs['input0'])]
-      commands = [command.Copy('%(input0)s', '%(output)s/out', cwd=work_dir)]
-      o.Run('test', self._input_dirs, self._output_dirs[0],
-            commands=commands,
-            unpack_commands=unpack_commands,
-            hashed_inputs=alt_inputs)
-      o.Run('test', self._input_dirs, self._output_dirs[1], commands=commands,
-            unpack_commands=unpack_commands,
-            hashed_inputs=alt_inputs)
-      self.assertEquals(file_tools.ReadFile(self._input_files[0]),
-                        file_tools.ReadFile(self._output_files[0]))
-      self.assertEquals(file_tools.ReadFile(self._input_files[0]),
-                        file_tools.ReadFile(self._output_files[1]))
-      self.assertEquals(3, self._tally)
-
+      self.GenerateTestData('NumCores', work_dir)
+      o = once.Once(storage=fake_storage.FakeStorage(),
+                    system_summary='test')
+      def CheckCores(subst):
+        self.assertNotEquals(0, int(subst.Substitute('%(cores)s')))
+      o.Run('test', {}, self._output_dirs[0], [command.Runnable(CheckCores)])
 
 if __name__ == '__main__':
   unittest.main()

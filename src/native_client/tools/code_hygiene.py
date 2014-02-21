@@ -37,6 +37,7 @@ CPP_CHECKER = ['cpplint.py',
                ',-readability/casting'
                ',-readability/check'
                ',-readability/multiline_comment'
+               ',-readability/streams'
                ',-runtime/sizeof'
                ',-runtime/threadsafe_fn'
                ',-whitespace/newline'
@@ -212,18 +213,6 @@ class TrailingWhiteSpaceChecker(GenericRegexChecker):
     return ('.patch' not in props and
             '.stdout' not in props and
             '.table' not in props)
-
-
-class UntrustedAsmChecker(GenericRegexChecker):
-  """No inline assembler in untrusted code."""
-  def __init__(self):
-    # TODO(robertm): also cope with asm
-    GenericRegexChecker.__init__(self, r'__asm__')
-    return
-
-  def FileFilter(self, props):
-    if 'is_untrusted' not in props: return False
-    return '.c' in props or '.cc' in props or '.h' in props
 
 
 class CarriageReturnChecker(GenericRegexChecker):
@@ -448,7 +437,6 @@ CHECKS = [# fatal checks
           (True, 'cpp_comment', CppCommentChecker()),
           (True, 'fixme', FixmeChecker()),
           (True, 'include', IncludeChecker()),
-          (True, 'untrusted_asm', UntrustedAsmChecker()),
           # Non fatal checks
           (False, 'carriage_return', CarriageReturnChecker()),
           (False, 'rewrite', RewriteChecker()),

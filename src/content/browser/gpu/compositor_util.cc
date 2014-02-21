@@ -24,14 +24,6 @@ struct GpuFeatureInfo {
   bool fallback_to_software;
 };
 
-// Determine if accelerated-2d-canvas is supported, which depends on whether
-// lose_context could happen.
-bool SupportsAccelerated2dCanvas() {
-  if (GpuDataManagerImpl::GetInstance()->GetGPUInfo().can_lose_context)
-    return false;
-  return true;
-}
-
 #if defined(OS_CHROMEOS)
 const size_t kNumFeatures = 14;
 #else
@@ -47,7 +39,8 @@ const GpuFeatureInfo GetGpuFeatureInfo(size_t index) {
           manager->IsFeatureBlacklisted(
               gpu::GPU_FEATURE_TYPE_ACCELERATED_2D_CANVAS),
           command_line.HasSwitch(switches::kDisableAccelerated2dCanvas) ||
-          !SupportsAccelerated2dCanvas(),
+          !GpuDataManagerImpl::GetInstance()->
+              GetGPUInfo().SupportsAccelerated2dCanvas(),
           "Accelerated 2D canvas is unavailable: either disabled at the command"
           " line or not supported by the current system.",
           true
@@ -124,14 +117,6 @@ const GpuFeatureInfo GetGpuFeatureInfo(size_t index) {
           false
       },
       {
-          "texture_sharing",
-          manager->IsFeatureBlacklisted(gpu::GPU_FEATURE_TYPE_TEXTURE_SHARING),
-          command_line.HasSwitch(switches::kDisableImageTransportSurface),
-          "Sharing textures between processes has been disabled, either via"
-          " about:flags or command line.",
-          false
-      },
-      {
           "video_decode",
           manager->IsFeatureBlacklisted(
               gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE),
@@ -140,6 +125,17 @@ const GpuFeatureInfo GetGpuFeatureInfo(size_t index) {
           " or command line.",
           true
       },
+#if defined(ENABLE_WEBRTC)
+      {
+          "video_encode",
+          manager->IsFeatureBlacklisted(
+              gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_ENCODE),
+          command_line.HasSwitch(switches::kDisableWebRtcHWEncoding),
+          "Accelerated video encode has been disabled, either via about:flags"
+          " or command line.",
+          true
+      },
+#endif
       {
           "video",
           manager->IsFeatureBlacklisted(
@@ -215,18 +211,19 @@ bool IsThreadedCompositingEnabled() {
     return true;
   }
 
-#if defined(USE_AURA)
-  // We always want threaded compositing on Aura.
+#if defined(USE_AURA) || defined(OS_MACOSX)
+  // We always want threaded compositing on Aura and Mac (the fallback is a
+  // threaded software compositor).
   return true;
 #endif
 
   if (!CanDoAcceleratedCompositing() || IsForceCompositingModeBlacklisted())
     return false;
 
-#if defined(OS_MACOSX) || defined(OS_WIN)
+#if defined(OS_WIN)
   // Windows Vista+ has been shipping with TCM enabled at 100% since M24 and
-  // Mac OSX 10.8+ since M28. The blacklist check above takes care of returning
-  // false before this hits on unsupported Win/Mac versions.
+  // The blacklist check above takes care of returning false before this hits
+  // on unsupported Win versions.
   return true;
 #endif
 
@@ -365,25 +362,6 @@ base::Value* GetFeatureStatus() {
     }
     feature_status_dict->SetString(
         gpu_feature_info.name.c_str(), status.c_str());
-  }
-  gpu::GpuSwitchingOption gpu_switching_option =
-      manager->GetGpuSwitchingOption();
-  if (gpu_switching_option != gpu::GPU_SWITCHING_OPTION_UNKNOWN) {
-    std::string gpu_switching;
-    switch (gpu_switching_option) {
-    case gpu::GPU_SWITCHING_OPTION_AUTOMATIC:
-        gpu_switching = "gpu_switching_automatic";
-        break;
-    case gpu::GPU_SWITCHING_OPTION_FORCE_DISCRETE:
-        gpu_switching = "gpu_switching_force_discrete";
-        break;
-    case gpu::GPU_SWITCHING_OPTION_FORCE_INTEGRATED:
-        gpu_switching = "gpu_switching_force_integrated";
-        break;
-      default:
-        break;
-    }
-    feature_status_dict->SetString("gpu_switching", gpu_switching.c_str());
   }
   return feature_status_dict;
 }

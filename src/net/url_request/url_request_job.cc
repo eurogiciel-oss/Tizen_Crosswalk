@@ -59,7 +59,6 @@ void URLRequestJob::Kill() {
 
 void URLRequestJob::DetachRequest() {
   request_ = NULL;
-  OnDetachRequest();
 }
 
 // This function calls ReadData to get stream data. If a filter exists, passes
@@ -109,6 +108,10 @@ void URLRequestJob::StopCaching() {
 bool URLRequestJob::GetFullRequestHeaders(HttpRequestHeaders* headers) const {
   // Most job types don't send request headers.
   return false;
+}
+
+int64 URLRequestJob::GetTotalReceivedBytes() const {
+  return 0;
 }
 
 LoadState URLRequestJob::GetLoadState() const {
@@ -213,6 +216,12 @@ void URLRequestJob::FollowDeferredRedirect() {
   FollowRedirect(redirect_url, redirect_status_code);
 }
 
+void URLRequestJob::ResumeNetworkStart() {
+  // This should only be called for HTTP Jobs, and implemented in the derived
+  // class.
+  NOTREACHED();
+}
+
 bool URLRequestJob::GetMimeType(std::string* mime_type) const {
   return false;
 }
@@ -274,6 +283,13 @@ bool URLRequestJob::CanEnablePrivacyMode() const {
     return false;  // The request was destroyed, so there is no more work to do.
 
   return request_->CanEnablePrivacyMode();
+}
+
+void URLRequestJob::NotifyBeforeNetworkStart(bool* defer) {
+  if (!request_)
+    return;
+
+  request_->NotifyBeforeNetworkStart(defer);
 }
 
 void URLRequestJob::NotifyHeadersComplete() {
@@ -414,8 +430,13 @@ void URLRequestJob::NotifyStartError(const URLRequestStatus &status) {
   DCHECK(!has_handled_response_);
   has_handled_response_ = true;
   if (request_) {
+    // There may be relevant information in the response info even in the
+    // error case.
+    GetResponseInfo(&request_->response_info_);
+
     request_->set_status(status);
     request_->NotifyResponseStarted();
+    // We may have been deleted.
   }
 }
 

@@ -20,10 +20,8 @@
 #include "chrome/browser/favicon/favicon_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/extension_icon_set.h"
-#include "chrome/common/extensions/incognito_handler.h"
 #include "chrome/common/extensions/manifest_handlers/icons_handler.h"
 #include "chrome/common/url_constants.h"
 #include "components/user_prefs/pref_registry_syncable.h"
@@ -32,7 +30,9 @@
 #include "content/public/browser/web_ui.h"
 #include "content/public/common/bindings_policy.h"
 #include "content/public/common/page_transition_types.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/extension_resource.h"
+#include "extensions/common/manifest_handlers/incognito_info.h"
 #include "net/base/file_stream.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/codec/png_codec.h"
@@ -78,7 +78,7 @@ void UnregisterAndReplaceOverrideForWebContents(
   // Don't use Reload() since |url| isn't the same as the internal URL that
   // NavigationController has.
   web_contents->GetController().LoadURL(
-      url, content::Referrer(url, WebKit::WebReferrerPolicyDefault),
+      url, content::Referrer(url, blink::WebReferrerPolicyDefault),
       content::PAGE_TRANSITION_RELOAD, std::string());
 }
 
@@ -137,11 +137,6 @@ ExtensionWebUI::ExtensionWebUI(content::WebUI* web_ui, const GURL& url)
   // those (this is also reflected in ChromeWebUIControllerFactory::
   // UseWebUIBindingsForURL).
   int bindings = 0;
-
-  // Bind externalHost to Extension WebUI loaded in Chrome Frame.
-  const CommandLine& browser_command_line = *CommandLine::ForCurrentProcess();
-  if (browser_command_line.HasSwitch(switches::kChromeFrame))
-    bindings |= content::BINDINGS_POLICY_EXTERNAL_HOST;
   web_ui->SetBindings(bindings);
 
   // Hack: A few things we specialize just for the bookmark manager.
@@ -190,7 +185,7 @@ bool ExtensionWebUI::HandleChromeURLOverride(
 
   size_t i = 0;
   while (i < url_list->GetSize()) {
-    const Value* val = NULL;
+    const base::Value* val = NULL;
     url_list->Get(i, &val);
 
     // Verify that the override value is good.  If not, unregister it and find
@@ -229,7 +224,7 @@ bool ExtensionWebUI::HandleChromeURLOverride(
     // extension uses split mode.
     bool incognito_override_allowed =
         extensions::IncognitoInfo::IsSplitMode(extension) &&
-        extension_util::IsIncognitoEnabled(extension->id(), service);
+        extensions::util::IsIncognitoEnabled(extension->id(), profile);
     if (profile->IsOffTheRecord() && !incognito_override_allowed) {
       ++i;
       continue;
@@ -316,7 +311,7 @@ void ExtensionWebUI::RegisterChromeURLOverrides(
     }
     // Insert the override at the front of the list.  Last registered override
     // wins.
-    page_overrides->Insert(0, new StringValue(iter->second.spec()));
+    page_overrides->Insert(0, new base::StringValue(iter->second.spec()));
   }
 }
 
@@ -324,7 +319,7 @@ void ExtensionWebUI::RegisterChromeURLOverrides(
 void ExtensionWebUI::UnregisterAndReplaceOverride(const std::string& page,
                                                   Profile* profile,
                                                   base::ListValue* list,
-                                                  const Value* override) {
+                                                  const base::Value* override) {
   size_t index = 0;
   bool found = list->Remove(*override, &index);
   if (found && index == 0) {
@@ -332,14 +327,14 @@ void ExtensionWebUI::UnregisterAndReplaceOverride(const std::string& page,
     // tabs for this override and get them to reload the original URL.
     base::Callback<void(WebContents*)> callback =
         base::Bind(&UnregisterAndReplaceOverrideForWebContents, page, profile);
-    ExtensionTabUtil::ForEachTab(callback);
+    extensions::ExtensionTabUtil::ForEachTab(callback);
   }
 }
 
 // static
 void ExtensionWebUI::UnregisterChromeURLOverride(const std::string& page,
                                                  Profile* profile,
-                                                 const Value* override) {
+                                                 const base::Value* override) {
   if (!override)
     return;
   PrefService* prefs = profile->GetPrefs();
@@ -372,7 +367,7 @@ void ExtensionWebUI::UnregisterChromeURLOverrides(
       NOTREACHED();
       continue;
     } else {
-      StringValue override(iter->second.spec());
+      base::StringValue override(iter->second.spec());
       UnregisterAndReplaceOverride(iter->first, profile,
                                    page_overrides, &override);
     }

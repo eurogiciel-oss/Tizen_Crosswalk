@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -509,11 +509,17 @@ void GLES2VertexAttribPointer(
 void GLES2Viewport(GLint x, GLint y, GLsizei width, GLsizei height) {
   gles2::GetGLContext()->Viewport(x, y, width, height);
 }
-void GLES2BlitFramebufferEXT(
+void GLES2BlitFramebufferCHROMIUM(
     GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0,
     GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter) {
-  gles2::GetGLContext()->BlitFramebufferEXT(
+  gles2::GetGLContext()->BlitFramebufferCHROMIUM(
       srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+}
+void GLES2RenderbufferStorageMultisampleCHROMIUM(
+    GLenum target, GLsizei samples, GLenum internalformat, GLsizei width,
+    GLsizei height) {
+  gles2::GetGLContext()->RenderbufferStorageMultisampleCHROMIUM(
+      target, samples, internalformat, width, height);
 }
 void GLES2RenderbufferStorageMultisampleEXT(
     GLenum target, GLsizei samples, GLenum internalformat, GLsizei width,
@@ -651,9 +657,6 @@ void GLES2GetProgramInfoCHROMIUM(
 GLuint GLES2CreateStreamTextureCHROMIUM(GLuint texture) {
   return gles2::GetGLContext()->CreateStreamTextureCHROMIUM(texture);
 }
-void GLES2DestroyStreamTextureCHROMIUM(GLuint texture) {
-  gles2::GetGLContext()->DestroyStreamTextureCHROMIUM(texture);
-}
 GLuint GLES2CreateImageCHROMIUM(
     GLsizei width, GLsizei height, GLenum internalformat) {
   return gles2::GetGLContext()->CreateImageCHROMIUM(
@@ -757,6 +760,9 @@ void GLES2WaitSyncPointCHROMIUM(GLuint sync_point) {
 }
 void GLES2DrawBuffersEXT(GLsizei count, const GLenum* bufs) {
   gles2::GetGLContext()->DrawBuffersEXT(count, bufs);
+}
+void GLES2DiscardBackbufferCHROMIUM() {
+  gles2::GetGLContext()->DiscardBackbufferCHROMIUM();
 }
 
 namespace gles2 {
@@ -989,8 +995,9 @@ extern const NameToFunc g_gles2_function_table[] = {
   { "glVertexAttribPointer", reinterpret_cast<GLES2FunctionPointer>(
       glVertexAttribPointer), },
   { "glViewport", reinterpret_cast<GLES2FunctionPointer>(glViewport), },
-  { "glBlitFramebufferEXT", reinterpret_cast<GLES2FunctionPointer>(
-      glBlitFramebufferEXT), },
+  { "glBlitFramebufferCHROMIUM", reinterpret_cast<GLES2FunctionPointer>(
+      glBlitFramebufferCHROMIUM), },
+  { "glRenderbufferStorageMultisampleCHROMIUM", reinterpret_cast<GLES2FunctionPointer>(glRenderbufferStorageMultisampleCHROMIUM), },  // NOLINT
   { "glRenderbufferStorageMultisampleEXT", reinterpret_cast<GLES2FunctionPointer>(glRenderbufferStorageMultisampleEXT), },  // NOLINT
   { "glFramebufferTexture2DMultisampleEXT", reinterpret_cast<GLES2FunctionPointer>(glFramebufferTexture2DMultisampleEXT), },  // NOLINT
   { "glTexStorage2DEXT", reinterpret_cast<GLES2FunctionPointer>(
@@ -1060,8 +1067,6 @@ extern const NameToFunc g_gles2_function_table[] = {
       glGetProgramInfoCHROMIUM), },
   { "glCreateStreamTextureCHROMIUM", reinterpret_cast<GLES2FunctionPointer>(
       glCreateStreamTextureCHROMIUM), },
-  { "glDestroyStreamTextureCHROMIUM", reinterpret_cast<GLES2FunctionPointer>(
-      glDestroyStreamTextureCHROMIUM), },
   { "glCreateImageCHROMIUM", reinterpret_cast<GLES2FunctionPointer>(
       glCreateImageCHROMIUM), },
   { "glDestroyImageCHROMIUM", reinterpret_cast<GLES2FunctionPointer>(
@@ -1114,6 +1119,8 @@ extern const NameToFunc g_gles2_function_table[] = {
       glWaitSyncPointCHROMIUM), },
   { "glDrawBuffersEXT", reinterpret_cast<GLES2FunctionPointer>(
       glDrawBuffersEXT), },
+  { "glDiscardBackbufferCHROMIUM", reinterpret_cast<GLES2FunctionPointer>(
+      glDiscardBackbufferCHROMIUM), },
   { NULL, NULL, },
 };
 

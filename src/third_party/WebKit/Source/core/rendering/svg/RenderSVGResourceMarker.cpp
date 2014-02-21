@@ -23,11 +23,10 @@
 
 #include "core/rendering/svg/RenderSVGResourceMarker.h"
 
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/svg/RenderSVGContainer.h"
 #include "core/rendering/svg/SVGRenderSupport.h"
-#include "core/svg/SVGElement.h"
-#include "core/svg/SVGMarkerElement.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 
 #include "wtf/TemporaryChange.h"
 
@@ -50,6 +49,7 @@ void RenderSVGResourceMarker::layout()
     if (m_isInLayout)
         return;
 
+    LayoutRectRecorder recorder(*this);
     TemporaryChange<bool> inLayoutChange(m_isInLayout, true);
 
     // Invalidate all resources if our layout changed.
@@ -60,6 +60,8 @@ void RenderSVGResourceMarker::layout()
     // layouting of RenderSVGContainer for calculating  local
     // transformations and repaint.
     RenderSVGContainer::layout();
+
+    clearInvalidationMask();
 }
 
 void RenderSVGResourceMarker::removeAllClientsFromCache(bool markForInvalidation)
@@ -103,7 +105,7 @@ FloatPoint RenderSVGResourceMarker::referencePoint() const
     ASSERT(marker);
 
     SVGLengthContext lengthContext(marker);
-    return FloatPoint(marker->refXCurrentValue().value(lengthContext), marker->refYCurrentValue().value(lengthContext));
+    return FloatPoint(marker->refX()->currentValue()->value(lengthContext), marker->refY()->currentValue()->value(lengthContext));
 }
 
 float RenderSVGResourceMarker::angle() const
@@ -135,10 +137,12 @@ AffineTransform RenderSVGResourceMarker::markerTransformation(const FloatPoint& 
 
 void RenderSVGResourceMarker::draw(PaintInfo& paintInfo, const AffineTransform& transform)
 {
+    clearInvalidationMask();
+
     // An empty viewBox disables rendering.
     SVGMarkerElement* marker = toSVGMarkerElement(element());
     ASSERT(marker);
-    if (marker->hasAttribute(SVGNames::viewBoxAttr) && marker->viewBoxCurrentValue().isValid() && marker->viewBoxCurrentValue().isEmpty())
+    if (marker->hasAttribute(SVGNames::viewBoxAttr) && marker->viewBox()->currentValue()->isValid() && marker->viewBox()->currentValue()->value().isEmpty())
         return;
 
     PaintInfo info(paintInfo);
@@ -177,8 +181,8 @@ void RenderSVGResourceMarker::calcViewport()
     ASSERT(marker);
 
     SVGLengthContext lengthContext(marker);
-    float w = marker->markerWidthCurrentValue().value(lengthContext);
-    float h = marker->markerHeightCurrentValue().value(lengthContext);
+    float w = marker->markerWidth()->currentValue()->value(lengthContext);
+    float h = marker->markerHeight()->currentValue()->value(lengthContext);
     m_viewport = FloatRect(0, 0, w, h);
 }
 

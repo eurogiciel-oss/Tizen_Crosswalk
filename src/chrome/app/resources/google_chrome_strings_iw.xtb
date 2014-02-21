@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="iw">
+<translation id="3234920859344197194">‏באתר הזה נעשה שימוש בפלאגין של Chrome Frame שבקרוב לא יוצעו עוד עבורו עדכוני אבטחה ויציבות. הסר את התקנת הפלאגין ושדרג לדפדפן מודרני.</translation>
 <translation id="8914504000324227558">‏הפעל מחדש את Chrome</translation>
 <translation id="8000275528373650868">‏להפעלת Google Chrome יש להשתמש במערכת ההפעלה Windows Vista או Windows XP עם SP2 ואילך.</translation>
 <translation id="8485767968786176057">‏במקרה זה, הכתובת שמופיעה באישור אינה תואמת לכתובת של האתר שאליו הדפדפן ניסה להגיע. סיבה אפשרית אחת לכך היא שפעולות התקשורת שלך נלכדו על ידי תוקף שמציג אישור עבור אתר שונה, ובעקבות זאת נוצרה אי ההתאמה. סיבה אפשרית נוספת היא שהשרת מוגדר להחזיר אותו אישור עבור אתרים מרובים, לרבות האתר שבו אתה מנסה לבקר, גם אם האישור אינו תקף לכל אותם אתרים. Google Chrome יכול לקבוע בוודאות שהגעת ל-‏&lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, אך אינו יכול לאמת כי הוא זהה לאתר &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, שאליו ניסית להגיע. אם תמשיך, Chrome לא יחפש אי התאמות שמיות נוספות.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">‏אפשר ל-Google Chrome לפעול ברקע</translation>
 <translation id="2896252579017640304">‏הפעל את יישומי Chrome</translation>
 <translation id="2370289711218562573">‏Google Chrome מייבא כעת מועדפים/סימניות.</translation>
-<translation id="8762286861469007470">‏מזהה Chrome Captive Portal</translation>
 <translation id="2721687379934343312">‏ב-Mac, סיסמאות נשמרות ב-Keychain שלך ומשתמשי Chrome  אחרים המשתפים חשבון OS X זה יכולים לגשת אליהן או לסנכרן אותן.</translation>
 <translation id="1761870329818521071">‏אין אפשרות להתקין את אותה גירסת Google Chrome Frame הפועלת כעת. סגור את Google Chrome Frame ונסה שוב.</translation>
 <translation id="6014844626092547096">‏אתה מחובר כעת ל-Chrome‏! הסנכרון הושבת על ידי מנהל המערכת שלך.</translation>
@@ -57,10 +57,10 @@
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">‏פרטי החיוב שלך נשמרו ב-Chrome.</translation>
 <translation id="7098166902387133879">‏Google Chrome משתמש במיקרופון שלך.</translation>
-<translation id="3590194807845837023">בטל נעילת פרופיל והפעל מחדש</translation>
 <translation id="4053720452172726777">‏התאם אישית ושלוט ב-Google Chrome</translation>
 <translation id="6423071462708908582">‏ניסית להגיע אל &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, אך השרת הציג אישור שתוקפו פג. אין מידע זמין שיכול לציין אם האישור נפגע מאז פג תוקפו. פירוש הדבר ש-Google Chrome אינו יכול להבטיח שאתה מתקשר עם &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; ולא עם תוקף. השעון של המחשב מוגדר כעת ל-<ph name="CURRENT_TIME"/>. האם זה נכון? אם לא, עליך לתקן את השגיאה ולרענן את דף.</translation>
 <translation id="3197823471738295152">המכשיר שלך מעודכן.</translation>
+<translation id="8286862437124483331">‏Google Chrome מנסה להציג סיסמאות. הקלד את הסיסמה שלך ל-Windows כדי לאפשר זאת.</translation>
 <translation id="3889417619312448367">‏הסר את Google Chrome</translation>
 <translation id="1434626383986940139">‏יישומי Chrome - קאנארי</translation>
 <translation id="8551886023433311834">כמעט מעודכן! הפעל מחדש את המכשיר שלך כדי לסיים את העדכון.</translation>
@@ -179,7 +179,6 @@
 <translation id="2189123953385179981">‏Google ChromeOS אינו תומך בהפעלת יישום חיצוני כדי לטפל בקישורים של <ph name="SCHEME"/>. הקישור הנדרש הוא <ph name="PROTOLINK"/>.</translation>
 <translation id="7396375882099008034">‏אפשר ל-Chrome לגשת לרשת בהגדרות חומת האש או האנטי-וירוס שלך.</translation>
 <translation id="9102715433345326100">‏הקובץ הזה זדוני, ו-Chrome חסם אותו</translation>
-<translation id="3170677364322086041">‏האתר הזה משתמש בפלאגין Chrome Frame שיצא משימוש ושאינו מקבל עוד עדכוני אבטחה ויציבות. הסר את ההתקנה שלו ושדרג לדפדפן מודרני.</translation>
 <translation id="8205111949707227942">‏אופציונלי: עזור לנו לשפר את Chrome OS על ידי שליחת נתוני שימוש ודוחות קריסה אל Google באופן אוטומטי.</translation>
 <translation id="7253415505590551024">‏הורדות מתבצעות כעת. האם ברצונך לצאת מ-Google Chrome ולבטל את ההורדות?</translation>
 <translation id="7196020411877309443">למה אני רואה את הדף הזה?</translation>
@@ -196,6 +195,7 @@
           הגדרות LAN
           ובטל את הבחירה באפשרות &quot;השתמש בשרת עבור רשת LAN&quot;.</translation>
 <translation id="7825851276765848807">‏ההתקנה נכשלה בשל שגיאה לא מזוהה. הורד שוב את Google Chrome.</translation>
+<translation id="4919523385405675060">‏באתר הזה נעשה שימוש בפלאגין של Chrome Frame שבקרוב לא יוצעו עוד עבורו עדכוני אבטחה ויציבות. הסר את התקנת הפלאגין והורד דפדפן תואם.</translation>
 <translation id="1061257178446858647">‏נכנסת ל-Chrome‏! הסימניות, ההיסטוריה, והגדרות אחרות שלך יסונכרנו עם חשבון Google שלך.</translation>
 <translation id="3335672657969596251">‏Google Chrome אינו תומך ב <ph name="OS_NAME"/></translation>
 <translation id="4458285410772214805">צא מהמערכת והיכנס שוב כדי שהשינוי ייכנס לתוקף.</translation>

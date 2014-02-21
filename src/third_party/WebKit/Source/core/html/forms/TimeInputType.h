@@ -42,7 +42,7 @@ typedef BaseMultipleFieldsDateAndTimeInputType BaseTimeInputType;
 typedef BaseChooserOnlyDateAndTimeInputType BaseTimeInputType;
 #endif
 
-class TimeInputType : public BaseTimeInputType {
+class TimeInputType FINAL : public BaseTimeInputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -50,7 +50,6 @@ private:
     TimeInputType(HTMLInputElement&);
     virtual void countUsage() OVERRIDE;
     virtual const AtomicString& formControlType() const OVERRIDE;
-    virtual DateComponents::Type dateType() const OVERRIDE;
     virtual Decimal defaultValueForStepUp() const OVERRIDE;
     virtual StepRange createStepRange(AnyStepHandling) const OVERRIDE;
     virtual bool parseToDateComponentsInternal(const String&, DateComponents*) const OVERRIDE;
@@ -60,9 +59,9 @@ private:
     virtual String localizeValue(const String&) const OVERRIDE;
 
     // BaseMultipleFieldsDateAndTimeInputType functions
-    virtual String formatDateTimeFieldsState(const DateTimeFieldsState&) const OVERRIDE FINAL;
-    virtual void setupLayoutParameters(DateTimeEditElement::LayoutParameters&, const DateComponents&) const OVERRIDE FINAL;
-    virtual bool isValidFormat(bool hasYear, bool hasMonth, bool hasWeek, bool hasDay, bool hasAMPM, bool hasHour, bool hasMinute, bool hasSecond) const;
+    virtual String formatDateTimeFieldsState(const DateTimeFieldsState&) const OVERRIDE;
+    virtual void setupLayoutParameters(DateTimeEditElement::LayoutParameters&, const DateComponents&) const OVERRIDE;
+    virtual bool isValidFormat(bool hasYear, bool hasMonth, bool hasWeek, bool hasDay, bool hasAMPM, bool hasHour, bool hasMinute, bool hasSecond) const OVERRIDE;
 #endif
 };
 

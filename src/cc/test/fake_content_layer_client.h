@@ -16,7 +16,7 @@
 
 namespace cc {
 
-class FakeContentLayerClient : public cc::ContentLayerClient {
+class FakeContentLayerClient : public ContentLayerClient {
  public:
   struct BitmapData {
     SkBitmap bitmap;
@@ -28,7 +28,7 @@ class FakeContentLayerClient : public cc::ContentLayerClient {
   virtual ~FakeContentLayerClient();
 
   virtual void PaintContents(SkCanvas* canvas,
-                             gfx::Rect rect,
+                             const gfx::Rect& rect,
                              gfx::RectF* opaque_rect) OVERRIDE;
   virtual void DidChangeLayerCanUseLCDText() OVERRIDE {}
 

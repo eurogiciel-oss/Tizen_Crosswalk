@@ -10,15 +10,19 @@
 #include "base/strings/string_util.h"
 #include "media/base/media_log.h"
 #include "media/base/media_switches.h"
-#include "media/mp3/mp3_stream_parser.h"
-#include "media/webm/webm_stream_parser.h"
+#include "media/formats/mp3/mp3_stream_parser.h"
+#include "media/formats/webm/webm_stream_parser.h"
+
+#if defined(OS_ANDROID)
+#include "base/android/build_info.h"
+#endif
 
 #if defined(USE_PROPRIETARY_CODECS)
 #if defined(ENABLE_MPEG2TS_STREAM_PARSER)
-#include "media/mp2t/mp2t_stream_parser.h"
+#include "media/formats/mp2t/mp2t_stream_parser.h"
 #endif
-#include "media/mp4/es_descriptor.h"
-#include "media/mp4/mp4_stream_parser.h"
+#include "media/formats/mp4/es_descriptor.h"
+#include "media/formats/mp4/mp4_stream_parser.h"
 #endif
 
 namespace media {
@@ -66,10 +70,8 @@ struct SupportedTypeInfo {
 
 static const CodecInfo kVP8CodecInfo = { "vp8", CodecInfo::VIDEO, NULL,
                                          CodecInfo::HISTOGRAM_VP8 };
-#if !defined(OS_ANDROID)
 static const CodecInfo kVP9CodecInfo = { "vp9", CodecInfo::VIDEO, NULL,
                                          CodecInfo::HISTOGRAM_VP9 };
-#endif
 static const CodecInfo kVorbisCodecInfo = { "vorbis", CodecInfo::AUDIO, NULL,
                                             CodecInfo::HISTOGRAM_VORBIS };
 static const CodecInfo kOpusCodecInfo = { "opus", CodecInfo::AUDIO, NULL,
@@ -77,11 +79,7 @@ static const CodecInfo kOpusCodecInfo = { "opus", CodecInfo::AUDIO, NULL,
 
 static const CodecInfo* kVideoWebMCodecs[] = {
   &kVP8CodecInfo,
-#if !defined(OS_ANDROID)
-  // TODO(wonsik): crbug.com/285016 query Android platform for codec
-  // capabilities.
   &kVP9CodecInfo,
-#endif
   &kVorbisCodecInfo,
   &kOpusCodecInfo,
   NULL
@@ -143,11 +141,6 @@ static const CodecInfo kMPEG2AACLCCodecInfo = { "mp4a.67", CodecInfo::AUDIO,
                                                 NULL,
                                                 CodecInfo::HISTOGRAM_MPEG2AAC };
 
-#if defined(ENABLE_EAC3_PLAYBACK)
-static const CodecInfo kEAC3CodecInfo = { "mp4a.a6", CodecInfo::AUDIO, NULL,
-                                          CodecInfo::HISTOGRAM_EAC3 };
-#endif
-
 static const CodecInfo* kVideoMP4Codecs[] = {
   &kH264AVC1CodecInfo,
   &kH264AVC3CodecInfo,
@@ -159,9 +152,6 @@ static const CodecInfo* kVideoMP4Codecs[] = {
 static const CodecInfo* kAudioMP4Codecs[] = {
   &kMPEG4AACCodecInfo,
   &kMPEG2AACLCCodecInfo,
-#if defined(ENABLE_EAC3_PLAYBACK)
-  &kEAC3CodecInfo,
-#endif
   NULL
 };
 
@@ -170,10 +160,6 @@ static StreamParser* BuildMP4Parser(
   std::set<int> audio_object_types;
 
   bool has_sbr = false;
-#if defined(ENABLE_EAC3_PLAYBACK)
-  bool enable_eac3 = CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kEnableEac3Playback);
-#endif
   for (size_t i = 0; i < codecs.size(); ++i) {
     std::string codec_id = codecs[i];
     if (MatchPattern(codec_id, kMPEG2AACLCCodecInfo.pattern)) {
@@ -188,10 +174,6 @@ static StreamParser* BuildMP4Parser(
         has_sbr = true;
         break;
       }
-#if defined(ENABLE_EAC3_PLAYBACK)
-    } else if (enable_eac3 && MatchPattern(codec_id, kEAC3CodecInfo.pattern)) {
-      audio_object_types.insert(mp4::kEAC3);
-#endif
     }
   }
 
@@ -213,7 +195,8 @@ static StreamParser* BuildMP3Parser(
 
 #if defined(ENABLE_MPEG2TS_STREAM_PARSER)
 static const CodecInfo* kVideoMP2TCodecs[] = {
-  &kH264CodecInfo,
+  &kH264AVC1CodecInfo,
+  &kH264AVC3CodecInfo,
   &kMPEG4AACCodecInfo,
   &kMPEG2AACLCCodecInfo,
   NULL
@@ -221,7 +204,16 @@ static const CodecInfo* kVideoMP2TCodecs[] = {
 
 static StreamParser* BuildMP2TParser(
     const std::vector<std::string>& codecs, const media::LogCB& log_cb) {
-  return new media::mp2t::Mp2tStreamParser();
+  bool has_sbr = false;
+  for (size_t i = 0; i < codecs.size(); ++i) {
+    std::string codec_id = codecs[i];
+    if (MatchPattern(codec_id, kMPEG4AACCodecInfo.pattern) &&
+        GetMP4AudioObjectType(codec_id, log_cb) == kAACSBRObjectType) {
+      has_sbr = true;
+    }
+  }
+
+  return new media::mp2t::Mp2tStreamParser(has_sbr);
 }
 #endif
 #endif
@@ -264,13 +256,20 @@ static bool VerifyCodec(
 #endif
       if (codec_info->tag == CodecInfo::HISTOGRAM_OPUS) {
         const CommandLine* cmd_line = CommandLine::ForCurrentProcess();
-        if (!cmd_line->HasSwitch(switches::kEnableOpusPlayback))
+        if (cmd_line->HasSwitch(switches::kDisableOpusPlayback))
           return false;
       }
       if (audio_codecs)
         audio_codecs->push_back(codec_info->tag);
       return true;
     case CodecInfo::VIDEO:
+#if defined(OS_ANDROID)
+      // VP9 is only supported on KitKat+ (API Level 19).
+      if (codec_info->tag == CodecInfo::HISTOGRAM_VP9 &&
+          base::android::BuildInfo::GetInstance()->sdk_int() < 19) {
+        return false;
+      }
+#endif
       if (video_codecs)
         video_codecs->push_back(codec_info->tag);
       return true;

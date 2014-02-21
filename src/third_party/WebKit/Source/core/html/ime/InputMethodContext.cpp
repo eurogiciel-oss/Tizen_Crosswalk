@@ -33,7 +33,6 @@
 
 #include "core/dom/Text.h"
 #include "core/editing/InputMethodController.h"
-#include "core/html/ime/Composition.h"
 #include "core/frame/Frame.h"
 
 namespace WebCore {
@@ -53,13 +52,6 @@ InputMethodContext::~InputMethodContext()
 {
 }
 
-Composition* InputMethodContext::composition()
-{
-    if (!m_composition)
-        m_composition = Composition::create(this);
-    return m_composition.get();
-}
-
 String InputMethodContext::locale() const
 {
     // FIXME: Implement this.
@@ -71,15 +63,24 @@ HTMLElement* InputMethodContext::target() const
     return m_element;
 }
 
+unsigned InputMethodContext::compositionStartOffset()
+{
+    if (hasFocus())
+        return inputMethodController().compositionStart();
+    return 0;
+}
+
+unsigned InputMethodContext::compositionEndOffset()
+{
+    if (hasFocus())
+        return inputMethodController().compositionEnd();
+    return 0;
+}
+
 void InputMethodContext::confirmComposition()
 {
     if (hasFocus())
         inputMethodController().confirmCompositionAndResetState();
-}
-
-void InputMethodContext::setCaretRectangle(Node* anchor, int x, int y, int w, int h)
-{
-    // FIXME: Implement this.
 }
 
 bool InputMethodContext::hasFocus() const

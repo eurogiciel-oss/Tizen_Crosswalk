@@ -100,6 +100,7 @@ class Port(object):
         ('retina', 'x86'),
 
         ('mountainlion', 'x86'),
+        ('mavericks', 'x86'),
         ('xp', 'x86'),
         ('win7', 'x86'),
         ('lucid', 'x86'),
@@ -110,13 +111,13 @@ class Port(object):
         )
 
     ALL_BASELINE_VARIANTS = [
-        'mac-mountainlion', 'mac-retina', 'mac-lion', 'mac-snowleopard',
+        'mac-mavericks', 'mac-mountainlion', 'mac-retina', 'mac-lion', 'mac-snowleopard',
         'win-win7', 'win-xp',
         'linux-x86_64', 'linux-x86',
     ]
 
     CONFIGURATION_SPECIFIER_MACROS = {
-        'mac': ['snowleopard', 'lion', 'retina', 'mountainlion'],
+        'mac': ['snowleopard', 'lion', 'retina', 'mountainlion', 'mavericks'],
         'win': ['xp', 'win7'],
         'linux': ['lucid'],
         'android': ['icecreamsandwich'],
@@ -186,6 +187,7 @@ class Port(object):
         self._image_differ = None
         self._server_process_constructor = server_process.ServerProcess  # overridable for testing
         self._http_lock = None  # FIXME: Why does this live on the port object?
+        self._dump_reader = None
 
         # Python's Popen has a bug that causes any pipes opened to a
         # process that can't be executed to be leaked.  Since this
@@ -342,6 +344,9 @@ class Port(object):
         # It's okay if pretty patch and wdiff aren't available, but we will at least log messages.
         self._pretty_patch_available = self.check_pretty_patch()
         self._wdiff_available = self.check_wdiff()
+
+        if self._dump_reader:
+            result = self._dump_reader.check_is_functional() and result
 
         return test_run_results.OK_EXIT_STATUS if result else test_run_results.UNEXPECTED_ERROR_EXIT_STATUS
 
@@ -680,6 +685,10 @@ class Port(object):
         for line in reftest_list_file.split('\n'):
             line = re.sub('#.+$', '', line)
             split_line = line.split()
+            if len(split_line) == 4:
+                # FIXME: Probably one of mozilla's extensions in the reftest.list format. Do we need to support this?
+                _log.warning("unsupported reftest.list line '%s' in %s" % (line, reftest_list_path))
+                continue
             if len(split_line) < 3:
                 continue
             expectation_type, test_file, ref_file = split_line
@@ -979,6 +988,13 @@ class Port(object):
         if self._filesystem.exists(cachedir):
             self._filesystem.rmtree(cachedir)
 
+        if self._dump_reader:
+            self._filesystem.maybe_make_directory(self._dump_reader.crash_dumps_directory())
+
+    def num_workers(self, requested_num_workers):
+        """Returns the number of available workers (possibly less than the number requested)."""
+        return requested_num_workers
+
     def clean_up_test_run(self):
         """Perform port-specific work at the end of a test run."""
         if self._image_differ:
@@ -1029,6 +1045,7 @@ class Port(object):
         if self.host.platform.is_win():
             variables_to_copy += [
                 'PATH',
+                'GYP_DEFINES',  # Required to locate win sdk.
             ]
         if self.host.platform.is_cygwin():
             variables_to_copy += [
@@ -1194,6 +1211,7 @@ class Port(object):
     def _port_specific_expectations_files(self):
         paths = []
         paths.append(self.path_from_chromium_base('skia', 'skia_test_expectations.txt'))
+        paths.append(self.path_from_chromium_base('webkit', 'tools', 'layout_tests', 'test_expectations_w3c.txt'))
         paths.append(self._filesystem.join(self.layout_tests_dir(), 'NeverFixTests'))
         paths.append(self._filesystem.join(self.layout_tests_dir(), 'StaleTestExpectations'))
         paths.append(self._filesystem.join(self.layout_tests_dir(), 'SlowTests'))
@@ -1345,6 +1363,9 @@ class Port(object):
 
     def default_configuration(self):
         return self._config.default_configuration()
+
+    def clobber_old_port_specific_results(self):
+        pass
 
     #
     # PROTECTED ROUTINES
@@ -1514,6 +1535,9 @@ class Port(object):
             VirtualTestSuite('deferred',
                              'fast/images',
                              ['--enable-deferred-image-decoding', '--enable-per-tile-painting', '--force-compositing-mode']),
+            VirtualTestSuite('deferred',
+                             'inspector/timeline',
+                             ['--enable-deferred-image-decoding', '--enable-per-tile-painting', '--force-compositing-mode']),
             VirtualTestSuite('gpu/compositedscrolling/overflow',
                              'compositing/overflow',
                              ['--enable-accelerated-overflow-scroll'],
@@ -1528,12 +1552,12 @@ class Port(object):
             VirtualTestSuite('threaded',
                              'transitions',
                              ['--enable-threaded-compositing']),
-            VirtualTestSuite('web-animations-css',
+            VirtualTestSuite('legacy-animations-engine',
                              'animations',
-                             ['--enable-web-animations-css']),
-            VirtualTestSuite('web-animations-css',
+                             ['--disable-web-animations-css']),
+            VirtualTestSuite('legacy-animations-engine',
                              'transitions',
-                             ['--enable-web-animations-css']),
+                             ['--disable-web-animations-css']),
             VirtualTestSuite('stable',
                              'webexposed',
                              ['--stable-release-mode']),
@@ -1554,6 +1578,9 @@ class Port(object):
             VirtualTestSuite('fasttextautosizing',
                              'fast/text-autosizing',
                              ['--enable-fast-text-autosizing']),
+            VirtualTestSuite('serviceworker',
+                             'http/tests/serviceworker',
+                             ['--enable-service-worker']),
         ]
 
     @memoized

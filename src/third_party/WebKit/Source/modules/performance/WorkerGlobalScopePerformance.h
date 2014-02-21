@@ -37,7 +37,7 @@ namespace WebCore {
 
 class WorkerPerformance;
 
-class WorkerGlobalScopePerformance : public WorkerSupplement {
+class WorkerGlobalScopePerformance FINAL : public WorkerSupplement {
 public:
     virtual ~WorkerGlobalScopePerformance();
     static WorkerGlobalScopePerformance* from(WorkerGlobalScope*);
@@ -47,7 +47,7 @@ public:
 private:
     WorkerGlobalScopePerformance();
 
-    WorkerPerformance* getPerformance(WorkerGlobalScope*);
+    WorkerPerformance* performance();
     static const char* supplementName();
 
     RefPtr<WorkerPerformance> m_performance;

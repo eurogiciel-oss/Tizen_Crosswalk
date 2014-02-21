@@ -12,11 +12,11 @@
 #include "base/prefs/pref_service.h"
 #include "base/values.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/translate/translate_error_details.h"
-#include "chrome/browser/translate/translate_event_details.h"
 #include "chrome/browser/translate/translate_prefs.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/translate/language_detection_details.h"
+#include "components/translate/core/browser/translate_error_details.h"
+#include "components/translate/core/browser/translate_event_details.h"
+#include "components/translate/core/common/language_detection_details.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 
@@ -170,14 +170,14 @@ void TranslateInternalsHandler::SendSupportedLanguagesToJs() {
   base::Time last_updated =
       TranslateManager::GetSupportedLanguagesLastUpdated();
 
-  ListValue* languages_list = new ListValue();
-  ListValue* alpha_languages_list = new ListValue();
+  base::ListValue* languages_list = new base::ListValue();
+  base::ListValue* alpha_languages_list = new base::ListValue();
   for (std::vector<std::string>::iterator it = languages.begin();
        it != languages.end(); ++it) {
     const std::string& lang = *it;
-    languages_list->Append(new StringValue(lang));
+    languages_list->Append(new base::StringValue(lang));
     if (TranslateManager::IsAlphaLanguage(lang))
-      alpha_languages_list->Append(new StringValue(lang));
+      alpha_languages_list->Append(new base::StringValue(lang));
   }
 
   dict.Set("languages", languages_list);

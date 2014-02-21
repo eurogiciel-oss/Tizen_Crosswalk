@@ -24,8 +24,8 @@ class Layer;
 
 class CC_EXPORT LayerTreeHostCommon {
  public:
-  static gfx::Rect CalculateVisibleRect(gfx::Rect target_surface_rect,
-                                        gfx::Rect layer_bound_rect,
+  static gfx::Rect CalculateVisibleRect(const gfx::Rect& target_surface_rect,
+                                        const gfx::Rect& layer_bound_rect,
                                         const gfx::Transform& transform);
 
   template <typename LayerType, typename RenderSurfaceLayerListType>
@@ -97,15 +97,16 @@ class CC_EXPORT LayerTreeHostCommon {
 
   // Performs hit testing for a given render_surface_layer_list.
   static LayerImpl* FindLayerThatIsHitByPoint(
-      gfx::PointF screen_space_point,
+      const gfx::PointF& screen_space_point,
       const LayerImplList& render_surface_layer_list);
 
   static LayerImpl* FindLayerThatIsHitByPointInTouchHandlerRegion(
-      gfx::PointF screen_space_point,
+      const gfx::PointF& screen_space_point,
       const LayerImplList& render_surface_layer_list);
 
-  static bool LayerHasTouchEventHandlersAt(gfx::PointF screen_space_point,
-                                           LayerImpl* layer_impl);
+  static bool LayerHasTouchEventHandlersAt(
+      const gfx::PointF& screen_space_point,
+      LayerImpl* layer_impl);
 
   template <typename LayerType>
   static bool RenderSurfaceContributesToTarget(LayerType*,
@@ -120,6 +121,21 @@ class CC_EXPORT LayerTreeHostCommon {
   // from the given root layer (including mask and replica layers).
   template <typename LayerType>
   static LayerType* FindLayerInSubtree(LayerType* root_layer, int layer_id);
+
+  // Applies the layer's sublayer transform about its anchor point to the
+  // given transform.
+  template <typename LayerType>
+  static void ApplySublayerTransformAboutAnchor(const LayerType& layer,
+                                                gfx::Size bounds,
+                                                gfx::Transform* transform) {
+    if (!layer.sublayer_transform().IsIdentity()) {
+      transform->Translate(layer.anchor_point().x() * bounds.width(),
+                           layer.anchor_point().y() * bounds.height());
+      transform->PreconcatTransform(layer.sublayer_transform());
+      transform->Translate(-layer.anchor_point().x() * bounds.width(),
+                           -layer.anchor_point().y() * bounds.height());
+    }
+  }
 
   static Layer* get_child_as_raw_ptr(
       const LayerList& children,

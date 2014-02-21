@@ -9,18 +9,19 @@
 #include "apps/shell_window_registry.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/extensions/extension_host.h"
-#include "chrome/browser/extensions/extension_prefs.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/unpacked_installer.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/common/extensions/extension.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/common/extension.h"
 
 using extensions::Extension;
 using extensions::ExtensionPrefs;
+using extensions::ExtensionSystem;
 
 namespace apps {
 
@@ -52,8 +53,10 @@ void AppLoadService::RestartApplication(const std::string& extension_id) {
 bool AppLoadService::LoadAndLaunch(const base::FilePath& extension_path,
                                    const CommandLine& command_line,
                                    const base::FilePath& current_dir) {
+  ExtensionService* extension_service =
+      ExtensionSystem::GetForBrowserContext(profile_)->extension_service();
   std::string extension_id;
-  if (!extensions::UnpackedInstaller::Create(profile_->GetExtensionService())->
+  if (!extensions::UnpackedInstaller::Create(extension_service)->
           LoadFromCommandLine(base::FilePath(extension_path), &extension_id)) {
     return false;
   }
@@ -96,7 +99,7 @@ void AppLoadService::Observe(int type,
           break;
         case LAUNCH_WITH_COMMAND_LINE:
           LaunchPlatformAppWithCommandLine(
-              profile_, extension, &it->second.command_line,
+              profile_, extension, it->second.command_line,
               it->second.current_dir);
           break;
         default:

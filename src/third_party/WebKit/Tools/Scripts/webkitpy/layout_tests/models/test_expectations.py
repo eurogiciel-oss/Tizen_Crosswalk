@@ -156,6 +156,11 @@ class TestExpectationParser(object):
         if self.REBASELINE_MODIFIER in expectations:
             expectation_line.warnings.append('REBASELINE should only be used for running rebaseline.py. Cannot be checked in.')
 
+        if self.NEEDS_REBASELINE_MODIFIER in expectations or self.NEEDS_MANUAL_REBASELINE_MODIFIER in expectations:
+            for test in expectation_line.matching_tests:
+                if self._port.reference_files(test):
+                    expectation_line.warnings.append('A reftest cannot be marked as NeedsRebaseline/NeedsManualRebaseline')
+
     def _parse_expectations(self, expectation_line):
         result = set()
         for part in expectation_line.expectations:
@@ -203,7 +208,7 @@ class TestExpectationParser(object):
 
     # FIXME: Update the original specifiers and remove this once the old syntax is gone.
     _configuration_tokens_list = [
-        'Mac', 'SnowLeopard', 'Lion', 'Retina', 'MountainLion',
+        'Mac', 'SnowLeopard', 'Lion', 'Retina', 'MountainLion', 'Mavericks',
         'Win', 'XP', 'Win7',
         'Linux',
         'Android',

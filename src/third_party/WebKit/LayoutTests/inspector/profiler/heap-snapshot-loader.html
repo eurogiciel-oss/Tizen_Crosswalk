@@ -6,61 +6,45 @@
 
 function test()
 {
-    InspectorTest.assertSnapshotEquals = function(reference, actual)
-    {
-        InspectorTest.assertEquals(JSON.stringify(reference), JSON.stringify(actual));
-    }
-
     WebInspector.showPanel("profiles");
     var source = InspectorTest.createHeapSnapshotMockRaw();
     var sourceStringified = JSON.stringify(source);
     var partSize = sourceStringified.length >> 3;
 
-    function injectMockProfile(overrideGetProfile, callback) {
+    function injectMockProfile(callback) {
         var dispatcher = InspectorBackend._domainDispatchers["HeapProfiler"];
         var panel = WebInspector.panels.profiles;
         panel._reset();
-        panel._createTemporaryProfile("HEAP");
 
         var profileType = panel.getProfileType("HEAP");
-        profileType.addEventListener(WebInspector.HeapSnapshotProfileType.SnapshotReceived, snapshotLoaded, this);
-        function snapshotLoaded(event)
-        {
-            profileType.removeEventListener(WebInspector.HeapSnapshotProfileType.SnapshotReceived, snapshotLoaded, this);
-            if (overrideGetProfile)
-                InspectorTest.override(HeapProfilerAgent, "getHeapSnapshot", getHeapSnapshotMock);
-            callback(event.data);
-        }
 
         InspectorTest.override(HeapProfilerAgent, "getHeapSnapshot", getHeapSnapshotMock);
         function getHeapSnapshotMock(uid, callback) {
             for (var i = 0, l = sourceStringified.length; i < l; i += partSize)
                 dispatcher.addHeapSnapshotChunk(uid, sourceStringified.slice(i, i + partSize));
-            callback();
+            setTimeout(callback, 0);
         }
+
+        function tempFileReady()
+        {
+            callback(this);
+        }
+        InspectorTest.addSniffer(WebInspector.HeapProfileHeader.prototype, "_didWriteToTempFile", tempFileReady);
+        profileType._profileBeingRecorded = new WebInspector.HeapProfileHeader(profileType, "Snapshotting");
+        profileType.addProfile(profileType._profileBeingRecorded);
 
         dispatcher.addProfileHeader({
             typeId: WebInspector.HeapSnapshotProfileType.TypeId,
             title: "heapSnapshotSaveToFileTest",
-            uid: 42,
-            maxJSObjectId: 6
+            uid: 42
         });
     }
 
-    InspectorTest.runTestSuite([
-        function heapSnapshotLoaderTest(next)
-        {
-            var loader = new WebInspector.HeapSnapshotLoader();
-            for (var i = 0, l = sourceStringified.length; i < l; i += partSize)
-                loader.write(sourceStringified.slice(i, i + partSize));
-            loader.close();
-            var result = loader.buildSnapshot("JSHeapSnapshot");
-            result._nodes = new Uint32Array(result._nodes);
-            result._containmentEdges = new Uint32Array(result._containmentEdges);
-            InspectorTest.assertSnapshotEquals(new WebInspector.JSHeapSnapshot(InspectorTest.createHeapSnapshotMock(), new WebInspector.HeapSnapshotProgress()), result);
-            next();
-        },
+    WebInspector.log = function(message) {
+        InspectorTest.addResult("WebInspector.log: " + message);
+    }
 
+    InspectorTest.runTestSuite([
         function heapSnapshotSaveToFileTest(next)
         {
             function snapshotLoaded(profileHeader)
@@ -79,15 +63,17 @@ function test()
                     savedSnapshotData += data;
                     WebInspector.fileManager.appendedToURL(url);
                 }
-
+                function closeMock(url)
+                {
+                    InspectorTest.assertEquals(sourceStringified, savedSnapshotData, "Saved snapshot data");
+                    InspectorFrontendHost.append = oldAppend;
+                    next();
+                }
+                InspectorTest.override(WebInspector.FileManager.prototype, "close", closeMock);
                 profileHeader.saveToFile();
-                InspectorTest.assertEquals(sourceStringified, savedSnapshotData, "Saved snapshot data");
-
-                InspectorFrontendHost.append = oldAppend;
-                next();
             }
 
-            injectMockProfile(true, snapshotLoaded);
+            injectMockProfile(snapshotLoaded);
         },
 
         function heapSnapshotLoadFromFileTest(next)
@@ -142,7 +128,7 @@ function test()
                 profileHeader.saveToFile();
             }
 
-            injectMockProfile(false, snapshotLoaded);
+            injectMockProfile(snapshotLoaded);
         }
     ]);
 }

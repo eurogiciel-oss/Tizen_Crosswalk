@@ -42,7 +42,6 @@ namespace plugin {
 class ErrorInfo;
 class Manifest;
 class Plugin;
-class PnaclCoordinator;
 class SrpcClient;
 class ServiceRuntime;
 
@@ -201,10 +200,6 @@ class PluginReverseInterface: public nacl::ReverseInterface {
       OpenManifestEntryResource* p,
       int32_t result);
 
-  virtual void BitcodeTranslate_MainThreadContinuation(
-      OpenManifestEntryResource* p,
-      int32_t result);
-
   virtual void CloseManifestEntry_MainThreadContinuation(
       CloseManifestEntryResource* cls,
       int32_t err);
@@ -219,8 +214,6 @@ class PluginReverseInterface: public nacl::ReverseInterface {
   NaClCondVar cv_;
   std::set<int64_t> quota_files_;
   bool shutting_down_;
-
-  nacl::scoped_ptr<PnaclCoordinator> pnacl_coordinator_;
 
   pp::CompletionCallback init_done_cb_;
   pp::CompletionCallback crash_cb_;
@@ -283,11 +276,13 @@ class ServiceRuntime {
 
  private:
   NACL_DISALLOW_COPY_AND_ASSIGN(ServiceRuntime);
-  bool InitCommunication(nacl::DescWrapper* shm, ErrorInfo* error_info);
+  bool LoadModule(nacl::DescWrapper* shm, ErrorInfo* error_info);
+  bool InitReverseService(ErrorInfo* error_info);
+  bool StartModule(ErrorInfo* error_info);
 
   NaClSrpcChannel command_channel_;
   Plugin* plugin_;
-  bool should_report_uma_;
+  bool main_service_runtime_;
   nacl::ReverseService* reverse_service_;
   nacl::scoped_ptr<nacl::SelLdrLauncherBase> subprocess_;
 

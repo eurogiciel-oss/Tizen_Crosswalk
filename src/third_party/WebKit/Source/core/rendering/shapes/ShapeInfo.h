@@ -70,11 +70,27 @@ public:
 
     void setShapeSize(LayoutUnit logicalWidth, LayoutUnit logicalHeight)
     {
+        switch (resolvedLayoutBox()) {
+        case MarginBox:
+            logicalHeight += m_renderer->marginLogicalHeight();
+            logicalWidth += m_renderer->marginLogicalWidth();
+            break;
+        case BorderBox:
+            break;
+        case PaddingBox:
+            logicalHeight -= m_renderer->borderLogicalHeight();
+            logicalWidth -= m_renderer->borderLogicalWidth();
+            break;
+        case ContentBox:
+            logicalHeight -= m_renderer->borderAndPaddingLogicalHeight();
+            logicalWidth -= m_renderer->borderAndPaddingLogicalWidth();
+            break;
+        case BoxMissing:
+            // A non-missing box value must be supplied.
+            ASSERT_NOT_REACHED();
+        }
+
         LayoutSize newLogicalSize(logicalWidth, logicalHeight);
-
-        if (m_renderer->style()->boxSizing() == CONTENT_BOX)
-            newLogicalSize -= LayoutSize(m_renderer->borderAndPaddingLogicalWidth(), m_renderer->borderAndPaddingLogicalHeight());
-
         if (m_shapeLogicalSize == newLogicalSize)
             return;
         dirtyShapeSize();
@@ -100,18 +116,53 @@ public:
     void dirtyShapeSize() { m_shape.clear(); }
     bool shapeSizeDirty() { return !m_shape.get(); }
     const RenderType* owner() const { return m_renderer; }
+    LayoutSize shapeSize() const { return m_shapeLogicalSize; }
 
 protected:
     ShapeInfo(const RenderType* renderer): m_renderer(renderer) { }
 
     const Shape* computedShape() const;
 
+    virtual LayoutBox resolvedLayoutBox() const = 0;
     virtual LayoutRect computedShapeLogicalBoundingBox() const = 0;
     virtual ShapeValue* shapeValue() const = 0;
     virtual void getIntervals(LayoutUnit, LayoutUnit, SegmentList&) const = 0;
 
-    LayoutUnit logicalTopOffset() const { return m_renderer->style()->boxSizing() == CONTENT_BOX ? m_renderer->borderAndPaddingBefore() : LayoutUnit(); }
-    LayoutUnit logicalLeftOffset() const { return (m_renderer->style()->boxSizing() == CONTENT_BOX && !m_renderer->isRenderRegion()) ? m_renderer->borderAndPaddingStart() : LayoutUnit(); }
+    LayoutUnit logicalTopOffset() const
+    {
+        switch (resolvedLayoutBox()) {
+        case MarginBox:
+            return -m_renderer->marginBefore();
+        case BorderBox:
+            return LayoutUnit();
+        case PaddingBox:
+            return m_renderer->borderBefore();
+        case ContentBox:
+            return m_renderer->borderAndPaddingBefore();
+        case BoxMissing:
+            // A non-missing box value must be supplied.
+            ASSERT_NOT_REACHED();
+        }
+        return LayoutUnit();
+    }
+
+    LayoutUnit logicalLeftOffset() const
+    {
+        switch (resolvedLayoutBox()) {
+        case MarginBox:
+            return -m_renderer->marginStart();
+        case BorderBox:
+            return LayoutUnit();
+        case PaddingBox:
+            return m_renderer->borderStart();
+        case ContentBox:
+            return m_renderer->borderAndPaddingStart();
+        case BoxMissing:
+            // A non-missing box value must be supplied.
+            ASSERT_NOT_REACHED();
+        }
+        return LayoutUnit();
+    }
 
     LayoutUnit m_shapeLineTop;
     LayoutUnit m_lineHeight;

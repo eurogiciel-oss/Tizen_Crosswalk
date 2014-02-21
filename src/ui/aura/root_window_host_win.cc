@@ -29,19 +29,18 @@ bool use_popup_as_root_window_for_test = false;
 }  // namespace
 
 // static
-RootWindowHost* RootWindowHost::Create(const gfx::Rect& bounds) {
-  return new RootWindowHostWin(bounds);
+WindowTreeHost* WindowTreeHost::Create(const gfx::Rect& bounds) {
+  return new WindowTreeHostWin(bounds);
 }
 
 // static
-gfx::Size RootWindowHost::GetNativeScreenSize() {
+gfx::Size WindowTreeHost::GetNativeScreenSize() {
   return gfx::Size(GetSystemMetrics(SM_CXSCREEN),
                    GetSystemMetrics(SM_CYSCREEN));
 }
 
-RootWindowHostWin::RootWindowHostWin(const gfx::Rect& bounds)
-    : delegate_(NULL),
-      fullscreen_(false),
+WindowTreeHostWin::WindowTreeHostWin(const gfx::Rect& bounds)
+    : fullscreen_(false),
       has_capture_(false),
       saved_window_style_(0),
       saved_window_ex_style_(0) {
@@ -49,33 +48,31 @@ RootWindowHostWin::RootWindowHostWin(const gfx::Rect& bounds)
     set_window_style(WS_POPUP);
   Init(NULL, bounds);
   SetWindowText(hwnd(), L"aura::RootWindow!");
+  CreateCompositor(GetAcceleratedWidget());
 }
 
-RootWindowHostWin::~RootWindowHostWin() {
+WindowTreeHostWin::~WindowTreeHostWin() {
+  DestroyCompositor();
   DestroyWindow(hwnd());
 }
 
-void RootWindowHostWin::SetDelegate(RootWindowHostDelegate* delegate) {
-  delegate_ = delegate;
-}
-
-RootWindow* RootWindowHostWin::GetRootWindow() {
+RootWindow* WindowTreeHostWin::GetRootWindow() {
   return delegate_->AsRootWindow();
 }
 
-gfx::AcceleratedWidget RootWindowHostWin::GetAcceleratedWidget() {
+gfx::AcceleratedWidget WindowTreeHostWin::GetAcceleratedWidget() {
   return hwnd();
 }
 
-void RootWindowHostWin::Show() {
+void WindowTreeHostWin::Show() {
   ShowWindow(hwnd(), SW_SHOWNORMAL);
 }
 
-void RootWindowHostWin::Hide() {
+void WindowTreeHostWin::Hide() {
   NOTIMPLEMENTED();
 }
 
-void RootWindowHostWin::ToggleFullScreen() {
+void WindowTreeHostWin::ToggleFullScreen() {
   gfx::Rect target_rect;
   if (!fullscreen_) {
     fullscreen_ = true;
@@ -107,13 +104,13 @@ void RootWindowHostWin::ToggleFullScreen() {
                SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
-gfx::Rect RootWindowHostWin::GetBounds() const {
+gfx::Rect WindowTreeHostWin::GetBounds() const {
   RECT r;
   GetClientRect(hwnd(), &r);
   return gfx::Rect(r);
 }
 
-void RootWindowHostWin::SetBounds(const gfx::Rect& bounds) {
+void WindowTreeHostWin::SetBounds(const gfx::Rect& bounds) {
   if (fullscreen_) {
     saved_window_rect_.right = saved_window_rect_.left + bounds.width();
     saved_window_rect_.bottom = saved_window_rect_.top + bounds.height();
@@ -137,30 +134,31 @@ void RootWindowHostWin::SetBounds(const gfx::Rect& bounds) {
       window_rect.bottom - window_rect.top,
       SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOREDRAW | SWP_NOREPOSITION);
 
-  // Explicity call OnHostResized when the scale has changed because
+  // Explicity call NotifyHostResized when the scale has changed because
   // the window size may not have changed.
-  float current_scale = delegate_->GetDeviceScaleFactor();
-  float new_scale = gfx::Screen::GetScreenFor(delegate_->AsRootWindow())->
-      GetDisplayNearestWindow(delegate_->AsRootWindow()).device_scale_factor();
+  float current_scale = compositor()->device_scale_factor();
+  float new_scale = gfx::Screen::GetScreenFor(
+      delegate_->AsRootWindow()->window())->GetDisplayNearestWindow(
+          delegate_->AsRootWindow()->window()).device_scale_factor();
   if (current_scale != new_scale)
-    delegate_->OnHostResized(bounds.size());
+    NotifyHostResized(bounds.size());
 }
 
-gfx::Insets RootWindowHostWin::GetInsets() const {
+gfx::Insets WindowTreeHostWin::GetInsets() const {
   return gfx::Insets();
 }
 
-void RootWindowHostWin::SetInsets(const gfx::Insets& insets) {
+void WindowTreeHostWin::SetInsets(const gfx::Insets& insets) {
 }
 
-gfx::Point RootWindowHostWin::GetLocationOnNativeScreen() const {
+gfx::Point WindowTreeHostWin::GetLocationOnNativeScreen() const {
   RECT r;
   GetClientRect(hwnd(), &r);
   return gfx::Point(r.left, r.top);
 }
 
 
-void RootWindowHostWin::SetCursor(gfx::NativeCursor native_cursor) {
+void WindowTreeHostWin::SetCursor(gfx::NativeCursor native_cursor) {
   // Custom web cursors are handled directly.
   if (native_cursor == ui::kCursorCustom)
     return;
@@ -170,23 +168,23 @@ void RootWindowHostWin::SetCursor(gfx::NativeCursor native_cursor) {
   ::SetCursor(native_cursor.platform());
 }
 
-void RootWindowHostWin::SetCapture() {
+void WindowTreeHostWin::SetCapture() {
   if (!has_capture_) {
     has_capture_ = true;
     ::SetCapture(hwnd());
   }
 }
 
-void RootWindowHostWin::ReleaseCapture() {
+void WindowTreeHostWin::ReleaseCapture() {
   if (has_capture_) {
     has_capture_ = false;
     ::ReleaseCapture();
   }
 }
 
-bool RootWindowHostWin::QueryMouseLocation(gfx::Point* location_return) {
+bool WindowTreeHostWin::QueryMouseLocation(gfx::Point* location_return) {
   client::CursorClient* cursor_client =
-      client::GetCursorClient(GetRootWindow());
+      client::GetCursorClient(GetRootWindow()->window());
   if (cursor_client && !cursor_client->IsMouseEventsEnabled()) {
     *location_return = gfx::Point(0, 0);
     return false;
@@ -203,48 +201,44 @@ bool RootWindowHostWin::QueryMouseLocation(gfx::Point* location_return) {
           pt.y >= 0 && static_cast<int>(pt.y) < size.height());
 }
 
-bool RootWindowHostWin::ConfineCursorToRootWindow() {
+bool WindowTreeHostWin::ConfineCursorToRootWindow() {
   RECT window_rect;
   GetWindowRect(hwnd(), &window_rect);
   return ClipCursor(&window_rect) != 0;
 }
 
-void RootWindowHostWin::UnConfineCursor() {
+void WindowTreeHostWin::UnConfineCursor() {
   ClipCursor(NULL);
 }
 
-void RootWindowHostWin::OnCursorVisibilityChanged(bool show) {
+void WindowTreeHostWin::OnCursorVisibilityChanged(bool show) {
   NOTIMPLEMENTED();
 }
 
-void RootWindowHostWin::MoveCursorTo(const gfx::Point& location) {
+void WindowTreeHostWin::MoveCursorTo(const gfx::Point& location) {
   // Deliberately not implemented.
 }
 
-void RootWindowHostWin::SetFocusWhenShown(bool focus_when_shown) {
-  NOTIMPLEMENTED();
-}
-
-void RootWindowHostWin::PostNativeEvent(const base::NativeEvent& native_event) {
+void WindowTreeHostWin::PostNativeEvent(const base::NativeEvent& native_event) {
   ::PostMessage(
       hwnd(), native_event.message, native_event.wParam, native_event.lParam);
 }
 
-void RootWindowHostWin::OnDeviceScaleFactorChanged(
+void WindowTreeHostWin::OnDeviceScaleFactorChanged(
     float device_scale_factor) {
   NOTIMPLEMENTED();
 }
 
-void RootWindowHostWin::PrepareForShutdown() {
+void WindowTreeHostWin::PrepareForShutdown() {
   NOTIMPLEMENTED();
 }
 
-void RootWindowHostWin::OnClose() {
+void WindowTreeHostWin::OnClose() {
   // TODO: this obviously shouldn't be here.
   base::MessageLoopForUI::current()->Quit();
 }
 
-LRESULT RootWindowHostWin::OnKeyEvent(UINT message,
+LRESULT WindowTreeHostWin::OnKeyEvent(UINT message,
                                       WPARAM w_param,
                                       LPARAM l_param) {
   MSG msg = { hwnd(), message, w_param, l_param };
@@ -253,7 +247,7 @@ LRESULT RootWindowHostWin::OnKeyEvent(UINT message,
   return 0;
 }
 
-LRESULT RootWindowHostWin::OnMouseRange(UINT message,
+LRESULT WindowTreeHostWin::OnMouseRange(UINT message,
                                         WPARAM w_param,
                                         LPARAM l_param) {
   MSG msg = { hwnd(), message, w_param, l_param, 0,
@@ -266,7 +260,7 @@ LRESULT RootWindowHostWin::OnMouseRange(UINT message,
   return 0;
 }
 
-LRESULT RootWindowHostWin::OnCaptureChanged(UINT message,
+LRESULT WindowTreeHostWin::OnCaptureChanged(UINT message,
                                             WPARAM w_param,
                                             LPARAM l_param) {
   if (has_capture_) {
@@ -276,7 +270,7 @@ LRESULT RootWindowHostWin::OnCaptureChanged(UINT message,
   return 0;
 }
 
-LRESULT RootWindowHostWin::OnNCActivate(UINT message,
+LRESULT WindowTreeHostWin::OnNCActivate(UINT message,
                                         WPARAM w_param,
                                         LPARAM l_param) {
   if (!!w_param)
@@ -284,25 +278,25 @@ LRESULT RootWindowHostWin::OnNCActivate(UINT message,
   return DefWindowProc(hwnd(), message, w_param, l_param);
 }
 
-void RootWindowHostWin::OnMove(const CPoint& point) {
+void WindowTreeHostWin::OnMove(const CPoint& point) {
   if (delegate_)
     delegate_->OnHostMoved(gfx::Point(point.x, point.y));
 }
 
-void RootWindowHostWin::OnPaint(HDC dc) {
+void WindowTreeHostWin::OnPaint(HDC dc) {
   gfx::Rect damage_rect;
   RECT update_rect = {0};
   if (GetUpdateRect(hwnd(), &update_rect, FALSE))
     damage_rect = gfx::Rect(update_rect);
-  delegate_->OnHostPaint(damage_rect);
+  compositor()->ScheduleRedrawRect(damage_rect);
   ValidateRect(hwnd(), NULL);
 }
 
-void RootWindowHostWin::OnSize(UINT param, const CSize& size) {
+void WindowTreeHostWin::OnSize(UINT param, const CSize& size) {
   // Minimizing resizes the window to 0x0 which causes our layout to go all
   // screwy, so we just ignore it.
   if (delegate_ && param != SIZE_MINIMIZED)
-    delegate_->OnHostResized(gfx::Size(size.cx, size.cy));
+    NotifyHostResized(gfx::Size(size.cx, size.cy));
 }
 
 namespace test {

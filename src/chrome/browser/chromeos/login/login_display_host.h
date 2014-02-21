@@ -21,6 +21,7 @@ class Widget;
 namespace chromeos {
 
 class AppLaunchController;
+class LoginScreenContext;
 class WebUILoginView;
 class WizardController;
 
@@ -80,7 +81,7 @@ class LoginDisplayHost {
   // Takes ownership of |screen_parameters|, which can also be NULL.
   virtual void StartWizard(
       const std::string& first_screen_name,
-      scoped_ptr<DictionaryValue> screen_parameters) = 0;
+      scoped_ptr<base::DictionaryValue> screen_parameters) = 0;
 
   // Returns current WizardController, if it exists.
   // Result should not be stored.
@@ -96,7 +97,7 @@ class LoginDisplayHost {
   virtual void StartUserAdding(const base::Closure& completion_callback) = 0;
 
   // Starts sign in screen.
-  virtual void StartSignInScreen() = 0;
+  virtual void StartSignInScreen(const LoginScreenContext& context) = 0;
 
   // Resumes a previously started sign in screen.
   virtual void ResumeSignInScreen() = 0;

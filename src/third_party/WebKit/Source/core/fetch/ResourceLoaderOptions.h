@@ -32,13 +32,9 @@
 #define ResourceLoaderOptions_h
 
 #include "core/fetch/FetchInitiatorInfo.h"
+#include "platform/weborigin/SecurityOrigin.h"
 
 namespace WebCore {
-
-enum SendCallbackPolicy {
-    SendCallbacks,
-    DoNotSendCallbacks
-};
 
 enum ContentSniffingPolicy {
     SniffContent,
@@ -63,12 +59,6 @@ enum SecurityCheckPolicy {
 enum ContentSecurityPolicyCheck {
     CheckContentSecurityPolicy,
     DoNotCheckContentSecurityPolicy
-};
-
-enum RequestOriginPolicy {
-    UseDefaultOriginRestrictionsForType,
-    RestrictToSameOrigin,
-    PotentiallyCrossOriginEnabled // Indicates "potentially CORS-enabled fetch" in HTML standard.
 };
 
 enum RequestInitiatorContext {
@@ -102,25 +92,30 @@ enum SynchronousPolicy {
     RequestAsynchronously
 };
 
+// A resource fetch can be marked as being CORS enabled. The loader
+// must perform an access check upon seeing the response.
+enum CORSEnabled {
+    NotCORSEnabled,
+    IsCORSEnabled
+};
+
 struct ResourceLoaderOptions {
     ResourceLoaderOptions()
-        : sendLoadCallbacks(DoNotSendCallbacks)
-        , sniffContent(DoNotSniffContent)
+        : sniffContent(DoNotSniffContent)
         , dataBufferingPolicy(BufferData)
         , allowCredentials(DoNotAllowStoredCredentials)
         , credentialsRequested(ClientDidNotRequestCredentials)
         , crossOriginCredentialPolicy(DoNotAskClientForCrossOriginCredentials)
         , securityCheck(DoSecurityCheck)
         , contentSecurityPolicyOption(CheckContentSecurityPolicy)
-        , requestOriginPolicy(UseDefaultOriginRestrictionsForType)
         , requestInitiatorContext(DocumentContext)
         , mixedContentBlockingTreatment(TreatAsDefaultForType)
         , synchronousPolicy(RequestAsynchronously)
+        , corsEnabled(NotCORSEnabled)
     {
     }
 
     ResourceLoaderOptions(
-        SendCallbackPolicy sendLoadCallbacks,
         ContentSniffingPolicy sniffContent,
         DataBufferingPolicy dataBufferingPolicy,
         StoredCredentials allowCredentials,
@@ -128,24 +123,21 @@ struct ResourceLoaderOptions {
         ClientCrossOriginCredentialPolicy crossOriginCredentialPolicy,
         SecurityCheckPolicy securityCheck,
         ContentSecurityPolicyCheck contentSecurityPolicyOption,
-        RequestOriginPolicy requestOriginPolicy,
         RequestInitiatorContext requestInitiatorContext)
-        : sendLoadCallbacks(sendLoadCallbacks)
-        , sniffContent(sniffContent)
+        : sniffContent(sniffContent)
         , dataBufferingPolicy(dataBufferingPolicy)
         , allowCredentials(allowCredentials)
         , credentialsRequested(credentialsRequested)
         , crossOriginCredentialPolicy(crossOriginCredentialPolicy)
         , securityCheck(securityCheck)
         , contentSecurityPolicyOption(contentSecurityPolicyOption)
-        , requestOriginPolicy(requestOriginPolicy)
         , requestInitiatorContext(requestInitiatorContext)
         , mixedContentBlockingTreatment(TreatAsDefaultForType)
         , synchronousPolicy(RequestAsynchronously)
+        , corsEnabled(NotCORSEnabled)
     {
     }
 
-    SendCallbackPolicy sendLoadCallbacks;
     ContentSniffingPolicy sniffContent;
     DataBufferingPolicy dataBufferingPolicy;
     StoredCredentials allowCredentials; // Whether HTTP credentials and cookies are sent with the request.
@@ -154,10 +146,11 @@ struct ResourceLoaderOptions {
     SecurityCheckPolicy securityCheck;
     ContentSecurityPolicyCheck contentSecurityPolicyOption;
     FetchInitiatorInfo initiatorInfo;
-    RequestOriginPolicy requestOriginPolicy;
     RequestInitiatorContext requestInitiatorContext;
     MixedContentBlockingTreatment mixedContentBlockingTreatment;
     SynchronousPolicy synchronousPolicy;
+    CORSEnabled corsEnabled; // If the resource is loaded out-of-origin, whether or not to use CORS.
+    RefPtr<SecurityOrigin> securityOrigin;
 };
 
 } // namespace WebCore

@@ -11,7 +11,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/app/chrome_command_ids.h"
 #import "chrome/browser/ui/cocoa/apps/native_app_window_cocoa.h"
-#include "chrome/common/extensions/extension.h"
+#include "extensions/common/extension.h"
 #include "grit/generated_resources.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/l10n/l10n_util_mac.h"
@@ -237,6 +237,12 @@ void AddDuplicateItem(NSMenuItem* top_level_item,
   [[fileMenuItem_ submenu] addItem:[openDoppelganger_ menuItem]];
   [[fileMenuItem_ submenu] addItem:[NSMenuItem separatorItem]];
   AddDuplicateItem(fileMenuItem_, IDC_FILE_MENU, IDC_CLOSE_WINDOW);
+  // Set the expected key equivalent explicitly here because
+  // -[AppControllerMac adjustCloseWindowMenuItemKeyEquivalent:] sets it to
+  // "W" (Cmd+Shift+w) when a tabbed window has focus; it will change it back
+  // to Cmd+w when a non-tabbed window has focus.
+  [[[fileMenuItem_ submenu] itemWithTag:IDC_CLOSE_WINDOW]
+      setKeyEquivalent:@"w"];
 
   // Edit menu. This copies the menu entirely and removes
   // "Paste and Match Style" and "Find". This is because the last two items,

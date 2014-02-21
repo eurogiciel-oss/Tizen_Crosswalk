@@ -28,7 +28,7 @@
 #include "HTMLNames.h"
 #include "bindings/v8/ScriptEventListener.h"
 #include "core/css/CSSImageValue.h"
-#include "core/css/CSSParser.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/StylePropertySet.h"
 #include "core/dom/Attribute.h"
 #include "core/events/ThreadLocalEventNames.h"
@@ -41,21 +41,15 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-HTMLBodyElement::HTMLBodyElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+HTMLBodyElement::HTMLBodyElement(Document& document)
+    : HTMLElement(bodyTag, document)
 {
-    ASSERT(hasTagName(bodyTag));
     ScriptWrappable::init(this);
 }
 
 PassRefPtr<HTMLBodyElement> HTMLBodyElement::create(Document& document)
 {
-    return adoptRef(new HTMLBodyElement(bodyTag, document));
-}
-
-PassRefPtr<HTMLBodyElement> HTMLBodyElement::create(const QualifiedName& tagName, Document& document)
-{
-    return adoptRef(new HTMLBodyElement(tagName, document));
+    return adoptRef(new HTMLBodyElement(document));
 }
 
 HTMLBodyElement::~HTMLBodyElement()
@@ -74,7 +68,7 @@ void HTMLBodyElement::collectStyleForPresentationAttribute(const QualifiedName& 
     if (name == backgroundAttr) {
         String url = stripLeadingAndTrailingHTMLSpaces(value);
         if (!url.isEmpty()) {
-            RefPtr<CSSImageValue> imageValue = CSSImageValue::create(document().completeURL(url).string());
+            RefPtr<CSSImageValue> imageValue = CSSImageValue::create(document().completeURL(url));
             imageValue->setInitiator(localName());
             style->setProperty(CSSProperty(CSSPropertyBackgroundImage, imageValue.release()));
         }
@@ -107,7 +101,7 @@ void HTMLBodyElement::parseAttribute(const QualifiedName& name, const AtomicStri
                 document().textLinkColors().resetActiveLinkColor();
         } else {
             RGBA32 color;
-            if (CSSParser::parseColor(color, value, !document().inQuirksMode())) {
+            if (BisonCSSParser::parseColor(color, value, !document().inQuirksMode())) {
                 if (name == linkAttr)
                     document().textLinkColors().setLinkColor(color);
                 else if (name == vlinkAttr)
@@ -136,10 +130,8 @@ void HTMLBodyElement::parseAttribute(const QualifiedName& name, const AtomicStri
         document().setWindowAttributeEventListener(EventTypeNames::error, createAttributeEventListener(document().frame(), name, value));
     else if (name == onfocusAttr)
         document().setWindowAttributeEventListener(EventTypeNames::focus, createAttributeEventListener(document().frame(), name, value));
-#if ENABLE(ORIENTATION_EVENTS)
-    else if (name == onorientationchangeAttr)
+    else if (RuntimeEnabledFeatures::orientationEventEnabled() && name == onorientationchangeAttr)
         document().setWindowAttributeEventListener(EventTypeNames::orientationchange, createAttributeEventListener(document().frame(), name, value));
-#endif
     else if (name == onhashchangeAttr)
         document().setWindowAttributeEventListener(EventTypeNames::hashchange, createAttributeEventListener(document().frame(), name, value));
     else if (name == onmessageAttr)
@@ -172,10 +164,10 @@ Node::InsertionNotificationRequest HTMLBodyElement::insertedInto(ContainerNode* 
             HTMLFrameElementBase* ownerFrameElement = toHTMLFrameElementBase(ownerElement);
             int marginWidth = ownerFrameElement->marginWidth();
             if (marginWidth != -1)
-                setAttribute(marginwidthAttr, String::number(marginWidth));
+                setIntegralAttribute(marginwidthAttr, marginWidth);
             int marginHeight = ownerFrameElement->marginHeight();
             if (marginHeight != -1)
-                setAttribute(marginheightAttr, String::number(marginHeight));
+                setIntegralAttribute(marginheightAttr, marginHeight);
         }
     }
     return InsertionDone;
@@ -205,18 +197,21 @@ static int adjustForZoom(int value, Document* document)
     return static_cast<int>(value / zoomFactor);
 }
 
+// FIXME: There are cases where body.scrollLeft is allowed to return
+// non-zero values in both quirks and strict mode. It happens when
+// <body> has an overflow that is not the Frame overflow.
+// http://dev.w3.org/csswg/cssom-view/#dom-element-scrollleft
+// http://code.google.com/p/chromium/issues/detail?id=312435
 int HTMLBodyElement::scrollLeft()
 {
     Document& document = this->document();
-
-    // FIXME: There are cases where body.scrollLeft is allowed to return
-    // non-zero values in both quirks and strict mode. It happens when
-    // <body> has an overflow that is not the Frame overflow.
-    // http://dev.w3.org/csswg/cssom-view/#dom-element-scrollleft
-    if (!document.inQuirksMode())
-        UseCounter::countDeprecation(&document, UseCounter::ScrollLeftBodyNotQuirksMode);
-
     document.updateLayoutIgnorePendingStylesheets();
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
+        if (!document.inQuirksMode())
+            return 0;
+    }
+
     FrameView* view = document.view();
     return view ? adjustForZoom(view->scrollX(), &document) : 0;
 }
@@ -224,11 +219,13 @@ int HTMLBodyElement::scrollLeft()
 void HTMLBodyElement::setScrollLeft(int scrollLeft)
 {
     Document& document = this->document();
-
-    if (!document.inQuirksMode())
-        UseCounter::countDeprecation(&document, UseCounter::ScrollLeftBodyNotQuirksMode);
-
     document.updateLayoutIgnorePendingStylesheets();
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
+        if (!document.inQuirksMode())
+            return;
+    }
+
     Frame* frame = document.frame();
     if (!frame)
         return;
@@ -241,15 +238,13 @@ void HTMLBodyElement::setScrollLeft(int scrollLeft)
 int HTMLBodyElement::scrollTop()
 {
     Document& document = this->document();
-
-    // FIXME: There are cases where body.scrollTop is allowed to return
-    // non-zero values in both quirks and strict mode. It happens when
-    // body has a overflow that is not the Frame overflow.
-    // http://dev.w3.org/csswg/cssom-view/#dom-element-scrolltop
-    if (!document.inQuirksMode())
-        UseCounter::countDeprecation(&document, UseCounter::ScrollTopBodyNotQuirksMode);
-
     document.updateLayoutIgnorePendingStylesheets();
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
+        if (!document.inQuirksMode())
+            return 0;
+    }
+
     FrameView* view = document.view();
     return view ? adjustForZoom(view->scrollY(), &document) : 0;
 }
@@ -257,11 +252,13 @@ int HTMLBodyElement::scrollTop()
 void HTMLBodyElement::setScrollTop(int scrollTop)
 {
     Document& document = this->document();
-
-    if (!document.inQuirksMode())
-        UseCounter::countDeprecation(&document, UseCounter::ScrollTopBodyNotQuirksMode);
-
     document.updateLayoutIgnorePendingStylesheets();
+
+    if (RuntimeEnabledFeatures::scrollTopLeftInteropEnabled()) {
+        if (!document.inQuirksMode())
+            return;
+    }
+
     Frame* frame = document.frame();
     if (!frame)
         return;
@@ -287,13 +284,6 @@ int HTMLBodyElement::scrollWidth()
     document.updateLayoutIgnorePendingStylesheets();
     FrameView* view = document.view();
     return view ? adjustForZoom(view->contentsWidth(), &document) : 0;
-}
-
-void HTMLBodyElement::addSubresourceAttributeURLs(ListHashSet<KURL>& urls) const
-{
-    HTMLElement::addSubresourceAttributeURLs(urls);
-
-    addSubresourceURL(urls, document().completeURL(getAttribute(backgroundAttr)));
 }
 
 } // namespace WebCore

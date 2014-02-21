@@ -28,7 +28,6 @@
 
 #include "modules/webaudio/AudioScheduledSourceNode.h"
 
-#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
 #include "core/dom/ExceptionCode.h"
 #include "core/events/Event.h"
@@ -49,7 +48,6 @@ AudioScheduledSourceNode::AudioScheduledSourceNode(AudioContext* context, float 
     , m_startTime(0)
     , m_endTime(UnknownTime)
     , m_hasEndedListener(false)
-    , m_stopCalled(false)
 {
 }
 
@@ -139,17 +137,14 @@ void AudioScheduledSourceNode::updateSchedulingInfo(size_t quantumFrameSize,
 }
 
 
-void AudioScheduledSourceNode::start(double when, ExceptionState& es)
+void AudioScheduledSourceNode::start(double when, ExceptionState& exceptionState)
 {
     ASSERT(isMainThread());
 
     if (m_playbackState != UNSCHEDULED_STATE) {
-        es.throwDOMException(
+        exceptionState.throwDOMException(
             InvalidStateError,
-            ExceptionMessages::failedToExecute(
-                "start",
-                "OscillatorNode",
-                "cannot call start more than once."));
+            "cannot call start more than once.");
         return;
     }
 
@@ -157,31 +152,20 @@ void AudioScheduledSourceNode::start(double when, ExceptionState& es)
     m_playbackState = SCHEDULED_STATE;
 }
 
-void AudioScheduledSourceNode::stop(double when, ExceptionState& es)
+void AudioScheduledSourceNode::stop(double when, ExceptionState& exceptionState)
 {
     ASSERT(isMainThread());
 
-    if (m_stopCalled) {
-        es.throwDOMException(
+    if (m_playbackState == UNSCHEDULED_STATE) {
+        exceptionState.throwDOMException(
             InvalidStateError,
-            ExceptionMessages::failedToExecute(
-                "stop",
-                "OscillatorNode",
-                "cannot call stop more than once."));
-    } else if (m_playbackState == UNSCHEDULED_STATE) {
-        es.throwDOMException(
-            InvalidStateError,
-            ExceptionMessages::failedToExecute(
-                "stop",
-                "OscillatorNode",
-                "cannot call stop without calling start first."));
+            "cannot call stop without calling start first.");
     } else {
-        // This can only happen from the SCHEDULED_STATE or PLAYING_STATE. The UNSCHEDULED_STATE is
-        // handled above, and the FINISHED_STATE is only reachable after stop() has been called, and
-        // hence m_stopCalled is true. But that case is handled above.
+        // stop() can be called more than once, with the last call to stop taking effect, unless the
+        // source has already stopped due to earlier calls to stop. No exceptions are thrown in any
+        // case.
         when = max(0.0, when);
         m_endTime = when;
-        m_stopCalled = true;
     }
 }
 

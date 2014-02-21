@@ -8,15 +8,25 @@
 #include "GrSurface.h"
 
 #include "SkBitmap.h"
+#include "SkGr.h"
 #include "SkImageEncoder.h"
 #include <stdio.h>
 
-SK_DEFINE_INST_COUNT(GrSurface)
+void GrSurface::asImageInfo(SkImageInfo* info) const {
+    if (!GrPixelConfig2ColorType(this->config(), &info->fColorType)) {
+        sk_throw();
+    }
+    info->fWidth = this->width();
+    info->fHeight = this->height();
+    info->fAlphaType = kPremul_SkAlphaType;
+}
 
 bool GrSurface::savePixels(const char* filename) {
     SkBitmap bm;
-    bm.setConfig(SkBitmap::kARGB_8888_Config, this->width(), this->height());
-    bm.allocPixels();
+    if (!bm.allocPixels(SkImageInfo::MakeN32Premul(this->width(),
+                                                   this->height()))) {
+        return false;
+    }
 
     bool result = readPixels(0, 0, this->width(), this->height(), kSkia8888_GrPixelConfig,
                              bm.getPixels());

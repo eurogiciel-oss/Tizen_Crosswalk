@@ -72,7 +72,7 @@ class TiledLayerImplTest : public testing::Test {
                 gfx::Size tile_size,
                 gfx::Size layer_size,
                 LayerTilingData::BorderTexelOption border_texel_option,
-                gfx::Rect visible_content_rect) {
+                const gfx::Rect& visible_content_rect) {
     scoped_ptr<TiledLayerImpl> layer =
         CreateLayer(tile_size, layer_size, border_texel_option);
     layer->draw_properties().visible_content_rect = visible_content_rect;
@@ -302,6 +302,17 @@ TEST_F(TiledLayerImplTest, GPUMemoryUsage) {
   layer->PushTileProperties(2, 0, empty_resource, gfx::Rect(0, 0, 1, 1), false);
 
   EXPECT_EQ(layer->GPUMemoryUsageInBytes(), 0u);
+}
+
+TEST_F(TiledLayerImplTest, EmptyMask) {
+  gfx::Size tile_size(20, 20);
+  gfx::Size layer_size(0, 0);
+  scoped_ptr<TiledLayerImpl> layer =
+      CreateLayer(tile_size, layer_size, LayerTilingData::NO_BORDER_TEXELS);
+
+  EXPECT_EQ(0u, layer->ContentsResourceId());
+  EXPECT_EQ(0, layer->TilingForTesting()->num_tiles_x());
+  EXPECT_EQ(0, layer->TilingForTesting()->num_tiles_y());
 }
 
 }  // namespace

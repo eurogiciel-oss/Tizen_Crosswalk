@@ -15,8 +15,9 @@
 #include "SkGr.h"
 
 bool SkImageFilterUtils::WrapTexture(GrTexture* texture, int width, int height, SkBitmap* result) {
-    result->setConfig(SkBitmap::kARGB_8888_Config, width, height);
-    result->setPixelRef(SkNEW_ARGS(SkGrPixelRef, (texture)))->unref();
+    SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+    result->setConfig(info);
+    result->setPixelRef(SkNEW_ARGS(SkGrPixelRef, (info, texture)))->unref();
     return true;
 }
 
@@ -29,6 +30,7 @@ bool SkImageFilterUtils::GetInputResultGPU(SkImageFilter* filter, SkImageFilter:
     GrContext* context = src.getTexture()->getContext();
     GrContext::AutoWideOpenIdentityDraw awoid(context, NULL);
     if (!filter) {
+        offset->fX = offset->fY = 0;
         *result = src;
         return true;
     } else if (filter->canFilterImageGPU()) {
@@ -36,8 +38,12 @@ bool SkImageFilterUtils::GetInputResultGPU(SkImageFilter* filter, SkImageFilter:
     } else {
         if (filter->filterImage(proxy, src, ctm, result, offset)) {
             if (!result->getTexture()) {
+                SkImageInfo info;
+                if (!result->asImageInfo(&info)) {
+                    return false;
+                }
                 GrTexture* resultTex = GrLockAndRefCachedBitmapTexture(context, *result, NULL);
-                result->setPixelRef(new SkGrPixelRef(resultTex))->unref();
+                result->setPixelRef(new SkGrPixelRef(info, resultTex))->unref();
                 GrUnlockAndUnrefCachedBitmapTexture(resultTex);
             }
             return true;

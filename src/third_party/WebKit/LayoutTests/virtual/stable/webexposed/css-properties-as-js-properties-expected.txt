@@ -91,6 +91,7 @@ floodColor
 floodOpacity
 font
 fontFamily
+fontKerning
 fontSize
 fontStretch
 fontStyle
@@ -195,7 +196,6 @@ textUnderlineMode
 textUnderlineStyle
 textUnderlineWidth
 top
-touchActionDelay
 transition
 transitionDelay
 transitionDuration
@@ -273,7 +273,6 @@ webkitColumnWidth
 webkitColumns
 webkitFilter
 webkitFontFeatureSettings
-webkitFontKerning
 webkitFontSizeDelta
 webkitFontSmoothing
 webkitFontVariantLigatures

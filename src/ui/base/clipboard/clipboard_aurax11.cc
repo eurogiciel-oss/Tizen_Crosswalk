@@ -435,9 +435,12 @@ TargetList Clipboard::AuraX11Details::WaitAndGetTargetsList(
                                                   NULL,
                                                   &out_data_items,
                                                   &out_type)) {
-      const ::Atom* atom_array = reinterpret_cast<const ::Atom*>(data->front());
-      for (size_t i = 0; i < out_data_items; ++i)
-        out.push_back(atom_array[i]);
+      if (out_type == XA_ATOM) {
+        const ::Atom* atom_array =
+            reinterpret_cast<const ::Atom*>(data->front());
+        for (size_t i = 0; i < out_data_items; ++i)
+          out.push_back(atom_array[i]);
+      }
     } else {
       // There was no target list. Most Java apps doesn't offer a TARGETS list,
       // even though they AWT to. They will offer individual text types if you
@@ -558,6 +561,10 @@ bool Clipboard::IsFormatAvailable(const FormatType& format,
   DCHECK(IsSupportedClipboardType(type));
 
   TargetList target_list = aurax11_details_->WaitAndGetTargetsList(type);
+  if (format.Equals(GetPlainTextFormatType()) ||
+      format.Equals(GetUrlFormatType())) {
+    return target_list.ContainsText();
+  }
   return target_list.ContainsFormat(format);
 }
 
@@ -568,7 +575,7 @@ void Clipboard::Clear(ClipboardType type) {
 }
 
 void Clipboard::ReadAvailableTypes(ClipboardType type,
-                                   std::vector<string16>* types,
+                                   std::vector<base::string16>* types,
                                    bool* contains_filenames) const {
   DCHECK(CalledOnValidThread());
   if (!types || !contains_filenames) {
@@ -581,13 +588,13 @@ void Clipboard::ReadAvailableTypes(ClipboardType type,
   types->clear();
 
   if (target_list.ContainsText())
-    types->push_back(UTF8ToUTF16(kMimeTypeText));
+    types->push_back(base::UTF8ToUTF16(kMimeTypeText));
   if (target_list.ContainsFormat(GetHtmlFormatType()))
-    types->push_back(UTF8ToUTF16(kMimeTypeHTML));
+    types->push_back(base::UTF8ToUTF16(kMimeTypeHTML));
   if (target_list.ContainsFormat(GetRtfFormatType()))
-    types->push_back(UTF8ToUTF16(kMimeTypeRTF));
+    types->push_back(base::UTF8ToUTF16(kMimeTypeRTF));
   if (target_list.ContainsFormat(GetBitmapFormatType()))
-    types->push_back(UTF8ToUTF16(kMimeTypePNG));
+    types->push_back(base::UTF8ToUTF16(kMimeTypePNG));
   *contains_filenames = false;
 
   SelectionData data(aurax11_details_->RequestAndWaitForTypes(
@@ -596,14 +603,14 @@ void Clipboard::ReadAvailableTypes(ClipboardType type,
     ReadCustomDataTypes(data.GetData(), data.GetSize(), types);
 }
 
-void Clipboard::ReadText(ClipboardType type, string16* result) const {
+void Clipboard::ReadText(ClipboardType type, base::string16* result) const {
   DCHECK(CalledOnValidThread());
 
   SelectionData data(aurax11_details_->RequestAndWaitForTypes(
       type, aurax11_details_->GetTextAtoms()));
   if (data.IsValid()) {
     std::string text = data.GetText();
-    *result = UTF8ToUTF16(text);
+    *result = base::UTF8ToUTF16(text);
   }
 }
 
@@ -619,7 +626,7 @@ void Clipboard::ReadAsciiText(ClipboardType type, std::string* result) const {
 // TODO(estade): handle different charsets.
 // TODO(port): set *src_url.
 void Clipboard::ReadHTML(ClipboardType type,
-                         string16* markup,
+                         base::string16* markup,
                          std::string* src_url,
                          uint32* fragment_start,
                          uint32* fragment_end) const {
@@ -665,8 +672,8 @@ SkBitmap Clipboard::ReadImage(ClipboardType type) const {
 }
 
 void Clipboard::ReadCustomData(ClipboardType clipboard_type,
-                               const string16& type,
-                               string16* result) const {
+                               const base::string16& type,
+                               base::string16* result) const {
   DCHECK(CalledOnValidThread());
 
   SelectionData data(aurax11_details_->RequestAndWaitForTypes(
@@ -676,7 +683,7 @@ void Clipboard::ReadCustomData(ClipboardType clipboard_type,
     ReadCustomDataForType(data.GetData(), data.GetSize(), type, result);
 }
 
-void Clipboard::ReadBookmark(string16* title, std::string* url) const {
+void Clipboard::ReadBookmark(base::string16* title, std::string* url) const {
   DCHECK(CalledOnValidThread());
   // TODO(erg): This was left NOTIMPLEMENTED() in the gtk port too.
   NOTIMPLEMENTED();
@@ -736,8 +743,8 @@ void Clipboard::WriteBookmark(const char* title_data,
                               const char* url_data,
                               size_t url_len) {
   // Write as a mozilla url (UTF16: URL, newline, title).
-  string16 url = UTF8ToUTF16(std::string(url_data, url_len) + "\n");
-  string16 title = UTF8ToUTF16(std::string(title_data, title_len));
+  base::string16 url = base::UTF8ToUTF16(std::string(url_data, url_len) + "\n");
+  base::string16 title = base::UTF8ToUTF16(std::string(title_data, title_len));
 
   std::vector<unsigned char> data;
   ui::AddString16ToVector(url, &data);

@@ -18,6 +18,9 @@
 #include "chrome/browser/bookmarks/bookmark_model.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sync/glue/bookmark_change_processor.h"
+#include "chrome/browser/undo/bookmark_undo_service.h"
+#include "chrome/browser/undo/bookmark_undo_service_factory.h"
+#include "chrome/browser/undo/bookmark_undo_utils.h"
 #include "content/public/browser/browser_thread.h"
 #include "sync/api/sync_error.h"
 #include "sync/internal_api/public/delete_journal.h"
@@ -128,7 +131,7 @@ const BookmarkNode* BookmarkNodeFinder::FindBookmarkNode(
     const GURL& url, const std::string& title, bool is_folder) {
   // Create a bookmark node from the given bookmark attributes.
   BookmarkNode temp_node(url);
-  temp_node.SetTitle(UTF8ToUTF16(title));
+  temp_node.SetTitle(base::UTF8ToUTF16(title));
   if (is_folder)
     temp_node.set_type(BookmarkNode::FOLDER);
   else
@@ -323,7 +326,7 @@ bool BookmarkModelAssociator::SyncModelHasUserCreatedNodes(bool* has_nodes) {
 bool BookmarkModelAssociator::NodesMatch(
     const BookmarkNode* bookmark,
     const syncer::BaseNode* sync_node) const {
-  if (bookmark->GetTitle() != UTF8ToUTF16(sync_node->GetTitle()))
+  if (bookmark->GetTitle() != base::UTF8ToUTF16(sync_node->GetTitle()))
     return false;
   if (bookmark->is_folder() != sync_node->GetIsFolder())
     return false;
@@ -363,6 +366,11 @@ bool BookmarkModelAssociator::GetSyncIdForTaggedNode(const std::string& tag,
 syncer::SyncError BookmarkModelAssociator::AssociateModels(
     syncer::SyncMergeResult* local_merge_result,
     syncer::SyncMergeResult* syncer_merge_result) {
+  // Since any changes to the bookmark model made here are not user initiated,
+  // these change should not be undoable and so suspend the undo tracking.
+#if !defined(OS_ANDROID)
+  ScopedSuspendBookmarkUndo suspend_undo(profile_);
+#endif
   syncer::SyncError error = CheckModelSyncState(local_merge_result,
                                                 syncer_merge_result);
   if (error.IsSet())
@@ -706,13 +714,10 @@ bool BookmarkModelAssociator::CryptoReadyIfNecessary() {
 syncer::SyncError BookmarkModelAssociator::CheckModelSyncState(
     syncer::SyncMergeResult* local_merge_result,
     syncer::SyncMergeResult* syncer_merge_result) const {
-  std::string version_str;
-  if (bookmark_model_->root_node()->GetMetaInfo(kBookmarkTransactionVersionKey,
-                                                &version_str)) {
+  int64 native_version =
+      bookmark_model_->root_node()->sync_transaction_version();
+  if (native_version != syncer::syncable::kInvalidTransactionVersion) {
     syncer::ReadTransaction trans(FROM_HERE, user_share_);
-    int64 native_version = syncer::syncable::kInvalidTransactionVersion;
-    if (!base::StringToInt64(version_str, &native_version))
-      return syncer::SyncError();
     local_merge_result->set_pre_association_version(native_version);
 
     int64 sync_version = trans.GetModelVersion(syncer::BOOKMARKS);
@@ -724,8 +729,9 @@ syncer::SyncError BookmarkModelAssociator::CheckModelSyncState(
                                 syncer::MODEL_TYPE_COUNT);
 
       // Clear version on bookmark model so that we only report error once.
-      bookmark_model_->DeleteNodeMetaInfo(bookmark_model_->root_node(),
-                                          kBookmarkTransactionVersionKey);
+      bookmark_model_->SetNodeSyncTransactionVersion(
+          bookmark_model_->root_node(),
+          syncer::syncable::kInvalidTransactionVersion);
 
       // If the native version is higher, there was a sync persistence failure,
       // and we need to delay association until after a GetUpdates.

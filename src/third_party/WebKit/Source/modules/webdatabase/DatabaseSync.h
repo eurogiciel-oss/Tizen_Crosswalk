@@ -39,7 +39,7 @@
 #include "wtf/text/WTFString.h"
 
 #ifndef NDEBUG
-#include "weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #endif
 
 namespace WebCore {
@@ -51,23 +51,18 @@ class SQLTransactionSyncCallback;
 class SecurityOrigin;
 
 // Instances of this class should be created and used only on the worker's context thread.
-class DatabaseSync : public DatabaseBase, public DatabaseBackendSync, public ScriptWrappable {
+class DatabaseSync FINAL : public DatabaseBase, public DatabaseBackendSync, public ScriptWrappable {
 public:
     virtual ~DatabaseSync();
 
-    void changeVersion(const String& oldVersion, const String& newVersion, PassRefPtr<SQLTransactionSyncCallback>, ExceptionState&);
-    void transaction(PassRefPtr<SQLTransactionSyncCallback>, ExceptionState&);
-    void readTransaction(PassRefPtr<SQLTransactionSyncCallback>, ExceptionState&);
+    void changeVersion(const String& oldVersion, const String& newVersion, PassOwnPtr<SQLTransactionSyncCallback>, ExceptionState&);
+    void transaction(PassOwnPtr<SQLTransactionSyncCallback>, ExceptionState&);
+    void readTransaction(PassOwnPtr<SQLTransactionSyncCallback>, ExceptionState&);
 
-    virtual void markAsDeletedAndClose();
-    virtual void closeImmediately();
+    virtual void closeImmediately() OVERRIDE;
 
     const String& lastErrorMessage() const { return m_lastErrorMessage; }
     void setLastErrorMessage(const String& message) { m_lastErrorMessage = message; }
-    void setLastErrorMessage(const char* message, int sqliteCode)
-    {
-        setLastErrorMessage(String::format("%s (%d)", message, sqliteCode));
-    }
     void setLastErrorMessage(const char* message, int sqliteCode, const char* sqliteMessage)
     {
         setLastErrorMessage(String::format("%s (%d, %s)", message, sqliteCode, sqliteMessage));
@@ -76,10 +71,9 @@ public:
 private:
     DatabaseSync(PassRefPtr<DatabaseContext>, const String& name,
         const String& expectedVersion, const String& displayName, unsigned long estimatedSize);
-    PassRefPtr<DatabaseBackendSync> backend();
     static PassRefPtr<DatabaseSync> create(ExecutionContext*, PassRefPtr<DatabaseBackendBase>);
 
-    void runTransaction(PassRefPtr<SQLTransactionSyncCallback>, bool readOnly, ExceptionState&);
+    void runTransaction(PassOwnPtr<SQLTransactionSyncCallback>, bool readOnly, ExceptionState&);
     void rollbackTransaction(PassRefPtr<SQLTransactionSync>);
 
     String m_lastErrorMessage;

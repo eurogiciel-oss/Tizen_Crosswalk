@@ -436,7 +436,6 @@ struct SK_API SkRect {
      *  returns false.
      */
     bool isFinite() const {
-#ifdef SK_SCALAR_IS_FLOAT
         float accum = 0;
         accum *= fLeft;
         accum *= fTop;
@@ -449,13 +448,6 @@ struct SK_API SkRect {
         // value==value will be true iff value is not NaN
         // TODO: is it faster to say !accum or accum==accum?
         return accum == accum;
-#else
-        // use bit-or for speed, since we don't care about short-circuting the
-        // tests, and we expect the common case will be that we need to check all.
-        int isNaN = (SK_FixedNaN == fLeft)  | (SK_FixedNaN == fTop) |
-                    (SK_FixedNaN == fRight) | (SK_FixedNaN == fBottom);
-        return !isNaN;
-#endif
     }
 
     SkScalar    x() const { return fLeft; }
@@ -633,6 +625,7 @@ struct SK_API SkRect {
         If either rectangle is empty, do nothing and return false.
     */
     bool intersect(const SkRect& r);
+    bool intersect2(const SkRect& r);
 
     /** If this rectangle intersects the rectangle specified by left, top, right, bottom,
         return true and set this rectangle to that intersection, otherwise return false
@@ -730,7 +723,7 @@ struct SK_API SkRect {
 
     /**
      *  Set the dst rectangle by rounding this rectangle's coordinates to their
-     *  nearest integer values using SkScalarRound.
+     *  nearest integer values using SkScalarRoundToInt.
      */
     void round(SkIRect* dst) const {
         SkASSERT(dst);
@@ -772,6 +765,15 @@ struct SK_API SkRect {
                  SkScalarFloorToInt(fRight), SkScalarFloorToInt(fBottom));
     }
 
+    /**
+     *  Return a new SkIRect which is contains the rounded coordinates of this
+     *  rect using SkScalarRoundToInt.
+     */
+    SkIRect round() const {
+        SkIRect ir;
+        this->round(&ir);
+        return ir;
+    }
 
     /**
      *  Swap top/bottom or left/right if there are flipped (i.e. if width()

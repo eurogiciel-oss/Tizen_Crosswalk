@@ -8,17 +8,18 @@
 #include "base/path_service.h"
 #include "base/prefs/pref_registry_simple.h"
 #include "base/prefs/pref_service.h"
-#include "base/prefs/pref_service_builder.h"
+#include "base/prefs/pref_service_factory.h"
 #include "base/prefs/testing_pref_store.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_shutdown.h"
 #include "chrome/browser/chrome_notification_types.h"
+#include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
+#include "chrome/browser/chromeos/base/locale_util.h"
 #include "chrome/browser/chromeos/login/enrollment/enrollment_screen.h"
 #include "chrome/browser/chromeos/login/enrollment/mock_enrollment_screen.h"
 #include "chrome/browser/chromeos/login/existing_user_controller.h"
-#include "chrome/browser/chromeos/login/language_switch_menu.h"
 #include "chrome/browser/chromeos/login/login_display_host_impl.h"
 #include "chrome/browser/chromeos/login/mock_authenticator.h"
 #include "chrome/browser/chromeos/login/mock_login_status_consumer.h"
@@ -35,10 +36,13 @@
 #include "chrome/browser/chromeos/login/webui_login_view.h"
 #include "chrome/browser/chromeos/login/wizard_controller.h"
 #include "chrome/browser/chromeos/login/wizard_in_process_browser_test.h"
+#include "chrome/browser/chromeos/profiles/profile_helper.h"
 #include "chrome/browser/ui/webui/chromeos/login/oobe_ui.h"
+#include "chrome/browser/ui/webui/chromeos/login/signin_screen_handler.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/test/base/ui_test_utils.h"
+#include "chromeos/audio/cras_audio_handler.h"
 #include "chromeos/chromeos_switches.h"
 #include "chromeos/chromeos_test_utils.h"
 #include "chromeos/dbus/dbus_thread_manager.h"
@@ -79,6 +83,60 @@ class PrefStoreStub : public TestingPrefStore {
   virtual ~PrefStoreStub() {}
 };
 
+struct SwitchLanguageTestData {
+  SwitchLanguageTestData() : success(false), done(false) {}
+
+  std::string requested_locale;
+  std::string loaded_locale;
+  bool success;
+  bool done;
+};
+
+void OnLocaleSwitched(SwitchLanguageTestData* self,
+                      const std::string& locale,
+                      const std::string& loaded_locale,
+                      const bool success) {
+  self->requested_locale = locale;
+  self->loaded_locale = loaded_locale;
+  self->success = success;
+  self->done = true;
+}
+
+void RunSwitchLanguageTest(const std::string& locale,
+                                  const std::string& expected_locale,
+                                  const bool expect_success) {
+  SwitchLanguageTestData data;
+  scoped_ptr<locale_util::SwitchLanguageCallback> callback(
+      new locale_util::SwitchLanguageCallback(
+          base::Bind(&OnLocaleSwitched, base::Unretained(&data))));
+  locale_util::SwitchLanguage(locale, true, callback.Pass());
+
+  // Token writing moves control to BlockingPool and back.
+  base::RunLoop().RunUntilIdle();
+  content::BrowserThread::GetBlockingPool()->FlushForTesting();
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_EQ(data.done, true);
+  EXPECT_EQ(data.requested_locale, locale);
+  EXPECT_EQ(data.loaded_locale, expected_locale);
+  EXPECT_EQ(data.success, expect_success);
+}
+
+void SetUpCrasAndEnableChromeVox(int volume_percent, bool mute_on) {
+  AccessibilityManager* a11y = AccessibilityManager::Get();
+  CrasAudioHandler* cras = CrasAudioHandler::Get();
+
+  // Audio output is at |volume_percent| and |mute_on|. Spoken feedback
+  // is disabled.
+  cras->SetOutputVolumePercent(volume_percent);
+  cras->SetOutputMute(mute_on);
+  a11y->EnableSpokenFeedback(false, ash::A11Y_NOTIFICATION_NONE);
+
+  // Spoken feedback is enabled.
+  a11y->EnableSpokenFeedback(true, ash::A11Y_NOTIFICATION_NONE);
+  base::RunLoop().RunUntilIdle();
+}
+
 }  // namespace
 
 using ::testing::_;
@@ -112,6 +170,12 @@ class WizardControllerTest : public WizardInProcessBrowserTest {
       WizardController::kTestNoScreenName) {}
   virtual ~WizardControllerTest() {}
 
+  virtual void SetUpOnMainThread() OVERRIDE {
+    AccessibilityManager::Get()->
+        SetProfileForTest(ProfileHelper::GetSigninProfile());
+    WizardInProcessBrowserTest::SetUpOnMainThread();
+  }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(WizardControllerTest);
 };
@@ -126,25 +190,54 @@ IN_PROC_BROWSER_TEST_F(WizardControllerTest, SwitchLanguage) {
   EXPECT_STREQ("en", icu::Locale::getDefault().getLanguage());
   EXPECT_FALSE(base::i18n::IsRTL());
   const std::wstring en_str =
-      UTF16ToWide(l10n_util::GetStringUTF16(IDS_NETWORK_SELECTION_TITLE));
+      base::UTF16ToWide(l10n_util::GetStringUTF16(IDS_NETWORK_SELECTION_TITLE));
 
-  LanguageSwitchMenu::SwitchLanguage("fr");
+  RunSwitchLanguageTest("fr", "fr", true);
   EXPECT_EQ("fr", g_browser_process->GetApplicationLocale());
   EXPECT_STREQ("fr", icu::Locale::getDefault().getLanguage());
   EXPECT_FALSE(base::i18n::IsRTL());
   const std::wstring fr_str =
-      UTF16ToWide(l10n_util::GetStringUTF16(IDS_NETWORK_SELECTION_TITLE));
+      base::UTF16ToWide(l10n_util::GetStringUTF16(IDS_NETWORK_SELECTION_TITLE));
 
   EXPECT_NE(en_str, fr_str);
 
-  LanguageSwitchMenu::SwitchLanguage("ar");
+  RunSwitchLanguageTest("ar", "ar", true);
   EXPECT_EQ("ar", g_browser_process->GetApplicationLocale());
   EXPECT_STREQ("ar", icu::Locale::getDefault().getLanguage());
   EXPECT_TRUE(base::i18n::IsRTL());
   const std::wstring ar_str =
-      UTF16ToWide(l10n_util::GetStringUTF16(IDS_NETWORK_SELECTION_TITLE));
+      base::UTF16ToWide(l10n_util::GetStringUTF16(IDS_NETWORK_SELECTION_TITLE));
 
   EXPECT_NE(fr_str, ar_str);
+}
+
+IN_PROC_BROWSER_TEST_F(WizardControllerTest, VolumeIsChangedForChromeVox) {
+  SetUpCrasAndEnableChromeVox(75 /* volume_percent */, true /* mute_on */);
+
+  // Check that output is unmuted now and at some level.
+  CrasAudioHandler* cras = CrasAudioHandler::Get();
+  ASSERT_FALSE(cras->IsOutputMuted());
+  ASSERT_EQ(WizardController::kMinAudibleOutputVolumePercent,
+            cras->GetOutputVolumePercent());
+}
+
+IN_PROC_BROWSER_TEST_F(WizardControllerTest, VolumeIsUnchangedForChromeVox) {
+  SetUpCrasAndEnableChromeVox(75 /* volume_percent */, false /* mute_on */);
+
+  // Check that output is unmuted now and at some level.
+  CrasAudioHandler* cras = CrasAudioHandler::Get();
+  ASSERT_FALSE(cras->IsOutputMuted());
+  ASSERT_EQ(75, cras->GetOutputVolumePercent());
+}
+
+IN_PROC_BROWSER_TEST_F(WizardControllerTest, VolumeIsAdjustedForChromeVox) {
+  SetUpCrasAndEnableChromeVox(5 /* volume_percent */, false /* mute_on */);
+
+  // Check that output is unmuted now and at some level.
+  CrasAudioHandler* cras = CrasAudioHandler::Get();
+  ASSERT_FALSE(cras->IsOutputMuted());
+  ASSERT_EQ(WizardController::kMinAudibleOutputVolumePercent,
+            cras->GetOutputVolumePercent());
 }
 
 class WizardControllerFlowTest : public WizardControllerTest {
@@ -336,7 +429,7 @@ IN_PROC_BROWSER_TEST_F(WizardControllerFlowTest,
   MockConsumer mock_consumer;
 
   // Must have a pending signin to resume after auto-enrollment:
-  LoginDisplayHostImpl::default_host()->StartSignInScreen();
+  LoginDisplayHostImpl::default_host()->StartSignInScreen(LoginScreenContext());
   EXPECT_FALSE(ExistingUserController::current_controller() == NULL);
   ExistingUserController::current_controller()->DoAutoEnrollment();
   ExistingUserController::current_controller()->set_login_status_consumer(
@@ -364,7 +457,7 @@ IN_PROC_BROWSER_TEST_F(WizardControllerFlowTest, ControlFlowResetScreen) {
   EXPECT_EQ(WizardController::default_controller()->GetNetworkScreen(),
             WizardController::default_controller()->current_screen());
 
-  LoginDisplayHostImpl::default_host()->StartSignInScreen();
+  LoginDisplayHostImpl::default_host()->StartSignInScreen(LoginScreenContext());
   EXPECT_FALSE(ExistingUserController::current_controller() == NULL);
   ExistingUserController::current_controller()->OnStartDeviceReset();
 
@@ -383,7 +476,7 @@ IN_PROC_BROWSER_TEST_F(WizardControllerFlowTest,
   EXPECT_EQ(WizardController::default_controller()->GetNetworkScreen(),
             WizardController::default_controller()->current_screen());
 
-  LoginDisplayHostImpl::default_host()->StartSignInScreen();
+  LoginDisplayHostImpl::default_host()->StartSignInScreen(LoginScreenContext());
   EXPECT_FALSE(ExistingUserController::current_controller() == NULL);
   ExistingUserController::current_controller()->ShowWrongHWIDScreen();
 
@@ -410,16 +503,17 @@ class WizardControllerBrokenLocalStateTest : public WizardControllerTest {
 
     FakeDBusThreadManager* fake_dbus_thread_manager =
         new FakeDBusThreadManager();
-    fake_session_manager_client_ =
-        fake_dbus_thread_manager->fake_session_manager_client();
-    DBusThreadManager::InitializeForTesting(fake_dbus_thread_manager);
+    fake_dbus_thread_manager->SetFakeClients();
+    fake_session_manager_client_ = new FakeSessionManagerClient;
+    fake_dbus_thread_manager->SetSessionManagerClient(
+        scoped_ptr<SessionManagerClient>(fake_session_manager_client_));
+    DBusThreadManager::SetInstanceForTesting(fake_dbus_thread_manager);
   }
 
   virtual void SetUpOnMainThread() OVERRIDE {
-    PrefServiceBuilder builder;
-    local_state_.reset(builder
-                       .WithUserPrefs(new PrefStoreStub())
-                       .Create(new PrefRegistrySimple()));
+    base::PrefServiceFactory factory;
+    factory.set_user_prefs(make_scoped_refptr(new PrefStoreStub()));
+    local_state_ = factory.Create(new PrefRegistrySimple()).Pass();
     WizardController::set_local_state_for_testing(local_state_.get());
 
     WizardControllerTest::SetUpOnMainThread();
@@ -430,7 +524,6 @@ class WizardControllerBrokenLocalStateTest : public WizardControllerTest {
 
   virtual void TearDownInProcessBrowserTestFixture() OVERRIDE {
     WizardControllerTest::TearDownInProcessBrowserTestFixture();
-    DBusThreadManager::Shutdown();
   }
 
   ErrorScreen* GetErrorScreen() {
@@ -543,8 +636,9 @@ class WizardControllerProxyAuthOnSigninTest : public WizardControllerTest {
   DISALLOW_COPY_AND_ASSIGN(WizardControllerProxyAuthOnSigninTest);
 };
 
+// Broken after turning on SAML. http://crbug.com/338087
 IN_PROC_BROWSER_TEST_F(WizardControllerProxyAuthOnSigninTest,
-                       ProxyAuthDialogOnSigninScreen) {
+                       DISABLED_ProxyAuthDialogOnSigninScreen) {
   content::WindowedNotificationObserver auth_needed_waiter(
       chrome::NOTIFICATION_AUTH_NEEDED,
       content::NotificationService::AllSources());
@@ -552,7 +646,7 @@ IN_PROC_BROWSER_TEST_F(WizardControllerProxyAuthOnSigninTest,
   EXPECT_EQ(WizardController::default_controller()->GetNetworkScreen(),
             WizardController::default_controller()->current_screen());
 
-  LoginDisplayHostImpl::default_host()->StartSignInScreen();
+  LoginDisplayHostImpl::default_host()->StartSignInScreen(LoginScreenContext());
   auth_needed_waiter.Wait();
 }
 

@@ -8,6 +8,7 @@
 #include "content/child/child_thread.h"
 #include "ozone/impl/ipc/messages.h"
 #include "ozone/impl/ozone_display.h"
+#include "ozone/ui/events/window_state_change_handler.h"
 
 namespace ozonewayland {
 // GpuChannelManager generates unique routeid for every new
@@ -31,15 +32,13 @@ OzoneDisplayChannel::OzoneDisplayChannel() {
 
 OzoneDisplayChannel::~OzoneDisplayChannel() {
   content::ChildThread* thread = GetProcessMainThread();
-  if (thread)
-    thread->RemoveRoute(WAYLAND_ROUTE_ID);
+  thread->RemoveRoute(WAYLAND_ROUTE_ID);
 }
 
 bool OzoneDisplayChannel::OnMessageReceived(
     const IPC::Message& message) {
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP(OzoneDisplayChannel, message)
-  IPC_MESSAGE_HANDLER(WaylandMsg_DisplayChannelEstablished, OnEstablishChannel)
   IPC_MESSAGE_HANDLER(WaylandWindow_State, OnWidgetStateChanged)
   IPC_MESSAGE_HANDLER(WaylandWindow_Attributes, OnWidgetAttributesChanged)
   IPC_MESSAGE_HANDLER(WaylandWindow_Title, OnWidgetTitleChanged)
@@ -49,40 +48,36 @@ bool OzoneDisplayChannel::OnMessageReceived(
   return handled;
 }
 
-void OzoneDisplayChannel::OnEstablishChannel() {
-  OzoneDisplay::GetInstance()->OnChannelEstablished();
-}
-
 void OzoneDisplayChannel::Register() {
   content::ChildThread* thread = GetProcessMainThread();
   thread->AddRoute(WAYLAND_ROUTE_ID, this);
 }
 
 void OzoneDisplayChannel::OnWidgetStateChanged(unsigned handleid,
-                                               unsigned state,
+                                               WidgetState state,
                                                unsigned width,
                                                unsigned height) {
-  OzoneDisplay::GetInstance()->OnWidgetStateChanged(handleid,
-                                                    state,
-                                                    width,
-                                                    height);
+  WindowStateChangeHandler::GetInstance()->SetWidgetState(handleid,
+                                                          state,
+                                                          width,
+                                                          height);
 }
 
 void OzoneDisplayChannel::OnWidgetTitleChanged(unsigned widget,
-                                               string16 title) {
-  OzoneDisplay::GetInstance()->OnWidgetTitleChanged(widget, title);
+                                               base::string16 title) {
+  WindowStateChangeHandler::GetInstance()->SetWidgetTitle(widget, title);
 }
 
 void OzoneDisplayChannel::OnWidgetAttributesChanged(unsigned widget,
                                                     unsigned parent,
                                                     unsigned x,
                                                     unsigned y,
-                                                    unsigned type) {
-  OzoneDisplay::GetInstance()->OnWidgetAttributesChanged(widget,
-                                                         parent,
-                                                         x,
-                                                         y,
-                                                         type);
+                                                    WidgetType type) {
+  WindowStateChangeHandler::GetInstance()->SetWidgetAttributes(widget,
+                                                               parent,
+                                                               x,
+                                                               y,
+                                                               type);
 }
 
 }  // namespace ozonewayland

@@ -86,6 +86,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/basictypes.h"
 #include "common/linux/linux_libc_support.h"
 #include "common/memory.h"
 #include "client/linux/log/log.h"
@@ -341,10 +342,11 @@ void ExceptionHandler::SignalHandler(int sig, siginfo_t* info, void* uc) {
 
   pthread_mutex_unlock(&handler_stack_mutex_);
 
-  if (info->si_pid) {
+  if (info->si_pid || sig == SIGABRT) {
     // This signal was triggered by somebody sending us the signal with kill().
     // In order to retrigger it, we have to queue a new signal by calling
-    // kill() ourselves.
+    // kill() ourselves.  The special case (si_pid == 0 && sig == SIGABRT) is
+    // due to the kernel sending a SIGABRT from a user request via SysRQ.
     if (tgkill(getpid(), syscall(__NR_gettid), sig) < 0) {
       // If we failed to kill ourselves (e.g. because a sandbox disallows us
       // to do so), we instead resort to terminating our process. This will
@@ -434,7 +436,9 @@ bool ExceptionHandler::GenerateDump(CrashContext *context) {
   if (IsOutOfProcess())
     return crash_generation_client_->RequestDump(context, sizeof(*context));
 
-  static const unsigned kChildStackSize = 8000;
+  // Allocating too much stack isn't a problem, and better to err on the side
+  // of caution than smash it into random locations.
+  static const unsigned kChildStackSize = 16000;
   PageAllocator allocator;
   uint8_t* stack = (uint8_t*) allocator.Alloc(kChildStackSize);
   if (!stack)
@@ -571,7 +575,7 @@ bool ExceptionHandler::WriteMinidump() {
     // Reposition the FD to its beginning and resize it to get rid of the
     // previous minidump info.
     lseek(minidump_descriptor_.fd(), 0, SEEK_SET);
-    static_cast<void>(ftruncate(minidump_descriptor_.fd(), 0));
+    ignore_result(ftruncate(minidump_descriptor_.fd(), 0));
   }
 
   // Allow this process to be dumped.

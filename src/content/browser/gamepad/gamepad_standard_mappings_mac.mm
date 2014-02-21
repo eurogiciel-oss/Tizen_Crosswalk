@@ -14,7 +14,7 @@ float AxisToButton(float input) {
   return (input + 1.f) / 2.f;
 }
 
-void DpadFromAxis(WebKit::WebGamepad* mapped, float dir) {
+void DpadFromAxis(blink::WebGamepad* mapped, float dir) {
   // Dpad is mapped as a direction on one axis, where -1 is up and it
   // increases clockwise to 1, which is up + left. It's set to a large (> 1.f)
   // number when nothing is depressed, except on start up, sometimes it's 0.0
@@ -34,8 +34,8 @@ void DpadFromAxis(WebKit::WebGamepad* mapped, float dir) {
 }
 
 void MapperXbox360Gamepad(
-    const WebKit::WebGamepad& input,
-    WebKit::WebGamepad* mapped) {
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
   *mapped = input;
   mapped->buttons[kButtonLeftTrigger] = AxisToButton(input.axes[2]);
   mapped->buttons[kButtonRightTrigger] = AxisToButton(input.axes[5]);
@@ -55,8 +55,8 @@ void MapperXbox360Gamepad(
 }
 
 void MapperPlaystationSixAxis(
-    const WebKit::WebGamepad& input,
-    WebKit::WebGamepad* mapped) {
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
   *mapped = input;
   mapped->buttons[kButtonPrimary] = input.buttons[14];
   mapped->buttons[kButtonSecondary] = input.buttons[13];
@@ -81,9 +81,39 @@ void MapperPlaystationSixAxis(
   mapped->axesLength = kNumAxes;
 }
 
+void MapperDualshock4(
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
+  enum Dualshock4Buttons {
+    kTouchpadButton = kNumButtons,
+    kNumDualshock4Buttons
+  };
+
+  *mapped = input;
+  mapped->buttons[kButtonPrimary] = input.buttons[1];
+  mapped->buttons[kButtonSecondary] = input.buttons[2];
+  mapped->buttons[kButtonTertiary] = input.buttons[0];
+  mapped->buttons[kButtonQuaternary] = input.buttons[3];
+  mapped->buttons[kButtonLeftShoulder] = input.buttons[4];
+  mapped->buttons[kButtonRightShoulder] = input.buttons[5];
+  mapped->buttons[kButtonLeftTrigger] = AxisToButton(input.axes[3]);
+  mapped->buttons[kButtonRightTrigger] = AxisToButton(input.axes[4]);
+  mapped->buttons[kButtonBackSelect] = input.buttons[8];
+  mapped->buttons[kButtonStart] = input.buttons[9];
+  mapped->buttons[kButtonLeftThumbstick] = input.buttons[10];
+  mapped->buttons[kButtonRightThumbstick] = input.buttons[11];
+  mapped->buttons[kButtonMeta] = input.buttons[12];
+  mapped->buttons[kTouchpadButton] = input.buttons[13];
+  mapped->axes[kAxisRightStickY] = input.axes[5];
+  DpadFromAxis(mapped, input.axes[9]);
+
+  mapped->buttonsLength = kNumDualshock4Buttons;
+  mapped->axesLength = kNumAxes;
+}
+
 void MapperDirectInputStyle(
-    const WebKit::WebGamepad& input,
-    WebKit::WebGamepad* mapped) {
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
   *mapped = input;
   mapped->buttons[kButtonPrimary] = input.buttons[1];
   mapped->buttons[kButtonSecondary] = input.buttons[2];
@@ -95,8 +125,8 @@ void MapperDirectInputStyle(
 }
 
 void MapperMacallyIShock(
-    const WebKit::WebGamepad& input,
-    WebKit::WebGamepad* mapped) {
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
   enum IShockButtons {
     kButtonC = kNumButtons,
     kButtonD,
@@ -135,8 +165,8 @@ void MapperMacallyIShock(
 }
 
 void MapperXGEAR(
-    const WebKit::WebGamepad& input,
-    WebKit::WebGamepad* mapped) {
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
   *mapped = input;
   mapped->buttons[kButtonPrimary] = input.buttons[2];
   mapped->buttons[kButtonTertiary] = input.buttons[3];
@@ -153,8 +183,8 @@ void MapperXGEAR(
 }
 
 void MapperSmartJoyPLUS(
-    const WebKit::WebGamepad& input,
-    WebKit::WebGamepad* mapped) {
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
   *mapped = input;
   mapped->buttons[kButtonPrimary] = input.buttons[2];
   mapped->buttons[kButtonTertiary] = input.buttons[3];
@@ -172,8 +202,8 @@ void MapperSmartJoyPLUS(
 }
 
 void MapperDragonRiseGeneric(
-    const WebKit::WebGamepad& input,
-    WebKit::WebGamepad* mapped) {
+    const blink::WebGamepad& input,
+    blink::WebGamepad* mapped) {
   *mapped = input;
   DpadFromAxis(mapped, input.axes[9]);
   mapped->axes[kAxisLeftStickX] = input.axes[0];
@@ -197,6 +227,7 @@ struct MappingData {
   { "046d", "c218", MapperDirectInputStyle },   // Logitech F510, D mode
   { "046d", "c219", MapperDirectInputStyle },   // Logitech F710, D mode
   { "054c", "0268", MapperPlaystationSixAxis }, // Playstation SIXAXIS
+  { "054c", "05c4", MapperDualshock4 },         // Playstation Dualshock 4
   { "0925", "0005", MapperSmartJoyPLUS },       // SmartJoy PLUS Adapter
   { "0e8f", "0003", MapperXGEAR },              // XFXforce XGEAR PS2 Controller
   { "2222", "0060", MapperDirectInputStyle },   // Macally iShockX, analog mode

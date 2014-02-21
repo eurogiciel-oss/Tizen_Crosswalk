@@ -20,7 +20,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_preferences_util.h"
 #include "chrome/browser/tab_contents/tab_util.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/extension_icon_set.h"
 #include "chrome/common/url_constants.h"
@@ -28,6 +27,7 @@
 #include "content/public/browser/interstitial_page.h"
 #include "content/public/browser/notification_types.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/common/extension.h"
 #include "grit/browser_resources.h"
 #include "grit/generated_resources.h"
 #include "net/base/escape.h"
@@ -76,7 +76,7 @@ void MergeSessionLoadPage::Show() {
 }
 
 std::string MergeSessionLoadPage::GetHTMLContents() {
-  DictionaryValue strings;
+  base::DictionaryValue strings;
   strings.SetString("title", web_contents_->GetTitle());
   // Set the timeout to show the page.
   strings.SetInteger("show_delay_time", kShowDelayTimeMS);

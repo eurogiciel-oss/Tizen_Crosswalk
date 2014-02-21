@@ -15,17 +15,21 @@
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/extension_test_notification_observer.h"
 #include "chrome/browser/ui/browser.h"
-#include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/feature_switch.h"
 #include "chrome/common/extensions/features/feature_channel.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/feature_switch.h"
 #include "extensions/common/manifest.h"
 
-class ExtensionProcessManager;
 class ExtensionService;
-class ExtensionSet;
 class Profile;
+
+namespace extensions {
+class ExtensionCacheFake;
+class ExtensionSet;
+class ProcessManager;
+}
 
 // Base class for extension browser tests. Provides utilities for loading,
 // unloading, and installing extensions.
@@ -63,12 +67,13 @@ class ExtensionBrowserTest : virtual public InProcessBrowserTest {
   }
 
   // Get the profile to use.
-  Profile* profile();
+  virtual Profile* profile();
 
   static const extensions::Extension* GetExtensionByPath(
-      const ExtensionSet* extensions, const base::FilePath& path);
+      const extensions::ExtensionSet* extensions, const base::FilePath& path);
 
   // InProcessBrowserTest
+  virtual void SetUp() OVERRIDE;
   virtual void SetUpCommandLine(CommandLine* command_line) OVERRIDE;
   virtual void SetUpOnMainThread() OVERRIDE;
 
@@ -262,9 +267,11 @@ class ExtensionBrowserTest : virtual public InProcessBrowserTest {
   // Looks for an ExtensionHost whose URL has the given path component
   // (including leading slash).  Also verifies that the expected number of hosts
   // are loaded.
-  extensions::ExtensionHost* FindHostWithPath(ExtensionProcessManager* manager,
-                                              const std::string& path,
-                                              int expected_hosts);
+  extensions::ExtensionHost* FindHostWithPath(
+      extensions::ProcessManager* manager,
+      const std::string& path,
+      int expected_hosts);
+
   // Returns
   // extensions::browsertest_util::ExecuteScriptInBackgroundPage(profile(),
   // extension_id, script).
@@ -273,6 +280,12 @@ class ExtensionBrowserTest : virtual public InProcessBrowserTest {
 
   bool loaded_;
   bool installed_;
+
+#if defined(OS_CHROMEOS)
+  // True if the command line should be tweaked as if ChromeOS user is
+  // already logged in.
+  bool set_chromeos_user_;
+#endif
 
   // test_data/extensions.
   base::FilePath test_data_dir_;
@@ -329,6 +342,9 @@ class ExtensionBrowserTest : virtual public InProcessBrowserTest {
 
   // The default profile to be used.
   Profile* profile_;
+
+  // Cache cache implementation.
+  scoped_ptr<extensions::ExtensionCacheFake> test_extension_cache_;
 };
 
 #endif  // CHROME_BROWSER_EXTENSIONS_EXTENSION_BROWSERTEST_H_

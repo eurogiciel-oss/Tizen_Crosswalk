@@ -35,12 +35,18 @@
 
 namespace WebCore {
 
-PassRefPtr<AnimatableValue> AnimatableFilterOperations::interpolateTo(const AnimatableValue* value, double fraction) const
+bool AnimatableFilterOperations::usesDefaultInterpolationWith(const AnimatableValue* value) const
 {
     const AnimatableFilterOperations* target = toAnimatableFilterOperations(value);
-    if (!operations().canInterpolateWith(target->operations()))
+    return !operations().canInterpolateWith(target->operations());
+}
+
+PassRefPtr<AnimatableValue> AnimatableFilterOperations::interpolateTo(const AnimatableValue* value, double fraction) const
+{
+    if (usesDefaultInterpolationWith(value))
         return defaultInterpolateTo(this, value, fraction);
 
+    const AnimatableFilterOperations* target = toAnimatableFilterOperations(value);
     FilterOperations result;
     size_t fromSize = operations().size();
     size_t toSize = target->operations().size();
@@ -59,8 +65,8 @@ PassRefPtr<AnimatableValue> AnimatableFilterOperations::interpolateTo(const Anim
 
 PassRefPtr<AnimatableValue> AnimatableFilterOperations::addWith(const AnimatableValue* value) const
 {
-    RELEASE_ASSERT_WITH_MESSAGE(false, "Web Animations not yet implemented: AnimatableFilterOperations::addWith()");
-    return 0;
+    ASSERT_WITH_MESSAGE(false, "Web Animations not yet implemented: AnimatableFilterOperations::addWith()");
+    return defaultAddWith(this, value);
 }
 
 bool AnimatableFilterOperations::equalTo(const AnimatableValue* value) const

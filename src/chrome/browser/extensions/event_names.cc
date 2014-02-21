@@ -8,33 +8,15 @@ namespace extensions {
 
 namespace event_names {
 
-const char kOnDirectoryChanged[] = "fileBrowserPrivate.onDirectoryChanged";
-const char kOnFileBrowserMountCompleted[] =
-    "fileBrowserPrivate.onMountCompleted";
-const char kOnFileTransfersUpdated[] =
-    "fileBrowserPrivate.onFileTransfersUpdated";
-const char kOnFileBrowserPreferencesChanged[] =
-    "fileBrowserPrivate.onPreferencesChanged";
-const char kOnFileBrowserDriveConnectionStatusChanged[] =
-    "fileBrowserPrivate.onDriveConnectionStatusChanged";
-const char kOnFileBrowserCopyProgress[] = "fileBrowserPrivate.onCopyProgress";
-
 const char kOnInputMethodChanged[] = "inputMethodPrivate.onChanged";
 
 const char kOnContextMenus[] = "contextMenus";
-
-const char kOnOffscreenTabUpdated[] = "experimental.offscreenTabs.onUpdated";
 
 const char kBluetoothOnDeviceDiscovered[] = "bluetooth.onDeviceDiscovered";
 const char kBluetoothOnDeviceSearchFinished[] =
     "bluetooth.onDeviceSearchFinished";
 const char kBluetoothOnDeviceSearchResult[] = "bluetooth.onDeviceSearchResult";
 
-const char kOnDisplayChanged[] = "system.display.onDisplayChanged";
-const char kOnStorageAvailableCapacityChanged[] =
-    "system.storage.onAvailableCapacityChanged";
-
-const char kOnNotificationDisplayed[] = "notifications.onDisplayed";
 const char kOnNotificationError[] = "notifications.onError";
 
 }  // namespace event_names

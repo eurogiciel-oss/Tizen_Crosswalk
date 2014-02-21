@@ -54,10 +54,14 @@ cr.define('cr.login', function() {
    */
   var SUPPORTED_PARAMS = [
     'gaiaUrl',       // Gaia url to use;
+    'gaiaPath',      // Gaia path to use without a leading slash;
     'hl',            // Language code for the user interface;
     'email',         // Pre-fill the email field in Gaia UI;
     'service',       // Name of Gaia service;
-    'continueUrl'    // Continue url to use;
+    'continueUrl',   // Continue url to use;
+    'partitionId',   // Partition ID for the embedded Gaia webview;
+    'frameUrl',      // Initial frame URL to use. If empty defaults to gaiaUrl.
+    'constrained'    // Whether the extension is loaded in a constrained window;
   ];
 
   /**
@@ -87,6 +91,15 @@ cr.define('cr.login', function() {
   };
 
   /**
+   * Enum for the auth flow.
+   * @enum {number}
+   */
+  var AuthFlow = {
+    GAIA: 0,
+    SAML: 1
+  };
+
+  /**
    * Creates a new gaia auth extension host.
    * @param {HTMLIFrameElement|string} container The iframe element or its id
    *     to host the auth extension.
@@ -113,6 +126,12 @@ cr.define('cr.login', function() {
     reloadUrl_: null,
 
     /**
+     * The domain name of the current auth page.
+     * @type {string}
+     */
+    authDomain: '',
+
+    /**
      * Invoked when authentication is completed successfully with credential
      * data. A credential data object looks like this:
      * <pre>
@@ -129,6 +148,18 @@ cr.define('cr.login', function() {
      * @private
      */
     successCallback_: null,
+
+    /**
+     * Invoked when GAIA indicates login success and SAML was used. At this
+     * point, GAIA cookies are present but the identity of the authenticated
+     * user is not known. The embedder of GaiaAuthHost should extract the GAIA
+     * cookies from the cookie jar, query GAIA for the authenticated user's
+     * e-mail address and invoke GaiaAuthHost.setAuthenticatedUserEmail with the
+     * result. The argument is an opaque token that should be passed back to
+     * GaiaAuthHost.setAuthenticatedUserEmail.
+     * @type {function(number)}
+     */
+    retrieveAuthenticatedUserEmailCallback_: null,
 
     /**
      * Invoked when the auth flow needs a user to confirm his/her passwords.
@@ -151,19 +182,19 @@ cr.define('cr.login', function() {
     noPasswordCallback_: null,
 
     /**
-     * Invoked when the auth page hosted inside the extension is loaded.
-     * Param {@code saml} is true when the auth page is a SAML page (out of
-     * Gaia domain.
-     * @type {function{boolean)}
-     */
-    authPageLoadedCallback_: null,
-
-    /**
      * The iframe container.
      * @type {HTMLIFrameElement}
      */
     get frame() {
       return this.frame_;
+    },
+
+    /**
+     * Sets retrieveAuthenticatedUserEmailCallback_.
+     * @type {function()}
+     */
+    set retrieveAuthenticatedUserEmailCallback(callback) {
+      this.retrieveAuthenticatedUserEmailCallback_ = callback;
     },
 
     /**
@@ -180,14 +211,6 @@ cr.define('cr.login', function() {
      */
     set noPasswordCallback(callback) {
       this.noPasswordCallback_ = callback;
-    },
-
-    /**
-     * Sets authPageLoadedCallback_.
-     * @type {function(boolean)}
-     */
-    set authPageLoadedCallback(callback) {
-      this.authPageLoadedCallback_ = callback;
     },
 
     /**
@@ -224,7 +247,7 @@ cr.define('cr.login', function() {
           break;
         case AuthMode.INLINE:
           url = INLINE_AUTH_URL;
-          params.push('inlineMode=true');
+          params.push('inlineMode=1');
           break;
         default:
           url = AUTH_URL;
@@ -234,6 +257,7 @@ cr.define('cr.login', function() {
       this.frame_.src = url;
       this.reloadUrl_ = url;
       this.successCallback_ = successCallback;
+      this.authFlow = AuthFlow.GAIA;
     },
 
     /**
@@ -241,6 +265,7 @@ cr.define('cr.login', function() {
      */
     reload: function() {
       this.frame_.src = this.reloadUrl_;
+      this.authFlow = AuthFlow.GAIA;
     },
 
     /**
@@ -252,6 +277,21 @@ cr.define('cr.login', function() {
       var msg = {
         method: 'verifyConfirmedPassword',
         password: password
+      };
+      this.frame_.contentWindow.postMessage(msg, AUTH_URL_BASE);
+    },
+
+    /**
+     * Sends the authenticated user's e-mail address to the auth extension.
+     * @param {number} attemptToken The opaque token provided to the
+     *     retrieveAuthenticatedUserEmailCallback_.
+     * @param {string} email The authenticated user's e-mail address.
+     */
+    setAuthenticatedUserEmail: function(attemptToken, email) {
+      var msg = {
+        method: 'setAuthenticatedUserEmail',
+        attemptToken: attemptToken,
+        email: email
       };
       this.frame_.contentWindow.postMessage(msg, AUTH_URL_BASE);
     },
@@ -306,11 +346,28 @@ cr.define('cr.login', function() {
       }
 
       if (/^complete(Login|Authentication)$|^offlineLogin$/.test(msg.method)) {
+        if (!msg.email && !this.email_ && !msg.skipForNow) {
+          var msg = {method: 'redirectToSignin'};
+          this.frame_.contentWindow.postMessage(msg, AUTH_URL_BASE);
+          return;
+        }
         this.onAuthSuccess_({email: msg.email || this.email_,
                              password: msg.password || this.password_,
                              authCode: msg.authCode,
                              useOffline: msg.method == 'offlineLogin',
-                             chooseWhatToSync: this.chooseWhatToSync_});
+                             usingSAML: msg.usingSAML || false,
+                             chooseWhatToSync: this.chooseWhatToSync_,
+                             skipForNow: msg.skipForNow || false });
+        return;
+      }
+
+      if (msg.method == 'retrieveAuthenticatedUserEmail') {
+        if (this.retrieveAuthenticatedUserEmailCallback_) {
+          this.retrieveAuthenticatedUserEmailCallback_(msg.attemptToken);
+        } else {
+          console.error(
+              'GaiaAuthHost: Invalid retrieveAuthenticatedUserEmailCallback_.');
+        }
         return;
       }
 
@@ -331,17 +388,25 @@ cr.define('cr.login', function() {
       }
 
       if (msg.method == 'authPageLoaded') {
-        if (this.authPageLoadedCallback_)
-          this.authPageLoadedCallback_(msg.isSAML);
+        this.authDomain = msg.domain;
+        this.authFlow = msg.isSAML ? AuthFlow.SAML : AuthFlow.GAIA;
         return;
       }
 
       if (msg.method == 'reportState') {
+        var newUrl = setQueryParam(location, 'frameUrl', msg.src);
         if (history.state) {
-          history.state.src == msg.src || history.pushState({src: msg.src});
+          if (history.state.src != msg.src) {
+            history.pushState({src: msg.src}, '', newUrl);
+          }
         } else {
           history.replaceState({src: msg.src});
         }
+        return;
+      }
+
+      if (msg.method == 'switchToFullTab') {
+        chrome.send('switchToFullTab', [msg.url]);
         return;
       }
 
@@ -364,9 +429,16 @@ cr.define('cr.login', function() {
     }
   };
 
+  /**
+   * The current auth flow of the hosted gaia_auth extension.
+   * @type {AuthFlow}
+   */
+  cr.defineProperty(GaiaAuthHost, 'authFlow');
+
   GaiaAuthHost.SUPPORTED_PARAMS = SUPPORTED_PARAMS;
   GaiaAuthHost.LOCALIZED_STRING_PARAMS = LOCALIZED_STRING_PARAMS;
   GaiaAuthHost.AuthMode = AuthMode;
+  GaiaAuthHost.AuthFlow = AuthFlow;
 
   return {
     GaiaAuthHost: GaiaAuthHost

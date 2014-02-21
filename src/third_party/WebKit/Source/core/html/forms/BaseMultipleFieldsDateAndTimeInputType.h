@@ -67,6 +67,7 @@ private:
     virtual bool isEditControlOwnerDisabled() const OVERRIDE FINAL;
     virtual bool isEditControlOwnerReadOnly() const OVERRIDE FINAL;
     virtual AtomicString localeIdentifier() const OVERRIDE FINAL;
+    virtual void editControlDidChangeValueByKeyboard() OVERRIDE FINAL;
 
     // SpinButtonElement::SpinButtonOwner functions.
     virtual void focusAndSelectSpinButtonOwner() OVERRIDE;
@@ -74,10 +75,12 @@ private:
     virtual bool shouldSpinButtonRespondToWheelEvents() OVERRIDE;
     virtual void spinButtonStepDown() OVERRIDE;
     virtual void spinButtonStepUp() OVERRIDE;
+    virtual void spinButtonDidReleaseMouseCapture() OVERRIDE;
 
     // PickerIndicatorElement::PickerIndicatorOwner functions
     virtual bool isPickerIndicatorOwnerDisabledOrReadOnly() const OVERRIDE FINAL;
     virtual void pickerIndicatorChooseValue(const String&) OVERRIDE FINAL;
+    virtual void pickerIndicatorChooseValue(double) OVERRIDE FINAL;
     virtual bool setupDateTimeChooserParameters(DateTimeChooserParameters&) OVERRIDE FINAL;
 
     // ClearButtonElement::ClearButtonOwner functions.
@@ -105,7 +108,7 @@ private:
     virtual void setValue(const String&, bool valueChanged, TextFieldEventBehavior) OVERRIDE FINAL;
     virtual bool shouldUseInputMethod() const OVERRIDE FINAL;
     virtual void stepAttributeChanged() OVERRIDE FINAL;
-    virtual void updateInnerTextValue() OVERRIDE FINAL;
+    virtual void updateView() OVERRIDE FINAL;
     virtual void valueAttributeChanged() OVERRIDE;
     virtual void listAttributeTargetChanged() OVERRIDE FINAL;
     virtual void updateClearButtonVisibility() OVERRIDE FINAL;

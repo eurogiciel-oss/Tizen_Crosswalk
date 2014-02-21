@@ -35,7 +35,7 @@ class SVGAnimatedTypeAnimator;
 
 class SVGAnimateElement : public SVGAnimationElement {
 public:
-    static PassRefPtr<SVGAnimateElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGAnimateElement> create(Document&);
     virtual ~SVGAnimateElement();
 
     AnimatedPropertyType determineAnimatedPropertyType(SVGElement*) const;
@@ -43,19 +43,19 @@ public:
 protected:
     SVGAnimateElement(const QualifiedName&, Document&);
 
-    virtual void resetAnimatedType();
-    virtual void clearAnimatedType(SVGElement* targetElement);
+    virtual void resetAnimatedType() OVERRIDE FINAL;
+    virtual void clearAnimatedType(SVGElement* targetElement) OVERRIDE FINAL;
 
-    virtual bool calculateToAtEndOfDurationValue(const String& toAtEndOfDurationString);
-    virtual bool calculateFromAndToValues(const String& fromString, const String& toString);
-    virtual bool calculateFromAndByValues(const String& fromString, const String& byString);
-    virtual void calculateAnimatedValue(float percentage, unsigned repeatCount, SVGSMILElement* resultElement);
-    virtual void applyResultsToTarget();
-    virtual float calculateDistance(const String& fromString, const String& toString);
-    virtual bool isAdditive() const OVERRIDE;
+    virtual bool calculateToAtEndOfDurationValue(const String& toAtEndOfDurationString) OVERRIDE FINAL;
+    virtual bool calculateFromAndToValues(const String& fromString, const String& toString) OVERRIDE FINAL;
+    virtual bool calculateFromAndByValues(const String& fromString, const String& byString) OVERRIDE FINAL;
+    virtual void calculateAnimatedValue(float percentage, unsigned repeatCount, SVGSMILElement* resultElement) OVERRIDE FINAL;
+    virtual void applyResultsToTarget() OVERRIDE FINAL;
+    virtual float calculateDistance(const String& fromString, const String& toString) OVERRIDE FINAL;
+    virtual bool isAdditive() const OVERRIDE FINAL;
 
-    virtual void setTargetElement(SVGElement*) OVERRIDE;
-    virtual void setAttributeName(const QualifiedName&) OVERRIDE;
+    virtual void setTargetElement(SVGElement*) OVERRIDE FINAL;
+    virtual void setAttributeName(const QualifiedName&) OVERRIDE FINAL;
 
     AnimatedPropertyType m_animatedPropertyType;
 
@@ -64,7 +64,7 @@ private:
     SVGAnimatedTypeAnimator* ensureAnimator();
     bool animatedPropertyTypeSupportsAddition() const;
 
-    virtual bool hasValidAttributeType();
+    virtual bool hasValidAttributeType() OVERRIDE;
 
     OwnPtr<SVGAnimatedType> m_fromType;
     OwnPtr<SVGAnimatedType> m_toType;
@@ -75,15 +75,14 @@ private:
     OwnPtr<SVGAnimatedTypeAnimator> m_animator;
 };
 
-inline SVGAnimateElement* toSVGAnimateElement(Element* element)
+inline bool isSVGAnimateElement(const Node& node)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(!element
-        || element->hasTagName(SVGNames::animateTag)
-        || element->hasTagName(SVGNames::animateColorTag)
-        || element->hasTagName(SVGNames::animateTransformTag)
-        || element->hasTagName(SVGNames::setTag));
-    return static_cast<SVGAnimateElement*>(element);
+    return node.hasTagName(SVGNames::animateTag)
+        || node.hasTagName(SVGNames::animateTransformTag)
+        || node.hasTagName(SVGNames::setTag);
 }
+
+DEFINE_NODE_TYPE_CASTS_WITH_FUNCTION(SVGAnimateElement);
 
 } // namespace WebCore
 

@@ -25,13 +25,15 @@
 #include "core/rendering/RenderReplaced.h"
 
 #include "RuntimeEnabledFeatures.h"
-#include "core/platform/graphics/GraphicsContext.h"
 #include "core/rendering/GraphicsContextAnnotator.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/LayoutRepainter.h"
 #include "core/rendering/RenderBlock.h"
 #include "core/rendering/RenderImage.h"
 #include "core/rendering/RenderLayer.h"
 #include "core/rendering/RenderView.h"
+#include "platform/LengthFunctions.h"
+#include "platform/graphics/GraphicsContext.h"
 
 using namespace std;
 
@@ -80,6 +82,7 @@ void RenderReplaced::layout()
 {
     ASSERT(needsLayout());
 
+    LayoutRectRecorder recorder(*this);
     LayoutRepainter repainter(*this, checkForRepaintDuringLayout());
 
     setHeight(minimumReplacedHeight());
@@ -356,8 +359,8 @@ LayoutRect RenderReplaced::replacedContentRect(const LayoutSize* overriddenIntri
         ASSERT_NOT_REACHED();
     }
 
-    LayoutUnit xOffset = minimumValueForLength(style()->objectPosition().x(), contentRect.width() - finalRect.width(), view());
-    LayoutUnit yOffset = minimumValueForLength(style()->objectPosition().y(), contentRect.height() - finalRect.height(), view());
+    LayoutUnit xOffset = minimumValueForLength(style()->objectPosition().x(), contentRect.width() - finalRect.width());
+    LayoutUnit yOffset = minimumValueForLength(style()->objectPosition().y(), contentRect.height() - finalRect.height());
     finalRect.move(xOffset, yOffset);
 
     return finalRect;
@@ -618,7 +621,7 @@ LayoutRect RenderReplaced::clippedOverflowRectForRepaint(const RenderLayerModelO
     LayoutRect r = unionRect(localSelectionRect(false), visualOverflowRect());
 
     RenderView* v = view();
-    if (v) {
+    if (!RuntimeEnabledFeatures::repaintAfterLayoutEnabled() && v) {
         // FIXME: layoutDelta needs to be applied in parts before/after transforms and
         // repaint containers. https://bugs.webkit.org/show_bug.cgi?id=23308
         r.move(v->layoutDelta());

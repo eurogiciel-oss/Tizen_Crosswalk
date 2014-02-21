@@ -54,6 +54,7 @@ void RenderLayerClipper::updateClipRects(const ClipRectsContext& clipRectsContex
     ClipRectsType clipRectsType = clipRectsContext.clipRectsType;
     ASSERT(clipRectsType < NumCachedClipRectsTypes);
     if (m_clipRectsCache && m_clipRectsCache->getClipRects(clipRectsType, clipRectsContext.respectOverflowClip)) {
+        // FIXME: these asserts trigger for squashing. Need to update this code to support squashing as appropriate.
         ASSERT(clipRectsContext.rootLayer == m_clipRectsCache->m_clipRectsRoot[clipRectsType]);
         ASSERT(m_clipRectsCache->m_scrollbarRelevancy[clipRectsType] == clipRectsContext.overlayScrollbarSizeRelevancy);
 
@@ -112,6 +113,115 @@ void RenderLayerClipper::clearClipRects(ClipRectsType typeToClear)
         RefPtr<ClipRects> dummy;
         m_clipRectsCache->setClipRects(typeToClear, RespectOverflowClip, dummy);
         m_clipRectsCache->setClipRects(typeToClear, IgnoreOverflowClip, dummy);
+    }
+}
+
+LayoutRect RenderLayerClipper::childrenClipRect() const
+{
+    // FIXME: border-radius not accounted for.
+    // FIXME: Regions not accounted for.
+    RenderView* renderView = m_renderer->view();
+    RenderLayer* clippingRootLayer = clippingRootForPainting();
+    LayoutRect layerBounds;
+    ClipRect backgroundRect, foregroundRect, outlineRect;
+    ClipRectsContext clipRectsContext(clippingRootLayer, 0, TemporaryClipRects);
+    // Need to use temporary clip rects, because the value of 'dontClipToOverflow' may be different from the painting path (<rdar://problem/11844909>).
+    calculateRects(clipRectsContext, renderView->unscaledDocumentRect(), layerBounds, backgroundRect, foregroundRect, outlineRect);
+    return clippingRootLayer->renderer()->localToAbsoluteQuad(FloatQuad(foregroundRect.rect())).enclosingBoundingBox();
+}
+
+LayoutRect RenderLayerClipper::selfClipRect() const
+{
+    // FIXME: border-radius not accounted for.
+    // FIXME: Regions not accounted for.
+    RenderView* renderView = m_renderer->view();
+    RenderLayer* clippingRootLayer = clippingRootForPainting();
+    LayoutRect layerBounds;
+    ClipRect backgroundRect, foregroundRect, outlineRect;
+    ClipRectsContext clipRectsContext(clippingRootLayer, 0, PaintingClipRects);
+    calculateRects(clipRectsContext, renderView->documentRect(), layerBounds, backgroundRect, foregroundRect, outlineRect);
+    return clippingRootLayer->renderer()->localToAbsoluteQuad(FloatQuad(backgroundRect.rect())).enclosingBoundingBox();
+}
+
+LayoutRect RenderLayerClipper::localClipRect() const
+{
+    // FIXME: border-radius not accounted for.
+    // FIXME: Regions not accounted for.
+    RenderLayer* clippingRootLayer = clippingRootForPainting();
+    LayoutRect layerBounds;
+    ClipRect backgroundRect, foregroundRect, outlineRect;
+    ClipRectsContext clipRectsContext(clippingRootLayer, 0, PaintingClipRects);
+    calculateRects(clipRectsContext, PaintInfo::infiniteRect(), layerBounds, backgroundRect, foregroundRect, outlineRect);
+
+    LayoutRect clipRect = backgroundRect.rect();
+    if (clipRect == PaintInfo::infiniteRect())
+        return clipRect;
+
+    LayoutPoint clippingRootOffset;
+    m_renderer->layer()->convertToLayerCoords(clippingRootLayer, clippingRootOffset);
+    clipRect.moveBy(-clippingRootOffset);
+
+    return clipRect;
+}
+
+void RenderLayerClipper::calculateRects(const ClipRectsContext& clipRectsContext, const LayoutRect& paintDirtyRect, LayoutRect& layerBounds,
+    ClipRect& backgroundRect, ClipRect& foregroundRect, ClipRect& outlineRect, const LayoutPoint* offsetFromRoot) const
+{
+    if (clipRectsContext.rootLayer != m_renderer->layer() && m_renderer->layer()->parent()) {
+        backgroundRect = backgroundClipRect(clipRectsContext);
+        backgroundRect.intersect(paintDirtyRect);
+    } else {
+        backgroundRect = paintDirtyRect;
+    }
+
+    foregroundRect = backgroundRect;
+    outlineRect = backgroundRect;
+
+    LayoutPoint offset;
+    if (offsetFromRoot)
+        offset = *offsetFromRoot;
+    else
+        m_renderer->layer()->convertToLayerCoords(clipRectsContext.rootLayer, offset);
+    layerBounds = LayoutRect(offset, m_renderer->layer()->size());
+
+    // Update the clip rects that will be passed to child layers.
+    if (m_renderer->hasOverflowClip()) {
+        // This layer establishes a clip of some kind.
+        if (m_renderer->layer() != clipRectsContext.rootLayer || clipRectsContext.respectOverflowClip == RespectOverflowClip) {
+            foregroundRect.intersect(toRenderBox(m_renderer)->overflowClipRect(offset, clipRectsContext.region, clipRectsContext.overlayScrollbarSizeRelevancy));
+            if (m_renderer->style()->hasBorderRadius())
+                foregroundRect.setHasRadius(true);
+        }
+
+        // If we establish an overflow clip at all, then go ahead and make sure our background
+        // rect is intersected with our layer's bounds including our visual overflow,
+        // since any visual overflow like box-shadow or border-outset is not clipped by overflow:auto/hidden.
+        if (toRenderBox(m_renderer)->hasVisualOverflow()) {
+            // FIXME: Perhaps we should be propagating the borderbox as the clip rect for children, even though
+            //        we may need to inflate our clip specifically for shadows or outsets.
+            // FIXME: Does not do the right thing with CSS regions yet, since we don't yet factor in the
+            // individual region boxes as overflow.
+            LayoutRect layerBoundsWithVisualOverflow = toRenderBox(m_renderer)->visualOverflowRect();
+            toRenderBox(m_renderer)->flipForWritingMode(layerBoundsWithVisualOverflow); // Layers are in physical coordinates, so the overflow has to be flipped.
+            layerBoundsWithVisualOverflow.moveBy(offset);
+            if (m_renderer->layer() != clipRectsContext.rootLayer || clipRectsContext.respectOverflowClip == RespectOverflowClip)
+                backgroundRect.intersect(layerBoundsWithVisualOverflow);
+        } else {
+            // Shift the bounds to be for our region only.
+            LayoutRect bounds = toRenderBox(m_renderer)->borderBoxRectInRegion(clipRectsContext.region);
+            bounds.moveBy(offset);
+            if (m_renderer->layer() != clipRectsContext.rootLayer || clipRectsContext.respectOverflowClip == RespectOverflowClip)
+                backgroundRect.intersect(bounds);
+        }
+    }
+
+    // CSS clip (different than clipping due to overflow) can clip to any box, even if it falls outside of the border box.
+    if (m_renderer->hasClip()) {
+        // Clip applies to *us* as well, so go ahead and update the damageRect.
+        LayoutRect newPosClip = toRenderBox(m_renderer)->clipRect(offset, clipRectsContext.region);
+        backgroundRect.intersect(newPosClip);
+        foregroundRect.intersect(newPosClip);
+        outlineRect.intersect(newPosClip);
     }
 }
 
@@ -185,6 +295,80 @@ void RenderLayerClipper::calculateClipRects(const ClipRectsContext& clipRectsCon
             clipRects.setFixedClipRect(intersection(newPosClip, clipRects.fixedClipRect()));
         }
     }
+}
+
+static inline ClipRect backgroundClipRectForPosition(const ClipRects& parentRects, EPosition position)
+{
+    if (position == FixedPosition)
+        return parentRects.fixedClipRect();
+
+    if (position == AbsolutePosition)
+        return parentRects.posClipRect();
+
+    return parentRects.overflowClipRect();
+}
+
+ClipRect RenderLayerClipper::backgroundClipRect(const ClipRectsContext& clipRectsContext) const
+{
+    ASSERT(m_renderer->layer()->parent());
+
+    ClipRects parentRects;
+
+    // If we cross into a different pagination context, then we can't rely on the cache.
+    // Just switch over to using TemporaryClipRects.
+    if (clipRectsContext.clipRectsType != TemporaryClipRects && m_renderer->layer()->parent()->enclosingPaginationLayer() != m_renderer->layer()->enclosingPaginationLayer()) {
+        ClipRectsContext tempContext(clipRectsContext);
+        tempContext.clipRectsType = TemporaryClipRects;
+        parentClipRects(tempContext, parentRects);
+    } else {
+        parentClipRects(clipRectsContext, parentRects);
+    }
+
+    ClipRect backgroundClipRect = backgroundClipRectForPosition(parentRects, m_renderer->style()->position());
+    RenderView* view = m_renderer->view();
+    ASSERT(view);
+
+    // Note: infinite clipRects should not be scrolled here, otherwise they will accidentally no longer be considered infinite.
+    if (parentRects.fixed() && clipRectsContext.rootLayer->renderer() == view && backgroundClipRect != PaintInfo::infiniteRect())
+        backgroundClipRect.move(view->frameView()->scrollOffsetForFixedPosition());
+
+    return backgroundClipRect;
+}
+
+void RenderLayerClipper::parentClipRects(const ClipRectsContext& clipRectsContext, ClipRects& clipRects) const
+{
+    ASSERT(m_renderer->layer()->parent());
+
+    RenderLayerClipper& parentClipper = m_renderer->layer()->parent()->clipper();
+    if (clipRectsContext.clipRectsType == TemporaryClipRects) {
+        parentClipper.calculateClipRects(clipRectsContext, clipRects);
+        return;
+    }
+
+    parentClipper.updateClipRects(clipRectsContext);
+    clipRects = *parentClipper.clipRects(clipRectsContext);
+}
+
+RenderLayer* RenderLayerClipper::clippingRootForPainting() const
+{
+    if (m_renderer->hasCompositedLayerMapping())
+        return const_cast<RenderLayer*>(m_renderer->layer());
+
+    const RenderLayer* current = m_renderer->layer();
+    while (current) {
+        if (current->isRootLayer())
+            return const_cast<RenderLayer*>(current);
+
+        current = current->compositingContainer();
+        ASSERT(current);
+        if (current->transform()
+            || (current->compositingState() == PaintsIntoOwnBacking)
+        )
+            return const_cast<RenderLayer*>(current);
+    }
+
+    ASSERT_NOT_REACHED();
+    return 0;
 }
 
 } // namespace WebCore

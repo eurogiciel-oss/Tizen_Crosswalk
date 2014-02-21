@@ -35,10 +35,8 @@
 #include "core/editing/VisiblePosition.h"
 #include "core/editing/VisibleUnits.h"
 #include "core/editing/htmlediting.h"
-#include "core/html/HTMLHtmlElement.h"
-#include "core/html/HTMLTableElement.h"
 #include "core/frame/Frame.h"
-#include "core/page/Settings.h"
+#include "core/frame/Settings.h"
 #include "platform/Logging.h"
 #include "core/rendering/InlineIterator.h"
 #include "core/rendering/InlineTextBox.h"
@@ -546,7 +544,7 @@ static bool endsOfNodeAreVisuallyDistinctPositions(Node* node)
         return true;
 
     // Don't include inline tables.
-    if (isHTMLTableElement(node))
+    if (node->hasTagName(tableTag))
         return false;
 
     // There is a VisiblePosition inside an empty inline-block container.
@@ -892,7 +890,7 @@ bool Position::isCandidate() const
     if (isTableElement(deprecatedNode()) || editingIgnoresContent(deprecatedNode()))
         return (atFirstEditingPositionForNode() || atLastEditingPositionForNode()) && !nodeIsUserSelectNone(deprecatedNode()->parentNode());
 
-    if (isHTMLHtmlElement(m_anchorNode.get()))
+    if (m_anchorNode->hasTagName(htmlTag))
         return false;
 
     if (renderer->isRenderBlockFlow()) {
@@ -1016,13 +1014,13 @@ bool Position::rendersInDifferentPosition(const Position &pos) const
     InlineBox* b2;
     pos.getInlineBoxAndOffset(DOWNSTREAM, b2, ignoredCaretOffset);
 
-    LOG(Editing, "renderer:               %p [%p]\n", renderer, b1);
-    LOG(Editing, "thisRenderedOffset:         %d\n", thisRenderedOffset);
-    LOG(Editing, "posRenderer:            %p [%p]\n", posRenderer, b2);
-    LOG(Editing, "posRenderedOffset:      %d\n", posRenderedOffset);
-    LOG(Editing, "node min/max:           %d:%d\n", caretMinOffset(deprecatedNode()), caretMaxOffset(deprecatedNode()));
-    LOG(Editing, "pos node min/max:       %d:%d\n", caretMinOffset(pos.deprecatedNode()), caretMaxOffset(pos.deprecatedNode()));
-    LOG(Editing, "----------------------------------------------------------------------\n");
+    WTF_LOG(Editing, "renderer:               %p [%p]\n", renderer, b1);
+    WTF_LOG(Editing, "thisRenderedOffset:         %d\n", thisRenderedOffset);
+    WTF_LOG(Editing, "posRenderer:            %p [%p]\n", posRenderer, b2);
+    WTF_LOG(Editing, "posRenderedOffset:      %d\n", posRenderedOffset);
+    WTF_LOG(Editing, "node min/max:           %d:%d\n", caretMinOffset(deprecatedNode()), caretMaxOffset(deprecatedNode()));
+    WTF_LOG(Editing, "pos node min/max:       %d:%d\n", caretMinOffset(pos.deprecatedNode()), caretMaxOffset(pos.deprecatedNode()));
+    WTF_LOG(Editing, "----------------------------------------------------------------------\n");
 
     if (!b1 || !b2) {
         return false;

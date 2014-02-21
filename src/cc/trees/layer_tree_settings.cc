@@ -26,6 +26,7 @@ LayerTreeSettings::LayerTreeSettings()
       show_overdraw_in_tracing(false),
       can_use_lcd_text(true),
       should_clear_root_render_pass(true),
+      gpu_rasterization(false),
       scrollbar_animator(NoAnimator),
       scrollbar_linear_fade_delay_ms(300),
       scrollbar_linear_fade_length_ms(300),
@@ -42,7 +43,6 @@ LayerTreeSettings::LayerTreeSettings()
       top_controls_hide_threshold(0.5f),
       refresh_rate(60.0),
       max_partial_texture_updates(std::numeric_limits<size_t>::max()),
-      num_raster_threads(1),
       default_tile_size(gfx::Size(256, 256)),
       max_untiled_layer_size(gfx::Size(512, 512)),
       minimum_occlusion_tracking_size(gfx::Size(160, 160)),
@@ -52,12 +52,10 @@ LayerTreeSettings::LayerTreeSettings()
       max_tiles_for_interest_area(128),
       max_unused_resource_memory_percentage(100),
       highp_threshold_min(0),
-      force_direct_layer_drawing(false),
       strict_layer_property_change_checking(false),
       use_map_image(false),
       ignore_root_layer_flings(false),
       use_rgba_4444_textures(false),
-      always_overscroll(false),
       touch_hit_testing(true),
       texture_id_allocation_chunk_size(64) {
 }

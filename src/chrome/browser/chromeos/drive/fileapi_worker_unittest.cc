@@ -10,8 +10,8 @@
 #include "base/memory/scoped_ptr.h"
 #include "chrome/browser/chromeos/drive/dummy_file_system.h"
 #include "chrome/browser/chromeos/drive/test_util.h"
-#include "chrome/browser/google_apis/test_util.h"
 #include "content/public/test/test_browser_thread_bundle.h"
+#include "google_apis/drive/test_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace drive {
@@ -70,11 +70,11 @@ void VerifyWrite(
     int64 expected_size,
     const base::FilePath& expected_written_path,
     const std::string& write_data,
-    base::PlatformFileError result,
+    base::File::Error result,
     base::PlatformFile platform_file,
     const base::Closure& close_callback) {
   // Check that the file is properly opened.
-  EXPECT_EQ(base::PLATFORM_FILE_OK, result);
+  EXPECT_EQ(base::File::FILE_OK, result);
   EXPECT_NE(base::kInvalidPlatformFileValue, platform_file);
   EXPECT_FALSE(close_callback.is_null());
 
@@ -104,11 +104,11 @@ void VerifyWrite(
 // Helper function of testing OpenFile() for read access. It checks that the
 // file is readable and contains |expected_data|.
 void VerifyRead(const std::string& expected_data,
-                base::PlatformFileError result,
+                base::File::Error result,
                 base::PlatformFile platform_file,
                 const base::Closure& close_callback) {
   // Check that the file is properly opened.
-  EXPECT_EQ(base::PLATFORM_FILE_OK, result);
+  EXPECT_EQ(base::File::FILE_OK, result);
   EXPECT_NE(base::kInvalidPlatformFileValue, platform_file);
   EXPECT_FALSE(close_callback.is_null());
 
@@ -170,7 +170,7 @@ TEST_F(FileApiWorkerTest, OpenFileForCreateWrite) {
   const std::string kWriteData = "byebye";
 
   base::FilePath temp_path;
-  file_util::CreateTemporaryFile(&temp_path);
+  base::CreateTemporaryFile(&temp_path);
 
   // CREATE => CREATE (fails if file existed.)
   TestFileSystemForOpenFile file_system(temp_path, CREATE_FILE);
@@ -190,7 +190,7 @@ TEST_F(FileApiWorkerTest, OpenFileForOpenAlwaysWrite) {
   const std::string kInitialData = "hello";
 
   base::FilePath temp_path;
-  file_util::CreateTemporaryFile(&temp_path);
+  base::CreateTemporaryFile(&temp_path);
   google_apis::test_util::WriteStringToFile(temp_path, kInitialData);
 
   // OPEN_ALWAYS => OPEN_OR_CREATE (success whether file exists or not.)
@@ -212,7 +212,7 @@ TEST_F(FileApiWorkerTest, OpenFileForOpenTruncatedWrite) {
   const std::string kWriteData = "byebye";
 
   base::FilePath temp_path;
-  file_util::CreateTemporaryFile(&temp_path);
+  base::CreateTemporaryFile(&temp_path);
   google_apis::test_util::WriteStringToFile(temp_path, kInitialData);
 
   // OPEN_TRUNCATED => OPEN (failure when the file did not exist.)
@@ -234,7 +234,7 @@ TEST_F(FileApiWorkerTest, OpenFileForOpenCreateAlwaysWrite) {
   const std::string kWriteData = "byebye";
 
   base::FilePath temp_path;
-  file_util::CreateTemporaryFile(&temp_path);
+  base::CreateTemporaryFile(&temp_path);
   google_apis::test_util::WriteStringToFile(temp_path, kInitialData);
 
   // CREATE_ALWAYS => OPEN_OR_CREATE (success whether file exists or not.)
@@ -255,7 +255,7 @@ TEST_F(FileApiWorkerTest, OpenFileForOpenRead) {
   const std::string kInitialData = "hello";
 
   base::FilePath temp_path;
-  file_util::CreateTemporaryFile(&temp_path);
+  base::CreateTemporaryFile(&temp_path);
   google_apis::test_util::WriteStringToFile(temp_path, kInitialData);
 
   // OPEN => OPEN (failure when the file did not exist.)

@@ -32,9 +32,6 @@
 #include "SkTLS.h"
 #include "SkTrace.h"
 
-SK_DEFINE_INST_COUNT(GrContext)
-SK_DEFINE_INST_COUNT(GrDrawState)
-
 // It can be useful to set this to false to test whether a bug is caused by using the
 // InOrderDrawBuffer, to compare performance of using/not using InOrderDrawBuffer, or to make
 // debugging simpler.
@@ -42,10 +39,6 @@ SK_CONF_DECLARE(bool, c_Defer, "gpu.deferContext", true,
                 "Defers rendering in GrContext via GrInOrderDrawBuffer.");
 
 #define BUFFERED_DRAW (c_Defer ? kYes_BufferedDraw : kNo_BufferedDraw)
-
-// When we're using coverage AA but the blend is incompatible (given gpu
-// limitations) should we disable AA or draw wrong?
-#define DISABLE_COVERAGE_AA_FOR_BLEND 1
 
 #ifdef SK_DEBUG
     // change this to a 1 to see notifications when partial coverage fails
@@ -92,19 +85,7 @@ GrContext* GrContext::Create(GrBackend backend, GrBackendContext backendContext)
     }
 }
 
-namespace {
-void* CreateThreadInstanceCount() {
-    return SkNEW_ARGS(int, (0));
-}
-void DeleteThreadInstanceCount(void* v) {
-    delete reinterpret_cast<int*>(v);
-}
-#define THREAD_INSTANCE_COUNT \
-    (*reinterpret_cast<int*>(SkTLS::Get(CreateThreadInstanceCount, DeleteThreadInstanceCount)))
-}
-
 GrContext::GrContext() {
-    ++THREAD_INSTANCE_COUNT;
     fDrawState = NULL;
     fGpu = NULL;
     fClip = NULL;
@@ -152,10 +133,6 @@ bool GrContext::init(GrBackend backend, GrBackendContext backendContext) {
     return true;
 }
 
-int GrContext::GetThreadInstanceCount() {
-    return THREAD_INSTANCE_COUNT;
-}
-
 GrContext::~GrContext() {
     if (NULL == fGpu) {
         return;
@@ -185,8 +162,6 @@ GrContext::~GrContext() {
     SkSafeUnref(fPathRendererChain);
     SkSafeUnref(fSoftwarePathRenderer);
     fDrawState->unref();
-
-    --THREAD_INSTANCE_COUNT;
 }
 
 void GrContext::contextLost() {
@@ -695,14 +670,6 @@ void GrContext::dumpFontCache() const {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace {
-inline bool disable_coverage_aa_for_blend(GrDrawTarget* target) {
-    return DISABLE_COVERAGE_AA_FOR_BLEND && !target->canApplyCoverage();
-}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 /*  create a triangle strip that strokes the specified triangle. There are 8
  unique vertices, but we repreat the last 2 to close up. Alternatively we
  could use an indices array, and then only send 8 verts, but not sure that
@@ -746,7 +713,7 @@ static bool apply_aa_to_rect(GrDrawTarget* target,
     // TODO: remove this ugliness when we drop the fixed-pipe impl
     *useVertexCoverage = false;
     if (!target->getDrawState().canTweakAlphaForCoverage()) {
-        if (disable_coverage_aa_for_blend(target)) {
+        if (target->shouldDisableCoverageAAForBlend()) {
 #ifdef SK_DEBUG
             //GrPrintf("Turning off AA to correctly apply blend.\n");
 #endif
@@ -795,7 +762,7 @@ static inline bool rect_contains_inclusive(const SkRect& rect, const SkPoint& po
 
 void GrContext::drawRect(const GrPaint& paint,
                          const SkRect& rect,
-                         SkScalar width,
+                         const SkStrokeRec* stroke,
                          const SkMatrix* matrix) {
     SK_TRACE_EVENT0("GrContext::drawRect");
 
@@ -803,6 +770,7 @@ void GrContext::drawRect(const GrPaint& paint,
     AutoCheckFlush acf(this);
     GrDrawTarget* target = this->prepareToDraw(&paint, BUFFERED_DRAW, &are, &acf);
 
+    SkScalar width = stroke == NULL ? -1 : stroke->getWidth();
     SkMatrix combinedMatrix = target->drawState()->getViewMatrix();
     if (NULL != matrix) {
         combinedMatrix.preConcat(*matrix);
@@ -855,9 +823,9 @@ void GrContext::drawRect(const GrPaint& paint,
             return;
         }
         if (width >= 0) {
-            fAARectRenderer->strokeAARect(this->getGpu(), target,
-                                          rect, combinedMatrix, devBoundRect,
-                                          width, useVertexCoverage);
+            fAARectRenderer->strokeAARect(this->getGpu(), target, rect,
+                                          combinedMatrix, devBoundRect,
+                                          stroke, useVertexCoverage);
         } else {
             // filled AA rect
             fAARectRenderer->fillAARect(this->getGpu(), target,
@@ -974,10 +942,10 @@ void GrContext::drawVertices(const GrPaint& paint,
                              int indexCount) {
     SK_TRACE_EVENT0("GrContext::drawVertices");
 
-    GrDrawTarget::AutoReleaseGeometry geo;
-
     AutoRestoreEffects are;
     AutoCheckFlush acf(this);
+    GrDrawTarget::AutoReleaseGeometry geo; // must be inside AutoCheckFlush scope
+
     GrDrawTarget* target = this->prepareToDraw(&paint, BUFFERED_DRAW, &are, &acf);
 
     GrDrawState* drawState = target->drawState();
@@ -1033,14 +1001,10 @@ void GrContext::drawRRect(const GrPaint& paint,
     AutoCheckFlush acf(this);
     GrDrawTarget* target = this->prepareToDraw(&paint, BUFFERED_DRAW, &are, &acf);
 
-    bool useAA = paint.isAntiAlias() &&
-                 !target->getDrawState().getRenderTarget()->isMultisampled() &&
-                 !disable_coverage_aa_for_blend(target);
-
-    if (!fOvalRenderer->drawSimpleRRect(target, this, useAA, rect, stroke)) {
+    if (!fOvalRenderer->drawSimpleRRect(target, this, paint.isAntiAlias(), rect, stroke)) {
         SkPath path;
         path.addRRect(rect);
-        this->internalDrawPath(target, useAA, path, stroke);
+        this->internalDrawPath(target, paint.isAntiAlias(), path, stroke);
     }
 }
 
@@ -1057,14 +1021,10 @@ void GrContext::drawOval(const GrPaint& paint,
     AutoCheckFlush acf(this);
     GrDrawTarget* target = this->prepareToDraw(&paint, BUFFERED_DRAW, &are, &acf);
 
-    bool useAA = paint.isAntiAlias() &&
-                 !target->getDrawState().getRenderTarget()->isMultisampled() &&
-                 !disable_coverage_aa_for_blend(target);
-
-    if (!fOvalRenderer->drawOval(target, this, useAA, oval, stroke)) {
+    if (!fOvalRenderer->drawOval(target, this, paint.isAntiAlias(), oval, stroke)) {
         SkPath path;
         path.addOval(oval);
-        this->internalDrawPath(target, useAA, path, stroke);
+        this->internalDrawPath(target, paint.isAntiAlias(), path, stroke);
     }
 }
 
@@ -1090,7 +1050,7 @@ static bool is_nested_rects(GrDrawTarget* target,
 
     *useVertexCoverage = false;
     if (!target->getDrawState().canTweakAlphaForCoverage()) {
-        if (disable_coverage_aa_for_blend(target)) {
+        if (target->shouldDisableCoverageAAForBlend()) {
             return false;
         } else {
             *useVertexCoverage = true;
@@ -1140,15 +1100,17 @@ void GrContext::drawPath(const GrPaint& paint, const SkPath& path, const SkStrok
     AutoRestoreEffects are;
     AutoCheckFlush acf(this);
     GrDrawTarget* target = this->prepareToDraw(&paint, BUFFERED_DRAW, &are, &acf);
+    GrDrawState* drawState = target->drawState();
 
-    bool useAA = paint.isAntiAlias() && !target->getDrawState().getRenderTarget()->isMultisampled();
-    if (useAA && stroke.getWidth() < 0 && !path.isConvex()) {
+    bool useCoverageAA = paint.isAntiAlias() && !drawState->getRenderTarget()->isMultisampled();
+
+    if (useCoverageAA && stroke.getWidth() < 0 && !path.isConvex()) {
         // Concave AA paths are expensive - try to avoid them for special cases
         bool useVertexCoverage;
         SkRect rects[2];
 
         if (is_nested_rects(target, path, stroke, rects, &useVertexCoverage)) {
-            SkMatrix origViewMatrix = target->getDrawState().getViewMatrix();
+            SkMatrix origViewMatrix = drawState->getViewMatrix();
             GrDrawState::AutoViewMatrixRestore avmr;
             if (!avmr.setIdentity(target->drawState())) {
                 return;
@@ -1166,50 +1128,49 @@ void GrContext::drawPath(const GrPaint& paint, const SkPath& path, const SkStrok
     bool isOval = path.isOval(&ovalRect);
 
     if (!isOval || path.isInverseFillType()
-        || !fOvalRenderer->drawOval(target, this, useAA, ovalRect, stroke)) {
-        this->internalDrawPath(target, useAA, path, stroke);
+        || !fOvalRenderer->drawOval(target, this, paint.isAntiAlias(), ovalRect, stroke)) {
+        this->internalDrawPath(target, paint.isAntiAlias(), path, stroke);
     }
 }
 
 void GrContext::internalDrawPath(GrDrawTarget* target, bool useAA, const SkPath& path,
-                                 const SkStrokeRec& stroke) {
+                                 const SkStrokeRec& origStroke) {
     SkASSERT(!path.isEmpty());
 
     // An Assumption here is that path renderer would use some form of tweaking
     // the src color (either the input alpha or in the frag shader) to implement
     // aa. If we have some future driver-mojo path AA that can do the right
     // thing WRT to the blend then we'll need some query on the PR.
-    if (disable_coverage_aa_for_blend(target)) {
-#ifdef SK_DEBUG
-        //GrPrintf("Turning off AA to correctly apply blend.\n");
-#endif
-        useAA = false;
-    }
+    bool useCoverageAA = useAA &&
+        !target->getDrawState().getRenderTarget()->isMultisampled() &&
+        !target->shouldDisableCoverageAAForBlend();
 
-    GrPathRendererChain::DrawType type = useAA ? GrPathRendererChain::kColorAntiAlias_DrawType :
-                                                 GrPathRendererChain::kColor_DrawType;
+
+    GrPathRendererChain::DrawType type =
+        useCoverageAA ? GrPathRendererChain::kColorAntiAlias_DrawType :
+                           GrPathRendererChain::kColor_DrawType;
 
     const SkPath* pathPtr = &path;
-    SkPath tmpPath;
-    SkStrokeRec strokeRec(stroke);
+    SkTLazy<SkPath> tmpPath;
+    SkTCopyOnFirstWrite<SkStrokeRec> stroke(origStroke);
 
     // Try a 1st time without stroking the path and without allowing the SW renderer
-    GrPathRenderer* pr = this->getPathRenderer(*pathPtr, strokeRec, target, false, type);
+    GrPathRenderer* pr = this->getPathRenderer(*pathPtr, *stroke, target, false, type);
 
     if (NULL == pr) {
-        if (!strokeRec.isHairlineStyle()) {
+        if (!GrPathRenderer::IsStrokeHairlineOrEquivalent(*stroke, this->getMatrix(), NULL)) {
             // It didn't work the 1st time, so try again with the stroked path
-            if (strokeRec.applyToPath(&tmpPath, *pathPtr)) {
-                pathPtr = &tmpPath;
-                strokeRec.setFillStyle();
+            if (stroke->applyToPath(tmpPath.init(), *pathPtr)) {
+                pathPtr = tmpPath.get();
+                stroke.writable()->setFillStyle();
+                if (pathPtr->isEmpty()) {
+                    return;
+                }
             }
-        }
-        if (pathPtr->isEmpty()) {
-            return;
         }
 
         // This time, allow SW renderer
-        pr = this->getPathRenderer(*pathPtr, strokeRec, target, true, type);
+        pr = this->getPathRenderer(*pathPtr, *stroke, target, true, type);
     }
 
     if (NULL == pr) {
@@ -1219,7 +1180,7 @@ void GrContext::internalDrawPath(GrDrawTarget* target, bool useAA, const SkPath&
         return;
     }
 
-    pr->drawPath(*pathPtr, strokeRec, target, useAA);
+    pr->drawPath(*pathPtr, *stroke, target, useCoverageAA);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

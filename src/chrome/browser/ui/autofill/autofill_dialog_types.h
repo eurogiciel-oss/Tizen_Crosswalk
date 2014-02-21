@@ -27,16 +27,21 @@ class AutofillField;
 // This struct describes a single input control for the imperative autocomplete
 // dialog.
 struct DetailInput {
-  // Multiple DetailInput structs with the same row_id go on the same row. The
-  // actual order of the rows is determined by their order of appearance in
-  // kBillingInputs. If negative, don't show the input at all (leave it hidden
-  // at all times).
-  int row_id;
+  enum Length {
+    SHORT,     // Shares a line with other short inputs, like display: inline.
+    SHORT_EOL, // Like SHORT but starts a new line directly afterward. Used to
+               // separate groups of short inputs into different lines.
+    LONG,      // Will be given its own full line, like display: block.
+    NONE,      // Input will not be shown.
+  };
+
+  // Used to determine which inputs share lines when laying out.
+  Length length;
 
   ServerFieldType type;
 
-  // Placeholder text resource ID.
-  int placeholder_text_rid;
+  // Text shown when the input is at its default state (e.g. empty).
+  base::string16 placeholder_text;
 
   // A number between 0 and 1.0 that describes how much of the horizontal space
   // in the row should be allotted to this input. 0 is equivalent to 1.
@@ -44,11 +49,11 @@ struct DetailInput {
 
   // When non-empty, indicates the starting value for this input. This will be
   // used when the user is editing existing data.
-  string16 initial_value;
+  base::string16 initial_value;
 };
 
-// Determines whether |input| and |field| match.
-typedef base::Callback<bool(const DetailInput& input,
+// Determines whether |type| and |field| match.
+typedef base::Callback<bool(ServerFieldType type,
                             const AutofillField& field)>
     InputFieldComparator;
 
@@ -77,16 +82,14 @@ class DialogNotification {
   enum Type {
     NONE,
     DEVELOPER_WARNING,
-    EXPLANATORY_MESSAGE,
     REQUIRED_ACTION,
     SECURITY_WARNING,
-    VALIDATION_ERROR,
     WALLET_ERROR,
     WALLET_USAGE_CONFIRMATION,
   };
 
   DialogNotification();
-  DialogNotification(Type type, const string16& display_text);
+  DialogNotification(Type type, const base::string16& display_text);
   ~DialogNotification();
 
   // Returns the appropriate background, border, or text color for the view's
@@ -102,24 +105,24 @@ class DialogNotification {
   bool HasCheckbox() const;
 
   Type type() const { return type_; }
-  const string16& display_text() const { return display_text_; }
+  const base::string16& display_text() const { return display_text_; }
 
   void set_link_url(const GURL& link_url) { link_url_ = link_url; }
   const GURL& link_url() const { return link_url_; }
 
   const gfx::Range& link_range() const { return link_range_; }
 
-  void set_tooltip_text(const string16& tooltip_text) {
+  void set_tooltip_text(const base::string16& tooltip_text) {
     tooltip_text_ = tooltip_text;
   }
-  const string16& tooltip_text() const { return tooltip_text_; }
+  const base::string16& tooltip_text() const { return tooltip_text_; }
 
   void set_checked(bool checked) { checked_ = checked; }
   bool checked() const { return checked_; }
 
  private:
   Type type_;
-  string16 display_text_;
+  base::string16 display_text_;
 
   // If the notification includes a link, these describe the destination and
   // which part of |display_text_| is the anchor text.
@@ -128,7 +131,7 @@ class DialogNotification {
 
   // When non-empty, indicates that a tooltip should be shown on the end of
   // the notification.
-  string16 tooltip_text_;
+  base::string16 tooltip_text_;
 
   // Whether the dialog notification's checkbox should be checked. Only applies
   // when |HasCheckbox()| is true.
@@ -140,10 +143,10 @@ extern SkColor const kWarningColor;
 struct SuggestionState {
   SuggestionState();
   SuggestionState(bool visible,
-                  const string16& vertically_compact_text,
-                  const string16& horizontally_compact_text,
+                  const base::string16& vertically_compact_text,
+                  const base::string16& horizontally_compact_text,
                   const gfx::Image& icon,
-                  const string16& extra_text,
+                  const base::string16& extra_text,
                   const gfx::Image& extra_icon);
   ~SuggestionState();
 
@@ -158,7 +161,7 @@ struct SuggestionState {
   base::string16 horizontally_compact_text;
 
   gfx::Image icon;
-  string16 extra_text;
+  base::string16 extra_text;
   gfx::Image extra_icon;
 };
 
@@ -169,9 +172,6 @@ struct DialogOverlayString {
 
   // Text content of the message.
   base::string16 text;
-
-  // Color of the message's text.
-  SkColor text_color;
 
   // Font to render the message's text in.
   gfx::Font font;
@@ -197,7 +197,7 @@ enum ValidationType {
 };
 
 typedef std::vector<DetailInput> DetailInputs;
-typedef std::map<const DetailInput*, string16> DetailOutputMap;
+typedef std::map<ServerFieldType, base::string16> FieldValueMap;
 
 // A validity message for a single input field.
 struct ValidityMessage {

@@ -98,8 +98,8 @@ gfx::Rect GetWindowRect(GdkWindow* window) {
 }
 
 // TODO(deanm): Find some better home for this, and make it more efficient.
-size_t GetUTF8Offset(const string16& text, size_t text_offset) {
-  return UTF16ToUTF8(text.substr(0, text_offset)).length();
+size_t GetUTF8Offset(const base::string16& text, size_t text_offset) {
+  return base::UTF16ToUTF8(text.substr(0, text_offset)).length();
 }
 
 // Generates the normal URL color, a green color used in unhighlighted URL
@@ -365,7 +365,7 @@ const AutocompleteResult& OmniboxPopupViewGtk::GetResult() const {
 // static
 void OmniboxPopupViewGtk::SetupLayoutForMatch(
     PangoLayout* layout,
-    const string16& text,
+    const base::string16& text,
     const AutocompleteMatch::ACMatchClassifications& classifications,
     const GdkColor* base_color,
     const GdkColor* dim_color,
@@ -378,7 +378,7 @@ void OmniboxPopupViewGtk::SetupLayoutForMatch(
   // or WrapStringWithLTRFormatting will render the elllipsis at the left of the
   // elided pure LTR text.
   bool marked_with_lre = false;
-  string16 localized_text = text;
+  base::string16 localized_text = text;
   // Pango is really easy to overflow and send into a computational death
   // spiral that can corrupt the screen. Assume that we'll never have more than
   // 2000 characters, which should be a safe assumption until we all get robot
@@ -395,7 +395,7 @@ void OmniboxPopupViewGtk::SetupLayoutForMatch(
   // classifications.  We need to take this in to account when we translate the
   // UTF-16 offsets in the classification into text_utf8 byte offsets.
   size_t additional_offset = prefix_text.length();  // Length in utf-8 bytes.
-  std::string text_utf8 = prefix_text + UTF16ToUTF8(localized_text);
+  std::string text_utf8 = prefix_text + base::UTF16ToUTF8(localized_text);
 
   PangoAttrList* attrs = pango_attr_list_new();
 
@@ -491,11 +491,8 @@ void OmniboxPopupViewGtk::StackWindow() {
 
 void OmniboxPopupViewGtk::AcceptLine(size_t line,
                                      WindowOpenDisposition disposition) {
-  // OpenMatch() may close the popup, which will clear the result set and, by
-  // extension, |match| and its contents.  So copy the relevant match out to
-  // make sure it stays alive until the call completes.
-  AutocompleteMatch match = GetResult().match_at(line);
-  omnibox_view_->OpenMatch(match, disposition, GURL(), line);
+  omnibox_view_->OpenMatch(GetResult().match_at(line), disposition, GURL(),
+                           line);
 }
 
 gfx::Image OmniboxPopupViewGtk::IconForMatch(

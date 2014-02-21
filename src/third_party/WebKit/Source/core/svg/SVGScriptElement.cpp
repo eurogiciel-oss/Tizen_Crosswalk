@@ -36,26 +36,23 @@ namespace WebCore {
 
 // Animated property definitions
 DEFINE_ANIMATED_STRING(SVGScriptElement, XLinkNames::hrefAttr, Href, href)
-DEFINE_ANIMATED_BOOLEAN(SVGScriptElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGScriptElement)
     REGISTER_LOCAL_ANIMATED_PROPERTY(href)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGScriptElement::SVGScriptElement(const QualifiedName& tagName, Document& document, bool wasInsertedByParser, bool alreadyStarted)
-    : SVGElement(tagName, document)
+inline SVGScriptElement::SVGScriptElement(Document& document, bool wasInsertedByParser, bool alreadyStarted)
+    : SVGElement(SVGNames::scriptTag, document)
     , m_svgLoadEventTimer(this, &SVGElement::svgLoadEventTimerFired)
     , m_loader(ScriptLoader::create(this, wasInsertedByParser, alreadyStarted))
 {
-    ASSERT(hasTagName(SVGNames::scriptTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGScriptElement();
 }
 
-PassRefPtr<SVGScriptElement> SVGScriptElement::create(const QualifiedName& tagName, Document& document, bool insertedByParser)
+PassRefPtr<SVGScriptElement> SVGScriptElement::create(Document& document, bool insertedByParser)
 {
-    return adoptRef(new SVGScriptElement(tagName, document, insertedByParser, false));
+    return adoptRef(new SVGScriptElement(document, insertedByParser, false));
 }
 
 bool SVGScriptElement::isSupportedAttribute(const QualifiedName& attrName)
@@ -63,7 +60,6 @@ bool SVGScriptElement::isSupportedAttribute(const QualifiedName& attrName)
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
     if (supportedAttributes.isEmpty()) {
         SVGURIReference::addSupportedAttributes(supportedAttributes);
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
         supportedAttributes.add(SVGNames::typeAttr);
         supportedAttributes.add(HTMLNames::onerrorAttr);
     }
@@ -89,8 +85,6 @@ void SVGScriptElement::parseAttribute(const QualifiedName& name, const AtomicStr
 
     if (SVGURIReference::parseAttribute(name, value))
         return;
-    if (SVGExternalResourcesRequired::parseAttribute(name, value))
-        return;
 
     ASSERT_NOT_REACHED();
 }
@@ -112,9 +106,6 @@ void SVGScriptElement::svgAttributeChanged(const QualifiedName& attrName)
         return;
     }
 
-    if (SVGExternalResourcesRequired::handleAttributeChange(this, attrName))
-        return;
-
     ASSERT_NOT_REACHED();
 }
 
@@ -127,7 +118,11 @@ Node::InsertionNotificationRequest SVGScriptElement::insertedInto(ContainerNode*
 void SVGScriptElement::didNotifySubtreeInsertionsToDocument()
 {
     m_loader->didNotifySubtreeInsertionsToDocument();
-    SVGExternalResourcesRequired::insertedIntoDocument(this);
+
+    if (!m_loader->isParserInserted()) {
+        m_loader->setHaveFiredLoadEvent(true);
+        sendSVGLoadEventIfPossibleAsynchronously();
+    }
 }
 
 void SVGScriptElement::childrenChanged(bool changedByParser, Node* beforeChange, Node* afterChange, int childCountDelta)
@@ -138,13 +133,13 @@ void SVGScriptElement::childrenChanged(bool changedByParser, Node* beforeChange,
 
 bool SVGScriptElement::isURLAttribute(const Attribute& attribute) const
 {
-    return attribute.name() == sourceAttributeValue();
+    return attribute.name() == AtomicString(sourceAttributeValue());
 }
 
 void SVGScriptElement::finishParsingChildren()
 {
     SVGElement::finishParsingChildren();
-    SVGExternalResourcesRequired::finishParsingChildren();
+    m_loader->setHaveFiredLoadEvent(true);
 }
 
 String SVGScriptElement::type() const
@@ -157,11 +152,9 @@ void SVGScriptElement::setType(const String& type)
     m_type = type;
 }
 
-void SVGScriptElement::addSubresourceAttributeURLs(ListHashSet<KURL>& urls) const
+bool SVGScriptElement::haveLoadedRequiredResources()
 {
-    SVGElement::addSubresourceAttributeURLs(urls);
-
-    addSubresourceURL(urls, document().completeURL(hrefCurrentValue()));
+    return m_loader->haveFiredLoadEvent();
 }
 
 String SVGScriptElement::sourceAttributeValue() const
@@ -211,27 +204,12 @@ bool SVGScriptElement::hasSourceAttribute() const
 
 PassRefPtr<Element> SVGScriptElement::cloneElementWithoutAttributesAndChildren()
 {
-    return adoptRef(new SVGScriptElement(tagQName(), document(), false, m_loader->alreadyStarted()));
+    return adoptRef(new SVGScriptElement(document(), false, m_loader->alreadyStarted()));
 }
 
-void SVGScriptElement::setHaveFiredLoadEvent(bool haveFiredLoadEvent)
+void SVGScriptElement::dispatchLoadEvent()
 {
-    m_loader->setHaveFiredLoadEvent(haveFiredLoadEvent);
-}
-
-bool SVGScriptElement::isParserInserted() const
-{
-    return m_loader->isParserInserted();
-}
-
-bool SVGScriptElement::haveFiredLoadEvent() const
-{
-    return m_loader->haveFiredLoadEvent();
-}
-
-Timer<SVGElement>* SVGScriptElement::svgLoadEventTimer()
-{
-    return &m_svgLoadEventTimer;
+    dispatchEvent(Event::create(EventTypeNames::load));
 }
 
 }

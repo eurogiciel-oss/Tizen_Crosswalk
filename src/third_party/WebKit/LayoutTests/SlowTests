@@ -7,7 +7,6 @@
 # can see a 3x variance or more in test times on the bots. In practice, this means that any test that takes longer
 # than 2 seconds in Release mode or 6 seconds in Debug mode should be listed here.
 
-crbug.com/24182 [ Debug ] css3/filters/custom/custom-filter-property-computed-style.html [ Slow ]
 crbug.com/24182 [ Debug ] fast/js/toString-and-valueOf-override.html [ Slow ]
 crbug.com/24182 [ Debug ] storage/indexeddb/objectstore-cursor.html [ Slow ]
 crbug.com/24182 [ Linux Debug ] virtual/softwarecompositing/lots-of-img-layers.html [ Slow ]
@@ -28,7 +27,7 @@ crbug.com/24182 fast/frames/cached-frame-counter.html [ Slow ]
 crbug.com/24182 fast/frames/frame-limit.html [ Slow ]
 crbug.com/24182 fast/images/png-suite/test.html [ Slow ]
 crbug.com/24182 fast/overflow/lots-of-sibling-inline-boxes.html [ Slow ] # Particularly slow in Debug: >12x slower!
-crbug.com/24182 fast/workers/storage/interrupt-database.html [ Slow ]
+crbug.com/310866 fast/workers/storage/use-same-database-in-page-and-workers.html [ Slow ]
 crbug.com/24182 html5lib/generated/run-tests16-data.html [ Slow ]
 crbug.com/24182 html5lib/webkit-resumer.html [ Slow ]
 crbug.com/24182 http/tests/cache/subresource-expiration-1.html [ Slow ]
@@ -39,6 +38,7 @@ crbug.com/24182 http/tests/navigation/slowmetaredirect-basic.html [ Slow ]
 crbug.com/24182 http/tests/navigation/slowtimerredirect-basic.html [ Slow ]
 crbug.com/24182 http/tests/storage/callbacks-are-called-in-correct-context.html [ Slow ]
 crbug.com/24182 http/tests/workers/terminate-during-sync-operation.html [ Slow ]
+crbug.com/310882 [ Win ] http/tests/xmlhttprequest/origin-exact-matching.html [ Slow ]
 crbug.com/24182 http/tests/xmlhttprequest/supported-xml-content-types.html [ Slow ]
 crbug.com/24182 http/tests/xmlhttprequest/timeout/xmlhttprequest-timeout-aborted.html [ Slow ]
 crbug.com/24182 jquery/attributes.html [ Slow ]
@@ -68,7 +68,7 @@ crbug.com/24182 virtual/gpu/fast/canvas/canvas-strokeRect-gradient-shadow.html [
 crbug.com/24182 virtual/gpu/fast/canvas/canvas-toDataURL-jpeg-crash.html [ Slow ]
 crbug.com/24182 virtual/gpu/fast/canvas/getPutImageDataPairTest.html [ Slow ]
 crbug.com/24182 virtual/gpu/fast/canvas/webgl/read-pixels-test.html [ Slow ]
-crbug.com/24182 virtual/implsidepainting/inspector/timeline/timeline-decode-resize.html [ Slow ]
+crbug.com/24182 fast/dom/timer-throttling-background-page-near-alignment-interval.html [ Slow ]
 
 # FIXME: Most inspector tests are slow. We should triage and consolidate these bugs and figure out if any are unusually slow.
 webkit.org/b/60109 inspector/elements/edit-dom-actions.html [ Slow ]
@@ -82,9 +82,15 @@ crbug.com/246190 [ Release ] http/tests/inspector/indexeddb/ [ Slow ]
 crbug.com/247466 [ Release ] inspector/debugger/dom-breakpoints.html [ Slow ]
 crbug.com/254988 inspector/debugger/debugger-breakpoints-not-activated-on-reload.html [ Slow ]
 crbug.com/254988 inspector/debugger/callstack-placards-discarded.html [ Slow ]
+crbug.com/327078 http/tests/inspector/network/long-script-content.html [ Slow ]
+# inspector tests below are slow on LinuxASAN
+crbug.com/247466 [ Linux Release ] inspector/debugger/debugger-activation-crash2.html [ Slow ]
 
 # This test is intentionally SLOW as we're waiting for a connection timeout.
 crbug.com/73609 http/tests/media/video-play-stall.html [ Slow ]
+
+# This has been Slow in Debug since added in r164270.
+crbug.com/330389 [ Debug ] css-parser/color3_hsl.html [ Slow ]
 
 # Many of the virtual animations tests are slow.
 crbug.com/248938 [ Linux Win ] virtual/threaded/animations/combo-transform-rotate+scale.html [ Slow ]
@@ -106,7 +112,7 @@ crbug.com/248938 virtual/threaded/animations/3d/replace-filling-transform.html [
 crbug.com/248938 virtual/threaded/animations/animation-welcome-safari.html [ Slow ]
 crbug.com/311482 virtual/threaded/animations/interpolation/filter-interpolation.html [ Slow ]
 
-crbug.com/258896 virtual/web-animations-css/animations/animation-direction-reverse-fill-mode.html [ Slow ]
+crbug.com/258896 animations/animation-direction-reverse-fill-mode.html [ Slow ]
 
 # FIXME: These tests might still be buggy and time out. They were marked as Slow on 9/20/2013.
 # Double-check the data after they've been running another week or so.
@@ -127,4 +133,4 @@ crbug.com/245154 editing/selection/move-by-character-brute-force.html [ Slow ]
 crbug.com/246749 inspector/extensions/extensions-panel.html [ Slow ]
 crbug.com/248969 [ Debug ] printing/page-count-with-one-word.html [ Slow ]
 
-crbug.com/313659 [ Linux Release ] fast/line-grid/line-align-left-edges.html [ Slow ]
+crbug.com/336481 inspector/jump-to-previous-editing-location.html [ Slow ]

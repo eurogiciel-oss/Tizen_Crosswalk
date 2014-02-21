@@ -7,14 +7,14 @@
 #include "base/bind.h"
 #include "base/callback.h"
 #include "base/values.h"
-#include "chrome/browser/policy/cloud/device_management_service.h"
-#include "chrome/browser/policy/external_data_fetcher.h"
-#include "chrome/browser/policy/policy_types.h"
-#include "chrome/browser/policy/proto/cloud/device_management_backend.pb.h"
 #include "chromeos/dbus/power_policy_controller.h"
 #include "chromeos/dbus/session_manager_client.h"
+#include "components/policy/core/common/cloud/device_management_service.h"
+#include "components/policy/core/common/external_data_fetcher.h"
+#include "components/policy/core/common/policy_types.h"
 #include "policy/policy_constants.h"
 #include "policy/proto/cloud_policy.pb.h"
+#include "policy/proto/device_management_backend.pb.h"
 
 namespace em = enterprise_management;
 
@@ -95,21 +95,21 @@ void DeviceLocalAccountPolicyStore::UpdatePolicy(
   policy_map_.Set(key::kShelfAutoHideBehavior,
                   POLICY_LEVEL_MANDATORY,
                   POLICY_SCOPE_USER,
-                  Value::CreateStringValue("Never"),
+                  base::Value::CreateStringValue("Never"),
                   NULL);
   // Force the |ShowLogoutButtonInTray| policy to |true|, ensuring that a big,
   // red logout button is shown in the ash system tray.
   policy_map_.Set(key::kShowLogoutButtonInTray,
                   POLICY_LEVEL_MANDATORY,
                   POLICY_SCOPE_USER,
-                  Value::CreateBooleanValue(true),
+                  base::Value::CreateBooleanValue(true),
                   NULL);
   // Force the |FullscreenAllowed| policy to |false|, ensuring that the ash
   // shelf cannot be hidden by entering fullscreen mode.
   policy_map_.Set(key::kFullscreenAllowed,
                   POLICY_LEVEL_MANDATORY,
                   POLICY_SCOPE_USER,
-                  Value::CreateBooleanValue(false),
+                  base::Value::CreateBooleanValue(false),
                   NULL);
 
   status_ = STATUS_OK;

@@ -49,7 +49,7 @@ class CONTENT_EXPORT URLDataSource {
   // called either in this callback or asynchronously with the response.
   virtual void StartDataRequest(const std::string& path,
                                 int render_process_id,
-                                int render_view_id,
+                                int render_frame_id,
                                 const GotDataCallback& callback) = 0;
 
   // Return the mimetype that should be sent with this response, or empty
@@ -107,6 +107,13 @@ class CONTENT_EXPORT URLDataSource {
   // ContentBrowserClient::GetAdditionalWebUISchemes() to permit additional
   // WebUI scheme support for an embedder.
   virtual bool ShouldServiceRequest(const net::URLRequest* request) const;
+
+  // By default, Content-Type: header is not sent along with the response.
+  // To start sending mime type returned by GetMimeType in HTTP headers,
+  // return true. It is useful when tunneling response served from this data
+  // source programmatically. Or when AppCache is enabled for this source as it
+  // is for chrome-devtools.
+  virtual bool ShouldServeMimeTypeAsContentTypeHeader() const;
 
   // Called to inform the source that StartDataRequest() will be called soon.
   // Gives the source an opportunity to rewrite |path| to incorporate extra

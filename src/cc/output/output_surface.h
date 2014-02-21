@@ -49,10 +49,10 @@ class CC_EXPORT OutputSurface : public FrameRateControllerClient {
 
   explicit OutputSurface(scoped_refptr<ContextProvider> context_provider);
 
-  explicit OutputSurface(scoped_ptr<cc::SoftwareOutputDevice> software_device);
+  explicit OutputSurface(scoped_ptr<SoftwareOutputDevice> software_device);
 
   OutputSurface(scoped_refptr<ContextProvider> context_provider,
-                scoped_ptr<cc::SoftwareOutputDevice> software_device);
+                scoped_ptr<SoftwareOutputDevice> software_device);
 
   virtual ~OutputSurface();
 
@@ -151,11 +151,9 @@ class CC_EXPORT OutputSurface : public FrameRateControllerClient {
 
   void PostSwapBuffersComplete();
 
-  struct cc::OutputSurface::Capabilities capabilities_;
+  struct OutputSurface::Capabilities capabilities_;
   scoped_refptr<ContextProvider> context_provider_;
-  scoped_ptr<cc::SoftwareOutputDevice> software_device_;
-  bool has_gl_discard_backbuffer_;
-  bool has_swap_buffers_complete_callback_;
+  scoped_ptr<SoftwareOutputDevice> software_device_;
   gfx::Size surface_size_;
   float device_scale_factor_;
 
@@ -177,7 +175,7 @@ class CC_EXPORT OutputSurface : public FrameRateControllerClient {
 
   // Forwarded to OutputSurfaceClient but threaded through OutputSurface
   // first so OutputSurface has a chance to update the FrameRateController
-  void SetNeedsRedrawRect(gfx::Rect damage_rect);
+  void SetNeedsRedrawRect(const gfx::Rect& damage_rect);
   void BeginImplFrame(const BeginFrameArgs& args);
   void DidSwapBuffers();
   void OnSwapBuffersComplete();
@@ -185,8 +183,8 @@ class CC_EXPORT OutputSurface : public FrameRateControllerClient {
   void DidLoseOutputSurface();
   void SetExternalStencilTest(bool enabled);
   void SetExternalDrawConstraints(const gfx::Transform& transform,
-                                  gfx::Rect viewport,
-                                  gfx::Rect clip,
+                                  const gfx::Rect& viewport,
+                                  const gfx::Rect& clip,
                                   bool valid_for_tile_management);
 
   // virtual for testing.

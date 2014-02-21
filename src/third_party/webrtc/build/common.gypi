@@ -14,8 +14,7 @@
     'variables': {
       'variables': {
         'variables': {
-          # This will be set to zero in the supplement.gypi triggered by a
-          # gclient hook in the standalone build.
+          # This will already be set to zero by supplement.gypi
           'build_with_chromium%': 1,
         },
         'build_with_chromium%': '<(build_with_chromium)',
@@ -127,10 +126,10 @@
       }],
       ['build_with_libjingle==1', {
         'include_tests%': 0,
-        'enable_tracing%': 0,
+        'restrict_webrtc_logging%': 1,
       }, {
         'include_tests%': 1,
-        'enable_tracing%': 1,
+        'restrict_webrtc_logging%': 0,
       }],
       ['OS=="ios"', {
         'build_libjpeg%': 0,
@@ -144,8 +143,6 @@
   },
   'target_defaults': {
     'include_dirs': [
-      # TODO(andrew): Remove '..' when we've added webrtc/ to include paths.
-      '..',
       # Allow includes to be prefixed with webrtc/ in case it is not an
       # immediate subdirectory of <(DEPTH).
       '../..',
@@ -153,21 +150,18 @@
       # use full paths (e.g. headers inside testing/ or third_party/).
       '<(DEPTH)',
     ],
-    'defines': [
-      # TODO(leozwang): Run this as a gclient hook rather than at build-time:
-      # http://code.google.com/p/webrtc/issues/detail?id=687
-      'WEBRTC_SVNREVISION="Unavailable(issue687)"',
-      #'WEBRTC_SVNREVISION="<!(python <(webrtc_root)/build/version.py)"',
-    ],
     'conditions': [
-      ['enable_tracing==1', {
-        'defines': ['WEBRTC_LOGGING',],
+      ['restrict_webrtc_logging==1', {
+        'defines': ['WEBRTC_RESTRICT_LOGGING',],
       }],
       ['build_with_mozilla==1', {
         'defines': [
           # Changes settings for Mozilla build.
           'WEBRTC_MOZILLA_BUILD',
          ],
+      }],
+      ['enable_video==1', {
+        'defines': ['WEBRTC_MODULE_UTILITY_VIDEO',],
       }],
       ['build_with_chromium==1', {
         'defines': [
@@ -183,10 +177,17 @@
               # that get overridden by -Wextra.
               '-Wno-unused-parameter',
               '-Wno-missing-field-initializers',
+              '-Wno-strict-overflow',
             ],
             'cflags_cc': [
+              '-Wnon-virtual-dtor',
               # This is enabled for clang; enable for gcc as well.
               '-Woverloaded-virtual',
+            ],
+          }],
+          ['clang==1', {
+            'cflags': [
+              '-Wthread-safety',
             ],
           }],
         ],
@@ -196,7 +197,7 @@
           'WEBRTC_ARCH_ARM',
         ],
         'conditions': [
-          ['armv7==1', {
+          ['arm_version==7', {
             'defines': ['WEBRTC_ARCH_ARM_V7',],
             'conditions': [
               ['arm_neon==1', {

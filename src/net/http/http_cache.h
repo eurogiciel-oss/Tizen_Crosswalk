@@ -191,8 +191,7 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory,
 
   // HttpTransactionFactory implementation:
   virtual int CreateTransaction(RequestPriority priority,
-                                scoped_ptr<HttpTransaction>* trans,
-                                HttpTransactionDelegate* delegate) OVERRIDE;
+                                scoped_ptr<HttpTransaction>* trans) OVERRIDE;
   virtual HttpCache* GetCache() OVERRIDE;
   virtual HttpNetworkSession* GetSession() OVERRIDE;
 
@@ -212,6 +211,7 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory,
   // Types --------------------------------------------------------------------
 
   class MetadataWriter;
+  class QuicServerInfoFactoryAdaptor;
   class Transaction;
   class WorkItem;
   friend class Transaction;
@@ -381,6 +381,8 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory,
   bool building_backend_;
 
   Mode mode_;
+
+  const scoped_ptr<QuicServerInfoFactoryAdaptor> quic_server_info_factory_;
 
   const scoped_ptr<HttpTransactionFactory> network_layer_;
   scoped_ptr<disk_cache::Backend> disk_cache_;

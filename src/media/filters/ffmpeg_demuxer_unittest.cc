@@ -17,7 +17,7 @@
 #include "media/ffmpeg/ffmpeg_common.h"
 #include "media/filters/ffmpeg_demuxer.h"
 #include "media/filters/file_data_source.h"
-#include "media/webm/webm_crypto_helpers.h"
+#include "media/formats/webm/webm_crypto_helpers.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using ::testing::AnyNumber;
@@ -83,6 +83,7 @@ class FFmpegDemuxerTest : public testing::Test {
 
     Demuxer::NeedKeyCB need_key_cb =
         base::Bind(&FFmpegDemuxerTest::NeedKeyCB, base::Unretained(this));
+
     demuxer_.reset(new FFmpegDemuxer(message_loop_.message_loop_proxy(),
                                      data_source_.get(),
                                      need_key_cb,
@@ -91,11 +92,15 @@ class FFmpegDemuxerTest : public testing::Test {
 
   MOCK_METHOD1(CheckPoint, void(int v));
 
-  void InitializeDemuxer() {
+  void InitializeDemuxerText(bool enable_text) {
     EXPECT_CALL(host_, SetDuration(_));
     WaitableMessageLoopEvent event;
-    demuxer_->Initialize(&host_, event.GetPipelineStatusCB());
+    demuxer_->Initialize(&host_, event.GetPipelineStatusCB(), enable_text);
     event.RunAndWaitForStatus(PIPELINE_OK);
+  }
+
+  void InitializeDemuxer() {
+    InitializeDemuxerText(false);
   }
 
   MOCK_METHOD2(OnReadDoneCalled, void(int, int64));
@@ -162,14 +167,11 @@ class FFmpegDemuxerTest : public testing::Test {
     return demuxer_->glue_->format_context();
   }
 
-  void ReadUntilEndOfStream() {
-    // We should expect an end of stream buffer.
-    DemuxerStream* audio = demuxer_->GetStream(DemuxerStream::AUDIO);
-
+  void ReadUntilEndOfStream(DemuxerStream* stream) {
     bool got_eos_buffer = false;
     const int kMaxBuffers = 170;
     for (int i = 0; !got_eos_buffer && i < kMaxBuffers; i++) {
-      audio->Read(base::Bind(&EosOnReadDone, &got_eos_buffer));
+      stream->Read(base::Bind(&EosOnReadDone, &got_eos_buffer));
       message_loop_.Run();
     }
 
@@ -199,7 +201,7 @@ TEST_F(FFmpegDemuxerTest, Initialize_OpenFails) {
   // Simulate avformat_open_input() failing.
   CreateDemuxer("ten_byte_file");
   WaitableMessageLoopEvent event;
-  demuxer_->Initialize(&host_, event.GetPipelineStatusCB());
+  demuxer_->Initialize(&host_, event.GetPipelineStatusCB(), true);
   event.RunAndWaitForStatus(DEMUXER_ERROR_COULD_NOT_OPEN);
 }
 
@@ -217,7 +219,7 @@ TEST_F(FFmpegDemuxerTest, Initialize_NoStreams) {
   // Open a file with no streams whatsoever.
   CreateDemuxer("no_streams.webm");
   WaitableMessageLoopEvent event;
-  demuxer_->Initialize(&host_, event.GetPipelineStatusCB());
+  demuxer_->Initialize(&host_, event.GetPipelineStatusCB(), true);
   event.RunAndWaitForStatus(DEMUXER_ERROR_NO_SUPPORTED_STREAMS);
 }
 
@@ -225,7 +227,7 @@ TEST_F(FFmpegDemuxerTest, Initialize_NoAudioVideo) {
   // Open a file containing streams but none of which are audio/video streams.
   CreateDemuxer("no_audio_video.webm");
   WaitableMessageLoopEvent event;
-  demuxer_->Initialize(&host_, event.GetPipelineStatusCB());
+  demuxer_->Initialize(&host_, event.GetPipelineStatusCB(), true);
   event.RunAndWaitForStatus(DEMUXER_ERROR_NO_SUPPORTED_STREAMS);
 }
 
@@ -298,6 +300,36 @@ TEST_F(FFmpegDemuxerTest, Initialize_Multitrack) {
   EXPECT_FALSE(demuxer_->GetStream(DemuxerStream::UNKNOWN));
 }
 
+TEST_F(FFmpegDemuxerTest, Initialize_MultitrackText) {
+  // Open a file containing the following streams:
+  //   Stream #0: Video (VP8)
+  //   Stream #1: Audio (Vorbis)
+  //   Stream #2: Text (WebVTT)
+
+  CreateDemuxer("bear-vp8-webvtt.webm");
+  DemuxerStream* text_stream = NULL;
+  EXPECT_CALL(host_, AddTextStream(_, _))
+      .WillOnce(SaveArg<0>(&text_stream));
+  InitializeDemuxerText(true);
+  ASSERT_TRUE(text_stream);
+  EXPECT_EQ(DemuxerStream::TEXT, text_stream->type());
+
+  // Video stream should be VP8.
+  DemuxerStream* stream = demuxer_->GetStream(DemuxerStream::VIDEO);
+  ASSERT_TRUE(stream);
+  EXPECT_EQ(DemuxerStream::VIDEO, stream->type());
+  EXPECT_EQ(kCodecVP8, stream->video_decoder_config().codec());
+
+  // Audio stream should be Vorbis.
+  stream = demuxer_->GetStream(DemuxerStream::AUDIO);
+  ASSERT_TRUE(stream);
+  EXPECT_EQ(DemuxerStream::AUDIO, stream->type());
+  EXPECT_EQ(kCodecVorbis, stream->audio_decoder_config().codec());
+
+  // Unknown stream should never be present.
+  EXPECT_FALSE(demuxer_->GetStream(DemuxerStream::UNKNOWN));
+}
+
 TEST_F(FFmpegDemuxerTest, Initialize_Encrypted) {
   EXPECT_CALL(*this, NeedKeyCBMock(kWebMEncryptInitDataType, NotNull(),
                                    DecryptConfig::kDecryptionKeySize))
@@ -337,6 +369,23 @@ TEST_F(FFmpegDemuxerTest, Read_Video) {
   message_loop_.Run();
 }
 
+TEST_F(FFmpegDemuxerTest, Read_Text) {
+  // We test that on a successful text packet read.
+  CreateDemuxer("bear-vp8-webvtt.webm");
+  DemuxerStream* text_stream = NULL;
+  EXPECT_CALL(host_, AddTextStream(_, _))
+      .WillOnce(SaveArg<0>(&text_stream));
+  InitializeDemuxerText(true);
+  ASSERT_TRUE(text_stream);
+  EXPECT_EQ(DemuxerStream::TEXT, text_stream->type());
+
+  text_stream->Read(NewReadCB(FROM_HERE, 31, 0));
+  message_loop_.Run();
+
+  text_stream->Read(NewReadCB(FROM_HERE, 19, 500000));
+  message_loop_.Run();
+}
+
 TEST_F(FFmpegDemuxerTest, Read_VideoNonZeroStart) {
   // Test the start time is the first timestamp of the video and audio stream.
   CreateDemuxer("nonzero-start-time.webm");
@@ -362,7 +411,27 @@ TEST_F(FFmpegDemuxerTest, Read_EndOfStream) {
   // Verify that end of stream buffers are created.
   CreateDemuxer("bear-320x240.webm");
   InitializeDemuxer();
-  ReadUntilEndOfStream();
+  ReadUntilEndOfStream(demuxer_->GetStream(DemuxerStream::AUDIO));
+}
+
+TEST_F(FFmpegDemuxerTest, Read_EndOfStreamText) {
+  // Verify that end of stream buffers are created.
+  CreateDemuxer("bear-vp8-webvtt.webm");
+  DemuxerStream* text_stream = NULL;
+  EXPECT_CALL(host_, AddTextStream(_, _))
+      .WillOnce(SaveArg<0>(&text_stream));
+  InitializeDemuxerText(true);
+  ASSERT_TRUE(text_stream);
+  EXPECT_EQ(DemuxerStream::TEXT, text_stream->type());
+
+  bool got_eos_buffer = false;
+  const int kMaxBuffers = 10;
+  for (int i = 0; !got_eos_buffer && i < kMaxBuffers; i++) {
+    text_stream->Read(base::Bind(&EosOnReadDone, &got_eos_buffer));
+    message_loop_.Run();
+  }
+
+  EXPECT_TRUE(got_eos_buffer);
 }
 
 TEST_F(FFmpegDemuxerTest, Read_EndOfStream_NoDuration) {
@@ -370,8 +439,27 @@ TEST_F(FFmpegDemuxerTest, Read_EndOfStream_NoDuration) {
   CreateDemuxer("bear-320x240.webm");
   InitializeDemuxer();
   set_duration_known(false);
-  EXPECT_CALL(host_, SetDuration(_));
-  ReadUntilEndOfStream();
+  EXPECT_CALL(host_, SetDuration(base::TimeDelta::FromMilliseconds(2767)));
+  ReadUntilEndOfStream(demuxer_->GetStream(DemuxerStream::AUDIO));
+  ReadUntilEndOfStream(demuxer_->GetStream(DemuxerStream::VIDEO));
+}
+
+TEST_F(FFmpegDemuxerTest, Read_EndOfStream_NoDuration_VideoOnly) {
+  // Verify that end of stream buffers are created.
+  CreateDemuxer("bear-320x240-video-only.webm");
+  InitializeDemuxer();
+  set_duration_known(false);
+  EXPECT_CALL(host_, SetDuration(base::TimeDelta::FromMilliseconds(2703)));
+  ReadUntilEndOfStream(demuxer_->GetStream(DemuxerStream::VIDEO));
+}
+
+TEST_F(FFmpegDemuxerTest, Read_EndOfStream_NoDuration_AudioOnly) {
+  // Verify that end of stream buffers are created.
+  CreateDemuxer("bear-320x240-audio-only.webm");
+  InitializeDemuxer();
+  set_duration_known(false);
+  EXPECT_CALL(host_, SetDuration(base::TimeDelta::FromMilliseconds(2767)));
+  ReadUntilEndOfStream(demuxer_->GetStream(DemuxerStream::AUDIO));
 }
 
 TEST_F(FFmpegDemuxerTest, Seek) {
@@ -410,6 +498,58 @@ TEST_F(FFmpegDemuxerTest, Seek) {
 
   // Video read #2.
   video->Read(NewReadCB(FROM_HERE, 1906, 834000));
+  message_loop_.Run();
+}
+
+TEST_F(FFmpegDemuxerTest, SeekText) {
+  // We're testing that the demuxer frees all queued packets when it receives
+  // a Seek().
+  CreateDemuxer("bear-vp8-webvtt.webm");
+  DemuxerStream* text_stream = NULL;
+  EXPECT_CALL(host_, AddTextStream(_, _))
+      .WillOnce(SaveArg<0>(&text_stream));
+  InitializeDemuxerText(true);
+  ASSERT_TRUE(text_stream);
+  EXPECT_EQ(DemuxerStream::TEXT, text_stream->type());
+
+  // Get our streams.
+  DemuxerStream* video = demuxer_->GetStream(DemuxerStream::VIDEO);
+  DemuxerStream* audio = demuxer_->GetStream(DemuxerStream::AUDIO);
+  ASSERT_TRUE(video);
+  ASSERT_TRUE(audio);
+
+  // Read a text packet and release it.
+  text_stream->Read(NewReadCB(FROM_HERE, 31, 0));
+  message_loop_.Run();
+
+  // Issue a simple forward seek, which should discard queued packets.
+  WaitableMessageLoopEvent event;
+  demuxer_->Seek(base::TimeDelta::FromMicroseconds(1000000),
+                 event.GetPipelineStatusCB());
+  event.RunAndWaitForStatus(PIPELINE_OK);
+
+  // Audio read #1.
+  audio->Read(NewReadCB(FROM_HERE, 145, 803000));
+  message_loop_.Run();
+
+  // Audio read #2.
+  audio->Read(NewReadCB(FROM_HERE, 148, 826000));
+  message_loop_.Run();
+
+  // Video read #1.
+  video->Read(NewReadCB(FROM_HERE, 5425, 801000));
+  message_loop_.Run();
+
+  // Video read #2.
+  video->Read(NewReadCB(FROM_HERE, 1906, 834000));
+  message_loop_.Run();
+
+  // Text read #1.
+  text_stream->Read(NewReadCB(FROM_HERE, 19, 500000));
+  message_loop_.Run();
+
+  // Text read #2.
+  text_stream->Read(NewReadCB(FROM_HERE, 19, 1000000));
   message_loop_.Run();
 }
 
@@ -579,7 +719,7 @@ TEST_F(FFmpegDemuxerTest, MP4_ZeroStszEntry) {
 #endif
   CreateDemuxer("bear-1280x720-zero-stsz-entry.mp4");
   InitializeDemuxer();
-  ReadUntilEndOfStream();
+  ReadUntilEndOfStream(demuxer_->GetStream(DemuxerStream::AUDIO));
 }
 
 }  // namespace media

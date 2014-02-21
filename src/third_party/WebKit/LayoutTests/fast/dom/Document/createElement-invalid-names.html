@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body>
 <script>
@@ -26,7 +26,7 @@ var nameList = [
                 ];
 
 for (var i in nameList)
-    shouldThrow("document.createElement('" + nameList[i] +"')", "'InvalidCharacterError: The string contains invalid characters.'");
+    shouldThrow("document.createElement('" + nameList[i] +"')");
 </script>
 </body>
 </html>

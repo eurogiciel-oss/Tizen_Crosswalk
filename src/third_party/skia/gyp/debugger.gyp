@@ -143,6 +143,10 @@
             '<(moc_gen_dir)/moc_SkImageWidget.cpp',
             '<(moc_gen_dir)/moc_SkGLWidget.cpp',
           ],
+          'cflags': [
+            # Clang gets confused by QWeakPointer, see http://llvm.org/bugs/show_bug.cgi?id=13127
+            '-Wno-uninitialized',
+          ],
           'dependencies': [
             'debugger_qt_mocs',
           ],
@@ -186,9 +190,3 @@
     }],
   ],
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

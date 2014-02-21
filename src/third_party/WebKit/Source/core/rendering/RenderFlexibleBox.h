@@ -47,8 +47,8 @@ public:
 
     virtual bool isFlexibleBox() const OVERRIDE FINAL { return true; }
     virtual bool avoidsFloats() const OVERRIDE FINAL { return true; }
-    virtual bool canCollapseAnonymousBlockChild() const OVERRIDE FINAL { return false; }
-    virtual void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0) OVERRIDE FINAL;
+    virtual bool canCollapseAnonymousBlockChild() const OVERRIDE { return false; }
+    virtual void layoutBlock(bool relayoutChildren) OVERRIDE FINAL;
 
     virtual int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const OVERRIDE;
     virtual int firstLineBoxBaseline() const OVERRIDE;
@@ -63,7 +63,8 @@ protected:
 
     virtual bool supportsPartialLayout() const OVERRIDE { return false; }
 
-    virtual void styleDidChange(StyleDifference, const RenderStyle* oldStyle);
+    virtual void styleDidChange(StyleDifference, const RenderStyle* oldStyle) OVERRIDE;
+    virtual void removeChild(RenderObject*) OVERRIDE;
 
 private:
     enum FlexSign {
@@ -117,7 +118,7 @@ private:
     // FIXME: Supporting layout deltas.
     void setFlowAwareLocationForChild(RenderBox* child, const LayoutPoint&);
     void adjustAlignmentForChild(RenderBox* child, LayoutUnit);
-    EAlignItems alignmentForChild(RenderBox* child) const;
+    ItemPosition alignmentForChild(RenderBox* child) const;
     LayoutUnit mainAxisBorderAndPaddingExtentForChild(RenderBox* child) const;
     LayoutUnit mainAxisScrollbarExtentForChild(RenderBox* child) const;
     LayoutUnit preferredMainAxisContentExtentForChild(RenderBox* child, bool hasInfiniteLineLength);
@@ -135,7 +136,7 @@ private:
     LayoutUnit availableAlignmentSpaceForChild(LayoutUnit lineCrossAxisExtent, RenderBox*);
     LayoutUnit marginBoxAscentForChild(RenderBox*);
 
-    LayoutUnit computeChildMarginValue(Length margin, RenderView*);
+    LayoutUnit computeChildMarginValue(Length margin);
     void prepareOrderIteratorAndMargins();
     LayoutUnit adjustChildSizeForMinAndMax(RenderBox*, LayoutUnit childSize);
     // The hypothetical main size of an item is the flex base size clamped according to its min and max main size properties
@@ -145,7 +146,6 @@ private:
     void freezeViolations(const Vector<Violation>&, LayoutUnit& availableFreeSpace, double& totalFlexGrow, double& totalWeightedFlexShrink, InflexibleFlexItemSize&, bool hasInfiniteLineLength);
 
     void resetAutoMarginsAndLogicalTopInCrossAxis(RenderBox*);
-    bool needToStretchChild(RenderBox*);
     void setLogicalOverrideSize(RenderBox* child, LayoutUnit childPreferredSize);
     void prepareChildForPositionedLayout(RenderBox* child, LayoutUnit mainAxisOffset, LayoutUnit crossAxisOffset, PositionedLayoutMode);
     size_t numberOfInFlowPositionedChildren(const OrderedFlexItemList&) const;
@@ -156,6 +156,9 @@ private:
     void applyStretchAlignmentToChild(RenderBox*, LayoutUnit lineCrossAxisExtent);
     void flipForRightToLeftColumn();
     void flipForWrapReverse(const Vector<LineContext>&, LayoutUnit crossAxisStartEdge);
+
+    // This is used to cache the preferred size for orthogonal flow children so we don't have to relayout to get it
+    HashMap<const RenderObject*, LayoutUnit> m_intrinsicSizeAlongMainAxis;
 
     mutable OrderIterator m_orderIterator;
     int m_numberOfInFlowChildrenOnFirstLine;

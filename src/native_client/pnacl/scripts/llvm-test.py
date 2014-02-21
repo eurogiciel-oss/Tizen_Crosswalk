@@ -225,12 +225,14 @@ def SetupEnvironment():
     '{NACL_ROOT}/toolchain/{PNACL_TOOLCHAIN_LABEL}/sdk/lib'
     .format(**env))
   env['PNACL_SCRIPTS'] = '{NACL_ROOT}/pnacl/scripts'.format(**env)
-  env['LIT_KNOWN_FAILURES'] = ('{pwd}/pnacl/scripts/lit_known_failures.txt'
-                               .format(pwd=pwd))
+  env['LLVM_REGRESSION_KNOWN_FAILURES'] = (
+      '{pwd}/pnacl/scripts/llvm_regression_known_failures.txt'.format(pwd=pwd))
+  env['LIBCXX_KNOWN_FAILURES'] = (
+      '{pwd}/pnacl/scripts/libcxx_known_failures.txt'.format(pwd=pwd))
   return env
 
 
-def RunLitTest(testdir, testarg, env, options):
+def RunLitTest(testdir, testarg, lit_failures, env, options):
   """Run LLVM lit tests, and check failures against known failures.
 
   Args:
@@ -244,9 +246,16 @@ def RunLitTest(testdir, testarg, env, options):
   """
   with remember_cwd():
     os.chdir(testdir)
+
+    sub_env = os.environ.copy()
+    # Tell run.py to use the architecture specified by --arch, or the
+    # current host architecture if none was provided.
+    sub_env['PNACL_RUN_ARCH'] = options.arch or env['HOST_ARCH']
+
     maker = 'ninja' if os.path.isfile('./build.ninja') else 'make'
     cmd = [maker, testarg, '-v' if maker == 'ninja' else 'VERBOSE=1']
-    make_pipe = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    make_pipe = subprocess.Popen(cmd, env=sub_env, stdout=subprocess.PIPE)
+
     lines = []
     # When run by a buildbot, we need to incrementally tee the 'make'
     # stdout to our stdout, rather than collect its entire stdout and
@@ -270,12 +279,12 @@ def RunLitTest(testdir, testarg, env, options):
 
     parse_options = vars(options)
     parse_options['lit'] = True
-    parse_options['excludes'].append(env['LIT_KNOWN_FAILURES'])
+    parse_options['excludes'].append(env[lit_failures])
     parse_options['attributes'].append(env['BUILD_PLATFORM'])
     print (str(datetime.datetime.now()) + ' ' +
            'Parsing LIT test report output.')
-    parse_llvm_test_report.Report(parse_options, filecontents=make_stdout)
-  return 0
+    ret = parse_llvm_test_report.Report(parse_options, filecontents=make_stdout)
+  return ret
 
 
 def EnsureSdkExists(env):
@@ -341,6 +350,7 @@ def TestsuiteRun(env, config, options):
                               'PNACL_TRANSLATE_FLAGS=' + opt_trans,
                               'PNACL_BIN={PNACL_BIN}'.format(**env),
                               'PNACL_RUN={NACL_ROOT}/run.py'.format(**env),
+                              'COLLATE=true',
                               'PNACL_ARCH=' + arch,
                               'ENABLE_PARALLEL_REPORT=true',
                               'DISABLE_CBE=true',
@@ -439,9 +449,11 @@ def main(argv):
   # Run each specified test in sequence, and return on the first failure.
   if options.run_llvm_regression:
     result = result or RunLitTest(env['TC_BUILD_LLVM'], 'check-all',
+                                  'LLVM_REGRESSION_KNOWN_FAILURES',
                                   env, options)
   if options.run_libcxx_tests:
     result = result or RunLitTest(env['TC_BUILD_LIBCXX'], 'check-libcxx',
+                                  'LIBCXX_KNOWN_FAILURES',
                                   env, options)
   if options.testsuite_all or options.testsuite_prereq:
     result = result or TestsuitePrereq(env, options)

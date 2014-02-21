@@ -68,6 +68,7 @@ import tlslite
 import tlslite.api
 import tlslite.utils
 import tlslite.utils.cryptomath
+import urlparse
 
 # The name and availability of the json module varies in python versions.
 try:
@@ -232,11 +233,9 @@ class PolicyRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     settings = ep.ExternalPolicyData()
     data = self.server.ReadPolicyDataFromDataDir(policy_key)
     if data:
-      settings.download_url = ('http://%s:%s/externalpolicydata?key=%s' %
-                                  (self.server.server_name,
-                                   self.server.server_port,
-                                   policy_key) )
-      settings.secure_hash = hashlib.sha1(data).digest()
+      settings.download_url = urlparse.urljoin(
+          self.server.GetBaseURL(), 'externalpolicydata?key=%s' % policy_key)
+      settings.secure_hash = hashlib.sha256(data).digest()
     return settings.SerializeToString()
 
   def CheckGoogleLogin(self):
@@ -365,11 +364,13 @@ class PolicyRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     for request in msg.request:
       fetch_response = response.policy_response.response.add()
       if (request.policy_type in
-             ('google/chrome/user',
-              'google/chromeos/user',
+             ('google/android/user',
+              'google/chrome/extension',
               'google/chromeos/device',
               'google/chromeos/publicaccount',
-              'google/chrome/extension')):
+              'google/chromeos/user',
+              'google/chrome/user',
+              'google/ios/user')):
         if request_type != 'policy':
           fetch_response.error_code = 400
           fetch_response.error_message = 'Invalid request type'
@@ -544,9 +545,11 @@ class PolicyRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     if msg.settings_entity_id:
       policy_key += '/' + msg.settings_entity_id
     if msg.policy_type in token_info['allowed_policy_types']:
-      if (msg.policy_type == 'google/chromeos/user' or
-          msg.policy_type == 'google/chrome/user' or
-          msg.policy_type == 'google/chromeos/publicaccount'):
+      if msg.policy_type in ('google/android/user',
+                             'google/chromeos/publicaccount',
+                             'google/chromeos/user',
+                             'google/chrome/user',
+                             'google/ios/user'):
         settings = cp.CloudPolicySettings()
         payload = self.server.ReadPolicyFromDataDir(policy_key, settings)
         if payload is None:
@@ -672,13 +675,12 @@ class PolicyRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     logging.debug('%s\n%s' % (label, str(msg)))
 
 
-class PolicyTestServer(testserver_base.ClientRestrictingServerMixIn,
-                       testserver_base.BrokenPipeHandlerMixIn,
+class PolicyTestServer(testserver_base.BrokenPipeHandlerMixIn,
                        testserver_base.StoppableHTTPServer):
   """Handles requests and keeps global service state."""
 
   def __init__(self, server_address, data_dir, policy_path, client_state_file,
-               private_key_paths):
+               private_key_paths, server_base_url):
     """Initializes the server.
 
     Args:
@@ -692,6 +694,7 @@ class PolicyTestServer(testserver_base.ClientRestrictingServerMixIn,
     self.data_dir = data_dir
     self.policy_path = policy_path
     self.client_state_file = client_state_file
+    self.server_base_url = server_base_url
 
     self.keys = []
     if private_key_paths:
@@ -734,7 +737,7 @@ class PolicyTestServer(testserver_base.ClientRestrictingServerMixIn,
     if self.client_state_file is not None:
       try:
         file_contents = open(self.client_state_file).read()
-        self._registered_tokens = json.loads(file_contents)
+        self._registered_tokens = json.loads(file_contents, strict=False)
       except IOError:
         pass
 
@@ -747,7 +750,7 @@ class PolicyTestServer(testserver_base.ClientRestrictingServerMixIn,
       print 'No JSON module, cannot parse policy information'
     else :
       try:
-        policy = json.loads(open(self.policy_path).read())
+        policy = json.loads(open(self.policy_path).read(), strict=False)
       except IOError:
         print 'Failed to load policy from %s' % self.policy_path
     return policy
@@ -766,7 +769,10 @@ class PolicyTestServer(testserver_base.ClientRestrictingServerMixIn,
       dmtoken_chars.append(random.choice('0123456789abcdef'))
     dmtoken = ''.join(dmtoken_chars)
     allowed_policy_types = {
-      dm.DeviceRegisterRequest.BROWSER: ['google/chrome/user'],
+      dm.DeviceRegisterRequest.BROWSER: [
+          'google/chrome/user',
+          'google/chrome/extension'
+      ],
       dm.DeviceRegisterRequest.USER: [
           'google/chromeos/user',
           'google/chrome/extension'
@@ -774,6 +780,12 @@ class PolicyTestServer(testserver_base.ClientRestrictingServerMixIn,
       dm.DeviceRegisterRequest.DEVICE: [
           'google/chromeos/device',
           'google/chromeos/publicaccount'
+      ],
+      dm.DeviceRegisterRequest.ANDROID_BROWSER: [
+          'google/android/user'
+      ],
+      dm.DeviceRegisterRequest.IOS_BROWSER: [
+          'google/ios/user'
       ],
       dm.DeviceRegisterRequest.TT: ['google/chromeos/user',
                                     'google/chrome/user'],
@@ -899,6 +911,21 @@ class PolicyTestServer(testserver_base.ClientRestrictingServerMixIn,
     except IOError:
       return None
 
+  def GetBaseURL(self):
+    """Returns the server base URL.
+
+    Respects the |server_base_url| configuration parameter, if present. Falls
+    back to construct the URL from the server hostname and port otherwise.
+
+    Returns:
+      The URL to use for constructing URLs that get returned to clients.
+    """
+    base_url = self.server_base_url
+    if base_url is None:
+      base_url = 'http://%s:%s' % self.server_address[:2]
+
+    return base_url
+
 
 class PolicyServerRunner(testserver_base.TestServerRunner):
 
@@ -912,7 +939,8 @@ class PolicyServerRunner(testserver_base.TestServerRunner):
     server = PolicyTestServer((self.options.host, self.options.port),
                               data_dir, config_file,
                               self.options.client_state_file,
-                              self.options.policy_keys)
+                              self.options.policy_keys,
+                              self.options.server_base_url)
     server_data['port'] = server.server_port
     return server
 
@@ -942,6 +970,9 @@ class PolicyServerRunner(testserver_base.TestServerRunner):
                                   help='Specify a configuration file to use '
                                   'instead of the default '
                                   '<data_dir>/device_management')
+    self.option_parser.add_option('--server-base-url', dest='server_base_url',
+                                  help='The server base URL to use when '
+                                  'constructing URLs to return to the client.')
 
   def run_server(self):
     logger = logging.getLogger()

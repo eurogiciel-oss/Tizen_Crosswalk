@@ -37,7 +37,6 @@
         '../interface/event_wrapper.h',
         '../interface/file_wrapper.h',
         '../interface/fix_interlocked_exchange_pointer_win.h',
-        '../interface/list_wrapper.h',
         '../interface/logcat_trace_context.h',
         '../interface/logging.h',
         '../interface/ref_count.h',
@@ -48,6 +47,7 @@
         '../interface/sort.h',
         '../interface/static_instance.h',
         '../interface/stringize_macros.h',
+        '../interface/thread_annotations.h',
         '../interface/thread_wrapper.h',
         '../interface/tick_util.h',
         '../interface/trace.h',
@@ -82,10 +82,8 @@
         'event_win.h',
         'file_impl.cc',
         'file_impl.h',
-        'list_no_stl.cc',
         'logcat_trace_context.cc',
         'logging.cc',
-        'logging_no_op.cc',
         'rw_lock.cc',
         'rw_lock_generic.cc',
         'rw_lock_generic.h',
@@ -104,7 +102,6 @@
         'thread_win.h',
         'trace_impl.cc',
         'trace_impl.h',
-        'trace_impl_no_op.cc',
         'trace_posix.cc',
         'trace_posix.h',
         'trace_win.cc',
@@ -116,22 +113,6 @@
         }, {
           'sources!': [ 'data_log.cc', ],
         },],
-        ['enable_tracing==1', {
-          'sources!': [
-            'logging_no_op.cc',
-            'trace_impl_no_op.cc',
-          ],
-        }, {
-          'sources!': [
-            'logging.cc',
-            'trace_impl.cc',
-            'trace_impl.h',
-            'trace_posix.cc',
-            'trace_posix.h',
-            'trace_win.cc',
-            'trace_win.h',
-          ],
-        }],
         ['OS=="android"', {
           'defines': [
             'WEBRTC_THREAD_RR',

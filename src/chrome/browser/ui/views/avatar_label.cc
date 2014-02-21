@@ -11,11 +11,11 @@
 #include "grit/generated_resources.h"
 #include "grit/theme_resources.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/resource/resource_bundle.h"
 #include "ui/base/theme_provider.h"
 #include "ui/events/event.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/color_utils.h"
+#include "ui/gfx/font_list.h"
 #include "ui/views/painter.h"
 
 namespace {
@@ -23,9 +23,11 @@ namespace {
 // A special text button border for the managed user avatar label.
 class AvatarLabelBorder: public views::TextButtonBorder {
  public:
-  explicit AvatarLabelBorder();
+  explicit AvatarLabelBorder(bool label_on_right);
 
+  // views::TextButtonBorder:
   virtual void Paint(const views::View& view, gfx::Canvas* canvas) OVERRIDE;
+  virtual gfx::Size GetMinimumSize() const OVERRIDE;
 
  private:
   scoped_ptr<views::Painter> painter_;
@@ -33,16 +35,16 @@ class AvatarLabelBorder: public views::TextButtonBorder {
   DISALLOW_COPY_AND_ASSIGN(AvatarLabelBorder);
 };
 
-AvatarLabelBorder::AvatarLabelBorder() {
-  const int kHorizontalInsetRight = 10;
-  const int kHorizontalInsetLeft = 43;
+AvatarLabelBorder::AvatarLabelBorder(bool label_on_right) {
+  const int kHorizontalInsetRight = label_on_right ? 43 : 10;
+  const int kHorizontalInsetLeft = label_on_right ? 10 : 43;
   const int kVerticalInsetTop = 2;
   const int kVerticalInsetBottom = 3;
-  // We want to align with the top of the tab. This works if the BaseFont size
-  // is 13. If it is smaller, we need to increase the TopInset accordingly.
-  gfx::Font font = ui::ResourceBundle::GetSharedInstance().GetFont(
-      ui::ResourceBundle::BaseFont);
-  int difference = (font.GetFontSize() < 13) ? 13 - font.GetFontSize() : 0;
+  // We want to align with the top of the tab. This works if the default font
+  // size is 13. If it is smaller, we need to increase the TopInset accordingly.
+  const gfx::FontList font_list;
+  int difference =
+      (font_list.GetFontSize() < 13) ? 13 - font_list.GetFontSize() : 0;
   int addToTop = difference / 2;
   int addToBottom = difference - addToTop;
   SetInsets(gfx::Insets(kVerticalInsetTop + addToTop,
@@ -81,16 +83,20 @@ void AvatarLabelBorder::Paint(const views::View& view, gfx::Canvas* canvas) {
   canvas->DrawRoundRect(rect, kRadius, paint);
 }
 
+gfx::Size AvatarLabelBorder::GetMinimumSize() const {
+  gfx::Size size(4, 4);
+  size.SetToMax(painter_->GetMinimumSize());
+  return size;
+}
+
 }  // namespace
 
 AvatarLabel::AvatarLabel(BrowserView* browser_view)
     : TextButton(NULL,
                  l10n_util::GetStringUTF16(IDS_MANAGED_USER_AVATAR_LABEL)),
       browser_view_(browser_view) {
-  SetFont(ui::ResourceBundle::GetSharedInstance().GetFont(
-      ui::ResourceBundle::BaseFont));
   ClearMaxTextSize();
-  set_border(new AvatarLabelBorder);
+  SetLabelOnRight(false);
   UpdateLabelStyle();
 }
 
@@ -105,6 +111,10 @@ bool AvatarLabel::OnMousePressed(const ui::MouseEvent& event) {
 }
 
 void AvatarLabel::UpdateLabelStyle() {
+  // |browser_view_| can be NULL in unit tests.
+  if (!browser_view_)
+    return;
+
   SkColor color_label = browser_view_->frame()->GetThemeProvider()->GetColor(
       ThemeProperties::COLOR_MANAGED_USER_LABEL);
   SetEnabledColor(color_label);
@@ -112,4 +122,8 @@ void AvatarLabel::UpdateLabelStyle() {
   SetHoverColor(color_label);
   SetDisabledColor(color_label);
   SchedulePaint();
+}
+
+void AvatarLabel::SetLabelOnRight(bool label_on_right) {
+  SetBorder(scoped_ptr<views::Border>(new AvatarLabelBorder(label_on_right)));
 }

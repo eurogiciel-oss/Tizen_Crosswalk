@@ -5,6 +5,7 @@
 #include "chrome/installer/util/google_update_settings.h"
 
 #include <algorithm>
+#include <string>
 
 #include "base/command_line.h"
 #include "base/path_service.h"
@@ -14,10 +15,12 @@
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "base/win/registry.h"
+#include "base/win/win_util.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/installer/util/browser_distribution.h"
 #include "chrome/installer/util/channel_info.h"
 #include "chrome/installer/util/google_update_constants.h"
+#include "chrome/installer/util/google_update_experiment_util.h"
 #include "chrome/installer/util/install_util.h"
 #include "chrome/installer/util/installation_state.h"
 #include "chrome/installer/util/product.h"
@@ -49,33 +52,64 @@ bool ReadGoogleUpdateStrKey(const wchar_t* const name, std::wstring* value) {
   return true;
 }
 
+// Update a state registry key |name| to be |value| for the given browser
+// |dist|.  If this is a |system_install|, then update the value under
+// HKLM (istead of HKCU for user-installs) using a group of keys (one
+// for each OS user) and also include the method to |aggregate| these
+// values when reporting.
 bool WriteGoogleUpdateStrKeyInternal(BrowserDistribution* dist,
+                                     bool system_install,
                                      const wchar_t* const name,
-                                     const std::wstring& value) {
+                                     // presubmit: allow wstring
+                                     const std::wstring& value,
+                                     const wchar_t* const aggregate) {
   DCHECK(dist);
-  std::wstring reg_path(dist->GetStateKey());
-  RegKey key(HKEY_CURRENT_USER, reg_path.c_str(), KEY_SET_VALUE);
-  return (key.WriteValue(name, value.c_str()) == ERROR_SUCCESS);
+
+  if (system_install) {
+    DCHECK(aggregate);
+    // Machine installs require each OS user to write a unique key under a
+    // named key in HKLM as well as an "aggregation" function that describes
+    // how the values of multiple users are to be combined.
+    std::wstring uniquename;  // presubmit: allow wstring
+    if (!base::win::GetUserSidString(&uniquename)) {
+      NOTREACHED();
+      return false;
+    }
+
+    // presubmit: allow wstring
+    std::wstring reg_path(dist->GetStateMediumKey());
+    reg_path.append(L"\\");
+    reg_path.append(name);
+    RegKey key(HKEY_LOCAL_MACHINE, reg_path.c_str(), KEY_SET_VALUE);
+    key.WriteValue(google_update::kRegAggregateMethod, aggregate);
+    return (key.WriteValue(uniquename.c_str(), value.c_str()) == ERROR_SUCCESS);
+  } else {
+    // User installs are easy: just write the values to HKCU tree.
+    RegKey key(HKEY_CURRENT_USER, dist->GetStateKey().c_str(), KEY_SET_VALUE);
+    return (key.WriteValue(name, value.c_str()) == ERROR_SUCCESS);
+  }
 }
 
 bool WriteGoogleUpdateStrKey(const wchar_t* const name,
                              const std::wstring& value) {
   BrowserDistribution* dist = BrowserDistribution::GetDistribution();
-  return WriteGoogleUpdateStrKeyInternal(dist, name, value);
+  return WriteGoogleUpdateStrKeyInternal(dist, false, name, value, NULL);
 }
 
 bool WriteGoogleUpdateStrKeyMultiInstall(BrowserDistribution* dist,
                                          const wchar_t* const name,
                                          const std::wstring& value,
                                          bool system_level) {
-  bool result = WriteGoogleUpdateStrKeyInternal(dist, name, value);
+  bool result = WriteGoogleUpdateStrKeyInternal(dist, false, name, value, NULL);
   if (!InstallUtil::IsMultiInstall(dist, system_level))
     return result;
   // It is a multi-install distro. Must write the reg value again.
   BrowserDistribution* multi_dist =
       BrowserDistribution::GetSpecificDistribution(
           BrowserDistribution::CHROME_BINARIES);
-  return WriteGoogleUpdateStrKeyInternal(multi_dist, name, value) && result;
+  return
+      WriteGoogleUpdateStrKeyInternal(multi_dist, false, name, value, NULL) &&
+      result;
 }
 
 bool ClearGoogleUpdateStrKey(const wchar_t* const name) {
@@ -99,14 +133,14 @@ bool RemoveGoogleUpdateStrKey(const wchar_t* const name) {
 
 bool GetChromeChannelInternal(bool system_install,
                               bool add_multi_modifier,
-                              string16* channel) {
+                              base::string16* channel) {
   BrowserDistribution* dist = BrowserDistribution::GetDistribution();
   if (dist->GetChromeChannel(channel)) {
     return true;
   }
 
   HKEY root_key = system_install ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
-  string16 reg_path = dist->GetStateKey();
+  base::string16 reg_path = dist->GetStateKey();
   RegKey key(root_key, reg_path.c_str(), KEY_READ);
 
   installer::ChannelInfo channel_info;
@@ -245,12 +279,12 @@ bool GoogleUpdateSettings::SetCollectStatsConsentAtLevel(bool system_install,
 bool GoogleUpdateSettings::GetMetricsId(std::string* metrics_id) {
   std::wstring metrics_id_w;
   bool rv = ReadGoogleUpdateStrKey(google_update::kRegMetricsId, &metrics_id_w);
-  *metrics_id = WideToUTF8(metrics_id_w);
+  *metrics_id = base::WideToUTF8(metrics_id_w);
   return rv;
 }
 
 bool GoogleUpdateSettings::SetMetricsId(const std::string& metrics_id) {
-  std::wstring metrics_id_w = UTF8ToWide(metrics_id);
+  std::wstring metrics_id_w = base::UTF8ToWide(metrics_id);
   return WriteGoogleUpdateStrKey(google_update::kRegMetricsId, metrics_id_w);
 }
 
@@ -370,8 +404,9 @@ std::wstring GoogleUpdateSettings::GetChromeChannel(bool system_install) {
   return channel;
 }
 
-bool GoogleUpdateSettings::GetChromeChannelAndModifiers(bool system_install,
-                                                        string16* channel) {
+bool GoogleUpdateSettings::GetChromeChannelAndModifiers(
+    bool system_install,
+    base::string16* channel) {
   return GetChromeChannelInternal(system_install, true, channel);
 }
 
@@ -454,6 +489,20 @@ bool GoogleUpdateSettings::UpdateGoogleUpdateApKey(
   return modified;
 }
 
+void GoogleUpdateSettings::UpdateProfileCounts(int profiles_active,
+                                               int profiles_signedin) {
+  BrowserDistribution* dist = BrowserDistribution::GetDistribution();
+  bool system_install = IsSystemInstall();
+  WriteGoogleUpdateStrKeyInternal(dist, system_install,
+                                  google_update::kRegProfilesActive,
+                                  base::Int64ToString16(profiles_active),
+                                  L"sum()");
+  WriteGoogleUpdateStrKeyInternal(dist, system_install,
+                                  google_update::kRegProfilesSignedIn,
+                                  base::Int64ToString16(profiles_signedin),
+                                  L"sum()");
+}
+
 int GoogleUpdateSettings::DuplicateGoogleUpdateSystemClientKey() {
   BrowserDistribution* dist = BrowserDistribution::GetDistribution();
   std::wstring reg_path = dist->GetStateKey();
@@ -522,9 +571,10 @@ GoogleUpdateSettings::UpdatePolicy GoogleUpdateSettings::GetAppUpdatePolicy(
   return update_policy;
 }
 
-string16 GoogleUpdateSettings::GetUninstallCommandLine(bool system_install) {
+base::string16 GoogleUpdateSettings::GetUninstallCommandLine(
+    bool system_install) {
   const HKEY root_key = system_install ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
-  string16 cmd_line;
+  base::string16 cmd_line;
   RegKey update_key;
 
   if (update_key.Open(root_key, google_update::kRegPathGoogleUpdate,
@@ -537,7 +587,7 @@ string16 GoogleUpdateSettings::GetUninstallCommandLine(bool system_install) {
 
 Version GoogleUpdateSettings::GetGoogleUpdateVersion(bool system_install) {
   const HKEY root_key = system_install ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
-  string16 version;
+  base::string16 version;
   RegKey key;
 
   if (key.Open(root_key,
@@ -545,7 +595,7 @@ Version GoogleUpdateSettings::GetGoogleUpdateVersion(bool system_install) {
                KEY_QUERY_VALUE) == ERROR_SUCCESS &&
       key.ReadValue(google_update::kRegGoogleUpdateVersion,
                     &version) == ERROR_SUCCESS) {
-    return Version(UTF16ToUTF8(version));
+    return Version(base::UTF16ToUTF8(version));
   }
 
   return Version();
@@ -594,14 +644,14 @@ bool GoogleUpdateSettings::GetUpdateDetailForApp(bool system_install,
   bool product_found = false;
 
   const HKEY root_key = system_install ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
-  string16 clientstate_reg_path(google_update::kRegPathClientState);
+  base::string16 clientstate_reg_path(google_update::kRegPathClientState);
   clientstate_reg_path.append(L"\\");
   clientstate_reg_path.append(app_guid);
 
   RegKey clientstate;
   if (clientstate.Open(root_key, clientstate_reg_path.c_str(),
                        KEY_QUERY_VALUE) == ERROR_SUCCESS) {
-    string16 version;
+    base::string16 version;
     DWORD dword_value;
     if ((clientstate.ReadValueDW(google_update::kRegLastCheckSuccessField,
                                  &dword_value) == ERROR_SUCCESS) &&
@@ -652,7 +702,7 @@ bool GoogleUpdateSettings::GetUpdateDetail(bool system_install,
 
 bool GoogleUpdateSettings::SetExperimentLabels(
     bool system_install,
-    const string16& experiment_labels) {
+    const base::string16& experiment_labels) {
   HKEY reg_root = system_install ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
 
   // Use the browser distribution and install level to write to the correct
@@ -660,7 +710,7 @@ bool GoogleUpdateSettings::SetExperimentLabels(
   bool success = false;
   BrowserDistribution* dist = BrowserDistribution::GetDistribution();
   if (dist->ShouldSetExperimentLabels()) {
-    string16 client_state_path(
+    base::string16 client_state_path(
         system_install ? dist->GetStateMediumKey() : dist->GetStateKey());
     RegKey client_state(
         reg_root, client_state_path.c_str(), KEY_SET_VALUE);
@@ -678,7 +728,7 @@ bool GoogleUpdateSettings::SetExperimentLabels(
 
 bool GoogleUpdateSettings::ReadExperimentLabels(
     bool system_install,
-    string16* experiment_labels) {
+    base::string16* experiment_labels) {
   HKEY reg_root = system_install ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
 
   // If this distribution does not set the experiment labels, don't bother
@@ -687,7 +737,7 @@ bool GoogleUpdateSettings::ReadExperimentLabels(
   if (!dist->ShouldSetExperimentLabels())
     return false;
 
-  string16 client_state_path(
+  base::string16 client_state_path(
       system_install ? dist->GetStateMediumKey() : dist->GetStateKey());
 
   RegKey client_state;

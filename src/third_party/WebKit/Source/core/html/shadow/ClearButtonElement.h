@@ -48,19 +48,15 @@ public:
 private:
     ClearButtonElement(Document&, ClearButtonOwner&);
     virtual void detach(const AttachContext& = AttachContext()) OVERRIDE;
-    virtual bool isMouseFocusable() const { return false; }
-    virtual void defaultEventHandler(Event*);
+    virtual bool isMouseFocusable() const OVERRIDE { return false; }
+    virtual void defaultEventHandler(Event*) OVERRIDE;
     virtual bool isClearButtonElement() const OVERRIDE;
 
     ClearButtonOwner* m_clearButtonOwner;
     bool m_capturing;
 };
 
-inline ClearButtonElement* toClearButtonElement(Element* element)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!element || element->isClearButtonElement());
-    return static_cast<ClearButtonElement*>(element);
-}
+DEFINE_TYPE_CASTS(ClearButtonElement, Element, element, element->isClearButtonElement(), element.isClearButtonElement());
 
 } // namespace
 

@@ -26,7 +26,6 @@
 #include "core/svg/SVGAnimatedPreserveAspectRatio.h"
 #include "core/svg/SVGAnimatedRect.h"
 #include "core/svg/SVGElement.h"
-#include "core/svg/SVGExternalResourcesRequired.h"
 #include "core/svg/SVGFitToViewBox.h"
 #include "core/svg/SVGStringList.h"
 #include "core/svg/SVGZoomAndPan.h"
@@ -34,32 +33,33 @@
 namespace WebCore {
 
 class SVGViewElement FINAL : public SVGElement,
-                             public SVGExternalResourcesRequired,
                              public SVGFitToViewBox,
                              public SVGZoomAndPan {
 public:
-    static PassRefPtr<SVGViewElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGViewElement> create(Document&);
 
     using SVGElement::ref;
     using SVGElement::deref;
 
+    SVGAnimatedRect* viewBox() { return m_viewBox.get(); }
+
     SVGStringList& viewTarget() { return m_viewTarget; }
     SVGZoomAndPanType zoomAndPan() const { return m_zoomAndPan; }
     void setZoomAndPan(unsigned short zoomAndPan) { m_zoomAndPan = SVGZoomAndPan::parseFromNumber(zoomAndPan); }
+    SVGAnimatedPreserveAspectRatio* preserveAspectRatio() { return m_preserveAspectRatio.get(); }
 
 private:
-    SVGViewElement(const QualifiedName&, Document&);
+    explicit SVGViewElement(Document&);
 
     // FIXME: svgAttributeChanged missing.
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
 
-    virtual bool rendererIsNeeded(const RenderStyle&) { return false; }
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE { return false; }
 
+    RefPtr<SVGAnimatedRect> m_viewBox;
+    RefPtr<SVGAnimatedPreserveAspectRatio> m_preserveAspectRatio;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGViewElement)
-        DECLARE_ANIMATED_BOOLEAN(ExternalResourcesRequired, externalResourcesRequired)
-        DECLARE_ANIMATED_RECT(ViewBox, viewBox)
-        DECLARE_ANIMATED_PRESERVEASPECTRATIO(PreserveAspectRatio, preserveAspectRatio)
     END_DECLARE_ANIMATED_PROPERTIES
 
     SVGZoomAndPanType m_zoomAndPan;

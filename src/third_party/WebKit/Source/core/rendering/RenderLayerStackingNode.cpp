@@ -154,7 +154,7 @@ void RenderLayerStackingNode::dirtyZOrderLists()
     if (!renderer()->documentBeingDestroyed()) {
         compositor()->setNeedsUpdateCompositingRequirementsState();
         compositor()->setCompositingLayersNeedRebuild();
-        if (layer()->acceleratedCompositingForOverflowScrollEnabled())
+        if (renderer()->acceleratedCompositingForOverflowScrollEnabled())
             compositor()->setNeedsToRecomputeCompositingRequirements();
     }
 }
@@ -195,7 +195,7 @@ void RenderLayerStackingNode::dirtyNormalFlowList()
 
     if (!renderer()->documentBeingDestroyed()) {
         compositor()->setCompositingLayersNeedRebuild();
-        if (layer()->acceleratedCompositingForOverflowScrollEnabled())
+        if (renderer()->acceleratedCompositingForOverflowScrollEnabled())
             compositor()->setNeedsToRecomputeCompositingRequirements();
     }
 }
@@ -217,10 +217,9 @@ void RenderLayerStackingNode::rebuildZOrderLists(OwnPtr<Vector<RenderLayerStacki
     OwnPtr<Vector<RenderLayerStackingNode*> >& negZOrderList, const RenderLayerStackingNode* nodeToForceAsStackingContainer,
     CollectLayersBehavior collectLayersBehavior)
 {
-    bool includeHiddenLayers = compositor()->inCompositingMode();
     for (RenderLayer* child = layer()->firstChild(); child; child = child->nextSibling()) {
         if (!layer()->reflectionInfo() || layer()->reflectionInfo()->reflectionLayer() != child)
-            child->stackingNode()->collectLayers(includeHiddenLayers, posZOrderList, negZOrderList, nodeToForceAsStackingContainer, collectLayersBehavior);
+            child->stackingNode()->collectLayers(posZOrderList, negZOrderList, nodeToForceAsStackingContainer, collectLayersBehavior);
     }
 
     // Sort the two lists.
@@ -270,8 +269,7 @@ void RenderLayerStackingNode::updateNormalFlowList()
     m_normalFlowListDirty = false;
 }
 
-void RenderLayerStackingNode::collectLayers(bool includeHiddenLayers,
-    OwnPtr<Vector<RenderLayerStackingNode*> >& posBuffer, OwnPtr<Vector<RenderLayerStackingNode*> >& negBuffer,
+void RenderLayerStackingNode::collectLayers(OwnPtr<Vector<RenderLayerStackingNode*> >& posBuffer, OwnPtr<Vector<RenderLayerStackingNode*> >& negBuffer,
     const RenderLayerStackingNode* nodeToForceAsStackingContainer, CollectLayersBehavior collectLayersBehavior)
 {
     if (layer()->isInTopLayer())
@@ -305,8 +303,7 @@ void RenderLayerStackingNode::collectLayers(bool includeHiddenLayers,
     }
 
     // Overflow layers are just painted by their enclosing layers, so they don't get put in zorder lists.
-    bool includeHiddenLayer = includeHiddenLayers || (layer()->hasVisibleContent() || (layer()->hasVisibleDescendant() && isStacking));
-    if (includeHiddenLayer && !isNormalFlow && !layer()->isOutOfFlowRenderFlowThread()) {
+    if (!isNormalFlow && !layer()->isOutOfFlowRenderFlowThread()) {
         // Determine which buffer the child should be in.
         OwnPtr<Vector<RenderLayerStackingNode*> >& buffer = (zIndex() >= 0) ? posBuffer : negBuffer;
 
@@ -320,11 +317,11 @@ void RenderLayerStackingNode::collectLayers(bool includeHiddenLayers,
 
     // Recur into our children to collect more layers, but only if we don't establish
     // a stacking context/container.
-    if ((includeHiddenLayers || layer()->hasVisibleDescendant()) && !isStacking) {
+    if (!isStacking) {
         for (RenderLayer* child = layer()->firstChild(); child; child = child->nextSibling()) {
             // Ignore reflections.
             if (!layer()->reflectionInfo() || layer()->reflectionInfo()->reflectionLayer() != child)
-                child->stackingNode()->collectLayers(includeHiddenLayers, posBuffer, negBuffer, nodeToForceAsStackingContainer, collectLayersBehavior);
+                child->stackingNode()->collectLayers(posBuffer, negBuffer, nodeToForceAsStackingContainer, collectLayersBehavior);
         }
     }
 }
@@ -430,7 +427,7 @@ bool RenderLayerStackingNode::shouldBeNormalFlowOnlyIgnoringCompositedScrolling(
         || renderer()->hasFilter()
         || renderer()->hasBlendMode()
         || layer()->isTransparent()
-        || renderer()->isRenderRegion();
+        || renderer()->style()->hasFlowFrom();
 
     return couldBeNormalFlow && !preventsElementFromBeingNormalFlow;
 }
@@ -438,7 +435,7 @@ bool RenderLayerStackingNode::shouldBeNormalFlowOnlyIgnoringCompositedScrolling(
 void RenderLayerStackingNode::updateIsNormalFlowOnly()
 {
     bool isNormalFlowOnly = shouldBeNormalFlowOnly();
-    if (isNormalFlowOnly == m_isNormalFlowOnly)
+    if (isNormalFlowOnly == this->isNormalFlowOnly())
         return;
 
     m_isNormalFlowOnly = isNormalFlowOnly;
@@ -449,7 +446,7 @@ void RenderLayerStackingNode::updateIsNormalFlowOnly()
 
 bool RenderLayerStackingNode::needsToBeStackingContainer() const
 {
-    return layer()->adjustForForceCompositedScrollingMode(m_needsToBeStackingContainer);
+    return layer()->scrollableArea() && layer()->scrollableArea()->adjustForForceCompositedScrollingMode(m_needsToBeStackingContainer);
 }
 
 // Determine whether the current layer can be promoted to a stacking container.
@@ -460,11 +457,10 @@ void RenderLayerStackingNode::updateDescendantsAreContiguousInStackingOrder()
 {
     TRACE_EVENT0("blink_rendering,comp-scroll", "RenderLayerStackingNode::updateDescendantsAreContiguousInStackingOrder");
 
-    const RenderLayer* currentLayer = layer();
-    if (isStackingContext() || !m_descendantsAreContiguousInStackingOrderDirty || !currentLayer->acceleratedCompositingForOverflowScrollEnabled())
+    if (isStackingContext() || !m_descendantsAreContiguousInStackingOrderDirty || !renderer()->acceleratedCompositingForOverflowScrollEnabled())
         return;
 
-    if (!currentLayer->scrollsOverflow())
+    if (!layer()->scrollsOverflow())
         return;
 
     RenderLayerStackingNode* stackingNode = ancestorStackingNode();
@@ -620,14 +616,14 @@ bool RenderLayerStackingNode::descendantsAreContiguousInStackingOrder() const
 
 bool RenderLayerStackingNode::setNeedsToBeStackingContainer(bool needsToBeStackingContainer)
 {
-    if (m_needsToBeStackingContainer == needsToBeStackingContainer)
+    if (this->needsToBeStackingContainer() == needsToBeStackingContainer)
         return false;
 
     // Count the total number of RenderLayers which need to be stacking
     // containers some point. This should be recorded at most once per
     // RenderLayer, so we check m_needsToBeStackingContainerHasBeenRecorded.
-    if (layer()->acceleratedCompositingForOverflowScrollEnabled() && !m_needsToBeStackingContainerHasBeenRecorded) {
-        WebKit::Platform::current()->histogramEnumeration("Renderer.CompositedScrolling", RenderLayer::NeedsToBeStackingContainerBucket, RenderLayer::CompositedScrollingHistogramMax);
+    if (renderer()->acceleratedCompositingForOverflowScrollEnabled() && !m_needsToBeStackingContainerHasBeenRecorded) {
+        blink::Platform::current()->histogramEnumeration("Renderer.CompositedScrolling", NeedsToBeStackingContainerBucket, CompositedScrollingHistogramMax);
         m_needsToBeStackingContainerHasBeenRecorded = true;
     }
 

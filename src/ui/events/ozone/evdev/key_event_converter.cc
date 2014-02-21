@@ -184,13 +184,17 @@ bool IsLockButton(unsigned int code) { return code == KEY_CAPSLOCK; }
 
 }  // namespace
 
-// TODO(rjkroege): Stop leaking file descriptor.
-KeyEventConverterEvdev::KeyEventConverterEvdev(EventModifiersEvdev* modifiers)
-    : modifiers_(modifiers) {
+KeyEventConverterEvdev::KeyEventConverterEvdev(int fd,
+                                               base::FilePath path,
+                                               EventModifiersEvdev* modifiers)
+    : fd_(fd), path_(path), modifiers_(modifiers) {
   // TODO(spang): Initialize modifiers using EVIOCGKEY.
 }
 
-KeyEventConverterEvdev::~KeyEventConverterEvdev() {}
+KeyEventConverterEvdev::~KeyEventConverterEvdev() {
+  if (fd_ >= 0 && close(fd_) < 0)
+    DLOG(WARNING) << "failed close on " << path_.value();
+}
 
 void KeyEventConverterEvdev::OnFileCanReadWithoutBlocking(int fd) {
   input_event inputs[4];

@@ -123,6 +123,9 @@ def ParseManifest(options):
     options.fullscreen = True
   elif parser.GetFullScreenFlag().lower() == 'false':
     options.fullscreen = False
+  if parser.GetLaunchScreenImg():
+    options.launch_screen_img  = os.path.join(options.app_root,
+                                              parser.GetLaunchScreenImg())
 
 
 def ParseXPK(options, out_dir):
@@ -223,10 +226,13 @@ def Customize(options):
   orientation = '--orientation=unspecified'
   if options.orientation:
     orientation = '--orientation=%s' % options.orientation
+  default_image = ''
+  if options.launch_screen_img:
+    default_image = '--launch-screen-img=' + options.launch_screen_img
   cmd = ['python', 'customize.py', package,
           name, app_version, app_versionCode, description, icon, permissions,
           app_url, remote_debugging, app_root, app_local_path, fullscreen_flag,
-          extensions_list, orientation]
+          extensions_list, orientation, default_image]
   RunCommand(cmd)
 
 
@@ -478,12 +484,13 @@ def Execution(options, sanitized_name):
   RunCommand(cmd)
 
   src_file = os.path.join('out', sanitized_name + '.apk')
+  package_name = options.name
   if options.app_version:
-    options.name += ('_' + options.app_version)
+    package_name += ('_' + options.app_version)
   if options.mode == 'shared':
-    dst_file = '%s.apk' % options.name
+    dst_file = '%s.apk' % package_name
   elif options.mode == 'embedded':
-    dst_file = '%s_%s.apk' % (options.name, options.arch)
+    dst_file = '%s_%s.apk' % (package_name, options.arch)
   shutil.copyfile(src_file, dst_file)
   CleanDir('out')
   if options.mode == 'embedded':
@@ -659,6 +666,10 @@ def main(argv):
   if len(argv) == 1:
     parser.print_help()
     return 0
+
+  # This option will not export to users.
+  # Initialize here and will be read from manifest.json.
+  options.launch_screen_img = ''
 
   if options.version:
     if os.path.isfile('VERSION'):

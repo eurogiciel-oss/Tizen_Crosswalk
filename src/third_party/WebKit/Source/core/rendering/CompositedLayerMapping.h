@@ -26,11 +26,11 @@
 #ifndef CompositedLayerMapping_h
 #define CompositedLayerMapping_h
 
-#include "core/platform/graphics/GraphicsLayer.h"
-#include "core/platform/graphics/GraphicsLayerClient.h"
 #include "core/rendering/RenderLayer.h"
 #include "platform/geometry/FloatPoint.h"
 #include "platform/geometry/FloatPoint3D.h"
+#include "platform/graphics/GraphicsLayer.h"
+#include "platform/graphics/GraphicsLayerClient.h"
 #include "platform/transforms/TransformationMatrix.h"
 
 namespace WebCore {
@@ -50,8 +50,15 @@ enum CompositingLayerType {
 struct GraphicsLayerPaintInfo {
     RenderLayer* renderLayer;
 
-    IntRect compositedBounds;
+    LayoutRect compositedBounds;
 
+    // At first, the m_squashingLayer's bounds/location are not known. The value offsetFromSquashingCLM is
+    // an intermediate offset for a squashed RenderLayer, described with respect to the CompositedLayerMapping's
+    // owning layer that would eventually have the m_squashingLayer. Once the shared GraphicsLayer's bounds are
+    // known, then we can trivially convert this offset to m_squashingLayer's space.
+    IntSize offsetFromSquashingCLM;
+
+    // Offset describing where this squashed RenderLayer paints into the shared GraphicsLayer backing.
     IntSize offsetFromRenderer;
 
     GraphicsLayerPaintingPhase paintingPhase;
@@ -66,11 +73,11 @@ struct GraphicsLayerPaintInfo {
 //
 // Currently (Oct. 2013) there is one CompositedLayerMapping for each RenderLayer,
 // but this is likely to evolve soon.
-class CompositedLayerMapping : public GraphicsLayerClient {
+class CompositedLayerMapping FINAL : public GraphicsLayerClient {
     WTF_MAKE_NONCOPYABLE(CompositedLayerMapping); WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit CompositedLayerMapping(RenderLayer*);
-    ~CompositedLayerMapping();
+    virtual ~CompositedLayerMapping();
 
     RenderLayer* owningLayer() const { return m_owningLayer; }
 
@@ -114,12 +121,22 @@ public:
 
     GraphicsLayer* parentForSublayers() const;
     GraphicsLayer* childForSuperlayers() const;
+    // localRootForOwningLayer does not include the m_squashingContainmentLayer, which is technically not associated with this CLM's owning layer.
+    GraphicsLayer* localRootForOwningLayer() const;
+    GraphicsLayer* squashingLayer() const { return m_squashingLayer.get(); }
 
     // Returns true for a composited layer that has no backing store of its own, so
     // paints into some ancestor layer.
-    bool paintsIntoCompositedAncestor() const { return !m_requiresOwnBackingStore; }
+    bool paintsIntoCompositedAncestor() const { return !(m_requiresOwnBackingStoreForAncestorReasons || m_requiresOwnBackingStoreForIntrinsicReasons); }
 
-    void setRequiresOwnBackingStore(bool);
+    // Updates whether a backing store is needed based on the layer's compositing ancestor's
+    // properties; returns true if the need for a backing store for ancestor reasons changed.
+    bool updateRequiresOwnBackingStoreForAncestorReasons(const RenderLayer* compositingAncestor);
+
+    // Updates whether a backing store is needed for intrinsic reasons (that is, based on the
+    // layer's own properties or compositing reasons); returns true if the intrinsic need for
+    // a backing store changed.
+    bool updateRequiresOwnBackingStoreForIntrinsicReasons();
 
     void setContentsNeedDisplay();
     // r is in the coordinate space of the layer's render object
@@ -137,29 +154,29 @@ public:
     void animationPaused(double timeOffset, const String& name);
     void animationFinished(const String& name);
 
-    IntRect compositedBounds() const;
-    void setCompositedBounds(const IntRect&);
+    LayoutRect compositedBounds() const;
+    void setCompositedBounds(const LayoutRect&);
     void updateCompositedBounds();
 
     void updateAfterWidgetResize();
     void positionOverflowControlsLayers(const IntSize& offsetFromRoot);
     bool hasUnpositionedOverflowControlsLayers() const;
 
+    void addRenderLayerToSquashingGraphicsLayer(RenderLayer*, IntSize offsetFromSquashingCLM, size_t nextSquashedLayerIndex);
+    void finishAccumulatingSquashingLayers(size_t nextSquashedLayerIndex);
+
     // GraphicsLayerClient interface
-    virtual void notifyAnimationStarted(const GraphicsLayer*, double startTime) OVERRIDE;
-
+    virtual void notifyAnimationStarted(const GraphicsLayer*, double wallClockTime, double monotonicTime) OVERRIDE;
     virtual void paintContents(const GraphicsLayer*, GraphicsContext&, GraphicsLayerPaintingPhase, const IntRect& clip) OVERRIDE;
-
-    virtual void didCommitChangesForLayer(const GraphicsLayer*) const OVERRIDE;
-    virtual bool getCurrentTransform(const GraphicsLayer*, TransformationMatrix&) const OVERRIDE;
-
     virtual bool isTrackingRepaints() const OVERRIDE;
 
+    PassOwnPtr<Vector<FloatRect> > collectTrackedRepaintRects() const;
+
 #ifndef NDEBUG
-    virtual void verifyNotPainting();
+    virtual void verifyNotPainting() OVERRIDE;
 #endif
 
-    IntRect contentsBox() const;
+    LayoutRect contentsBox() const;
     IntRect backgroundBox() const;
 
     // For informative purposes only.
@@ -175,10 +192,11 @@ public:
     // Return an estimate of the backing store area (in pixels) allocated by this object's GraphicsLayers.
     double backingStoreMemoryEstimate() const;
 
-    void setBlendMode(BlendMode);
+    void setBlendMode(blink::WebBlendMode);
 
     virtual String debugName(const GraphicsLayer*) OVERRIDE;
 
+    LayoutSize subpixelAccumulation() const { return m_subpixelAccumulation; }
 private:
     void createPrimaryGraphicsLayer();
     void destroyGraphicsLayers();
@@ -201,14 +219,17 @@ private:
     bool updateScrollingLayers(bool scrollingLayers);
     void updateScrollParent(RenderLayer*);
     void updateClipParent(RenderLayer*);
+    bool updateSquashingLayers(bool needsSquashingLayers);
     void updateDrawsContent(bool isSimpleContainer);
     void registerScrollingLayers();
+
+    void adjustBoundsForSubPixelAccumulation(const RenderLayer* compositedAncestor, IntRect& localCompositingBounds, IntRect& relativeCompositingBounds, IntPoint& delta);
 
     void setBackgroundLayerPaintsFixedRootBackground(bool);
 
     GraphicsLayerPaintingPhase paintingPhaseForPrimaryLayer() const;
 
-    IntSize contentOffsetInCompostingLayer() const;
+    LayoutSize contentOffsetInCompostingLayer() const;
     // Result is transform origin in pixels.
     FloatPoint3D computeTransformOrigin(const IntRect& borderBox) const;
     // Result is perspective origin in pixels.
@@ -217,6 +238,7 @@ private:
     void updateOpacity(const RenderStyle*);
     void updateTransform(const RenderStyle*);
     void updateLayerBlendMode(const RenderStyle*);
+    void updateIsRootForIsolatedGroup();
     // Return the opacity value that this layer should use for compositing.
     float compositingOpacity(float rendererOpacity) const;
 
@@ -242,6 +264,8 @@ private:
     bool hasVisibleNonCompositingDescendantLayers() const;
 
     bool shouldClipCompositedBounds() const;
+
+    void paintsIntoCompositedAncestorChanged();
 
     void doPaintTask(GraphicsLayerPaintInfo&, GraphicsContext*, const IntRect& clip);
 
@@ -317,12 +341,17 @@ private:
 
     OwnPtr<WebAnimationProvider> m_animationProvider;
 
-    IntRect m_compositedBounds;
+    OwnPtr<GraphicsLayer> m_squashingContainmentLayer; // Only used if any squashed layers exist, to contain the squashed layers as siblings to the rest of the GraphicsLayer tree chunk.
+    OwnPtr<GraphicsLayer> m_squashingLayer; // Only used if any squashed layers exist, this is the backing that squashed layers paint into.
+    Vector<GraphicsLayerPaintInfo> m_squashedLayers;
+
+    LayoutRect m_compositedBounds;
+    LayoutSize m_subpixelAccumulation; // The accumulated subpixel offset of the compositedBounds compared to absolute coordinates.
 
     bool m_artificiallyInflatedBounds; // bounds had to be made non-zero to make transform-origin work
-    bool m_boundsConstrainedByClipping;
     bool m_isMainFrameRenderViewLayer;
-    bool m_requiresOwnBackingStore;
+    bool m_requiresOwnBackingStoreForIntrinsicReasons;
+    bool m_requiresOwnBackingStoreForAncestorReasons;
     bool m_canCompositeFilters;
     bool m_backgroundLayerPaintsFixedRootBackground;
 };

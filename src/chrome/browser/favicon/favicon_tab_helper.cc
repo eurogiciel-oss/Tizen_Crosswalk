@@ -157,7 +157,7 @@ void FaviconTabHelper::NotifyFaviconUpdated(bool icon_url_changed) {
   web_contents()->NotifyNavigationStateChanged(content::INVALIDATE_TYPE_TAB);
 }
 
-void FaviconTabHelper::NavigateToPendingEntry(
+void FaviconTabHelper::DidStartNavigationToPendingEntry(
     const GURL& url,
     NavigationController::ReloadType reload_type) {
   if (reload_type != NavigationController::NO_RELOAD &&
@@ -175,6 +175,7 @@ void FaviconTabHelper::NavigateToPendingEntry(
 void FaviconTabHelper::DidNavigateMainFrame(
     const content::LoadCommittedDetails& details,
     const content::FrameNavigateParams& params) {
+  favicon_urls_.clear();
   // Get the favicon, either from history or request it from the net.
   FetchFavicon(details.entry->GetURL());
 }
@@ -182,6 +183,9 @@ void FaviconTabHelper::DidNavigateMainFrame(
 void FaviconTabHelper::DidUpdateFaviconURL(
     int32 page_id,
     const std::vector<content::FaviconURL>& candidates) {
+  DCHECK(!candidates.empty());
+  favicon_urls_ = candidates;
+
   favicon_handler_->OnUpdateFaviconURL(page_id, candidates);
   if (touch_icon_handler_.get())
     touch_icon_handler_->OnUpdateFaviconURL(page_id, candidates);

@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body>
 <p id=description></p>
@@ -53,7 +53,7 @@ function testBasic() {
         debug('...observer.disconnect() should prevent further delivery of mutations.');
 
         shouldBe('mutations', 'null');
-        charDataNode = document.createComment();
+        charDataNode = document.createComment('');
         observer.observe(charDataNode, { characterData: true });
         charDataNode.textContent = 'foo';
         charDataNode.textContent = 'bar';

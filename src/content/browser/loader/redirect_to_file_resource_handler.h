@@ -5,6 +5,7 @@
 #ifndef CONTENT_BROWSER_LOADER_REDIRECT_TO_FILE_RESOURCE_HANDLER_H_
 #define CONTENT_BROWSER_LOADER_REDIRECT_TO_FILE_RESOURCE_HANDLER_H_
 
+#include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
@@ -50,12 +51,13 @@ class RedirectToFileResourceHandler : public LayeredResourceHandler {
   virtual bool OnReadCompleted(int request_id,
                                int bytes_read,
                                bool* defer) OVERRIDE;
-  virtual bool OnResponseCompleted(int request_id,
+  virtual void OnResponseCompleted(int request_id,
                                    const net::URLRequestStatus& status,
-                                   const std::string& security_info) OVERRIDE;
+                                   const std::string& security_info,
+                                   bool* defer) OVERRIDE;
 
  private:
-  void DidCreateTemporaryFile(base::PlatformFileError error_code,
+  void DidCreateTemporaryFile(base::File::Error error_code,
                               base::PassPlatformFile file_handle,
                               const base::FilePath& file_path);
   void DidWriteToFile(int result);

@@ -24,7 +24,7 @@
 
 #include "core/loader/NavigationPolicy.h"
 #include "core/page/FocusDirection.h"
-#include "core/platform/Cursor.h"
+#include "platform/Cursor.h"
 #include "platform/HostWindow.h"
 #include "wtf/Forward.h"
 
@@ -38,7 +38,7 @@ class DateTimeChooserClient;
 class FileChooser;
 class FloatRect;
 class Frame;
-class Geolocation;
+class HTMLInputElement;
 class HitTestResult;
 class IntRect;
 class Node;
@@ -52,9 +52,9 @@ struct DateTimeChooserParameters;
 struct ViewportDescription;
 struct WindowFeatures;
 
-class Chrome : public HostWindow {
+class Chrome FINAL : public HostWindow {
 public:
-    ~Chrome();
+    virtual ~Chrome();
 
     static PassOwnPtr<Chrome> create(Page*, ChromeClient*);
 
@@ -66,7 +66,7 @@ public:
     virtual void scroll(const IntSize&, const IntRect&, const IntRect&) OVERRIDE;
     virtual IntPoint screenToRootView(const IntPoint&) const OVERRIDE;
     virtual IntRect rootViewToScreen(const IntRect&) const OVERRIDE;
-    virtual WebKit::WebScreenInfo screenInfo() const OVERRIDE;
+    virtual blink::WebScreenInfo screenInfo() const OVERRIDE;
 
     virtual void scheduleAnimation() OVERRIDE;
 
@@ -121,6 +121,7 @@ public:
 
     PassOwnPtr<ColorChooser> createColorChooser(ColorChooserClient*, const Color& initialColor);
     PassRefPtr<DateTimeChooser> openDateTimeChooser(DateTimeChooserClient*, const DateTimeChooserParameters&);
+    void openTextDataListChooser(HTMLInputElement&);
 
     void runOpenPanel(Frame*, PassRefPtr<FileChooser>);
     void enumerateChosenDirectory(FileChooser*);

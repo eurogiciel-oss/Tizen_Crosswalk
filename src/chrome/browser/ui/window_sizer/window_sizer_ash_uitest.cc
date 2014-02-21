@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "ash/launcher/launcher.h"
+#include "ash/shelf/shelf.h"
 #include "ash/shelf/shelf_view.h"
 #include "ash/shell.h"
-#include "ash/test/launcher_test_api.h"
+#include "ash/test/shelf_test_api.h"
 #include "base/command_line.h"
 #include "base/message_loop/message_loop.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
@@ -43,17 +43,17 @@ void CloseBrowser(Browser* browser) {
   base::MessageLoop::current()->RunUntilIdle();
 }
 
-gfx::Rect GetChromeIconBoundsForRootWindow(aura::RootWindow* root_window) {
-  ash::Launcher* launcher = ash::Launcher::ForWindow(root_window);
+gfx::Rect GetChromeIconBoundsForRootWindow(aura::Window* root_window) {
+  ash::Shelf* shelf = ash::Shelf::ForWindow(root_window);
   const ash::internal::ShelfView* shelf_view =
-      ash::test::LauncherTestAPI(launcher).shelf_view();
+      ash::test::ShelfTestAPI(shelf).shelf_view();
   const views::ViewModel* view_model = shelf_view->view_model_for_test();
 
   EXPECT_EQ(2, view_model->view_size());
   return view_model->view_at(1)->GetBoundsInScreen();
 }
 
-void OpenBrowserUsingShelfOnRootWindow(aura::RootWindow* root_window) {
+void OpenBrowserUsingShelfOnRootWindow(aura::Window* root_window) {
   aura::test::EventGenerator generator(root_window);
   gfx::Point center =
       GetChromeIconBoundsForRootWindow(root_window).CenterPoint();
@@ -80,7 +80,7 @@ IN_PROC_BROWSER_TEST_F(WindowSizerTest,
   // Don't shutdown when closing the last browser window.
   chrome::StartKeepAlive();
 
-  ash::Shell::RootWindowList root_windows = ash::Shell::GetAllRootWindows();
+  aura::Window::Windows root_windows = ash::Shell::GetAllRootWindows();
 
   BrowserList* browser_list =
       BrowserList::GetInstance(chrome::HOST_DESKTOP_TYPE_ASH);
@@ -150,7 +150,7 @@ class WindowSizerContextMenuTest : public WindowSizerTest {
   DISALLOW_COPY_AND_ASSIGN(WindowSizerContextMenuTest);
 };
 
-void OpenBrowserUsingContextMenuOnRootWindow(aura::RootWindow* root_window) {
+void OpenBrowserUsingContextMenuOnRootWindow(aura::Window* root_window) {
   gfx::Point chrome_icon =
       GetChromeIconBoundsForRootWindow(root_window).CenterPoint();
   gfx::Point release_point = chrome_icon;
@@ -170,7 +170,7 @@ IN_PROC_BROWSER_TEST_F(WindowSizerContextMenuTest,
 
   views::MenuController::TurnOffMenuSelectionHoldForTest();
 
-  ash::Shell::RootWindowList root_windows = ash::Shell::GetAllRootWindows();
+  aura::Window::Windows root_windows = ash::Shell::GetAllRootWindows();
 
   BrowserList* browser_list =
       BrowserList::GetInstance(chrome::HOST_DESKTOP_TYPE_ASH);

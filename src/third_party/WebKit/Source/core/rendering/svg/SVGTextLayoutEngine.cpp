@@ -148,7 +148,7 @@ bool SVGTextLayoutEngine::parentDefinesTextLength(RenderObject* parent) const
     while (currentParent) {
         if (SVGTextContentElement* textContentElement = SVGTextContentElement::elementFromRenderer(currentParent)) {
             SVGLengthContext lengthContext(textContentElement);
-            if (textContentElement->lengthAdjustCurrentValue() == SVGLengthAdjustSpacing && textContentElement->specifiedTextLength().value(lengthContext) > 0)
+            if (textContentElement->lengthAdjustCurrentValue() == SVGLengthAdjustSpacing && textContentElement->textLengthIsSpecifiedByUser())
                 return true;
         }
 
@@ -207,7 +207,10 @@ void SVGTextLayoutEngine::beginTextPathLayout(RenderObject* object, SVGTextLayou
     if (SVGTextContentElement* textContentElement = SVGTextContentElement::elementFromRenderer(textPath)) {
         SVGLengthContext lengthContext(textContentElement);
         lengthAdjust = textContentElement->lengthAdjustCurrentValue();
-        desiredTextLength = textContentElement->specifiedTextLength().value(lengthContext);
+        if (textContentElement->textLengthIsSpecifiedByUser())
+            desiredTextLength = textContentElement->textLength()->currentValue()->value(lengthContext);
+        else
+            desiredTextLength = 0;
     }
 
     if (!desiredTextLength)
@@ -552,14 +555,11 @@ void SVGTextLayoutEngine::layoutTextOnLineOrPath(SVGInlineTextBox* textBox, Rend
             if (textPathOffset > m_textPathLength)
                 break;
 
-            bool ok = false;
-            FloatPoint point = m_textPath.pointAtLength(textPathOffset, ok);
-            ASSERT(ok);
-
+            FloatPoint point;
+            bool ok = m_textPath.pointAndNormalAtLength(textPathOffset, point, angle);
+            ASSERT_UNUSED(ok, ok);
             x = point.x();
             y = point.y();
-            angle = m_textPath.normalAngleAtLength(textPathOffset, ok);
-            ASSERT(ok);
 
             // For vertical text on path, the actual angle has to be rotated 90 degrees anti-clockwise, not the orientation angle!
             if (m_isVerticalText)

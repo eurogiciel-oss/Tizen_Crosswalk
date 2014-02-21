@@ -5,7 +5,7 @@
 #ifndef OZONE_IMPL_VSYNC_PROVIDER_WAYLAND_H_
 #define OZONE_IMPL_VSYNC_PROVIDER_WAYLAND_H_
 
-#include "ui/gl/vsync_provider.h"
+#include "ui/gfx/vsync_provider.h"
 
 namespace ozonewayland {
 
@@ -13,13 +13,14 @@ class WaylandWindow;
 
 class WaylandSyncProvider : public gfx::VSyncProvider {
  public:
-  WaylandSyncProvider();
+  explicit WaylandSyncProvider(unsigned handle);
   virtual ~WaylandSyncProvider();
 
   virtual void GetVSyncParameters(const UpdateVSyncCallback& callback) OVERRIDE;
 
  private:
   static void ScheduleFlush();
+  unsigned handle_;
   DISALLOW_COPY_AND_ASSIGN(WaylandSyncProvider);
 };
 

@@ -10,6 +10,7 @@
 #include "chrome/browser/background/background_mode_manager.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_impl.h"
+#include "chrome/browser/extensions/chrome_extensions_browser_client.h"
 #include "chrome/browser/printing/print_job_manager.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/bookmarks/bookmark_prompt_controller.h"
@@ -33,9 +34,9 @@
 #endif
 
 #if defined(ENABLE_CONFIGURATION_POLICY)
-#include "chrome/browser/policy/browser_policy_connector.h"
+#include "components/policy/core/browser/browser_policy_connector.h"
 #else
-#include "chrome/browser/policy/policy_service_stub.h"
+#include "components/policy/core/common/policy_service_stub.h"
 #endif  // defined(ENABLE_CONFIGURATION_POLICY)
 
 #if defined(ENABLE_FULL_PRINTING)
@@ -48,6 +49,20 @@ TestingBrowserProcess* TestingBrowserProcess::GetGlobal() {
   return static_cast<TestingBrowserProcess*>(g_browser_process);
 }
 
+// static
+void TestingBrowserProcess::CreateInstance() {
+  DCHECK(!g_browser_process);
+  g_browser_process = new TestingBrowserProcess;
+}
+
+// static
+void TestingBrowserProcess::DeleteInstance() {
+  // g_browser_process must be NULL during its own destruction.
+  BrowserProcess* browser_process = g_browser_process;
+  g_browser_process = NULL;
+  delete browser_process;
+}
+
 TestingBrowserProcess::TestingBrowserProcess()
     : notification_service_(content::NotificationService::Create()),
       module_ref_count_(0),
@@ -58,7 +73,10 @@ TestingBrowserProcess::TestingBrowserProcess()
       local_state_(NULL),
       io_thread_(NULL),
       system_request_context_(NULL),
-      platform_part_(new TestingBrowserProcessPlatformPart()) {
+      platform_part_(new TestingBrowserProcessPlatformPart()),
+      extensions_browser_client_(
+          new extensions::ChromeExtensionsBrowserClient) {
+  extensions::ExtensionsBrowserClient::Set(extensions_browser_client_.get());
 }
 
 TestingBrowserProcess::~TestingBrowserProcess() {
@@ -66,6 +84,7 @@ TestingBrowserProcess::~TestingBrowserProcess() {
 #if defined(ENABLE_CONFIGURATION_POLICY)
   SetBrowserPolicyConnector(NULL);
 #endif
+  extensions::ExtensionsBrowserClient::Set(NULL);
 
   // Destructors for some objects owned by TestingBrowserProcess will use
   // g_browser_process if it is not NULL, so it must be NULL before proceeding.
@@ -101,6 +120,13 @@ ProfileManager* TestingBrowserProcess::profile_manager() {
 
 void TestingBrowserProcess::SetProfileManager(ProfileManager* profile_manager) {
 #if !defined(OS_IOS)
+  // NotificationUIManager can contain references to elements in the current
+  // ProfileManager (for example, the MessageCenterSettingsController maintains
+  // a pointer to the ProfileInfoCache). So when we change the ProfileManager
+  // (typically during test shutdown) make sure to reset any objects that might
+  // maintain references to it. See SetLocalState() for a description of a
+  // similar situation.
+  notification_ui_manager_.reset();
   profile_manager_.reset(profile_manager);
 #endif
 }
@@ -118,7 +144,7 @@ policy::BrowserPolicyConnector*
     TestingBrowserProcess::browser_policy_connector() {
 #if defined(ENABLE_CONFIGURATION_POLICY)
   if (!browser_policy_connector_)
-    browser_policy_connector_.reset(new policy::BrowserPolicyConnector());
+    browser_policy_connector_ = platform_part_->CreateBrowserPolicyConnector();
   return browser_policy_connector_.get();
 #else
   return NULL;
@@ -314,7 +340,8 @@ prerender::PrerenderTracker* TestingBrowserProcess::prerender_tracker() {
 #endif
 }
 
-ComponentUpdateService* TestingBrowserProcess::component_updater() {
+component_updater::ComponentUpdateService*
+TestingBrowserProcess::component_updater() {
   return NULL;
 }
 
@@ -322,7 +349,8 @@ CRLSetFetcher* TestingBrowserProcess::crl_set_fetcher() {
   return NULL;
 }
 
-PnaclComponentInstaller* TestingBrowserProcess::pnacl_component_installer() {
+component_updater::PnaclComponentInstaller*
+TestingBrowserProcess::pnacl_component_installer() {
   return NULL;
 }
 
@@ -427,4 +455,14 @@ void TestingBrowserProcess::SetStorageMonitor(
 #if !defined(OS_IOS) && !defined(OS_ANDROID)
   storage_monitor_ = storage_monitor.Pass();
 #endif
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+TestingBrowserProcessInitializer::TestingBrowserProcessInitializer() {
+  TestingBrowserProcess::CreateInstance();
+}
+
+TestingBrowserProcessInitializer::~TestingBrowserProcessInitializer() {
+  TestingBrowserProcess::DeleteInstance();
 }

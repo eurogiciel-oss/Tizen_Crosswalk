@@ -17,7 +17,6 @@
 #include "remoting/client/client_user_interface.h"
 #include "remoting/client/frame_consumer_proxy.h"
 #include "remoting/client/jni/jni_frame_consumer.h"
-#include "remoting/jingle_glue/network_settings.h"
 #include "remoting/jingle_glue/xmpp_signal_strategy.h"
 #include "remoting/protocol/clipboard_stub.h"
 #include "remoting/protocol/connection_to_host.h"
@@ -29,6 +28,8 @@ namespace protocol {
 class ClipboardEvent;
 class CursorShapeInfo;
 }  // namespace protocol
+
+class VideoRenderer;
 
 // ClientUserInterface that indirectly makes and receives JNI calls.
 class ChromotingJniInstance
@@ -67,14 +68,22 @@ class ChromotingJniInstance
                           protocol::MouseEvent_MouseButton button,
                           bool button_down);
 
+  void PerformMouseWheelDeltaAction(int delta_x, int delta_y);
+
   // Sends the provided keyboard scan code to the host.
   void PerformKeyboardAction(int key_code, bool key_down);
+
+  // Records paint time for statistics logging, if enabled. May be called from
+  // any thread.
+  void RecordPaintTime(int64 paint_time_ms);
 
   // ClientUserInterface implementation.
   virtual void OnConnectionState(
       protocol::ConnectionToHost::State state,
       protocol::ErrorCode error) OVERRIDE;
   virtual void OnConnectionReady(bool ready) OVERRIDE;
+  virtual void OnRouteChanged(const std::string& channel_name,
+                              const protocol::TransportRoute& route) OVERRIDE;
   virtual void SetCapabilities(const std::string& capabilities) OVERRIDE;
   virtual void SetPairingResponse(
       const protocol::PairingResponse& response) OVERRIDE;
@@ -106,6 +115,15 @@ class ChromotingJniInstance
   void FetchSecret(bool pairable,
                    const protocol::SecretFetchedCallback& callback);
 
+  // Enables or disables periodic logging of performance statistics. Called on
+  // the network thread.
+  void EnableStatsLogging(bool enabled);
+
+  // If logging is enabled, logs the current connection statistics, and
+  // triggers another call to this function after the logging time interval.
+  // Called on the network thread.
+  void LogPerfStats();
+
   // Used to obtain task runner references and make calls to Java methods.
   ChromotingJniRuntime* jni_runtime_;
 
@@ -120,11 +138,11 @@ class ChromotingJniInstance
   // This group of variables is to be used on the network thread.
   ClientConfig client_config_;
   scoped_ptr<ClientContext> client_context_;
+  scoped_ptr<VideoRenderer> video_renderer_;
   scoped_ptr<protocol::ConnectionToHost> connection_;
   scoped_ptr<ChromotingClient> client_;
   XmppSignalStrategy::XmppServerConfig xmpp_config_;
   scoped_ptr<XmppSignalStrategy> signaling_;  // Must outlive client_
-  scoped_ptr<NetworkSettings> network_settings_;
 
   // Pass this the user's PIN once we have it. To be assigned and accessed on
   // the UI thread, but must be posted to the network thread to call it.
@@ -135,6 +153,10 @@ class ChromotingJniInstance
   // network thread. (This is safe because ProvideSecret() is invoked at most
   // once per run, and always before any reference to this flag.)
   bool create_pairing_;
+
+  // If this is true, performance statistics will be periodically written to
+  // the Android log. Used on the network thread.
+  bool stats_logging_enabled_;
 
   friend class base::RefCountedThreadSafe<ChromotingJniInstance>;
 

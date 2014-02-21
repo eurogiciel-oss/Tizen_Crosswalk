@@ -32,20 +32,20 @@
 
 #include "WebMediaStreamRegistry.h"
 
-#include "core/platform/mediastream/MediaStreamDescriptor.h"
 #include "modules/mediastream/MediaStreamRegistry.h"
+#include "platform/mediastream/MediaStreamDescriptor.h"
+#include "platform/weborigin/KURL.h"
 #include "public/platform/WebMediaStream.h"
 #include "public/platform/WebString.h"
 #include "public/platform/WebURL.h"
-#include "weborigin/KURL.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 WebMediaStream WebMediaStreamRegistry::lookupMediaStreamDescriptor(const WebURL& url)
 {
     return WebMediaStream(MediaStreamRegistry::registry().lookupMediaStreamDescriptor(KURL(url).string()));
 }
 
-} // namespace WebKit
+} // namespace blink

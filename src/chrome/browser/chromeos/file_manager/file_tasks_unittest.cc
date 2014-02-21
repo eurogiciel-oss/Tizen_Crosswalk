@@ -11,20 +11,20 @@
 #include "base/prefs/pref_registry_simple.h"
 #include "base/prefs/testing_pref_service.h"
 #include "base/values.h"
-#include "chrome/browser/chromeos/drive/drive_app_registry.h"
 #include "chrome/browser/chromeos/drive/file_system_util.h"
 #include "chrome/browser/chromeos/file_manager/app_id.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
 #include "chrome/browser/chromeos/settings/cros_settings.h"
 #include "chrome/browser/chromeos/settings/device_settings_service.h"
+#include "chrome/browser/drive/drive_app_registry.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/test_extension_system.h"
-#include "chrome/browser/google_apis/drive_api_parser.h"
-#include "chrome/common/extensions/extension_builder.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/test/base/testing_profile.h"
 #include "content/public/test/test_browser_thread_bundle.h"
+#include "extensions/common/extension_builder.h"
+#include "google_apis/drive/drive_api_parser.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 
@@ -46,8 +46,8 @@ void RegisterDefaultTaskPreferences(TestingPrefServiceSimple* pref_service) {
 // Updates the default task preferences per the given dictionary values. Used
 // for testing ChooseAndSetDefaultTask.
 void UpdateDefaultTaskPreferences(TestingPrefServiceSimple* pref_service,
-                                  const DictionaryValue& mime_types,
-                                  const DictionaryValue& suffixes) {
+                                  const base::DictionaryValue& mime_types,
+                                  const base::DictionaryValue& suffixes) {
   DCHECK(pref_service);
 
   pref_service->Set(prefs::kDefaultTasksByMimeType, mime_types);
@@ -289,8 +289,8 @@ TEST(FileManagerFileTasksTest, ChooseAndSetDefaultTask_MultipleTasks) {
   EXPECT_FALSE(tasks[1].is_default());
 
   // Set Text.app as default for "text/plain" in the preferences.
-  DictionaryValue empty;
-  DictionaryValue mime_types;
+  base::DictionaryValue empty;
+  base::DictionaryValue mime_types;
   mime_types.SetStringWithoutPathExpansion(
       "text/plain",
       TaskDescriptorToId(text_app_task));
@@ -311,7 +311,7 @@ TEST(FileManagerFileTasksTest, ChooseAndSetDefaultTask_MultipleTasks) {
   EXPECT_FALSE(tasks[1].is_default());
 
   // Set Nice.app as default for ".txt" in the preferences.
-  DictionaryValue suffixes;
+  base::DictionaryValue suffixes;
   suffixes.SetStringWithoutPathExpansion(
       ".txt",
       TaskDescriptorToId(nice_app_task));

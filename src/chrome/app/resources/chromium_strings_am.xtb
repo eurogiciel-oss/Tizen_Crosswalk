@@ -23,13 +23,12 @@
 <translation id="7128196614940529818">Chromium ክፈፍ አስቀድሞ የተጫነ እና ለሁሉም የዚህ ኮምፒውተር ተጠቃሚዎች የሚገኝ ነው። Chromium ክፈፍ በተጠቃሚ ደረጃ ላይ መጫን ከፈለጉ መጀመሪያ በአስተዳዳሪው የተጫነውን የስርዓት-ደረጃ ስሪት ማራገፍ አለብዎት።</translation>
 <translation id="731644333568559921">&amp;Chromium OSን አዘምን</translation>
 <translation id="7421823331379285070">Chromium Windows XP ወይም ከዚያ በኋላ ይፈልጋል። አንዳንድ ባህሪያት ላይሰሩ ይችላሉ።</translation>
-<translation id="7023267510504981715">Google Walletን ለመጠቀም Chromiumን ማላቅ አለብዎት [<ph name="ERROR_CODE"/>]።</translation>
+<translation id="7023267510504981715">Google Walletን ለመጠቀም Chromiumን ማሻሻል አለብዎት [<ph name="ERROR_CODE"/>]።</translation>
 <translation id="7419987137528340081">ነባሩ የChromium ውሂብዎን ለይተው ማስቀመጥ ከፈለጉ ለ<ph name="USER_NAME"/> አዲስ የChromium ተጠቃሚ መፍጠር ይችላሉ።</translation>
 <translation id="8030318113982266900">መሳሪያዎን ወደ <ph name="CHANNEL_NAME"/> ሰርጥ በማዘመን ላይ...</translation>
 <translation id="3549345495227188780">በChromium OS ይጀምሩ</translation>
 <translation id="4330297532943865716">በስርዓቱ ላይ የሚጋጭ የChromium እና Chromium Frame ጭነት ተገኝቷል። እባክዎ ያራግፉት እና እንደገና ይሞክሩ።</translation>
 <translation id="6953661834318318668">Chromium የመሣሪያ አሞሌ</translation>
-<translation id="2245147136185581459">Chromium የተያዥ መተላለፊያ አዋቂ</translation>
 <translation id="4285930937574705105">ተለይቶ ባልታወቀ ስህተት ምክንያት ጭነት ከሽፏል። Chromium አሁን እያሄደ ከሆነ እባክዎ ይዝጉትና እንደገና ይሞክሩ።</translation>
 <translation id="1396446129537741364">Chromium የይለፍ ቃላትን ለማሳየት እየሞከረ ነው።</translation>
 <translation id="3555616473548901994">ተራግፎ አልቋል።</translation>
@@ -63,7 +62,6 @@
 <translation id="7771626876550251690">በዚህ አጋጣሚ በእውቅና ማረጋገጫው ውስጥ የተዘርዘረው አድራሻ አሳሽዎ ሊሄድበት ከሞከረው የድር ጣቢያው አድራሻ ጋር አይዛመድም። ለዚህ ሊሆን የሚችል አንድ ምክንያት ግንኙነቶችዎ የተለየ የድር ጣቢያ እውቅና ማረጋገጫ እያቀረበ ባለ አጥቂ እየተጠለፈ ሊሆን ይችላል፣ ይሄ አለመዛመድን ያስከትላል። ሌላ ሊሆን የሚችል ምክንያት አገልጋዩ እርስዎ ለመጎብኘት የሚሞክሩትን ጨምሮ ለበርካታ ድር ጣቢያዎች ተመሳሳዩን የእውቅና ማረጋገጫ እንዲያሳይ ተደርጎ የተዋቀረ ሊሆን ይችላል፣ ምንም እንኳ ያ የእውቅና ማረጋገጫ ለሁሉም ድር ጣቢያዎቹ የሚሰራ ባይሆንም እንኳ። Chromium እርግጠኛ ሆኖ &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;ን እንደደረሱ ሊነግርዎት ይችላል፣ ግን ያ እርስዎ ለመድረስ ካሰቡት &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; ጋር አንድ አይነት መሆኑን ሊያረጋግጥ አይችልም። ከቀጠሉ Chromium ተጨማሪ የስም አለመዛመዶችን አያረጋገጥም።</translation>
 <translation id="4330585738697551178">ይህ ሞዱል ከChromium ጋር የሚጋጭ መሆኑ ይታወቃል።</translation>
 <translation id="3190315855212034486">ኧረ ገዳይ! Chromium ብልሽት አጋጥሞታል። አሁን ዳግም ይጀምር?</translation>
-<translation id="3590194807845837023">መገለጫ አስፈክትና ዳግም አስጀምር</translation>
 <translation id="6714487516757221107">ምንም የሚዘመን የChromium ወይም Chromium ክፍለ ገጸ ድር ጭነት የለም።</translation>
 <translation id="3197823471738295152">መሣሪያዎ የተዘመነ ነው።</translation>
 <translation id="8551886023433311834">የተዘመነ ለመሆን ጥቂት ብቻ ቀርቷል! ዝማኔውን ለማጠናቀቅ መሣሪያዎን ዳግም ያስጀምሩት።</translation>
@@ -155,6 +153,7 @@
 <translation id="6717134281241384636">መገለጫዎ ከአዲስ የChromium ስሪት ስለሆነ የመጣው ስራ ላይ ሊውል አይችልም።
 
 አንዳንድ ባህሪያት ላይገኙ ይችላሉ። እባክዎ የተለየ የመገለጫ አቃፊ ይግለጹ ወይም ይበልጥ አዲስ የሆነ የChromium ስሪት ይጠቀሙ።</translation>
+<translation id="8907580949721785412">Chromium የይለፍ ቃሎችን ለማሳየት እየሞከረ ነው። ይህንን ለመፍቀድ የWindows የይለፍ ቃልዎን ይተይቡ።</translation>
 <translation id="9013087743919948559">ወደ Chromium ያክሉ</translation>
 <translation id="6212496753309875659">ይህ ኮምፒውተር አስቀድሞ ይበልጥ አዲስ የሆነ የChromium ስሪት አለው። ሶፍትዌሩ የማይሰራ ከሆነ እባክዎ Chromiumን ያራግፉና እንደገና ይሞክሩ።</translation>
 <translation id="1298199220304005244">Chromium OS መጠቀም ላይ እገዛ ያግኙ</translation>

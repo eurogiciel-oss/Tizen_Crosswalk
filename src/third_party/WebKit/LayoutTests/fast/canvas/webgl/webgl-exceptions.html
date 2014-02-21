@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="resources/webgl-test.js"></script>
 </head>
 <body>
@@ -22,6 +22,8 @@ shouldThrow('gl.uniform1iv()');
 shouldThrow('gl.uniformMatrix2fv()');
 shouldThrow('gl.uniform1fv()');
 shouldThrow('gl.vertexAttrib1fv()');
+
+shouldThrow('gl.uniformMatrix4fv(1, 1)');
 </script>
 </body>
 </html>

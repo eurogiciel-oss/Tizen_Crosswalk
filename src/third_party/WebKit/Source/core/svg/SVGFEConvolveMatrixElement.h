@@ -20,13 +20,14 @@
 #ifndef SVGFEConvolveMatrixElement_h
 #define SVGFEConvolveMatrixElement_h
 
-#include "core/platform/graphics/filters/FEConvolveMatrix.h"
 #include "core/svg/SVGAnimatedBoolean.h"
 #include "core/svg/SVGAnimatedEnumeration.h"
 #include "core/svg/SVGAnimatedInteger.h"
 #include "core/svg/SVGAnimatedNumber.h"
 #include "core/svg/SVGAnimatedNumberList.h"
+#include "core/svg/SVGAnimatedNumberOptionalNumber.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
+#include "platform/graphics/filters/FEConvolveMatrix.h"
 
 namespace WebCore {
 
@@ -65,38 +66,42 @@ struct SVGPropertyTraits<EdgeModeType> {
 
 class SVGFEConvolveMatrixElement FINAL : public SVGFilterPrimitiveStandardAttributes {
 public:
-    static PassRefPtr<SVGFEConvolveMatrixElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFEConvolveMatrixElement> create(Document&);
 
     void setOrder(float orderX, float orderY);
     void setKernelUnitLength(float kernelUnitLengthX, float kernelUnitLengthY);
 
+    SVGAnimatedBoolean* preserveAlpha() { return m_preserveAlpha.get(); }
+    SVGAnimatedNumber* divisor() { return m_divisor.get(); }
+    SVGAnimatedNumber* bias() { return m_bias.get(); }
+    SVGAnimatedNumber* kernelUnitLengthX() { return m_kernelUnitLength->firstNumber(); }
+    SVGAnimatedNumber* kernelUnitLengthY() { return m_kernelUnitLength->secondNumber(); }
+    SVGAnimatedNumberList* kernelMatrix() { return m_kernelMatrix.get(); }
+
 private:
-    SVGFEConvolveMatrixElement(const QualifiedName&, Document&);
+    explicit SVGFEConvolveMatrixElement(Document&);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&);
-    virtual void svgAttributeChanged(const QualifiedName&);
-    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*);
+    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&) OVERRIDE;
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
+    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*) OVERRIDE;
 
     static const AtomicString& orderXIdentifier();
     static const AtomicString& orderYIdentifier();
-    static const AtomicString& kernelUnitLengthXIdentifier();
-    static const AtomicString& kernelUnitLengthYIdentifier();
 
+    RefPtr<SVGAnimatedBoolean> m_preserveAlpha;
+    RefPtr<SVGAnimatedNumber> m_divisor;
+    RefPtr<SVGAnimatedNumber> m_bias;
+    RefPtr<SVGAnimatedNumberOptionalNumber> m_kernelUnitLength;
+    RefPtr<SVGAnimatedNumberList> m_kernelMatrix;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEConvolveMatrixElement)
         DECLARE_ANIMATED_STRING(In1, in1)
         DECLARE_ANIMATED_INTEGER(OrderX, orderX)
         DECLARE_ANIMATED_INTEGER(OrderY, orderY)
-        DECLARE_ANIMATED_NUMBER_LIST(KernelMatrix, kernelMatrix)
-        DECLARE_ANIMATED_NUMBER(Divisor, divisor)
-        DECLARE_ANIMATED_NUMBER(Bias, bias)
         DECLARE_ANIMATED_INTEGER(TargetX, targetX)
         DECLARE_ANIMATED_INTEGER(TargetY, targetY)
         DECLARE_ANIMATED_ENUMERATION(EdgeMode, edgeMode, EdgeModeType)
-        DECLARE_ANIMATED_NUMBER(KernelUnitLengthX, kernelUnitLengthX)
-        DECLARE_ANIMATED_NUMBER(KernelUnitLengthY, kernelUnitLengthY)
-        DECLARE_ANIMATED_BOOLEAN(PreserveAlpha, preserveAlpha)
     END_DECLARE_ANIMATED_PROPERTIES
 };
 

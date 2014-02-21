@@ -8,25 +8,24 @@
 #include <vector>
 
 #include "base/memory/scoped_ptr.h"
-#include "base/message_loop/message_loop.h"
-#include "ui/aura/root_window_host.h"
-#include "ui/events/ozone/event_factory_ozone.h"
+#include "base/message_loop/message_pump_dispatcher.h"
+#include "ui/aura/window_tree_host.h"
+#include "ui/gfx/insets.h"
 #include "ui/gfx/rect.h"
 
 namespace aura {
 
-class RootWindowHostOzone : public RootWindowHost,
-                            public base::MessageLoop::Dispatcher {
+class WindowTreeHostOzone : public WindowTreeHost,
+                            public base::MessagePumpDispatcher {
  public:
-  explicit RootWindowHostOzone(const gfx::Rect& bounds);
-  virtual ~RootWindowHostOzone();
+  explicit WindowTreeHostOzone(const gfx::Rect& bounds);
+  virtual ~WindowTreeHostOzone();
 
  private:
   // Overridden from Dispatcher overrides:
   virtual bool Dispatch(const base::NativeEvent& event) OVERRIDE;
 
-  // RootWindowHost Overrides.
-  virtual void SetDelegate(RootWindowHostDelegate* delegate) OVERRIDE;
+  // WindowTreeHost Overrides.
   virtual RootWindow* GetRootWindow() OVERRIDE;
   virtual gfx::AcceleratedWidget GetAcceleratedWidget() OVERRIDE;
   virtual void Show() OVERRIDE;
@@ -45,21 +44,14 @@ class RootWindowHostOzone : public RootWindowHost,
   virtual void UnConfineCursor() OVERRIDE;
   virtual void OnCursorVisibilityChanged(bool show) OVERRIDE;
   virtual void MoveCursorTo(const gfx::Point& location) OVERRIDE;
-  virtual void SetFocusWhenShown(bool focus_when_shown) OVERRIDE;
   virtual void PostNativeEvent(const base::NativeEvent& event) OVERRIDE;
   virtual void OnDeviceScaleFactorChanged(float device_scale_factor) OVERRIDE;
   virtual void PrepareForShutdown() OVERRIDE;
 
-  RootWindowHostDelegate* delegate_;
   gfx::AcceleratedWidget widget_;
   gfx::Rect bounds_;
 
-  // EventFactoryOzone creates converters that obtain input events from the
-  // underlying input system and dispatch them as |ui::Event| instances into
-  // Aura.
-  scoped_ptr<ui::EventFactoryOzone> factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(RootWindowHostOzone);
+  DISALLOW_COPY_AND_ASSIGN(WindowTreeHostOzone);
 };
 
 }  // namespace aura

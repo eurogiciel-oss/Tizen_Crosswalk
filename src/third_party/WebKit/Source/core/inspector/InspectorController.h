@@ -45,10 +45,11 @@ class GraphicsContext;
 class InjectedScriptManager;
 class InspectorBackendDispatcher;
 class InspectorClient;
+class InspectorDOMAgent;
 class InspectorFrontend;
 class InspectorFrontendChannel;
 class InspectorFrontendClient;
-class InspectorMemoryAgent;
+class InspectorPageAgent;
 class InspectorTimelineAgent;
 class InspectorOverlay;
 class InspectorState;
@@ -57,9 +58,9 @@ class IntPoint;
 class IntSize;
 class Page;
 class PlatformGestureEvent;
+class PlatformKeyboardEvent;
 class PlatformMouseEvent;
 class PlatformTouchEvent;
-class PostWorkerNotificationToFrontendTask;
 class Node;
 
 struct Highlight;
@@ -71,17 +72,18 @@ public:
     ~InspectorController();
 
     static PassOwnPtr<InspectorController> create(Page*, InspectorClient*);
+
+    void initializeDeferredAgents();
     void inspectedPageDestroyed();
 
-    Page* inspectedPage() const;
+    void registerModuleAgent(PassOwnPtr<InspectorAgent>);
 
     void setInspectorFrontendClient(PassOwnPtr<InspectorFrontendClient>);
-    void didClearWindowObjectInWorld(Frame*, DOMWrapperWorld*);
+    void didClearWindowObjectInMainWorld(Frame*);
     void setInjectedScriptForOrigin(const String& origin, const String& source);
 
     void dispatchMessageFromFrontend(const String& message);
 
-    bool hasFrontend() const { return m_inspectorFrontend; }
     void connectFrontend(InspectorFrontendChannel*);
     void disconnectFrontend();
     void reconnectFrontend();
@@ -99,6 +101,7 @@ public:
     bool handleGestureEvent(Frame*, const PlatformGestureEvent&);
     bool handleMouseEvent(Frame*, const PlatformMouseEvent&);
     bool handleTouchEvent(Frame*, const PlatformTouchEvent&);
+    bool handleKeyboardEvent(Frame*, const PlatformKeyboardEvent&);
 
     void requestPageScaleFactor(float scale, const IntPoint& origin);
     bool deviceEmulationEnabled();
@@ -110,8 +113,6 @@ public:
 
     void setResourcesDataSizeLimitsFromInternals(int maximumResourcesContentSize, int maximumSingleResourceContentSize);
 
-    InspectorClient* inspectorClient() const { return m_inspectorClient; }
-
     void willProcessTask();
     void didProcessTask();
 
@@ -120,10 +121,11 @@ public:
     void willComposite();
     void didComposite();
 
+    void processGPUEvent(double timestamp, int phase, bool foreign, size_t usedGPUMemoryBytes);
+
 private:
     InspectorController(Page*, InspectorClient*);
 
-    friend class PostWorkerNotificationToFrontendTask;
     friend InstrumentingAgents* instrumentationForPage(Page*);
 
     RefPtr<InstrumentingAgents> m_instrumentingAgents;
@@ -131,7 +133,8 @@ private:
     OwnPtr<InspectorCompositeState> m_state;
     OwnPtr<InspectorOverlay> m_overlay;
 
-    InspectorMemoryAgent* m_memoryAgent;
+    InspectorDOMAgent* m_domAgent;
+    InspectorPageAgent* m_pageAgent;
     InspectorTimelineAgent* m_timelineAgent;
 
     RefPtr<InspectorBackendDispatcher> m_inspectorBackendDispatcher;
@@ -141,6 +144,7 @@ private:
     InspectorClient* m_inspectorClient;
     InspectorAgentRegistry m_agents;
     bool m_isUnderTest;
+    bool m_deferredAgentsInitialized;
 };
 
 }

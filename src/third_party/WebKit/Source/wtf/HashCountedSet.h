@@ -31,7 +31,7 @@ namespace WTF {
         typename Traits = HashTraits<Value> > class HashCountedSet {
         WTF_MAKE_FAST_ALLOCATED;
     private:
-        typedef HashMap<Value, unsigned, HashFunctions, Traits> ImplType;
+        typedef HashMap<Value, unsigned, HashFunctions, Traits, HashTraits<unsigned>, DefaultAllocator> ImplType;
     public:
         typedef Value ValueType;
         typedef typename ImplType::iterator iterator;
@@ -42,8 +42,8 @@ namespace WTF {
 
         void swap(HashCountedSet&);
 
-        int size() const;
-        int capacity() const;
+        unsigned size() const;
+        unsigned capacity() const;
         bool isEmpty() const;
 
         // Iterators iterate over pairs of values and counts.
@@ -58,7 +58,7 @@ namespace WTF {
         unsigned count(const ValueType&) const;
 
         // Increases the count if an equal value is already present
-        // the return value is a pair of an interator to the new value's
+        // the return value is a pair of an iterator to the new value's
         // location, and a bool that is true if an new entry was added.
         AddResult add(const ValueType&);
 
@@ -85,13 +85,13 @@ namespace WTF {
     }
 
     template<typename Value, typename HashFunctions, typename Traits>
-    inline int HashCountedSet<Value, HashFunctions, Traits>::size() const
+    inline unsigned HashCountedSet<Value, HashFunctions, Traits>::size() const
     {
         return m_impl.size();
     }
 
     template<typename Value, typename HashFunctions, typename Traits>
-    inline int HashCountedSet<Value, HashFunctions, Traits>::capacity() const
+    inline unsigned HashCountedSet<Value, HashFunctions, Traits>::capacity() const
     {
         return m_impl.capacity();
     }

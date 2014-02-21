@@ -22,7 +22,7 @@
 #include "config.h"
 #include "core/css/CSSStyleRule.h"
 
-#include "core/css/CSSParser.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/CSSSelector.h"
 #include "core/css/CSSStyleSheet.h"
 #include "core/css/PropertySetCSSStyleDeclaration.h"
@@ -91,7 +91,7 @@ String CSSStyleRule::selectorText() const
 
 void CSSStyleRule::setSelectorText(const String& selectorText)
 {
-    CSSParser p(parserContext());
+    BisonCSSParser p(parserContext());
     CSSSelectorList selectorList;
     p.parseSelector(selectorText, selectorList);
     if (!selectorList.isValid())
@@ -123,8 +123,7 @@ String CSSStyleRule::cssText() const
 void CSSStyleRule::reattach(StyleRuleBase* rule)
 {
     ASSERT(rule);
-    ASSERT_WITH_SECURITY_IMPLICATION(rule->isStyleRule());
-    m_styleRule = static_cast<StyleRule*>(rule);
+    m_styleRule = toStyleRule(rule);
     if (m_propertiesCSSOMWrapper)
         m_propertiesCSSOMWrapper->reattach(m_styleRule->mutableProperties());
 }

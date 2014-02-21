@@ -172,7 +172,7 @@ vpx_codec_err_t vpx_codec_register_put_slice_cb(vpx_codec_ctx_t             *ctx
   if (!ctx || !cb)
     res = VPX_CODEC_INVALID_PARAM;
   else if (!ctx->iface || !ctx->priv
-           || !(ctx->iface->caps & VPX_CODEC_CAP_PUT_FRAME))
+           || !(ctx->iface->caps & VPX_CODEC_CAP_PUT_SLICE))
     res = VPX_CODEC_ERROR;
   else {
     ctx->priv->dec.put_slice_cb.u.put_slice = cb;
@@ -222,6 +222,25 @@ vpx_codec_err_t vpx_codec_set_mem_map(vpx_codec_ctx_t   *ctx,
       if (res)
         break;
     }
+  }
+
+  return SAVE_STATUS(ctx, res);
+}
+
+vpx_codec_err_t vpx_codec_set_frame_buffers(
+    vpx_codec_ctx_t *ctx,
+    vpx_codec_frame_buffer_t *fb_list, int fb_count,
+    vpx_realloc_frame_buffer_cb_fn_t cb, void *user_priv) {
+  vpx_codec_err_t res;
+
+  if (!ctx || !fb_list || fb_count <= 0 || !cb) {
+    res = VPX_CODEC_INVALID_PARAM;
+  } else if (!ctx->iface || !ctx->priv ||
+             !(ctx->iface->caps & VPX_CODEC_CAP_EXTERNAL_FRAME_BUFFER)) {
+    res = VPX_CODEC_ERROR;
+  } else {
+    res = ctx->iface->dec.set_fb(ctx->priv->alg_priv, fb_list, fb_count,
+                                 cb, user_priv);
   }
 
   return SAVE_STATUS(ctx, res);

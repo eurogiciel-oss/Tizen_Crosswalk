@@ -35,7 +35,7 @@
 #include "WebNavigationType.h"
 #include "WebTextDirection.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebApplicationCacheHost;
 class WebString;
@@ -105,10 +105,6 @@ public:
     // The application cache host associated with this datasource.
     virtual WebApplicationCacheHost* applicationCacheHost() = 0;
 
-    // Set deferMainResourceDataLoad flag on the loader.  This is used for
-    // testing.
-    virtual void setDeferMainResourceDataLoad(bool) = 0;
-
     // Sets the navigation start time for this datasource. Ordinarily,
     // navigation start is determined in WebCore. But, in some situations,
     // the embedder might have a better value and can override it here. This
@@ -121,6 +117,6 @@ protected:
     ~WebDataSource() { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

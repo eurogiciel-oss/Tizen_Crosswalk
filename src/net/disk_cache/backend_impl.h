@@ -246,6 +246,9 @@ class NET_EXPORT_PRIVATE BackendImpl : public Backend {
   // entries. This method should be called directly on the cache thread.
   void TrimDeletedListForTest(bool empty);
 
+  // Only intended for testing
+  base::RepeatingTimer<BackendImpl>* GetTimerForTest();
+
   // Performs a simple self-check, and returns the number of dirty items
   // or an error code (negative value).
   int SelfCheck();
@@ -391,9 +394,6 @@ class NET_EXPORT_PRIVATE BackendImpl : public Backend {
 
   DISALLOW_COPY_AND_ASSIGN(BackendImpl);
 };
-
-// Returns the preferred max cache size given the available disk space.
-NET_EXPORT_PRIVATE int PreferedCacheSize(int64 available);
 
 }  // namespace disk_cache
 

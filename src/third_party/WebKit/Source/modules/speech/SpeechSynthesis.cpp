@@ -28,10 +28,8 @@
 
 #include "bindings/v8/ExceptionState.h"
 #include "core/dom/ExecutionContext.h"
-#include "core/platform/PlatformSpeechSynthesisVoice.h"
-#include "core/platform/PlatformSpeechSynthesizer.h"
 #include "modules/speech/SpeechSynthesisEvent.h"
-#include "modules/speech/SpeechSynthesisUtterance.h"
+#include "platform/speech/PlatformSpeechSynthesisVoice.h"
 #include "wtf/CurrentTime.h"
 
 namespace WebCore {
@@ -109,10 +107,10 @@ void SpeechSynthesis::startSpeakingImmediately(SpeechSynthesisUtterance* utteran
     m_platformSpeechSynthesizer->speak(utterance->platformUtterance());
 }
 
-void SpeechSynthesis::speak(SpeechSynthesisUtterance* utterance, ExceptionState& es)
+void SpeechSynthesis::speak(SpeechSynthesisUtterance* utterance, ExceptionState& exceptionState)
 {
     if (!utterance) {
-        es.throwTypeError("Invalid utterance argument");
+        exceptionState.throwTypeError("Invalid utterance argument");
         return;
     }
 

@@ -28,7 +28,9 @@
 
 #include "HTMLNames.h"
 #include "platform/text/WritingMode.h"
+#include "wtf/HashMap.h"
 #include "wtf/Noncopyable.h"
+#include "wtf/OwnPtr.h"
 #include "wtf/PassOwnPtr.h"
 
 namespace WebCore {
@@ -38,7 +40,27 @@ class RenderBlock;
 class RenderObject;
 class RenderText;
 struct TextAutosizingWindowInfo;
-struct TextAutosizingClusterInfo;
+
+// Represents cluster related data. Instances should not persist between calls to processSubtree.
+struct TextAutosizingClusterInfo {
+    explicit TextAutosizingClusterInfo(RenderBlock* root)
+        : root(root)
+        , blockContainingAllText(0)
+        , maxAllowedDifferenceFromTextWidth(150)
+    {
+    }
+
+    RenderBlock* root;
+    const RenderBlock* blockContainingAllText;
+
+    // Upper limit on the difference between the width of the cluster's block containing all
+    // text and that of a narrow child before the child becomes a separate cluster.
+    float maxAllowedDifferenceFromTextWidth;
+
+    // Descendants of the cluster that are narrower than the block containing all text and must be
+    // processed together.
+    Vector<TextAutosizingClusterInfo> narrowDescendants;
+};
 
 class TextAutosizer FINAL {
     WTF_MAKE_NONCOPYABLE(TextAutosizer);
@@ -52,15 +74,11 @@ public:
     static float computeAutosizedFontSize(float specifiedSize, float multiplier);
 
 private:
+    friend class FastTextAutosizer;
+
     enum TraversalDirection {
         FirstToLast,
         LastToFirst
-    };
-
-    enum ContentType {
-        Unknown,
-        Default,
-        VBulletin
     };
 
     explicit TextAutosizer(Document*);
@@ -72,14 +90,10 @@ private:
     void processCompositeCluster(Vector<TextAutosizingClusterInfo>&, const TextAutosizingWindowInfo&);
     void processContainer(float multiplier, RenderBlock* container, TextAutosizingClusterInfo&, RenderObject* subtreeRoot, const TextAutosizingWindowInfo&);
 
-    bool clusterShouldBeAutosized(TextAutosizingClusterInfo&, float blockWidth);
-    bool compositeClusterShouldBeAutosized(Vector<TextAutosizingClusterInfo>&, float blockWidth);
-    bool clusterContainsForumComment(const RenderBlock* container, TextAutosizingClusterInfo&);
-
     void setMultiplier(RenderObject*, float);
     void setMultiplierForList(RenderObject* renderer, float multiplier);
 
-    ContentType detectContentType();
+    unsigned getCachedHash(const RenderObject* renderer, bool putInCacheIfAbsent);
 
     static bool isAutosizingContainer(const RenderObject*);
     static bool isNarrowDescendant(const RenderBlock*, TextAutosizingClusterInfo& parentClusterInfo);
@@ -91,7 +105,10 @@ private:
     static bool containerContainsOneOfTags(const RenderBlock* cluster, const Vector<QualifiedName>& tags);
     static bool containerIsRowOfLinks(const RenderObject* container);
     static bool contentHeightIsConstrained(const RenderBlock* container);
+    static bool compositeClusterShouldBeAutosized(Vector<TextAutosizingClusterInfo>&, float blockWidth);
     static void measureDescendantTextWidth(const RenderBlock* container, TextAutosizingClusterInfo&, float minTextWidth, float& textWidth);
+    unsigned computeCompositeClusterHash(Vector<TextAutosizingClusterInfo>&);
+    float computeMultiplier(Vector<TextAutosizingClusterInfo>&, const TextAutosizingWindowInfo&, float textWidth);
 
     // Use to traverse the tree of descendants, excluding descendants of containers (but returning the containers themselves).
     static RenderObject* nextInPreOrderSkippingDescendantsOfContainers(const RenderObject*, const RenderObject* stayWithin);
@@ -107,8 +124,20 @@ private:
     // |blockContainingAllText|.
     static void getNarrowDescendantsGroupedByWidth(const TextAutosizingClusterInfo& parentClusterInfo, Vector<Vector<TextAutosizingClusterInfo> >&);
 
+    void addNonAutosizedCluster(unsigned key, TextAutosizingClusterInfo& value);
+    void secondPassProcessStaleNonAutosizedClusters();
+    void processStaleContainer(float multiplier, RenderBlock* cluster, TextAutosizingClusterInfo&);
+
     Document* m_document;
-    ContentType m_contentType;
+
+    HashMap<const RenderObject*, unsigned> m_hashCache;
+
+    // Mapping from all autosized (i.e. multiplier > 1) cluster hashes to their respective multipliers.
+    HashMap<unsigned, float> m_hashToMultiplier;
+    Vector<unsigned> m_hashesToAutosizeSecondPass;
+
+    // Mapping from a cluster hash to the corresponding cluster infos which have not been autosized yet.
+    HashMap<unsigned, OwnPtr<Vector<TextAutosizingClusterInfo> > > m_nonAutosizedClusters;
 };
 
 } // namespace WebCore

@@ -1,0 +1,9 @@
+MAJOR=34
+MINOR=0
+<<<<<<< HEAD
+BUILD=1809
+PATCH=2
+=======
+BUILD=1700
+PATCH=1
+>>>>>>> Incrementing VERSION to 32.0.1700.1

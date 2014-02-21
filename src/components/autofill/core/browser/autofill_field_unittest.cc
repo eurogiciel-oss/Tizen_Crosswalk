@@ -11,6 +11,8 @@
 #include "components/autofill/core/browser/field_types.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+using base::ASCIIToUTF16;
+
 namespace autofill {
 namespace {
 
@@ -347,6 +349,27 @@ TEST(AutofillFieldTest, FillMonthControl) {
   // Try a month without a leading zero.
   AutofillField::FillFormField(field, ASCIIToUTF16("4/2018"), "en-US", &field);
   EXPECT_EQ(ASCIIToUTF16("2018-04"), field.value);
+}
+
+TEST(AutofillFieldTest, FillStreetAddressTextArea) {
+  AutofillField field;
+  field.form_control_type = "textarea";
+
+  base::string16 value = ASCIIToUTF16("123 Fake St.\n"
+                                      "Apt. 42");
+  AutofillField::FillFormField(field, value, "en-US", &field);
+  EXPECT_EQ(value, field.value);
+}
+
+TEST(AutofillFieldTest, FillStreetAddressTextField) {
+  AutofillField field;
+  field.form_control_type = "text";
+  field.set_server_type(ADDRESS_HOME_STREET_ADDRESS);
+
+  base::string16 value = ASCIIToUTF16("123 Fake St.\n"
+                                      "Apt. 42");
+  AutofillField::FillFormField(field, value, "en-US", &field);
+  EXPECT_EQ(ASCIIToUTF16("123 Fake St., Apt. 42"), field.value);
 }
 
 }  // namespace

@@ -51,10 +51,7 @@
 #include "ui/gfx/size.h"
 
 class AutomationProvider;
-class BalloonCollection;
 class Browser;
-class ExtensionProcessManager;
-class ExtensionService;
 class Notification;
 class Profile;
 class SavePackage;
@@ -78,6 +75,8 @@ class WebContents;
 
 namespace extensions {
 class Extension;
+class ExtensionSystem;
+class ProcessManager;
 }
 
 namespace history {
@@ -152,25 +151,6 @@ class OOBEWebuiReadyObserver : public content::NotificationObserver {
   DISALLOW_COPY_AND_ASSIGN(OOBEWebuiReadyObserver);
 };
 #endif  // defined(OS_CHROMEOS)
-
-// Watches for NewTabUI page loads for performance timing purposes.
-class NewTabUILoadObserver : public content::NotificationObserver {
- public:
-  explicit NewTabUILoadObserver(AutomationProvider* automation,
-                                Profile* profile);
-  virtual ~NewTabUILoadObserver();
-
-  // Overridden from content::NotificationObserver:
-  virtual void Observe(int type,
-                       const content::NotificationSource& source,
-                       const content::NotificationDetails& details) OVERRIDE;
-
- private:
-  content::NotificationRegistrar registrar_;
-  base::WeakPtr<AutomationProvider> automation_;
-
-  DISALLOW_COPY_AND_ASSIGN(NewTabUILoadObserver);
-};
 
 class NavigationControllerRestoredObserver
     : public content::NotificationObserver {
@@ -347,10 +327,10 @@ class ExtensionReadyNotificationObserver
     : public content::NotificationObserver {
  public:
   // Creates an observer that replies using the JSON automation interface.
-  ExtensionReadyNotificationObserver(ExtensionProcessManager* manager,
-                                     ExtensionService* service,
-                                     AutomationProvider* automation,
-                                     IPC::Message* reply_message);
+  ExtensionReadyNotificationObserver(
+      extensions::ExtensionSystem* extension_system,
+      AutomationProvider* automation,
+      IPC::Message* reply_message);
   virtual ~ExtensionReadyNotificationObserver();
 
   // Overridden from content::NotificationObserver:
@@ -362,8 +342,7 @@ class ExtensionReadyNotificationObserver
   void Init();
 
   content::NotificationRegistrar registrar_;
-  ExtensionProcessManager* manager_;
-  ExtensionService* service_;
+  extensions::ExtensionSystem* extension_system_;
   base::WeakPtr<AutomationProvider> automation_;
   scoped_ptr<IPC::Message> reply_message_;
   const extensions::Extension* extension_;
@@ -399,7 +378,7 @@ class ExtensionUnloadNotificationObserver
 // observer waits until all updated extensions have actually been loaded.
 class ExtensionsUpdatedObserver : public content::NotificationObserver {
  public:
-  ExtensionsUpdatedObserver(ExtensionProcessManager* manager,
+  ExtensionsUpdatedObserver(extensions::ProcessManager* manager,
                             AutomationProvider* automation,
                             IPC::Message* reply_message);
   virtual ~ExtensionsUpdatedObserver();
@@ -416,7 +395,7 @@ class ExtensionsUpdatedObserver : public content::NotificationObserver {
   void MaybeReply();
 
   content::NotificationRegistrar registrar_;
-  ExtensionProcessManager* manager_;
+  extensions::ProcessManager* manager_;
   base::WeakPtr<AutomationProvider> automation_;
   scoped_ptr<IPC::Message> reply_message_;
   bool updater_finished_;
@@ -774,7 +753,8 @@ class AutomationProviderBookmarkModelObserver : public BookmarkModelObserver {
   virtual ~AutomationProviderBookmarkModelObserver();
 
   // BookmarkModelObserver:
-  virtual void Loaded(BookmarkModel* model, bool ids_reassigned) OVERRIDE;
+  virtual void BookmarkModelLoaded(BookmarkModel* model,
+                                   bool ids_reassigned) OVERRIDE;
   virtual void BookmarkModelBeingDeleted(BookmarkModel* model) OVERRIDE;
   virtual void BookmarkNodeMoved(BookmarkModel* model,
                                  const BookmarkNode* old_parent,
@@ -872,7 +852,7 @@ class AllDownloadsCompleteObserver
       AutomationProvider* provider,
       IPC::Message* reply_message,
       content::DownloadManager* download_manager,
-      ListValue* pre_download_ids);
+      base::ListValue* pre_download_ids);
   virtual ~AllDownloadsCompleteObserver();
 
   // content::DownloadManager::Observer.
@@ -961,9 +941,6 @@ class AutomationProviderGetPasswordsObserver : public PasswordStoreConsumer {
   virtual ~AutomationProviderGetPasswordsObserver();
 
   // PasswordStoreConsumer implementation.
-  virtual void OnPasswordStoreRequestDone(
-      CancelableRequestProvider::Handle handle,
-      const std::vector<autofill::PasswordForm*>& result) OVERRIDE;
   virtual void OnGetPasswordStoreResults(
       const std::vector<autofill::PasswordForm*>& results) OVERRIDE;
 
@@ -1099,7 +1076,7 @@ class AppLaunchObserver : public content::NotificationObserver {
   AppLaunchObserver(content::NavigationController* controller,
                     AutomationProvider* automation,
                     IPC::Message* reply_message,
-                    extension_misc::LaunchContainer launch_container);
+                    extensions::LaunchContainer launch_container);
   virtual ~AppLaunchObserver();
 
   // Overridden from content::NotificationObserver:
@@ -1112,89 +1089,10 @@ class AppLaunchObserver : public content::NotificationObserver {
   base::WeakPtr<AutomationProvider> automation_;
   scoped_ptr<IPC::Message> reply_message_;
   content::NotificationRegistrar registrar_;
-  extension_misc::LaunchContainer launch_container_;
+  extensions::LaunchContainer launch_container_;
   int new_window_id_;
 
   DISALLOW_COPY_AND_ASSIGN(AppLaunchObserver);
-};
-
-// Allows the automation provider to wait until all the notification
-// processes are ready.
-class GetAllNotificationsObserver : public content::NotificationObserver {
- public:
-  GetAllNotificationsObserver(AutomationProvider* automation,
-                              IPC::Message* reply_message);
-  virtual ~GetAllNotificationsObserver();
-
-  // Overridden from content::NotificationObserver:
-  virtual void Observe(int type,
-                       const content::NotificationSource& source,
-                       const content::NotificationDetails& details) OVERRIDE;
-
- private:
-  // Sends a message via the |AutomationProvider|. |automation_| must be valid.
-  // Deletes itself after the message is sent.
-  void SendMessage();
-  // Returns a new dictionary describing the given notification.
-  base::DictionaryValue* NotificationToJson(const Notification* note);
-
-  content::NotificationRegistrar registrar_;
-  base::WeakPtr<AutomationProvider> automation_;
-  scoped_ptr<IPC::Message> reply_message_;
-
-  DISALLOW_COPY_AND_ASSIGN(GetAllNotificationsObserver);
-};
-
-// Allows the automation provider to wait for a new notification balloon
-// to appear and be ready.
-class NewNotificationBalloonObserver : public content::NotificationObserver {
- public:
-  NewNotificationBalloonObserver(AutomationProvider* provider,
-                                 IPC::Message* reply_message);
-  virtual ~NewNotificationBalloonObserver();
-
-  // Overridden from content::NotificationObserver:
-  virtual void Observe(int type,
-                       const content::NotificationSource& source,
-                       const content::NotificationDetails& details) OVERRIDE;
-
- private:
-  content::NotificationRegistrar registrar_;
-  base::WeakPtr<AutomationProvider> automation_;
-  scoped_ptr<IPC::Message> reply_message_;
-
-  DISALLOW_COPY_AND_ASSIGN(NewNotificationBalloonObserver);
-};
-
-// Allows the automation provider to wait for a given number of
-// notification balloons.
-class OnNotificationBalloonCountObserver
-    : public content::NotificationObserver {
- public:
-  OnNotificationBalloonCountObserver(AutomationProvider* provider,
-                                     IPC::Message* reply_message,
-                                     int count);
-  virtual ~OnNotificationBalloonCountObserver();
-
-  // Sends an automation reply message if |automation_| is still valid and the
-  // number of ready balloons matches the desired count. Deletes itself if the
-  // message is sent or if |automation_| is invalid.
-  void CheckBalloonCount();
-
-  // Overridden from content::NotificationObserver:
-  virtual void Observe(int type,
-                       const content::NotificationSource& source,
-                       const content::NotificationDetails& details) OVERRIDE;
-
- private:
-  content::NotificationRegistrar registrar_;
-  base::WeakPtr<AutomationProvider> automation_;
-  scoped_ptr<IPC::Message> reply_message_;
-
-  BalloonCollection* collection_;
-  int count_;
-
-  DISALLOW_COPY_AND_ASSIGN(OnNotificationBalloonCountObserver);
 };
 
 // Allows the automation provider to wait for a RENDERER_PROCESS_CLOSED

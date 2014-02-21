@@ -44,7 +44,7 @@ typedef BaseMultipleFieldsDateAndTimeInputType BaseDateTimeLocalInputType;
 typedef BaseChooserOnlyDateAndTimeInputType BaseDateTimeLocalInputType;
 #endif
 
-class DateTimeLocalInputType : public BaseDateTimeLocalInputType {
+class DateTimeLocalInputType FINAL : public BaseDateTimeLocalInputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -52,7 +52,6 @@ private:
     DateTimeLocalInputType(HTMLInputElement& element) : BaseDateTimeLocalInputType(element) { }
     virtual void countUsage() OVERRIDE;
     virtual const AtomicString& formControlType() const OVERRIDE;
-    virtual DateComponents::Type dateType() const OVERRIDE;
     virtual double valueAsDate() const OVERRIDE;
     virtual void setValueAsDate(double, ExceptionState&) const OVERRIDE;
     virtual StepRange createStepRange(AnyStepHandling) const;

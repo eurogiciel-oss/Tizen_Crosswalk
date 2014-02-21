@@ -10,11 +10,11 @@
 #include "base/basictypes.h"
 #include "chrome/browser/extensions/api/profile_keyed_api_factory.h"
 #include "chrome/common/extensions/command.h"
-#include "chrome/common/extensions/extension.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
 #include "content/public/browser/notification_source.h"
+#include "extensions/common/extension.h"
 
 class Profile;
 
@@ -67,6 +67,11 @@ class CommandService : public ProfileKeyedAPI,
   // Convenience method to get the CommandService for a profile.
   static CommandService* Get(Profile* profile);
 
+  // Return true if the specified accelerator is one of the following multimedia
+  // keys: Next Track key, Previous Track key, Stop Media key, Play/Pause Media
+  // key, without any modifiers.
+  static bool IsMediaKey(const ui::Accelerator& accelerator);
+
   // Gets the command (if any) for the browser action of an extension given
   // its |extension_id|. The function consults the master list to see if
   // the command is active. Returns false if the extension has no browser
@@ -88,17 +93,6 @@ class CommandService : public ProfileKeyedAPI,
                             QueryType type,
                             extensions::Command* command,
                             bool* active);
-
-  // Gets the command (if any) for the script badge of an extension given
-  // its |extension_id|. The function consults the master list to see if
-  // the command is active. Returns false if the extension has no script
-  // badge. Returns false if the command is not active and |type| requested
-  // is ACTIVE_ONLY. |command| contains the command found and |active| (if not
-  // NULL) contains whether |command| is active.
-  bool GetScriptBadgeCommand(const std::string& extension_id,
-                             QueryType type,
-                             extensions::Command* command,
-                             bool* active);
 
   // Gets the active command (if any) for the named commands of an extension
   // given its |extension_id|. The function consults the master list to see if
@@ -167,8 +161,7 @@ class CommandService : public ProfileKeyedAPI,
   // An enum specifying the types of icons that can have a command.
   enum ExtensionActionType {
     BROWSER_ACTION,
-    PAGE_ACTION,
-    SCRIPT_BADGE,
+    PAGE_ACTION
   };
 
   // Assigns initial keybinding for a given |extension|'s page action, browser

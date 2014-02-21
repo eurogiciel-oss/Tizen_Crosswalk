@@ -24,13 +24,12 @@
 #include "config.h"
 #include "core/dom/TagNodeList.h"
 
-#include "core/dom/Element.h"
 #include "core/dom/NodeRareData.h"
 #include "wtf/Assertions.h"
 
 namespace WebCore {
 
-TagNodeList::TagNodeList(PassRefPtr<Node> rootNode, CollectionType type, const AtomicString& namespaceURI, const AtomicString& localName)
+TagNodeList::TagNodeList(PassRefPtr<ContainerNode> rootNode, CollectionType type, const AtomicString& namespaceURI, const AtomicString& localName)
     : LiveNodeList(rootNode, type, DoNotInvalidateOnAttributeChanges)
     , m_namespaceURI(namespaceURI)
     , m_localName(localName)
@@ -46,22 +45,22 @@ TagNodeList::~TagNodeList()
         ownerNode()->nodeLists()->removeCacheWithQualifiedName(this, m_namespaceURI, m_localName);
 }
 
-bool TagNodeList::nodeMatches(Element* testNode) const
+bool TagNodeList::nodeMatches(const Element& testNode) const
 {
     // Implements http://dvcs.w3.org/hg/domcore/raw-file/tip/Overview.html#concept-getelementsbytagnamens
-    if (m_localName != starAtom && m_localName != testNode->localName())
+    if (m_localName != starAtom && m_localName != testNode.localName())
         return false;
 
-    return m_namespaceURI == starAtom || m_namespaceURI == testNode->namespaceURI();
+    return m_namespaceURI == starAtom || m_namespaceURI == testNode.namespaceURI();
 }
 
-HTMLTagNodeList::HTMLTagNodeList(PassRefPtr<Node> rootNode, const AtomicString& localName)
+HTMLTagNodeList::HTMLTagNodeList(PassRefPtr<ContainerNode> rootNode, const AtomicString& localName)
     : TagNodeList(rootNode, HTMLTagNodeListType, starAtom, localName)
     , m_loweredLocalName(localName.lower())
 {
 }
 
-bool HTMLTagNodeList::nodeMatches(Element* testNode) const
+bool HTMLTagNodeList::nodeMatches(const Element& testNode) const
 {
     return nodeMatchesInlined(testNode);
 }

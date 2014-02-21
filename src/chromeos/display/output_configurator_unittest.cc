@@ -4,6 +4,7 @@
 
 #include "chromeos/display/output_configurator.h"
 
+#include <cmath>
 #include <cstdarg>
 #include <map>
 #include <string>
@@ -101,7 +102,7 @@ class TestDelegate : public OutputConfigurator::Delegate {
   static const int kXRandREventBase = 10;
 
   TestDelegate()
-      : configure_crtc_result_(true),
+      : max_configurable_pixels_(0),
         hdcp_state_(HDCP_STATE_UNDESIRED) {}
   virtual ~TestDelegate() {}
 
@@ -113,8 +114,8 @@ class TestDelegate : public OutputConfigurator::Delegate {
     outputs_ = outputs;
   }
 
-  void set_configure_crtc_result(bool result) {
-    configure_crtc_result_ = result;
+  void set_max_configurable_pixels(int pixels) {
+    max_configurable_pixels_ = pixels;
   }
 
   void set_hdcp_state(HDCPState state) { hdcp_state_ = state; }
@@ -126,6 +127,11 @@ class TestDelegate : public OutputConfigurator::Delegate {
     std::string actions = actions_;
     actions_.clear();
     return actions;
+  }
+
+  const OutputConfigurator::CoordinateTransformation& get_ctm(
+      int touch_device_id) {
+    return ctms_[touch_device_id];
   }
 
   // OutputConfigurator::Delegate overrides:
@@ -155,7 +161,21 @@ class TestDelegate : public OutputConfigurator::Delegate {
                              int x,
                              int y) OVERRIDE {
     AppendAction(GetCrtcAction(crtc, x, y, mode, output));
-    return configure_crtc_result_;
+
+    if (max_configurable_pixels_ == 0)
+      return true;
+
+    OutputConfigurator::OutputSnapshot* snapshot = GetOutputFromId(output);
+    if (!snapshot)
+      return false;
+
+    const OutputConfigurator::ModeInfo* mode_info =
+        OutputConfigurator::GetModeInfo(*snapshot, mode);
+    if (!mode_info)
+      return false;
+
+    return mode_info->width * mode_info->height <= max_configurable_pixels_;
+
   }
   virtual void CreateFrameBuffer(
       int width,
@@ -171,6 +191,7 @@ class TestDelegate : public OutputConfigurator::Delegate {
       int touch_device_id,
       const OutputConfigurator::CoordinateTransformation& ctm) OVERRIDE {
     AppendAction(GetCTMAction(touch_device_id, ctm));
+    ctms_[touch_device_id] = ctm;
   }
   virtual void SendProjectingStateToPowerManager(bool projecting) OVERRIDE {
     AppendAction(projecting ? kProjectingOn : kProjectingOff);
@@ -205,15 +226,31 @@ class TestDelegate : public OutputConfigurator::Delegate {
     actions_ += action;
   }
 
+  OutputConfigurator::OutputSnapshot* GetOutputFromId(RROutput output_id) {
+    for (unsigned int i = 0; i < outputs_.size(); i++) {
+      if (outputs_[i].output == output_id)
+        return &outputs_[i];
+    }
+    return NULL;
+  }
+
   std::map<RRMode, ModeDetails> modes_;
+
+  // Most-recently-configured transformation matrices, keyed by touch device ID.
+  std::map<int, OutputConfigurator::CoordinateTransformation> ctms_;
 
   // Outputs to be returned by GetOutputs().
   std::vector<OutputConfigurator::OutputSnapshot> outputs_;
 
   std::string actions_;
 
-  // Return value returned by ConfigureCrtc().
-  bool configure_crtc_result_;
+  // |max_configurable_pixels_| represents the maximum number of pixels that
+  // ConfigureCrtc will support.  Tests can use this to force ConfigureCrtc
+  // to fail if attempting to set a resolution that is higher than what
+  // a device might support under a given circumstance.
+  // A value of 0 means that no limit is enforced and ConfigureCrtc will
+  // return success regardless of the resolution.
+  int  max_configurable_pixels_;
 
   // Result value of GetHDCPState().
   HDCPState hdcp_state_;
@@ -353,7 +390,6 @@ class OutputConfiguratorTest : public testing::Test {
     o->crtc = 10;
     o->current_mode = kSmallModeId;
     o->native_mode = kSmallModeId;
-    o->is_internal = true;
     o->type = OUTPUT_TYPE_INTERNAL;
     o->is_aspect_preserving_scaling = true;
     o->mode_infos[kSmallModeId] = small_mode_info;
@@ -366,7 +402,6 @@ class OutputConfiguratorTest : public testing::Test {
     o->crtc = 11;
     o->current_mode = kBigModeId;
     o->native_mode = kBigModeId;
-    o->is_internal = false;
     o->type = OUTPUT_TYPE_HDMI;
     o->is_aspect_preserving_scaling = true;
     o->mode_infos[kSmallModeId] = small_mode_info;
@@ -752,6 +787,47 @@ TEST_F(OutputConfiguratorTest, SetDisplayPower) {
   EXPECT_EQ(1, observer_.num_changes());
 }
 
+TEST_F(OutputConfiguratorTest, Casting) {
+  InitWithSingleOutput();
+
+  // Notify configurator that casting session is started.
+  configurator_.OnCastingSessionStartedOrStopped(true);
+  EXPECT_EQ(kProjectingOn, delegate_->GetActionsAndClear());
+
+  // Verify that the configurator keeps a count of active casting sessions
+  // instead of treating it as a single global state.
+  configurator_.OnCastingSessionStartedOrStopped(true);
+  EXPECT_EQ(kProjectingOn, delegate_->GetActionsAndClear());
+  configurator_.OnCastingSessionStartedOrStopped(false);
+  EXPECT_EQ(kProjectingOn, delegate_->GetActionsAndClear());
+
+  // Turn all displays off and check that projecting is not turned off.
+  configurator_.SetDisplayPower(DISPLAY_POWER_ALL_OFF,
+                                OutputConfigurator::kSetDisplayPowerNoFlags);
+  EXPECT_EQ(JoinActions(kGrab,
+                        GetFramebufferAction(kSmallModeWidth, kSmallModeHeight,
+                            outputs_[0].crtc, 0).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, 0,
+                            outputs_[0].output).c_str(),
+                        kUngrab, NULL),
+            delegate_->GetActionsAndClear());
+
+  // Turn all displays back on.
+  configurator_.SetDisplayPower(DISPLAY_POWER_ALL_ON,
+                                OutputConfigurator::kSetDisplayPowerNoFlags);
+  EXPECT_EQ(JoinActions(kGrab,
+                        GetFramebufferAction(kSmallModeWidth, kSmallModeHeight,
+                            outputs_[0].crtc, 0).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kSmallModeId,
+                            outputs_[0].output).c_str(),
+                        kForceDPMS, kUngrab, NULL),
+            delegate_->GetActionsAndClear());
+
+  // Notify configurator that casting session is ended.
+  configurator_.OnCastingSessionStartedOrStopped(false);
+  EXPECT_EQ(kProjectingOff, delegate_->GetActionsAndClear());
+}
+
 TEST_F(OutputConfiguratorTest, SuspendAndResume) {
   InitWithSingleOutput();
 
@@ -1009,9 +1085,9 @@ TEST_F(OutputConfiguratorTest, AvoidUnnecessaryProbes) {
   EXPECT_FALSE(test_api_.TriggerConfigureTimeout());
   EXPECT_EQ(kNoActions, delegate_->GetActionsAndClear());
 
-  // Tell the delegate to report failure, which should result in the
-  // second output sticking with its native mode.
-  delegate_->set_configure_crtc_result(false);
+  // Lower the limit for which the delegate will succeed, which should result
+  // in the second output sticking with its native mode.
+  delegate_->set_max_configurable_pixels(1);
   UpdateOutputs(2, true);
   EXPECT_EQ(JoinActions(kUpdateXRandR, kGrab,
                         GetFramebufferAction(kSmallModeWidth, kSmallModeHeight,
@@ -1020,12 +1096,24 @@ TEST_F(OutputConfiguratorTest, AvoidUnnecessaryProbes) {
                             outputs_[0].output).c_str(),
                         GetCrtcAction(outputs_[1].crtc, 0, 0, kSmallModeId,
                             outputs_[1].output).c_str(),
+                        GetFramebufferAction(kBigModeWidth,
+                            kSmallModeHeight + kBigModeHeight +
+                              OutputConfigurator::kVerticalGap,
+                            outputs_[0].crtc, outputs_[1].crtc).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kSmallModeId,
+                            outputs_[0].output).c_str(),
+                        GetCrtcAction(outputs_[1].crtc, 0, kSmallModeHeight +
+                            OutputConfigurator::kVerticalGap, kBigModeId,
+                            outputs_[1].output).c_str(),
+                        GetCrtcAction(outputs_[1].crtc, 0, kSmallModeHeight +
+                            OutputConfigurator::kVerticalGap, kSmallModeId,
+                            outputs_[1].output).c_str(),
                         kUngrab, kProjectingOn, NULL),
             delegate_->GetActionsAndClear());
 
-  // An change event reporting a mode change on the second output should
+  // A change event reporting a mode change on the second output should
   // trigger another reconfigure.
-  delegate_->set_configure_crtc_result(true);
+  delegate_->set_max_configurable_pixels(0);
   test_api_.SendOutputChangeEvent(
       outputs_[1].output, outputs_[1].crtc, outputs_[1].mirror_mode, true);
   EXPECT_TRUE(test_api_.TriggerConfigureTimeout());
@@ -1221,6 +1309,140 @@ TEST_F(OutputConfiguratorTest, OutputProtectionTwoClients) {
   EXPECT_EQ(GetSetHDCPStateAction(outputs_[1].output,
                                   HDCP_STATE_UNDESIRED).c_str(),
             delegate_->GetActionsAndClear());
+}
+
+TEST_F(OutputConfiguratorTest, CTMForMultiScreens) {
+  outputs_[0].touch_device_id = 1;
+  outputs_[1].touch_device_id = 2;
+
+  UpdateOutputs(2, false);
+  configurator_.Init(false);
+  state_controller_.set_state(STATE_DUAL_EXTENDED);
+  configurator_.Start(0);
+
+  const int kDualHeight =
+      kSmallModeHeight + OutputConfigurator::kVerticalGap + kBigModeHeight;
+  const int kDualWidth = kBigModeWidth;
+
+  OutputConfigurator::CoordinateTransformation ctm1 = delegate_->get_ctm(1);
+  OutputConfigurator::CoordinateTransformation ctm2 = delegate_->get_ctm(2);
+
+  EXPECT_EQ(kSmallModeHeight - 1, round((kDualHeight - 1) * ctm1.y_scale));
+  EXPECT_EQ(0, round((kDualHeight - 1) * ctm1.y_offset));
+
+  EXPECT_EQ(kBigModeHeight - 1, round((kDualHeight - 1) * ctm2.y_scale));
+  EXPECT_EQ(kSmallModeHeight + OutputConfigurator::kVerticalGap,
+            round((kDualHeight - 1) * ctm2.y_offset));
+
+  EXPECT_EQ(kSmallModeWidth - 1, round((kDualWidth - 1) * ctm1.x_scale));
+  EXPECT_EQ(0, round((kDualWidth - 1) * ctm1.x_offset));
+
+  EXPECT_EQ(kBigModeWidth - 1, round((kDualWidth - 1) * ctm2.x_scale));
+  EXPECT_EQ(0, round((kDualWidth - 1) * ctm2.x_offset));
+}
+
+TEST_F(OutputConfiguratorTest, HandleConfigureCrtcFailure) {
+  InitWithSingleOutput();
+
+  // kFirstMode represents the first mode in the list and
+  // also the mode that we are requesting the output_configurator
+  // to choose.  The test will be setup so that this mode will fail
+  // and it will have to choose the next best option.
+  const int kFirstMode = 11;
+
+  // Give the mode_info lists a few reasonable modes.
+  for (unsigned int i = 0; i < arraysize(outputs_); i++) {
+    outputs_[i].mode_infos.clear();
+
+    int current_mode = kFirstMode;
+    outputs_[i].mode_infos[current_mode++] = OutputConfigurator::ModeInfo(
+        2560, 1600, false, 60.0);
+    outputs_[i].mode_infos[current_mode++] = OutputConfigurator::ModeInfo(
+        1024, 768, false, 60.0);
+    outputs_[i].mode_infos[current_mode++] = OutputConfigurator::ModeInfo(
+        1280, 720, false, 60.0);
+    outputs_[i].mode_infos[current_mode++] = OutputConfigurator::ModeInfo(
+        1920, 1080, false, 60.0);
+    outputs_[i].mode_infos[current_mode++] = OutputConfigurator::ModeInfo(
+        1920, 1080, false, 40.0);
+
+    outputs_[i].current_mode = kFirstMode;
+    outputs_[i].native_mode = kFirstMode;
+  }
+
+  configurator_.Init(false);
+
+  // First test simply fails in STATE_SINGLE mode.   This is probably
+  // unrealistic but the want to make sure any assumptions don't
+  // creep in.
+  delegate_->set_max_configurable_pixels(
+      outputs_[0].mode_infos[kFirstMode + 2].width *
+      outputs_[0].mode_infos[kFirstMode + 2].height);
+  state_controller_.set_state(STATE_SINGLE);
+  UpdateOutputs(1, true);
+
+  EXPECT_EQ(JoinActions(kUpdateXRandR, kGrab,
+                        GetFramebufferAction(2560, 1600,
+                            outputs_[0].crtc, 0).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kFirstMode,
+                            outputs_[0].output).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kFirstMode + 3,
+                            outputs_[0].output).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kFirstMode + 2,
+                            outputs_[0].output).c_str(),
+                        kUngrab, kProjectingOff, NULL),
+            delegate_->GetActionsAndClear());
+
+  // This test should attempt to configure a mirror mode that will not succeed
+  // and should end up in extended mode.
+  delegate_->set_max_configurable_pixels(
+      outputs_[0].mode_infos[kFirstMode + 3].width *
+      outputs_[0].mode_infos[kFirstMode + 3].height);
+  state_controller_.set_state(STATE_DUAL_MIRROR);
+  UpdateOutputs(2, true);
+
+  EXPECT_EQ(JoinActions(kUpdateXRandR, kGrab,
+                        GetFramebufferAction(
+                            outputs_[0].mode_infos[kFirstMode].width,
+                            outputs_[0].mode_infos[kFirstMode].height,
+                            outputs_[0].crtc,
+                            outputs_[1].crtc).c_str(),
+                        GetCrtcAction(outputs_[0].crtc,
+                            0, 0, kFirstMode, outputs_[0].output).c_str(),
+                        // First mode tried is expected to fail and it will
+                        // retry wil the 4th mode in the list.
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kFirstMode + 3,
+                            outputs_[0].output).c_str(),
+                        // Then attempt to configure crtc1 with the first mode.
+                        GetCrtcAction(outputs_[1].crtc, 0, 0, kFirstMode,
+                            outputs_[1].output).c_str(),
+                        GetCrtcAction(outputs_[1].crtc, 0, 0, kFirstMode + 3,
+                            outputs_[1].output).c_str(),
+                        // Since it was requested to go into mirror mode
+                        // and the configured modes were different, it
+                        // should now try and setup a valid configurable
+                        // extended mode.
+                        GetFramebufferAction(
+                            outputs_[0].mode_infos[kFirstMode].width,
+                            outputs_[0].mode_infos[kFirstMode].height +
+                              outputs_[1].mode_infos[kFirstMode].height +
+                              OutputConfigurator::kVerticalGap,
+                            outputs_[0].crtc, outputs_[1].crtc).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kFirstMode,
+                            outputs_[0].output).c_str(),
+                        GetCrtcAction(outputs_[0].crtc, 0, 0, kFirstMode + 3,
+                            outputs_[0].output).c_str(),
+                        GetCrtcAction(outputs_[1].crtc, 0,
+                            outputs_[1].mode_infos[kFirstMode].height +
+                              OutputConfigurator::kVerticalGap, kFirstMode,
+                            outputs_[1].output).c_str(),
+                        GetCrtcAction(outputs_[1].crtc, 0,
+                            outputs_[1].mode_infos[kFirstMode].height +
+                              OutputConfigurator::kVerticalGap, kFirstMode + 3,
+                            outputs_[1].output).c_str(),
+                        kUngrab, kProjectingOn, NULL),
+            delegate_->GetActionsAndClear());
+
 }
 
 }  // namespace chromeos

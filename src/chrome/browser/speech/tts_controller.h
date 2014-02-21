@@ -12,6 +12,7 @@
 
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/singleton.h"
+#include "base/memory/weak_ptr.h"
 #include "url/gurl.h"
 
 class Utterance;
@@ -66,6 +67,10 @@ struct VoiceData {
   std::string extension_id;
   std::set<TtsEventType> events;
 
+  // If true, the synthesis engine is a remote network resource.
+  // It may be higher latency and may incur bandwidth costs.
+  bool remote;
+
   // If true, this is implemented by this platform's subclass of
   // TtsPlatformImpl. If false, this is implemented by an extension.
   bool native;
@@ -97,7 +102,7 @@ class Utterance {
   // when the utterance is done speaking. Before speaking this utterance,
   // its other parameters like text, rate, pitch, etc. should all be set.
   explicit Utterance(Profile* profile);
-  ~Utterance();
+  virtual ~Utterance();
 
   // Sends an event to the delegate. If the event type is TTS_EVENT_END
   // or TTS_EVENT_ERROR, deletes the utterance. If |char_index| is -1,
@@ -171,8 +176,11 @@ class Utterance {
     extension_id_ = extension_id;
   }
 
-  UtteranceEventDelegate* event_delegate() const { return event_delegate_; }
-  void set_event_delegate(UtteranceEventDelegate* event_delegate) {
+  UtteranceEventDelegate* event_delegate() const {
+    return event_delegate_.get();
+  }
+  void set_event_delegate(
+      base::WeakPtr<UtteranceEventDelegate> event_delegate) {
     event_delegate_ = event_delegate;
   }
 
@@ -180,6 +188,9 @@ class Utterance {
   Profile* profile() const { return profile_; }
   int id() const { return id_; }
   bool finished() const { return finished_; }
+
+ protected:
+  void set_finished_for_testing(bool finished) { finished_ = finished; }
 
  private:
   // The profile that initiated this utterance.
@@ -216,9 +227,7 @@ class Utterance {
   GURL src_url_;
 
   // The delegate to be called when an utterance event is fired.
-  // Weak reference; it will be cleared after we fire a "final" event
-  // (as determined by IsFinalTtsEventType).
-  UtteranceEventDelegate* event_delegate_;
+  base::WeakPtr<UtteranceEventDelegate> event_delegate_;
 
   // The parsed options.
   std::string voice_name_;
@@ -276,10 +285,6 @@ class TtsController {
   // Return a list of all available voices, including the native voice,
   // if supported, and all voices registered by extensions.
   void GetVoices(Profile* profile, std::vector<VoiceData>* out_voices);
-
-  // Called by TtsExtensionLoaderChromeOs::LoadTtsExtension when it
-  // finishes loading the built-in TTS component extension.
-  void RetrySpeakingQueuedUtterances();
 
   // Called by the extension system or platform implementation when the
   // list of voices may have changed and should be re-queried.

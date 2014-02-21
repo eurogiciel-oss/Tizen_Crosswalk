@@ -6,7 +6,7 @@
 #define CONTENT_BROWSER_RENDERER_HOST_P2P_SOCKET_HOST_H_
 
 #include "content/common/content_export.h"
-#include "content/common/p2p_sockets.h"
+#include "content/public/common/p2p_socket_type.h"
 #include "net/base/ip_endpoint.h"
 #include "net/udp/datagram_socket.h"
 
@@ -45,6 +45,8 @@ class CONTENT_EXPORT P2PSocketHost {
 
   virtual P2PSocketHost* AcceptIncomingTcpConnection(
       const net::IPEndPoint& remote_address, int id) = 0;
+
+  virtual bool SetOption(P2PSocketOption option, int value) = 0;
 
  protected:
   friend class P2PSocketHostTcpTestBase;

@@ -93,8 +93,6 @@ class GpuChannelHost : public IPC::Sender,
   // Must be called on the main thread (as defined by the factory).
   static scoped_refptr<GpuChannelHost> Create(
       GpuChannelHostFactory* factory,
-      int gpu_host_id,
-      int client_id,
       const gpu::GPUInfo& gpu_info,
       const IPC::ChannelHandle& channel_handle);
 
@@ -151,9 +149,6 @@ class GpuChannelHost : public IPC::Sender,
   void RemoveRoute(int route_id);
 
   GpuChannelHostFactory* factory() const { return factory_; }
-  int gpu_host_id() const { return gpu_host_id_; }
-
-  int client_id() const { return client_id_; }
 
   // Returns a handle to the shared memory that can be sent via IPC to the
   // GPU process. The caller is responsible for ensuring it is closed. Returns
@@ -182,8 +177,6 @@ class GpuChannelHost : public IPC::Sender,
  private:
   friend class base::RefCountedThreadSafe<GpuChannelHost>;
   GpuChannelHost(GpuChannelHostFactory* factory,
-                 int gpu_host_id,
-                 int client_id,
                  const gpu::GPUInfo& gpu_info);
   virtual ~GpuChannelHost();
   void Connect(const IPC::ChannelHandle& channel_handle);
@@ -229,7 +222,7 @@ class GpuChannelHost : public IPC::Sender,
     typedef base::hash_map<int, GpuListenerInfo> ListenerMap;
     ListenerMap listeners_;
 
-    // Protexts all fields below this one.
+    // Protects all fields below this one.
     mutable base::Lock lock_;
 
     // Whether the channel has been lost.
@@ -248,8 +241,6 @@ class GpuChannelHost : public IPC::Sender,
   // - |next_gpu_memory_buffer_id_|, atomic type
   // - |proxies_|, protected by |context_lock_|
   GpuChannelHostFactory* const factory_;
-  const int client_id_;
-  const int gpu_host_id_;
 
   const gpu::GPUInfo gpu_info_;
 

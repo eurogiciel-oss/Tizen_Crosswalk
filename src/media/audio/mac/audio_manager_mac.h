@@ -10,7 +10,6 @@
 
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
-#include "base/message_loop/message_loop_proxy.h"
 #include "media/audio/audio_manager_base.h"
 #include "media/audio/mac/aggregate_device_manager.h"
 #include "media/audio/mac/audio_device_listener_mac.h"
@@ -22,7 +21,7 @@ namespace media {
 // the AudioManager class.
 class MEDIA_EXPORT AudioManagerMac : public AudioManagerBase {
  public:
-  AudioManagerMac();
+  AudioManagerMac(AudioLogFactory* audio_log_factory);
 
   // Implementation of AudioManager.
   virtual bool HasAudioOutputDevices() OVERRIDE;
@@ -62,6 +61,17 @@ class MEDIA_EXPORT AudioManagerMac : public AudioManagerBase {
   static int HardwareSampleRateForDevice(AudioDeviceID device_id);
   static int HardwareSampleRate();
 
+  // OSX has issues with starting streams as the sytem goes into suspend and
+  // immediately after it wakes up from resume.  See http://crbug.com/160920.
+  // As a workaround we delay Start() when it occurs after suspend and for a
+  // small amount of time after resume.
+  //
+  // Output streams should consult ShouldDeferOutputStreamStart() and if true
+  // check the value again after |kStartDelayInSecsForPowerEvents| has elapsed.
+  // If false, the stream may be started immediately.
+  enum { kStartDelayInSecsForPowerEvents = 1 };
+  bool ShouldDeferOutputStreamStart();
+
  protected:
   virtual ~AudioManagerMac();
 
@@ -90,6 +100,12 @@ class MEDIA_EXPORT AudioManagerMac : public AudioManagerBase {
   AudioDeviceID current_output_device_;
 
   AggregateDeviceManager aggregate_device_manager_;
+
+  // Helper class which monitors power events to determine if output streams
+  // should defer Start() calls.  Required to workaround an OSX bug.  See
+  // http://crbug.com/160920 for more details.
+  class AudioPowerObserver;
+  scoped_ptr<AudioPowerObserver> power_observer_;
 
   DISALLOW_COPY_AND_ASSIGN(AudioManagerMac);
 };

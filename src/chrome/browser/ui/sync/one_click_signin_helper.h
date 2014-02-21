@@ -79,7 +79,10 @@ class OneClickSigninHelper
   // Argument to CanOffer().
   enum CanOfferFor {
     CAN_OFFER_FOR_ALL,
-    CAN_OFFER_FOR_INTERSTITAL_ONLY
+    CAN_OFFER_FOR_INTERSTITAL_ONLY,
+    CAN_OFFER_FOR_SECONDARY_ACCOUNT
+    // TODO(guohui): needs to handle adding secondary account through
+    // interstitial.
   };
 
   static void CreateForWebContentsWithPasswordManager(
@@ -120,6 +123,28 @@ class OneClickSigninHelper
                                     int child_id,
                                     int route_id);
 
+  // Handles cross account sign in error. If the supplied |email| does not match
+  // the last signed in email of the current profile, then Chrome will show a
+  // confirmation dialog before starting sync. It returns true if there is a
+  // cross ccount error, and false otherwise.
+  static bool HandleCrossAccountError(
+      content::WebContents* contents,
+      const std::string& session_index,
+      const std::string& email,
+      const std::string& password,
+      const std::string& oauth_code,
+      OneClickSigninHelper::AutoAccept auto_accept,
+      signin::Source source,
+      OneClickSigninSyncStarter::StartSyncMode start_mode,
+      OneClickSigninSyncStarter::Callback sync_callback);
+
+  // If the |source| is not settings page/webstore, redirects to
+  // the NTP/Apps page.
+  static void RedirectToNtpOrAppsPageIfNecessary(
+      content::WebContents* contents, signin::Source source);
+
+  static void ShowSigninErrorBubble(Browser* browser, const std::string& error);
+
   // Remove the item currently at the top of the history list if it's
   // the Gaia redirect URL. Due to limitations of the NavigationController
   // this cannot be done until a new page becomes "current".
@@ -150,8 +175,6 @@ class OneClickSigninHelper
                            CanOfferOnIOThreadNoIOData);
   FRIEND_TEST_ALL_PREFIXES(OneClickSigninHelperIOTest,
                            CanOfferOnIOThreadBadURL);
-  FRIEND_TEST_ALL_PREFIXES(OneClickSigninHelperIOTest,
-                           CanOfferOnIOThreadReferrer);
   FRIEND_TEST_ALL_PREFIXES(OneClickSigninHelperIOTest,
                            CanOfferOnIOThreadDisabled);
   FRIEND_TEST_ALL_PREFIXES(OneClickSigninHelperIOTest,
@@ -184,7 +207,6 @@ class OneClickSigninHelper
   // origin of |url| is a valid Gaia sign in origin.  This function is meant
   // to called only from the IO thread.
   static Offer CanOfferOnIOThreadImpl(const GURL& url,
-                                      const std::string& referrer,
                                       base::SupportsUserData* request,
                                       ProfileIOData* io_data);
 
@@ -208,7 +230,6 @@ class OneClickSigninHelper
                                   int route_id);
 
   void RedirectToSignin();
-  void ShowSigninErrorBubble(Browser* browser, const std::string& error);
 
   // Clear all data member of the helper, except for the error.
   void CleanTransientState();
@@ -226,7 +247,7 @@ class OneClickSigninHelper
   void PasswordSubmitted(const autofill::PasswordForm& form);
 
   // content::WebContentsObserver overrides.
-  virtual void NavigateToPendingEntry(
+  virtual void DidStartNavigationToPendingEntry(
       const GURL& url,
       content::NavigationController::ReloadType reload_type) OVERRIDE;
   virtual void DidNavigateMainFrame(

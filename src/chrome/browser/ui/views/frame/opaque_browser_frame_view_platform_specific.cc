@@ -6,14 +6,14 @@
 
 #include "build/build_config.h"
 
-#if defined(OS_WIN) || defined(OS_CHROMEOS)
+#if defined(OS_WIN)
 
 // static
 OpaqueBrowserFrameViewPlatformSpecific*
 OpaqueBrowserFrameViewPlatformSpecific::Create(
     OpaqueBrowserFrameView* view,
     OpaqueBrowserFrameViewLayout* layout) {
-  return 0;
+  return new OpaqueBrowserFrameViewPlatformSpecific();
 }
 
 #endif

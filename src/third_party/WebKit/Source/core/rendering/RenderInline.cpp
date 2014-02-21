@@ -26,10 +26,10 @@
 #include "core/dom/FullscreenElementStack.h"
 #include "core/page/Chrome.h"
 #include "core/page/Page.h"
-#include "core/platform/graphics/GraphicsContext.h"
 #include "core/rendering/GraphicsContextAnnotator.h"
 #include "core/rendering/HitTestResult.h"
 #include "core/rendering/InlineTextBox.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/RenderBlock.h"
 #include "core/rendering/RenderFlowThread.h"
 #include "core/rendering/RenderFullScreen.h"
@@ -40,6 +40,7 @@
 #include "core/rendering/style/StyleInheritedData.h"
 #include "platform/geometry/FloatQuad.h"
 #include "platform/geometry/TransformState.h"
+#include "platform/graphics/GraphicsContext.h"
 
 using namespace std;
 
@@ -315,7 +316,7 @@ void RenderInline::addChildIgnoringContinuation(RenderObject* newChild, RenderOb
         if (RenderObject* positionedAncestor = inFlowPositionedInlineAncestor(this))
             newStyle->setPosition(positionedAncestor->style()->position());
 
-        RenderBlock* newBox = RenderBlock::createAnonymous(&document());
+        RenderBlockFlow* newBox = RenderBlockFlow::createAnonymous(&document());
         newBox->setStyle(newStyle.release());
         RenderBoxModelObject* oldContinuation = continuation();
         setContinuation(newBox);
@@ -695,8 +696,6 @@ static LayoutUnit computeMargin(const RenderInline* renderer, const Length& marg
         return margin.value();
     if (margin.isPercent())
         return minimumValueForLength(margin, max<LayoutUnit>(0, renderer->containingBlock()->availableLogicalWidth()));
-    if (margin.isViewportPercentage())
-        return valueForLength(margin, 0, renderer->view());
     return 0;
 }
 
@@ -998,7 +997,7 @@ LayoutRect RenderInline::linesVisualOverflowBoundingBox() const
 
 LayoutRect RenderInline::clippedOverflowRectForRepaint(const RenderLayerModelObject* repaintContainer) const
 {
-    ASSERT(!view() || !view()->layoutStateEnabled());
+    ASSERT(!view() || !view()->layoutStateEnabled() || LayoutRectRecorder::shouldRecordLayoutRects());
 
     if (!firstLineBoxIncludingCulling() && !continuation())
         return LayoutRect();
@@ -1289,10 +1288,10 @@ LayoutUnit RenderInline::lineHeight(bool firstLine, LineDirectionMode /*directio
     if (firstLine && document().styleEngine()->usesFirstLineRules()) {
         RenderStyle* s = style(firstLine);
         if (s != style())
-            return s->computedLineHeight(view());
+            return s->computedLineHeight();
     }
 
-    return style()->computedLineHeight(view());
+    return style()->computedLineHeight();
 }
 
 int RenderInline::baselinePosition(FontBaseline baselineType, bool firstLine, LineDirectionMode direction, LinePositionMode linePositionMode) const

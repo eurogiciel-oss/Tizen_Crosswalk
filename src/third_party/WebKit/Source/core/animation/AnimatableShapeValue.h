@@ -36,7 +36,7 @@
 
 namespace WebCore {
 
-class AnimatableShapeValue : public AnimatableValue {
+class AnimatableShapeValue FINAL : public AnimatableValue {
 public:
     virtual ~AnimatableShapeValue() { }
     static PassRefPtr<AnimatableShapeValue> create(ShapeValue* shape)
@@ -47,11 +47,13 @@ public:
 
 protected:
     virtual PassRefPtr<AnimatableValue> interpolateTo(const AnimatableValue*, double fraction) const OVERRIDE;
+    virtual bool usesDefaultInterpolationWith(const AnimatableValue*) const OVERRIDE;
 
 private:
     AnimatableShapeValue(ShapeValue* shape)
         : m_shape(shape)
     {
+        ASSERT(m_shape);
     }
     virtual AnimatableType type() const OVERRIDE { return TypeShapeValue; }
     virtual bool equalTo(const AnimatableValue*) const OVERRIDE;

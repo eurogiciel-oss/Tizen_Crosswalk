@@ -168,13 +168,7 @@ void TrayPower::UpdateAfterShelfAlignmentChange(ShelfAlignment alignment) {
 void TrayPower::OnPowerStatusChanged() {
   RecordChargerType();
 
-  // TODO(jennyz): Enable showing spring charger dialog on locked screen after
-  // crbug.com/328593 is fixed.
-  user::LoginStatus login_status =
-      Shell::GetInstance()->system_tray_delegate()->GetUserLoginStatus();
-  if (PowerStatus::Get()->IsOriginalSpringChargerConnected() &&
-      (login_status != user::LOGGED_IN_NONE &&
-       login_status != user::LOGGED_IN_LOCKED)) {
+  if (PowerStatus::Get()->IsOriginalSpringChargerConnected()) {
     ash::Shell::GetInstance()->system_tray_delegate()->
         ShowSpringChargerReplacementDialog();
   }
@@ -217,7 +211,9 @@ bool TrayPower::MaybeShowUsbChargerNotification() {
             IDS_ASH_STATUS_TRAY_LOW_POWER_CHARGER_MESSAGE_SHORT),
         rb.GetImageNamed(IDR_AURA_NOTIFICATION_LOW_POWER_CHARGER),
         base::string16(),
-        message_center::NotifierId(system_notifier::NOTIFIER_POWER),
+        message_center::NotifierId(
+            message_center::NotifierId::SYSTEM_COMPONENT,
+            system_notifier::kNotifierPower),
         message_center::RichNotificationData(),
         NULL));
     message_center_->AddNotification(notification.Pass());

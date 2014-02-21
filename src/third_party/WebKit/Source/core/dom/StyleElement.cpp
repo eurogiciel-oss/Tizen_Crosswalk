@@ -31,7 +31,6 @@
 #include "core/html/HTMLStyleElement.h"
 #include "core/frame/ContentSecurityPolicy.h"
 #include "wtf/text/StringBuilder.h"
-#include "wtf/text/TextPosition.h"
 
 namespace WebCore {
 
@@ -75,9 +74,7 @@ void StyleElement::removedFromDocument(Document& document, Element* element, Con
     if (m_sheet)
         clearSheet();
 
-    // If we're in document teardown, then we don't need to do any notification of our sheet's removal.
-    if (document.isActive())
-        document.removedStyleSheet(removedSheet.get(), RecalcStyleDeferred, AnalyzedStyleUpdate);
+    document.removedStyleSheet(removedSheet.get(), RecalcStyleDeferred, AnalyzedStyleUpdate);
 }
 
 void StyleElement::clearDocumentData(Document& document, Element* element)
@@ -86,7 +83,7 @@ void StyleElement::clearDocumentData(Document& document, Element* element)
         m_sheet->clearOwnerNode();
 
     if (element->inDocument())
-        document.styleEngine()->removeStyleSheetCandidateNode(element, isHTMLStyleElement(element) ? toHTMLStyleElement(element)->scopingNode() :  0);
+        document.styleEngine()->removeStyleSheetCandidateNode(element, element->hasTagName(HTMLNames::styleTag) ? toHTMLStyleElement(element)->scopingNode() :  0);
 }
 
 void StyleElement::childrenChanged(Element* element)
@@ -131,22 +128,17 @@ void StyleElement::createSheet(Element* e, const String& text)
 
     // If type is empty or CSS, this is a CSS style sheet.
     const AtomicString& type = this->type();
-    bool passesContentSecurityPolicyChecks = document.contentSecurityPolicy()->allowStyleNonce(e->fastGetAttribute(HTMLNames::nonceAttr)) || document.contentSecurityPolicy()->allowInlineStyle(e->document().url(), m_startPosition.m_line);
+    bool passesContentSecurityPolicyChecks = document.contentSecurityPolicy()->allowStyleHash(text) || document.contentSecurityPolicy()->allowStyleNonce(e->fastGetAttribute(HTMLNames::nonceAttr)) || document.contentSecurityPolicy()->allowInlineStyle(e->document().url(), m_startPosition.m_line);
     if (isCSS(e, type) && passesContentSecurityPolicyChecks) {
         RefPtr<MediaQuerySet> mediaQueries = MediaQuerySet::create(media());
 
         MediaQueryEvaluator screenEval("screen", true);
         MediaQueryEvaluator printEval("print", true);
         if (screenEval.eval(mediaQueries.get()) || printEval.eval(mediaQueries.get())) {
-            document.styleEngine()->addPendingSheet();
             m_loading = true;
-
             TextPosition startPosition = m_startPosition == TextPosition::belowRangePosition() ? TextPosition::minimumPosition() : m_startPosition;
-            m_sheet = CSSStyleSheet::createInline(e, KURL(), startPosition, document.inputEncoding());
+            m_sheet = StyleEngine::createSheet(e, text, startPosition, m_createdByParser);
             m_sheet->setMediaQueries(mediaQueries.release());
-            m_sheet->setTitle(e->title());
-            m_sheet->contents()->parseStringAtPosition(text, startPosition, m_createdByParser);
-
             m_loading = false;
         }
     }

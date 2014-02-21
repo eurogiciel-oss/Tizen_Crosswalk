@@ -13,6 +13,7 @@
 #include "base/event_types.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/message_loop/message_loop.h"
+#include "base/message_loop/message_pump_dispatcher.h"
 #include "base/observer_list.h"
 #include "base/timer/timer.h"
 #include "chromeos/chromeos_export.h"
@@ -64,7 +65,7 @@ enum HDCPState {
 // This class interacts directly with the underlying Xrandr API to manipulate
 // CTRCs and Outputs.
 class CHROMEOS_EXPORT OutputConfigurator
-    : public base::MessageLoop::Dispatcher,
+    : public base::MessagePumpDispatcher,
       public base::MessagePumpObserver {
  public:
   typedef uint64_t OutputProtectionClientId;
@@ -123,8 +124,6 @@ class CHROMEOS_EXPORT OutputConfigurator
     uint64 width_mm;
     uint64 height_mm;
 
-    // TODO(kcwu): Remove this. Check type == OUTPUT_TYPE_INTERNAL instead.
-    bool is_internal;
     bool is_aspect_preserving_scaling;
 
     // The type of output.
@@ -380,6 +379,9 @@ class CHROMEOS_EXPORT OutputConfigurator
       const base::NativeEvent& event) OVERRIDE;
   virtual void DidProcessEvent(const base::NativeEvent& event) OVERRIDE;
 
+  // Called when a casting session is started or stopped.
+  void OnCastingSessionStartedOrStopped(bool started);
+
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
 
@@ -487,6 +489,15 @@ class CHROMEOS_EXPORT OutputConfigurator
   CoordinateTransformation GetMirrorModeCTM(
       const OutputConfigurator::OutputSnapshot& output);
 
+  // Computes the relevant transformation for extended mode.
+  // |output| is the output on which extended mode is being applied.
+  // |width| and |height| are the width and height of the combined framebuffer.
+  // Returns the transformation or identity if computations fail.
+  CoordinateTransformation GetExtendedModeCTM(
+      const OutputConfigurator::OutputSnapshot& output,
+      int framebuffer_width,
+      int frame_buffer_height);
+
   // Returns the ratio between mirrored mode area and native mode area:
   // (mirror_mode_width * mirrow_mode_height) / (native_width * native_height)
   float GetMirroredDisplayAreaRatio(
@@ -494,6 +505,9 @@ class CHROMEOS_EXPORT OutputConfigurator
 
   // Applies output protections according to requests.
   bool ApplyProtections(const DisplayProtections& requests);
+
+  // Sends the current projecting state to power manager.
+  void SendProjectingStateToPowerManager();
 
   StateController* state_controller_;
   SoftwareMirroringController* mirroring_controller_;
@@ -542,6 +556,9 @@ class CHROMEOS_EXPORT OutputConfigurator
 
   // Output protection requests of each client.
   ProtectionRequests client_protection_requests_;
+
+  // Number of outstanding casting sessions.
+  int casting_session_count_;
 
   DISALLOW_COPY_AND_ASSIGN(OutputConfigurator);
 };

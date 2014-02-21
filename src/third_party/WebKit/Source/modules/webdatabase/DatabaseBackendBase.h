@@ -32,7 +32,6 @@
 
 #include "modules/webdatabase/sqlite/SQLiteDatabase.h"
 #include "modules/webdatabase/DatabaseBasicTypes.h"
-#include "modules/webdatabase/DatabaseDetails.h"
 #include "modules/webdatabase/DatabaseError.h"
 #include "wtf/Forward.h"
 #include "wtf/RefPtr.h"
@@ -40,7 +39,7 @@
 #include "wtf/text/WTFString.h"
 
 #if !LOG_DISABLED || !ERROR_DISABLED
-#include "weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #endif
 
 namespace WebCore {
@@ -65,7 +64,6 @@ public:
     virtual String displayName() const;
     virtual unsigned long estimatedSize() const;
     virtual String fileName() const;
-    virtual DatabaseDetails details() const;
     SQLiteDatabase& sqliteDatabase() { return m_sqliteDatabase; }
 
     unsigned long long maximumSize() const;
@@ -75,7 +73,6 @@ public:
 
     void disableAuthorizer();
     void enableAuthorizer();
-    void setAuthorizerReadOnly();
     void setAuthorizerPermissions(int permissions);
     bool lastActionChangedDatabase();
     bool lastActionWasInsert();
@@ -83,7 +80,6 @@ public:
     bool hadDeletes();
     void resetAuthorizer();
 
-    virtual void markAsDeletedAndClose() = 0;
     virtual void closeImmediately() = 0;
 
     DatabaseContext* databaseContext() const { return m_databaseContext.get(); }

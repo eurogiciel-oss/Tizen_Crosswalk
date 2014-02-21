@@ -15,15 +15,19 @@ from object_store_creator import ObjectStoreCreator
 from test_file_system import TestFileSystem
 from third_party.handlebar import Handlebar
 
-
-_HOST = 'https://developer.chrome.com/'
-
-
 _REDIRECTS_JSON = json.dumps({
   'oldfile.html': 'storage.html',
   'index.html': 'https://developers.google.com/chrome',
 })
 
+
+_MARKDOWN_CONTENT = (
+  ('# Header 1 #', u'<h1 id="header-1">Header 1</h1>'),
+  ('1.  Foo\n', u'<ol>\n<li>Foo</li>\n</ol>'),
+  ('![alt text](/path/img.jpg "Title")\n',
+      '<p><img alt="alt text" src="/path/img.jpg" title="Title" /></p>'),
+  ('* Unordered item 1', u'<ul>\n<li>Unordered item 1</li>\n</ul>')
+)
 
 # Test file system data which exercises many different mimetypes.
 _TEST_DATA = {
@@ -49,6 +53,7 @@ _TEST_DATA = {
   'run.js': 'run.js content',
   'site.css': 'site.css content',
   'storage.html': 'storage.html content',
+  'markdown.md': '\n'.join(text[0] for text in _MARKDOWN_CONTENT)
 }
 
 
@@ -75,26 +80,26 @@ class ContentProviderUnittest(unittest.TestCase):
   def testPlainText(self):
     self._assertContent(
         u'a.txt content', 'text/plain',
-        self._content_provider.GetContentAndType(_HOST, 'dir/a.txt').Get())
+        self._content_provider.GetContentAndType('dir/a.txt').Get())
     self._assertContent(
         u'd.txt content', 'text/plain',
-        self._content_provider.GetContentAndType(_HOST, 'dir/c/d.txt').Get())
+        self._content_provider.GetContentAndType('dir/c/d.txt').Get())
     self._assertContent(
         u'read.txt content', 'text/plain',
-        self._content_provider.GetContentAndType(_HOST, 'read.txt').Get())
+        self._content_provider.GetContentAndType('read.txt').Get())
     self._assertContent(
         unicode(_REDIRECTS_JSON, 'utf-8'), 'application/json',
-        self._content_provider.GetContentAndType(_HOST, 'redirects.json').Get())
+        self._content_provider.GetContentAndType('redirects.json').Get())
     self._assertContent(
         u'run.js content', 'application/javascript',
-        self._content_provider.GetContentAndType(_HOST, 'run.js').Get())
+        self._content_provider.GetContentAndType('run.js').Get())
     self._assertContent(
         u'site.css content', 'text/css',
-        self._content_provider.GetContentAndType(_HOST, 'site.css').Get())
+        self._content_provider.GetContentAndType('site.css').Get())
 
   def testTemplate(self):
     content_and_type = self._content_provider.GetContentAndType(
-        _HOST, 'storage.html').Get()
+        'storage.html').Get()
     self.assertEqual(Handlebar, type(content_and_type.content))
     content_and_type.content = content_and_type.content.source
     self._assertContent(u'storage.html content', 'text/html', content_and_type)
@@ -102,12 +107,11 @@ class ContentProviderUnittest(unittest.TestCase):
   def testImage(self):
     self._assertContent(
         'img.png content', 'image/png',
-        self._content_provider.GetContentAndType(_HOST, 'img.png').Get())
+        self._content_provider.GetContentAndType('img.png').Get())
 
   def testZipTopLevel(self):
     zip_content_provider = self._CreateContentProvider(supports_zip=True)
-    content_and_type = zip_content_provider.GetContentAndType(
-        _HOST, 'dir.zip').Get()
+    content_and_type = zip_content_provider.GetContentAndType('dir.zip').Get()
     zipfile = ZipFile(StringIO(content_and_type.content))
     content_and_type.content = zipfile.namelist()
     self._assertContent(
@@ -117,17 +121,24 @@ class ContentProviderUnittest(unittest.TestCase):
   def testZip2ndLevel(self):
     zip_content_provider = self._CreateContentProvider(supports_zip=True)
     content_and_type = zip_content_provider.GetContentAndType(
-        _HOST, 'dir2/dir3.zip').Get()
+        'dir2/dir3.zip').Get()
     zipfile = ZipFile(StringIO(content_and_type.content))
     content_and_type.content = zipfile.namelist()
     self._assertContent(
         ['dir3/a.txt', 'dir3/b.txt', 'dir3/c/d.txt'], 'application/zip',
         content_and_type)
 
+  def testMarkdown(self):
+    content_and_type = self._content_provider.GetContentAndType(
+        'markdown.html').Get()
+    content_and_type.content = content_and_type.content.source
+    self._assertContent('\n'.join(text[1] for text in _MARKDOWN_CONTENT),
+        'text/html', content_and_type)
+
   def testNotFound(self):
     self.assertRaises(
         FileNotFoundError,
-        self._content_provider.GetContentAndType(_HOST, 'oops').Get)
+        self._content_provider.GetContentAndType('oops').Get)
 
 
 if __name__ == '__main__':

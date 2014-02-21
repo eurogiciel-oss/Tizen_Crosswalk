@@ -12,6 +12,7 @@
 #include "content/child/npapi/plugin_stream_url.h"
 #include "content/child/npapi/webplugin_resource_client.h"
 #include "content/child/plugin_messages.h"
+#include "content/child/request_extra_data.h"
 #include "content/child/resource_dispatcher.h"
 #include "net/base/load_flags.h"
 #include "net/base/net_errors.h"
@@ -32,15 +33,15 @@ namespace {
 // TODO(jam): this is similar to MultiPartResponseClient in webplugin_impl.cc,
 // we should remove that other class once we switch to loading from the plugin
 // process by default.
-class MultiPartResponseClient : public WebKit::WebURLLoaderClient {
+class MultiPartResponseClient : public blink::WebURLLoaderClient {
  public:
   explicit MultiPartResponseClient(PluginStreamUrl* plugin_stream)
       : byte_range_lower_bound_(0), plugin_stream_(plugin_stream) {}
 
-  // WebKit::WebURLLoaderClient implementation:
+  // blink::WebURLLoaderClient implementation:
   virtual void didReceiveResponse(
-      WebKit::WebURLLoader* loader,
-      const WebKit::WebURLResponse& response) OVERRIDE {
+      blink::WebURLLoader* loader,
+      const blink::WebURLResponse& response) OVERRIDE {
     int64 byte_range_upper_bound, instance_size;
     if (!webkit_glue::MultipartResponseDelegate::ReadContentRanges(
             response, &byte_range_lower_bound_, &byte_range_upper_bound,
@@ -48,7 +49,7 @@ class MultiPartResponseClient : public WebKit::WebURLLoaderClient {
       NOTREACHED();
     }
   }
-  virtual void didReceiveData(WebKit::WebURLLoader* loader,
+  virtual void didReceiveData(blink::WebURLLoader* loader,
                               const char* data,
                               int data_length,
                               int encoded_data_length) OVERRIDE {
@@ -80,6 +81,7 @@ PluginURLFetcher::PluginURLFetcher(PluginStreamUrl* plugin_stream,
                                    bool notify_redirects,
                                    bool is_plugin_src_load,
                                    int origin_pid,
+                                   int render_frame_id,
                                    int render_view_id,
                                    unsigned long resource_id,
                                    bool copy_stream_data)
@@ -103,6 +105,24 @@ PluginURLFetcher::PluginURLFetcher(PluginStreamUrl* plugin_stream,
   request_info.requestor_pid = origin_pid;
   request_info.request_type = ResourceType::OBJECT;
   request_info.routing_id = render_view_id;
+
+  RequestExtraData extra_data(blink::WebReferrerPolicyDefault,
+                              blink::WebPageVisibilityStateVisible,
+                              base::string16(),
+                              false,
+                              render_frame_id,
+                              false,
+                              -1,
+                              GURL(),
+                              false,
+                              -1,
+                              true,
+                              PAGE_TRANSITION_LINK,
+                              false,
+                              -1,
+                              -1);
+
+  request_info.extra_data = &extra_data;
 
   std::vector<char> body;
   if (method == "POST") {
@@ -216,7 +236,7 @@ void PluginURLFetcher::OnReceivedResponse(
   if (plugin_stream_->seekable()) {
     int response_code = info.headers->response_code();
     if (response_code == 206) {
-      WebKit::WebURLResponse response;
+      blink::WebURLResponse response;
       response.initialize();
       webkit_glue::WebURLLoaderImpl::PopulateURLResponse(url_, info, &response);
 

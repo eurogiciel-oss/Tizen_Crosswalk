@@ -31,17 +31,42 @@
 #include "config.h"
 #include "core/workers/WorkerRunLoop.h"
 
-#include "core/dom/ExecutionContext.h"
 #include "core/inspector/InspectorInstrumentation.h"
-#include "core/platform/ThreadGlobalData.h"
 #include "core/workers/WorkerGlobalScope.h"
 #include "core/workers/WorkerThread.h"
+#include "heap/ThreadState.h"
 #include "platform/PlatformThreadData.h"
 #include "platform/SharedTimer.h"
 #include "platform/ThreadTimers.h"
 #include "wtf/CurrentTime.h"
 
 namespace WebCore {
+
+class WorkerRunLoop::Task {
+    WTF_MAKE_NONCOPYABLE(Task); WTF_MAKE_FAST_ALLOCATED;
+public:
+    static PassOwnPtr<Task> create(PassOwnPtr<ExecutionContextTask> task, const String& mode)
+    {
+        return adoptPtr(new Task(task, mode));
+    }
+    const String& mode() const { return m_mode; }
+    void performTask(const WorkerRunLoop& runLoop, ExecutionContext* context)
+    {
+        WorkerGlobalScope* workerGlobalScope = toWorkerGlobalScope(context);
+        if ((!workerGlobalScope->isClosing() && !runLoop.terminated()) || m_task->isCleanupTask())
+            m_task->performTask(context);
+    }
+
+private:
+    Task(PassOwnPtr<ExecutionContextTask> task, const String& mode)
+        : m_task(task)
+        , m_mode(mode.isolatedCopy())
+    {
+    }
+
+    OwnPtr<ExecutionContextTask> m_task;
+    String m_mode;
+};
 
 class WorkerSharedTimer : public SharedTimer {
 public:
@@ -136,6 +161,9 @@ void WorkerRunLoop::run(WorkerGlobalScope* context)
     ModePredicate modePredicate(defaultMode());
     MessageQueueWaitResult result;
     do {
+#if ENABLE(OILPAN)
+        ThreadState::current()->safePoint(ThreadState::NoHeapPointersOnStack);
+#endif
         result = runInMode(context, modePredicate, WaitForMessage);
     } while (result != MessageQueueTerminated);
     runCleanupTasks(context);
@@ -180,7 +208,13 @@ MessageQueueWaitResult WorkerRunLoop::runInMode(WorkerGlobalScope* context, cons
                 }
             }
         }
-        task = m_messageQueue.waitForMessageFilteredWithTimeout(result, predicate, absoluteTime);
+
+        {
+#if ENABLE(OILPAN)
+            ThreadState::SafePointScope safePointScope(ThreadState::NoHeapPointersOnStack);
+#endif
+            task = m_messageQueue.waitForMessageFilteredWithTimeout(result, predicate, absoluteTime);
+        }
     } while (result == MessageQueueTimeout && nextTimeoutEventIsIdleWatchdog);
 
     // If the context is closing, don't execute any further JavaScript tasks (per section 4.1.1 of the Web Workers spec).
@@ -230,6 +264,11 @@ bool WorkerRunLoop::postTask(PassOwnPtr<ExecutionContextTask> task)
     return postTaskForMode(task, defaultMode());
 }
 
+bool WorkerRunLoop::postTask(const Closure& closure)
+{
+    return postTask(CallClosureTask::create(closure));
+}
+
 void WorkerRunLoop::postTaskAndTerminate(PassOwnPtr<ExecutionContextTask> task)
 {
     m_messageQueue.appendAndKill(Task::create(task, defaultMode().isolatedCopy()));
@@ -240,22 +279,9 @@ bool WorkerRunLoop::postTaskForMode(PassOwnPtr<ExecutionContextTask> task, const
     return m_messageQueue.append(Task::create(task, mode.isolatedCopy()));
 }
 
-PassOwnPtr<WorkerRunLoop::Task> WorkerRunLoop::Task::create(PassOwnPtr<ExecutionContextTask> task, const String& mode)
+bool WorkerRunLoop::postTaskForMode(const Closure& closure, const String& mode)
 {
-    return adoptPtr(new Task(task, mode));
-}
-
-void WorkerRunLoop::Task::performTask(const WorkerRunLoop& runLoop, ExecutionContext* context)
-{
-    WorkerGlobalScope* workerGlobalScope = toWorkerGlobalScope(context);
-    if ((!workerGlobalScope->isClosing() && !runLoop.terminated()) || m_task->isCleanupTask())
-        m_task->performTask(context);
-}
-
-WorkerRunLoop::Task::Task(PassOwnPtr<ExecutionContextTask> task, const String& mode)
-    : m_task(task)
-    , m_mode(mode.isolatedCopy())
-{
+    return postTaskForMode(CallClosureTask::create(closure), mode);
 }
 
 } // namespace WebCore

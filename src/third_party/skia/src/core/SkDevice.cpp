@@ -9,8 +9,6 @@
 #include "SkDevice.h"
 #include "SkMetaData.h"
 
-SK_DEFINE_INST_COUNT(SkBaseDevice)
-
 #if SK_PMCOLOR_BYTE_ORDER(B,G,R,A)
     const SkCanvas::Config8888 SkBaseDevice::kPMColorAlias = SkCanvas::kBGRA_Premul_Config8888;
 #elif SK_PMCOLOR_BYTE_ORDER(R,G,B,A)
@@ -94,9 +92,8 @@ bool SkBaseDevice::readPixels(SkBitmap* bitmap, int x, int y,
     SkBitmap tmp;
     SkBitmap* bmp;
     if (bitmap->isNull()) {
-        tmp.setConfig(SkBitmap::kARGB_8888_Config, bitmap->width(),
-                                                   bitmap->height());
-        if (!tmp.allocPixels()) {
+        if (!tmp.allocPixels(SkImageInfo::MakeN32Premul(bitmap->width(),
+                                                        bitmap->height()))) {
             return false;
         }
         bmp = &tmp;

@@ -447,7 +447,7 @@ NET_EXPORT_PRIVATE AddressFamily GetAddressFamily(
     const IPAddressNumber& address);
 
 // Maps the given AddressFamily to either AF_INET, AF_INET6 or AF_UNSPEC.
-int ConvertAddressFamily(AddressFamily address_family);
+NET_EXPORT_PRIVATE int ConvertAddressFamily(AddressFamily address_family);
 
 // Parses an IP address literal (either IPv4 or IPv6) to its numeric value.
 // Returns true on success and fills |ip_number| with the numeric value.
@@ -515,22 +515,31 @@ NET_EXPORT_PRIVATE bool IsLocalhost(const std::string& host);
 struct NET_EXPORT NetworkInterface {
   NetworkInterface();
   NetworkInterface(const std::string& name,
+                   uint32 interface_index,
                    const IPAddressNumber& address,
                    size_t network_prefix);
   ~NetworkInterface();
 
   std::string name;
+  uint32 interface_index;  // Always 0 on Android.
   IPAddressNumber address;
   size_t network_prefix;
 };
 
 typedef std::vector<NetworkInterface> NetworkInterfaceList;
 
+// Policy settings to include/exclude VMWare host only network interfaces.
+enum HostScopeVirtualInterfacePolicy {
+  INCLUDE_HOST_SCOPE_VIRTUAL_INTERFACES,
+  EXCLUDE_HOST_SCOPE_VIRTUAL_INTERFACES,
+};
+
 // Returns list of network interfaces except loopback interface. If an
 // interface has more than one address, a separate entry is added to
 // the list for each address.
 // Can be called only on a thread that allows IO.
-NET_EXPORT bool GetNetworkList(NetworkInterfaceList* networks);
+NET_EXPORT bool GetNetworkList(NetworkInterfaceList* networks,
+                               HostScopeVirtualInterfacePolicy policy);
 
 // General category of the IEEE 802.11 (wifi) physical layer operating mode.
 enum WifiPHYLayerProtocol {

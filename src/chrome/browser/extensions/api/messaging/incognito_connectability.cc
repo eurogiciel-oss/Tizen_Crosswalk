@@ -9,9 +9,9 @@
 #include "base/strings/string16.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/ui/simple_message_box.h"
-#include "chrome/common/extensions/extension.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_view.h"
+#include "extensions/common/extension.h"
 #include "grit/generated_resources.h"
 #include "ui/base/l10n/l10n_util.h"
 
@@ -79,10 +79,10 @@ bool IncognitoConnectability::Query(const Extension* extension,
       result = chrome::ShowMessageBox(
           web_contents ? web_contents->GetView()->GetTopLevelNativeWindow()
                        : NULL,
-          string16(),  // no title
+          base::string16(),  // no title
           l10n_util::GetStringFUTF16(template_id,
-                                     UTF8ToUTF16(origin.spec()),
-                                     UTF8ToUTF16(extension->name())),
+                                     base::UTF8ToUTF16(origin.spec()),
+                                     base::UTF8ToUTF16(extension->name())),
           chrome::MESSAGE_BOX_TYPE_QUESTION);
       break;
     }
@@ -118,7 +118,7 @@ static base::LazyInstance<ProfileKeyedAPIFactory<IncognitoConnectability> >
 // static
 ProfileKeyedAPIFactory<IncognitoConnectability>*
 IncognitoConnectability::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 }  // namespace extensions

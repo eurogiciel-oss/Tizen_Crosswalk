@@ -5,12 +5,12 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
-#include "SkRefCnt.h"
-#include "GrTypes.h"
-
 #ifndef GrDrawTargetCaps_DEFINED
 #define GrDrawTargetCaps_DEFINED
+
+#include "GrTypes.h"
+#include "SkRefCnt.h"
+#include "SkString.h"
 
 /**
  * Represents the draw target capabilities.
@@ -24,10 +24,13 @@ public:
     GrDrawTargetCaps& operator= (const GrDrawTargetCaps&);
 
     virtual void reset();
-    virtual void print() const;
+    virtual SkString dump() const;
 
     bool eightBitPaletteSupport() const { return f8BitPaletteSupport; }
     bool npotTextureTileSupport() const { return fNPOTTextureTileSupport; }
+    /** To avoid as-yet-unnecessary complexity we don't allow any partial support of MIP Maps (e.g.
+        only for POT textures) */
+    bool mipMapSupport() const { return fMipMapSupport; }
     bool twoSidedStencilSupport() const { return fTwoSidedStencilSupport; }
     bool stencilWrapOpsSupport() const { return  fStencilWrapOpsSupport; }
     bool hwAALineSupport() const { return fHWAALineSupport; }
@@ -57,6 +60,7 @@ public:
 protected:
     bool f8BitPaletteSupport        : 1;
     bool fNPOTTextureTileSupport    : 1;
+    bool fMipMapSupport             : 1;
     bool fTwoSidedStencilSupport    : 1;
     bool fStencilWrapOpsSupport     : 1;
     bool fHWAALineSupport           : 1;

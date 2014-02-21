@@ -24,7 +24,8 @@ class WaylandShellSurface {
                           WaylandShellSurface* shell_parent,
                           unsigned x,
                           unsigned y) const;
-  void SetWindowTitle(const string16& title);
+  void SetWindowTitle(const base::string16& title);
+  void Maximize() const;
   WaylandSurface* Surface() const { return surface_; }
 
   static void HandleConfigure(void *data,
@@ -39,6 +40,8 @@ class WaylandShellSurface {
                          uint32_t serial);
 
  private:
+  void FlushDisplay() const;
+
   WaylandSurface* surface_;
   wl_shell_surface* shell_surface_;
   DISALLOW_COPY_AND_ASSIGN(WaylandShellSurface);

@@ -33,11 +33,9 @@
 
 #include "URLTestHelpers.h"
 #include "wtf/StdLibExtras.h"
-#include "WebFrameClient.h"
 #include "WebFrameImpl.h"
 #include "WebSettings.h"
 #include "WebViewClient.h"
-#include "WebViewImpl.h"
 #include "public/platform/Platform.h"
 #include "public/platform/WebString.h"
 #include "public/platform/WebThread.h"
@@ -45,13 +43,22 @@
 #include "public/platform/WebURLResponse.h"
 #include "public/platform/WebUnitTestSupport.h"
 
-namespace WebKit {
+namespace blink {
 namespace FrameTestHelpers {
 
 namespace {
 
 class QuitTask : public WebThread::Task {
 public:
+    void PostThis(WebCore::Timer<QuitTask>*)
+    {
+        // We don't just quit here because the SharedTimer may be part-way
+        // through the current queue of tasks when runPendingTasks was called,
+        // and we can't miss the tasks that were behind it.
+        // Takes ownership of |this|.
+        Platform::current()->currentThread()->postTask(this);
+    }
+
     virtual void run()
     {
         Platform::current()->currentThread()->exitRunLoop();
@@ -60,7 +67,7 @@ public:
 
 WebFrameClient* defaultWebFrameClient()
 {
-    DEFINE_STATIC_LOCAL(WebFrameClient, client, ());
+    DEFINE_STATIC_LOCAL(TestWebFrameClient, client, ());
     return &client;
 }
 
@@ -82,13 +89,14 @@ void loadFrame(WebFrame* frame, const std::string& url)
 
 void runPendingTasks()
 {
-    Platform::current()->currentThread()->postTask(new QuitTask);
+    // Pending tasks include Timers that have been scheduled.
+    WebCore::Timer<QuitTask> quitOnTimeout(new QuitTask, &QuitTask::PostThis);
+    quitOnTimeout.startOneShot(0);
     Platform::current()->currentThread()->enterRunLoop();
 }
 
 WebViewHelper::WebViewHelper()
-    : m_mainFrame(0)
-    , m_webView(0)
+    : m_webView(0)
 {
 }
 
@@ -114,8 +122,7 @@ WebViewImpl* WebViewHelper::initialize(bool enableJavascript, WebFrameClient* we
         m_webView->settings()->setForceCompositingMode(true);
     }
 
-    m_mainFrame = WebFrameImpl::create(webFrameClient);
-    m_webView->setMainFrame(m_mainFrame);
+    m_webView->setMainFrame(WebFrameImpl::create(webFrameClient));
 
     return m_webView;
 }
@@ -136,11 +143,18 @@ void WebViewHelper::reset()
         m_webView->close();
         m_webView = 0;
     }
-    if (m_mainFrame) {
-        m_mainFrame->close();
-        m_mainFrame = 0;
-    }
 }
 
+WebFrame* TestWebFrameClient::createChildFrame(WebFrame* parent, const WebString& frameName)
+{
+    return WebFrame::create(this);
+}
+
+void TestWebFrameClient::frameDetached(WebFrame* frame)
+{
+    frame->close();
+}
+
+
 } // namespace FrameTestHelpers
-} // namespace WebKit
+} // namespace blink

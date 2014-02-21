@@ -4,21 +4,16 @@
 
 #include "chrome/browser/chromeos/extensions/file_manager/private_api_drive.h"
 
-#include "base/prefs/pref_service.h"
-#include "base/strings/stringprintf.h"
-#include "chrome/browser/chromeos/drive/drive_app_registry.h"
 #include "chrome/browser/chromeos/drive/drive_integration_service.h"
 #include "chrome/browser/chromeos/drive/logging.h"
 #include "chrome/browser/chromeos/extensions/file_manager/private_api_util.h"
 #include "chrome/browser/chromeos/file_manager/file_tasks.h"
 #include "chrome/browser/chromeos/file_manager/url_util.h"
 #include "chrome/browser/chromeos/fileapi/file_system_backend.h"
-#include "chrome/browser/extensions/api/file_handlers/app_file_handler_util.h"
+#include "chrome/browser/drive/drive_app_registry.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/file_browser_private.h"
-#include "chrome/common/pref_names.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/render_view_host.h"
 #include "webkit/common/fileapi/file_system_info.h"
 #include "webkit/common/fileapi/file_system_util.h"
 
@@ -28,28 +23,23 @@ namespace extensions {
 namespace {
 
 // List of connection types of drive.
-// Keep this in sync with the DriveConnectionType in volume_manager.js.
+// Keep this in sync with the DriveConnectionType in common/js/util.js.
 const char kDriveConnectionTypeOffline[] = "offline";
 const char kDriveConnectionTypeMetered[] = "metered";
 const char kDriveConnectionTypeOnline[] = "online";
 
 // List of reasons of kDriveConnectionType*.
-// Keep this in sync with the DriveConnectionReason in volume_manager.js.
+// Keep this in sync with the DriveConnectionReason in common/js/util.js.
 const char kDriveConnectionReasonNotReady[] = "not_ready";
 const char kDriveConnectionReasonNoNetwork[] = "no_network";
 const char kDriveConnectionReasonNoService[] = "no_service";
-
-// Does nothing with a bool parameter. Used as a placeholder for calling
-// ClearCacheAndRemountFileSystem(). TODO(yoshiki): Handle an error from
-// ClearCacheAndRemountFileSystem() properly: http://crbug.com/140511.
-void DoNothingWithBool(bool /* success */) {
-}
 
 // Copies properties from |entry_proto| to |properties|.
 void FillDriveEntryPropertiesValue(
     const drive::ResourceEntry& entry_proto,
     api::file_browser_private::DriveEntryProperties* properties) {
   properties->shared_with_me.reset(new bool(entry_proto.shared_with_me()));
+  properties->shared.reset(new bool(entry_proto.shared()));
 
   if (!entry_proto.has_file_specific_info())
     return;
@@ -112,7 +102,7 @@ bool FileBrowserPrivateGetDriveEntryPropertiesFunction::RunImpl() {
     return true;
   }
 
-  file_system->GetResourceEntryByPath(
+  file_system->GetResourceEntry(
       file_path_,
       base::Bind(&FileBrowserPrivateGetDriveEntryPropertiesFunction::
                      OnGetFileInfo, this));
@@ -154,7 +144,7 @@ void FileBrowserPrivateGetDriveEntryPropertiesFunction::OnGetFileInfo(
 
   // Get drive WebApps that can accept this file. We just need to extract the
   // doc icon for the drive app, which is set as default.
-  ScopedVector<drive::DriveAppInfo> drive_apps;
+  std::vector<drive::DriveAppInfo> drive_apps;
   app_registry->GetAppsForFile(file_path_.Extension(),
                                file_specific_info.content_mime_type(),
                                &drive_apps);
@@ -168,18 +158,18 @@ void FileBrowserPrivateGetDriveEntryPropertiesFunction::OnGetFileInfo(
     file_manager::file_tasks::ParseTaskID(default_task_id, &default_task);
     DCHECK(default_task_id.empty() || !default_task.app_id.empty());
     for (size_t i = 0; i < drive_apps.size(); ++i) {
-      const drive::DriveAppInfo* app_info = drive_apps[i];
-      if (default_task.app_id == app_info->app_id) {
+      const drive::DriveAppInfo& app_info = drive_apps[i];
+      if (default_task.app_id == app_info.app_id) {
         // The drive app is set as default. Files.app should use the doc icon.
         const GURL doc_icon =
-            drive::util::FindPreferredIcon(app_info->document_icons,
+            drive::util::FindPreferredIcon(app_info.document_icons,
                                            drive::util::kPreferredIconSize);
         properties_->custom_icon_url.reset(new std::string(doc_icon.spec()));
       }
     }
   }
 
-  file_system->GetCacheEntryByPath(
+  file_system->GetCacheEntry(
       file_path_,
       base::Bind(&FileBrowserPrivateGetDriveEntryPropertiesFunction::
                      CacheStateReceived, this));
@@ -289,7 +279,7 @@ void FileBrowserPrivateGetDriveFilesFunction::GetFileOrSendResponse() {
     return;
   }
 
-  file_system->GetFileByPath(
+  file_system->GetFile(
       drive_path,
       base::Bind(&FileBrowserPrivateGetDriveFilesFunction::OnFileReady, this));
 }
@@ -405,13 +395,13 @@ void FileBrowserPrivateSearchDriveFunction::OnSearch(
 
   DCHECK(results.get());
 
-  base::ListValue* entries = new ListValue();
+  base::ListValue* entries = new base::ListValue();
 
   // Convert Drive files to something File API stack can understand.
   fileapi::FileSystemInfo info =
       fileapi::GetFileSystemInfoForChromeOS(source_url_.GetOrigin());
   for (size_t i = 0; i < results->size(); ++i) {
-    DictionaryValue* entry = new DictionaryValue();
+    base::DictionaryValue* entry = new base::DictionaryValue();
     entry->SetString("fileSystemName", info.name);
     entry->SetString("fileSystemRoot", info.root_url.spec());
     entry->SetString("fileFullPath", "/" + results->at(i).path.value());
@@ -419,7 +409,7 @@ void FileBrowserPrivateSearchDriveFunction::OnSearch(
     entries->Append(entry);
   }
 
-  base::DictionaryValue* result = new DictionaryValue();
+  base::DictionaryValue* result = new base::DictionaryValue();
   result->Set("entries", entries);
   result->SetString("nextFeed", next_link.spec());
 
@@ -428,7 +418,7 @@ void FileBrowserPrivateSearchDriveFunction::OnSearch(
 }
 
 bool FileBrowserPrivateSearchDriveMetadataFunction::RunImpl() {
-  using extensions::api::file_browser_private::SearchDriveMetadata::Params;
+  using api::file_browser_private::SearchDriveMetadata::Params;
   const scoped_ptr<Params> params(Params::Create(*args_));
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -436,7 +426,7 @@ bool FileBrowserPrivateSearchDriveMetadataFunction::RunImpl() {
                    "%s[%d] called. (types: '%s', maxResults: '%d')",
                    name().c_str(),
                    request_id(),
-                   Params::SearchParams::ToString(
+                   api::file_browser_private::ToString(
                        params->search_params.types).c_str(),
                    params->search_params.max_results);
   set_log_on_completion(true);
@@ -450,19 +440,19 @@ bool FileBrowserPrivateSearchDriveMetadataFunction::RunImpl() {
 
   int options = -1;
   switch (params->search_params.types) {
-    case Params::SearchParams::TYPES_EXCLUDE_DIRECTORIES:
+    case api::file_browser_private::SEARCH_TYPE_EXCLUDE_DIRECTORIES:
       options = drive::SEARCH_METADATA_EXCLUDE_DIRECTORIES;
       break;
-    case Params::SearchParams::TYPES_SHARED_WITH_ME:
+    case api::file_browser_private::SEARCH_TYPE_SHARED_WITH_ME:
       options = drive::SEARCH_METADATA_SHARED_WITH_ME;
       break;
-    case Params::SearchParams::TYPES_OFFLINE:
+    case api::file_browser_private::SEARCH_TYPE_OFFLINE:
       options = drive::SEARCH_METADATA_OFFLINE;
       break;
-    case Params::SearchParams::TYPES_ALL:
+    case api::file_browser_private::SEARCH_TYPE_ALL:
       options = drive::SEARCH_METADATA_ALL;
       break;
-    case Params::SearchParams::TYPES_NONE:
+    case api::file_browser_private::SEARCH_TYPE_NONE:
       break;
   }
   DCHECK_NE(options, -1);
@@ -486,7 +476,7 @@ void FileBrowserPrivateSearchDriveMetadataFunction::OnSearchMetadata(
 
   DCHECK(results.get());
 
-  base::ListValue* results_list = new ListValue();
+  base::ListValue* results_list = new base::ListValue();
 
   // Convert Drive files to something File API stack can understand.  See
   // file_browser_handler_custom_bindings.cc and
@@ -495,10 +485,10 @@ void FileBrowserPrivateSearchDriveMetadataFunction::OnSearchMetadata(
   fileapi::FileSystemInfo info =
       fileapi::GetFileSystemInfoForChromeOS(source_url_.GetOrigin());
   for (size_t i = 0; i < results->size(); ++i) {
-    DictionaryValue* result_dict = new DictionaryValue();
+    base::DictionaryValue* result_dict = new base::DictionaryValue();
 
     // FileEntry fields.
-    DictionaryValue* entry = new DictionaryValue();
+    base::DictionaryValue* entry = new base::DictionaryValue();
     entry->SetString("fileSystemName", info.name);
     entry->SetString("fileSystemRoot", info.root_url.spec());
     entry->SetString("fileFullPath", "/" + results->at(i).path.value());
@@ -515,47 +505,28 @@ void FileBrowserPrivateSearchDriveMetadataFunction::OnSearchMetadata(
   SendResponse(true);
 }
 
-bool FileBrowserPrivateClearDriveCacheFunction::RunImpl() {
-  drive::DriveIntegrationService* integration_service =
-      drive::DriveIntegrationServiceFactory::FindForProfile(GetProfile());
-  if (!integration_service || !integration_service->IsMounted())
-    return false;
-
-  // TODO(yoshiki): Receive a callback from JS-side and pass it to
-  // ClearCacheAndRemountFileSystem(). http://crbug.com/140511
-  integration_service->ClearCacheAndRemountFileSystem(
-      base::Bind(&DoNothingWithBool));
-
-  SendResponse(true);
-  return true;
-}
-
 bool FileBrowserPrivateGetDriveConnectionStateFunction::RunImpl() {
-  drive::DriveServiceInterface* const drive_service =
-      drive::util::GetDriveServiceByProfile(GetProfile());
+  api::file_browser_private::DriveConnectionState result;
 
-  api::file_browser_private::GetDriveConnectionState::Results::Result result;
-
-  const bool ready = drive_service && drive_service->CanSendRequest();
-  const bool is_connection_cellular =
-      net::NetworkChangeNotifier::IsConnectionCellular(
-          net::NetworkChangeNotifier::GetConnectionType());
-
-  if (net::NetworkChangeNotifier::IsOffline() || !ready) {
-    result.type = kDriveConnectionTypeOffline;
-    if (net::NetworkChangeNotifier::IsOffline())
-      result.reasons.push_back(kDriveConnectionReasonNoNetwork);
-    if (!ready)
-      result.reasons.push_back(kDriveConnectionReasonNotReady);
-    if (!drive_service)
-      result.reasons.push_back(kDriveConnectionReasonNoService);
-  } else if (
-      is_connection_cellular &&
-      GetProfile()->GetPrefs()->GetBoolean(
-        prefs::kDisableDriveOverCellular)) {
-    result.type = kDriveConnectionTypeMetered;
-  } else {
-    result.type = kDriveConnectionTypeOnline;
+  switch (drive::util::GetDriveConnectionStatus(GetProfile())) {
+    case drive::util::DRIVE_DISCONNECTED_NOSERVICE:
+      result.type = kDriveConnectionTypeOffline;
+      result.reason.reset(new std::string(kDriveConnectionReasonNoService));
+      break;
+    case drive::util::DRIVE_DISCONNECTED_NONETWORK:
+      result.type = kDriveConnectionTypeOffline;
+      result.reason.reset(new std::string(kDriveConnectionReasonNoNetwork));
+      break;
+    case drive::util::DRIVE_DISCONNECTED_NOTREADY:
+      result.type = kDriveConnectionTypeOffline;
+      result.reason.reset(new std::string(kDriveConnectionReasonNotReady));
+      break;
+    case drive::util::DRIVE_CONNECTED_METERED:
+      result.type = kDriveConnectionTypeMetered;
+      break;
+    case drive::util::DRIVE_CONNECTED:
+      result.type = kDriveConnectionTypeOnline;
+      break;
   }
 
   results_ = api::file_browser_private::GetDriveConnectionState::Results::

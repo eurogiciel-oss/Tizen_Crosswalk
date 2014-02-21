@@ -81,10 +81,9 @@ enum PseudoId {
     // If you add or remove a public ID, you must update _pseudoBits in RenderStyle.
     NOPSEUDO, FIRST_LINE, FIRST_LETTER, BEFORE, AFTER, BACKDROP, SELECTION, FIRST_LINE_INHERITED, SCROLLBAR,
     // Internal IDs follow:
-    SCROLLBAR_THUMB, SCROLLBAR_BUTTON, SCROLLBAR_TRACK, SCROLLBAR_TRACK_PIECE, SCROLLBAR_CORNER, RESIZER,
-    INPUT_LIST_BUTTON,
+    SCROLLBAR_THUMB, SCROLLBAR_BUTTON, SCROLLBAR_TRACK, SCROLLBAR_TRACK_PIECE, SCROLLBAR_CORNER, RESIZER, INPUT_LIST_BUTTON,
+    // Special values follow:
     AFTER_LAST_INTERNAL_PSEUDOID,
-    FULL_SCREEN, FULL_SCREEN_DOCUMENT, FULL_SCREEN_ANCESTOR,
     FIRST_PUBLIC_PSEUDOID = FIRST_LINE,
     FIRST_INTERNAL_PSEUDOID = SCROLLBAR_THUMB,
     PUBLIC_PSEUDOID_MASK = ((1 << FIRST_INTERNAL_PSEUDOID) - 1) & ~((1 << FIRST_PUBLIC_PSEUDOID) - 1)
@@ -191,7 +190,6 @@ enum EBoxDirection { BNORMAL, BREVERSE };
 // CSS3 Flexbox Properties
 
 enum EAlignContent { AlignContentFlexStart, AlignContentFlexEnd, AlignContentCenter, AlignContentSpaceBetween, AlignContentSpaceAround, AlignContentStretch };
-enum EAlignItems { AlignAuto, AlignFlexStart, AlignFlexEnd, AlignCenter, AlignStretch, AlignBaseline };
 enum EFlexDirection { FlowRow, FlowRowReverse, FlowColumn, FlowColumnReverse };
 enum EFlexWrap { FlexNoWrap, FlexWrap, FlexWrapReverse };
 enum EJustifyContent { JustifyFlexStart, JustifyFlexEnd, JustifyCenter, JustifySpaceBetween, JustifySpaceAround };
@@ -379,7 +377,8 @@ enum TextJustify {
 
 enum TextUnderlinePosition {
     // FIXME: Implement support for 'under left' and 'under right' values.
-    TextUnderlinePositionAuto = 0x1, TextUnderlinePositionAlphabetic = 0x2, TextUnderlinePositionUnder = 0x4
+    TextUnderlinePositionAuto = 0x1,
+    TextUnderlinePositionUnder = 0x2
 };
 
 enum EPageBreak {
@@ -449,7 +448,9 @@ enum EDisplay {
     TABLE_CAPTION, BOX, INLINE_BOX,
     FLEX, INLINE_FLEX,
     GRID, INLINE_GRID,
-    NONE
+    NONE,
+    FIRST_TABLE_DISPLAY = TABLE,
+    LAST_TABLE_DISPLAY = TABLE_CAPTION
 };
 
 enum EInsideLink {
@@ -458,7 +459,8 @@ enum EInsideLink {
 
 enum EPointerEvents {
     PE_NONE, PE_AUTO, PE_STROKE, PE_FILL, PE_PAINTED, PE_VISIBLE,
-    PE_VISIBLE_STROKE, PE_VISIBLE_FILL, PE_VISIBLE_PAINTED, PE_ALL
+    PE_VISIBLE_STROKE, PE_VISIBLE_FILL, PE_VISIBLE_PAINTED, PE_BOUNDINGBOX,
+    PE_ALL
 };
 
 enum ETransformStyle3D {
@@ -513,16 +515,49 @@ enum GridAutoFlow { AutoFlowNone, AutoFlowColumn, AutoFlowRow };
 
 enum DraggableRegionMode { DraggableRegionNone, DraggableRegionDrag, DraggableRegionNoDrag };
 
-enum TouchAction { TouchActionAuto, TouchActionNone };
+static const size_t TouchActionBits = 3;
+enum TouchAction {
+    TouchActionAuto = 0x0,
+    TouchActionNone = 0x1,
+    TouchActionPanX = 0x2,
+    TouchActionPanY = 0x4
+};
+inline TouchAction operator| (TouchAction a, TouchAction b) { return TouchAction(int(a) | int(b)); }
+inline TouchAction& operator|= (TouchAction& a, TouchAction b) { return a = a | b; }
+inline TouchAction operator& (TouchAction a, TouchAction b) { return TouchAction(int(a) & int(b)); }
+inline TouchAction& operator&= (TouchAction& a, TouchAction b) { return a = a & b; }
 
 enum EIsolation { IsolationAuto, IsolationIsolate };
 
 enum TouchActionDelay { TouchActionDelayNone, TouchActionDelayScript };
 
+enum ItemPosition {
+    ItemPositionAuto,
+    ItemPositionStretch,
+    ItemPositionBaseline,
+    ItemPositionCenter,
+    ItemPositionStart,
+    ItemPositionEnd,
+    ItemPositionSelfStart,
+    ItemPositionSelfEnd,
+    ItemPositionFlexStart,
+    ItemPositionFlexEnd,
+    ItemPositionLeft,
+    ItemPositionRight
+};
+
+enum OverflowAlignment {
+    OverflowAlignmentDefault,
+    OverflowAlignmentTrue,
+    OverflowAlignmentSafe
+};
+
 // Reasonable maximum to prevent insane font sizes from causing crashes on some platforms (such as Windows).
 static const float maximumAllowedFontSize = 1000000.0f;
 
 enum TextIndentLine { TextIndentFirstLine, TextIndentEachLine };
+
+enum LayoutBox { BoxMissing = 0, MarginBox, BorderBox, PaddingBox, ContentBox };
 
 } // namespace WebCore
 

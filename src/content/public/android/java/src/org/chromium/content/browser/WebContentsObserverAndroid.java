@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,10 +13,14 @@ import org.chromium.base.JNINamespace;
  */
 @JNINamespace("content")
 public abstract class WebContentsObserverAndroid {
-    private int mNativeWebContentsObserverAndroid;
+    private long mNativeWebContentsObserverAndroid;
 
     public WebContentsObserverAndroid(ContentViewCore contentViewCore) {
         mNativeWebContentsObserverAndroid = nativeInit(contentViewCore.getNativeContentViewCore());
+    }
+
+    @CalledByNative
+    public void renderProcessGone(boolean wasOomProtected) {
     }
 
     /**
@@ -151,6 +155,6 @@ public abstract class WebContentsObserverAndroid {
         }
     }
 
-    private native int nativeInit(int contentViewCorePtr);
-    private native void nativeDestroy(int nativeWebContentsObserverAndroid);
+    private native long nativeInit(long contentViewCorePtr);
+    private native void nativeDestroy(long nativeWebContentsObserverAndroid);
 }

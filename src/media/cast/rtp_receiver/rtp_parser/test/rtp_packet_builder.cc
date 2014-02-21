@@ -12,6 +12,7 @@ namespace cast {
 
 const uint32 kCastRtpHeaderLength = 7;
 const uint32 kGenericRtpHeaderLength = 12;
+static const uint8 kRtpMarkerBitMask = 0x80;
 
 RtpPacketBuilder::RtpPacketBuilder()
     : is_key_(false),
@@ -30,7 +31,7 @@ void RtpPacketBuilder::SetKeyFrame(bool is_key) {
   is_key_ = is_key;
 }
 
-void RtpPacketBuilder::SetFrameId(uint8 frame_id) {
+void RtpPacketBuilder::SetFrameId(uint32 frame_id) {
   frame_id_ = frame_id;
 }
 
@@ -42,7 +43,7 @@ void RtpPacketBuilder::SetMaxPacketId(uint16 max_packet_id) {
   max_packet_id_ = max_packet_id;
 }
 
-void RtpPacketBuilder::SetReferenceFrameId(uint8 reference_frame_id,
+void RtpPacketBuilder::SetReferenceFrameId(uint32 reference_frame_id,
                                            bool is_set) {
   is_reference_set_ = is_set;
   if (is_set)

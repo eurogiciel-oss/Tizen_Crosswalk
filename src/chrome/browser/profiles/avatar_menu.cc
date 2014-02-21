@@ -24,6 +24,7 @@
 #include "chrome/browser/ui/host_desktop.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/common/profile_management_switches.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/notification_service.h"
 #include "grit/generated_resources.h"
@@ -95,13 +96,10 @@ bool AvatarMenu::ShouldShowAvatarMenu() {
   // implementations.
   if (profiles::IsMultipleProfilesEnabled()) {
 #if defined(OS_CHROMEOS)
-    // On ChromeOS the menu will be shown in M-31 mode when it is possible to
-    // have two users logged in at the same time.
-    return ash::switches::UseFullMultiProfileMode() &&
-           ChromeShellDelegate::instance() &&
-           ChromeShellDelegate::instance()->IsMultiProfilesEnabled();
+    // On ChromeOS the menu will not be shown.
+    return false;
 #else
-    return profiles::IsNewProfileManagementEnabled() ||
+    return switches::IsNewProfileManagement() ||
            (g_browser_process->profile_manager() &&
             g_browser_process->profile_manager()->GetNumberOfProfiles() > 1);
 #endif
@@ -119,7 +117,7 @@ void AvatarMenu::SwitchToProfile(size_t index, bool always_create) {
          index == GetActiveProfileIndex());
   const Item& item = GetItemAt(index);
 
-  if (profiles::IsNewProfileManagementEnabled()) {
+  if (switches::IsNewProfileManagement()) {
     // Don't open a browser window for signed-out profiles.
     if (item.signin_required) {
       chrome::ShowUserManager(item.profile_path);
@@ -191,7 +189,8 @@ base::string16 AvatarMenu::GetManagedUserInformation() const {
 #if defined(ENABLE_MANAGED_USERS)
     ManagedUserService* service = ManagedUserServiceFactory::GetForProfile(
         browser_->profile());
-    base::string16 custodian = UTF8ToUTF16(service->GetCustodianEmailAddress());
+    base::string16 custodian =
+        base::UTF8ToUTF16(service->GetCustodianEmailAddress());
     return l10n_util::GetStringFUTF16(IDS_MANAGED_USER_INFO, custodian);
 #endif
   }
@@ -229,12 +228,4 @@ void AvatarMenu::Observe(int type,
   RebuildMenu();
   if (observer_)
     observer_->OnAvatarMenuChanged(this);
-}
-
-content::WebContents* AvatarMenu::BeginSignOut() {
-  return menu_actions_->BeginSignOut();
-}
-
-void AvatarMenu::SetLogoutURL(const std::string& logout_url) {
-  menu_actions_->SetLogoutURL(logout_url);
 }

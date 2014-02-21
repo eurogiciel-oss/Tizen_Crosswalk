@@ -42,7 +42,7 @@ class Frame;
 class Page;
 class Settings;
 
-class InternalSettings : public InternalSettingsGenerated {
+class InternalSettings FINAL : public InternalSettingsGenerated {
 public:
     class Backup {
     public:
@@ -53,11 +53,12 @@ public:
         bool m_originalAuthorShadowDOMForAnyElementEnabled;
         bool m_originalExperimentalWebSocketEnabled;
         bool m_originalStyleScoped;
+        bool m_originalCSP;
         bool m_originalOverlayScrollbarsEnabled;
         EditingBehaviorType m_originalEditingBehavior;
         bool m_originalTextAutosizingEnabled;
         IntSize m_originalTextAutosizingWindowSizeOverride;
-        float m_originalTextAutosizingFontScaleFactor;
+        float m_originalAccessibilityFontScaleFactor;
         String m_originalMediaTypeOverride;
         bool m_originalMockScrollbarsEnabled;
         bool m_langAttributeAwareFormControlUIEnabled;
@@ -67,6 +68,7 @@ public:
         bool m_shouldDisplayTextDescriptions;
         String m_defaultVideoPosterURL;
         bool m_originalCompositorDrivenAcceleratedScrollEnabled;
+        bool m_originalLayerSquashingEnabled;
         bool m_originalPasswordGenerationDecorationEnabled;
     };
 
@@ -80,13 +82,13 @@ public:
     virtual ~InternalSettings();
     void resetToConsistentState();
 
-    void setStandardFontFamily(const String& family, const String& script, ExceptionState&);
-    void setSerifFontFamily(const String& family, const String& script, ExceptionState&);
-    void setSansSerifFontFamily(const String& family, const String& script, ExceptionState&);
-    void setFixedFontFamily(const String& family, const String& script, ExceptionState&);
-    void setCursiveFontFamily(const String& family, const String& script, ExceptionState&);
-    void setFantasyFontFamily(const String& family, const String& script, ExceptionState&);
-    void setPictographFontFamily(const String& family, const String& script, ExceptionState&);
+    void setStandardFontFamily(const AtomicString& family, const String& script, ExceptionState&);
+    void setSerifFontFamily(const AtomicString& family, const String& script, ExceptionState&);
+    void setSansSerifFontFamily(const AtomicString& family, const String& script, ExceptionState&);
+    void setFixedFontFamily(const AtomicString& family, const String& script, ExceptionState&);
+    void setCursiveFontFamily(const AtomicString& family, const String& script, ExceptionState&);
+    void setFantasyFontFamily(const AtomicString& family, const String& script, ExceptionState&);
+    void setPictographFontFamily(const AtomicString& family, const String& script, ExceptionState&);
 
     void setDefaultVideoPosterURL(const String& url, ExceptionState&);
     void setEditingBehavior(const String&, ExceptionState&);
@@ -95,7 +97,7 @@ public:
     void setMockScrollbarsEnabled(bool, ExceptionState&);
     void setPasswordGenerationDecorationEnabled(bool, ExceptionState&);
     void setTextAutosizingEnabled(bool, ExceptionState&);
-    void setTextAutosizingFontScaleFactor(float fontScaleFactor, ExceptionState&);
+    void setAccessibilityFontScaleFactor(float fontScaleFactor, ExceptionState&);
     void setTextAutosizingWindowSizeOverride(int width, int height, ExceptionState&);
     void setTouchEventEmulationEnabled(bool, ExceptionState&);
     void setViewportEnabled(bool, ExceptionState&);
@@ -103,6 +105,10 @@ public:
     // FIXME: This is a temporary flag and should be removed once accelerated
     // overflow scroll is ready (crbug.com/254111).
     void setCompositorDrivenAcceleratedScrollingEnabled(bool, ExceptionState&);
+
+    // FIXME: This is a temporary flag and should be removed once squashing is
+    // ready (crbug.com/261605).
+    void setLayerSquashingEnabled(bool, ExceptionState&);
 
     // FIXME: The following are RuntimeEnabledFeatures and likely
     // cannot be changed after process start. These setters should
@@ -113,6 +119,7 @@ public:
     void setLangAttributeAwareFormControlUIEnabled(bool);
     void setOverlayScrollbarsEnabled(bool);
     void setStyleScopedEnabled(bool);
+    void setExperimentalContentSecurityPolicyFeaturesEnabled(bool);
 
 private:
     explicit InternalSettings(Page*);

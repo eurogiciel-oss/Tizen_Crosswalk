@@ -1,7 +1,7 @@
 <!DOCTYPE HTML>
 <html>
 <head>
-<script src="../fast/js/resources/js-test-pre.js"></script>
+<script src="../resources/js-test.js"></script>
 </head>
 <body>
 <script>
@@ -11,7 +11,7 @@
     shouldBeDefined("document.onwebkitpointerlockerror");
     shouldBeDefined("document.webkitExitPointerLock");
     shouldEvaluateTo("document.webkitPointerLockElement", null);
-    element = document.createElement();
+    element = document.createElement('x');
     shouldBeDefined("element.webkitRequestPointerLock");
 </script>
 </body>

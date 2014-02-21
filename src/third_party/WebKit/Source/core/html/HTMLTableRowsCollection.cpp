@@ -60,7 +60,7 @@ HTMLTableRowElement* HTMLTableRowsCollection::rowAfter(HTMLTableElement* table, 
     // Continue only if there is none.
     if (previous && previous->parentNode() != table) {
         for (child = previous->nextSibling(); child; child = child->nextSibling()) {
-            if (isHTMLTableRowElement(child))
+            if (child->hasTagName(trTag))
                 return toHTMLTableRowElement(child);
         }
     }
@@ -73,7 +73,7 @@ HTMLTableRowElement* HTMLTableRowsCollection::rowAfter(HTMLTableElement* table, 
     for (; child; child = child->nextSibling()) {
         if (child->hasTagName(theadTag)) {
             for (Node* grandchild = child->firstChild(); grandchild; grandchild = grandchild->nextSibling()) {
-                if (isHTMLTableRowElement(grandchild))
+                if (grandchild->hasTagName(trTag))
                     return toHTMLTableRowElement(grandchild);
             }
         }
@@ -87,11 +87,11 @@ HTMLTableRowElement* HTMLTableRowsCollection::rowAfter(HTMLTableElement* table, 
     else if (isInBody(previous))
         child = previous->parentNode()->nextSibling();
     for (; child; child = child->nextSibling()) {
-        if (isHTMLTableRowElement(child))
+        if (child->hasTagName(trTag))
             return toHTMLTableRowElement(child);
         if (child->hasTagName(tbodyTag)) {
             for (Node* grandchild = child->firstChild(); grandchild; grandchild = grandchild->nextSibling()) {
-                if (isHTMLTableRowElement(grandchild))
+                if (grandchild->hasTagName(trTag))
                     return toHTMLTableRowElement(grandchild);
             }
         }
@@ -105,7 +105,7 @@ HTMLTableRowElement* HTMLTableRowsCollection::rowAfter(HTMLTableElement* table, 
     for (; child; child = child->nextSibling()) {
         if (child->hasTagName(tfootTag)) {
             for (Node* grandchild = child->firstChild(); grandchild; grandchild = grandchild->nextSibling()) {
-                if (isHTMLTableRowElement(grandchild))
+                if (grandchild->hasTagName(trTag))
                     return toHTMLTableRowElement(grandchild);
             }
         }
@@ -119,18 +119,18 @@ HTMLTableRowElement* HTMLTableRowsCollection::lastRow(HTMLTableElement* table)
     for (Node* child = table->lastChild(); child; child = child->previousSibling()) {
         if (child->hasTagName(tfootTag)) {
             for (Node* grandchild = child->lastChild(); grandchild; grandchild = grandchild->previousSibling()) {
-                if (isHTMLTableRowElement(grandchild))
+                if (grandchild->hasTagName(trTag))
                     return toHTMLTableRowElement(grandchild);
             }
         }
     }
 
     for (Node* child = table->lastChild(); child; child = child->previousSibling()) {
-        if (isHTMLTableRowElement(child))
+        if (child->hasTagName(trTag))
             return toHTMLTableRowElement(child);
         if (child->hasTagName(tbodyTag)) {
             for (Node* grandchild = child->lastChild(); grandchild; grandchild = grandchild->previousSibling()) {
-                if (isHTMLTableRowElement(grandchild))
+                if (grandchild->hasTagName(trTag))
                     return toHTMLTableRowElement(grandchild);
             }
         }
@@ -139,7 +139,7 @@ HTMLTableRowElement* HTMLTableRowsCollection::lastRow(HTMLTableElement* table)
     for (Node* child = table->lastChild(); child; child = child->previousSibling()) {
         if (child->hasTagName(theadTag)) {
             for (Node* grandchild = child->lastChild(); grandchild; grandchild = grandchild->previousSibling()) {
-                if (isHTMLTableRowElement(grandchild))
+                if (grandchild->hasTagName(trTag))
                     return toHTMLTableRowElement(grandchild);
             }
         }
@@ -151,20 +151,19 @@ HTMLTableRowElement* HTMLTableRowsCollection::lastRow(HTMLTableElement* table)
 // Must call get() on the table in case that argument is compiled before dereferencing the
 // table to get at the collection cache. Order of argument evaluation is undefined and can
 // differ between compilers.
-HTMLTableRowsCollection::HTMLTableRowsCollection(Node* table)
+HTMLTableRowsCollection::HTMLTableRowsCollection(ContainerNode* table)
     : HTMLCollection(table, TableRows, OverridesItemAfter)
 {
-    ASSERT(isHTMLTableElement(table));
+    ASSERT(table->hasTagName(tableTag));
 }
 
-PassRefPtr<HTMLTableRowsCollection> HTMLTableRowsCollection::create(Node* table, CollectionType)
+PassRefPtr<HTMLTableRowsCollection> HTMLTableRowsCollection::create(ContainerNode* table, CollectionType)
 {
     return adoptRef(new HTMLTableRowsCollection(table));
 }
 
-Element* HTMLTableRowsCollection::virtualItemAfter(unsigned& offsetInArray, Element* previous) const
+Element* HTMLTableRowsCollection::virtualItemAfter(Element* previous) const
 {
-    ASSERT_UNUSED(offsetInArray, !offsetInArray);
     return rowAfter(toHTMLTableElement(ownerNode()), toHTMLTableRowElement(previous));
 }
 

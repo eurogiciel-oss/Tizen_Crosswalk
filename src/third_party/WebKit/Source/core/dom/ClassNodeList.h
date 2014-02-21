@@ -39,35 +39,38 @@ namespace WebCore {
 
 class ClassNodeList FINAL : public LiveNodeList {
 public:
-    static PassRefPtr<ClassNodeList> create(PassRefPtr<Node> rootNode, const String& classNames)
+    // classNames argument is an AtomicString because it is common for Elements to share the same class names.
+    // It is also used to construct a SpaceSplitString (m_classNames) and its constructor requires an AtomicString.
+    static PassRefPtr<ClassNodeList> create(PassRefPtr<ContainerNode> rootNode, CollectionType type, const AtomicString& classNames)
     {
+        ASSERT_UNUSED(type, type == ClassNodeListType);
         return adoptRef(new ClassNodeList(rootNode, classNames));
     }
 
     virtual ~ClassNodeList();
 
-    bool nodeMatchesInlined(Element*) const;
+    bool nodeMatchesInlined(const Element&) const;
 
 private:
-    ClassNodeList(PassRefPtr<Node> rootNode, const String& classNames);
+    ClassNodeList(PassRefPtr<ContainerNode> rootNode, const AtomicString& classNames);
 
-    virtual bool nodeMatches(Element*) const OVERRIDE;
+    virtual bool nodeMatches(const Element&) const OVERRIDE;
 
     SpaceSplitString m_classNames;
-    String m_originalClassNames;
+    AtomicString m_originalClassNames;
 };
 
-inline bool ClassNodeList::nodeMatchesInlined(Element* testNode) const
+inline bool ClassNodeList::nodeMatchesInlined(const Element& testNode) const
 {
-    if (!testNode->hasClass())
+    if (!testNode.hasClass())
         return false;
     if (!m_classNames.size())
         return false;
     // FIXME: DOM4 allows getElementsByClassName to return non StyledElement.
     // https://bugs.webkit.org/show_bug.cgi?id=94718
-    if (!testNode->isStyledElement())
+    if (!testNode.isStyledElement())
         return false;
-    return testNode->classNames().containsAll(m_classNames);
+    return testNode.classNames().containsAll(m_classNames);
 }
 
 } // namespace WebCore

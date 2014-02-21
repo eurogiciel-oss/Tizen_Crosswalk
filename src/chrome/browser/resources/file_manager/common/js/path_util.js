@@ -6,50 +6,57 @@
 
 /**
  * Type of a root directory.
- * @enum
+ * @enum {string}
+ * @const
  */
-var RootType = {
+var RootType = Object.freeze({
+  // Root of local directory.
   DOWNLOADS: 'downloads',
+
+  // Root of mounted archive file.
   ARCHIVE: 'archive',
+
+  // Root of removal volume.
   REMOVABLE: 'removable',
+
+  // Root of drive directory.
   DRIVE: 'drive',
-  DRIVE_OFFLINE: 'drive_offline',  // A fake root. Not the actual filesystem.
-  DRIVE_SHARED_WITH_ME: 'drive_shared_with_me',  // A fake root.
-  DRIVE_RECENT: 'drive_recent'  // A fake root.
-};
+
+  // Root for privet storage volume.
+  CLOUD_DEVICE: 'cloud_device',
+
+  // Root for entries that is not located under RootType.DRIVE. e.g. shared
+  // files.
+  DRIVE_OTHER: 'drive_other',
+
+  // Fake root for offline available files on the drive.
+  DRIVE_OFFLINE: 'drive_offline',
+
+  // Fake root for shared files on the drive.
+  DRIVE_SHARED_WITH_ME: 'drive_shared_with_me',
+
+  // Fake root for recent files on the drive.
+  DRIVE_RECENT: 'drive_recent'
+});
 
 /**
  * Top directory for each root type.
- * @type {Object.<RootType,string>}
+ * TODO(mtomasz): Deprecated. Remove this.
+ * @enum {string}
+ * @const
  */
-var RootDirectory = {
+var RootDirectory = Object.freeze({
   DOWNLOADS: '/Downloads',
   ARCHIVE: '/archive',
   REMOVABLE: '/removable',
   DRIVE: '/drive',
+  CLOUD_DEVICE: '/privet',
   DRIVE_OFFLINE: '/drive_offline',  // A fake root. Not the actual filesystem.
   DRIVE_SHARED_WITH_ME: '/drive_shared_with_me',  // A fake root.
   DRIVE_RECENT: '/drive_recent'  // A fake root.
-};
-
-/**
- * Sub root directory for Drive. "root" and "other". This is not used now.
- * TODO(haruki): Add namespaces support. http://crbug.com/174233.
- * @enum
- */
-var DriveSubRootDirectory = {
-  ROOT: 'root',
-  OTHER: 'other',
-};
+});
 
 var PathUtil = {};
-
-/**
- * The path to the default directory.
- * @type {string}
- * @const
- */
-PathUtil.DEFAULT_DIRECTORY = RootDirectory.DOWNLOADS;
 
 /**
  * Checks if the given path represents a special search. Fake entries in
@@ -246,110 +253,32 @@ PathUtil.isRootPath = function(path) {
 };
 
 /**
- * @param {string} path A root path.
- * @return {boolean} True if the given path is root and user can unmount it.
+ * Returns the localized name for the root type. If not available, then returns
+ * null.
+ *
+ * @param {RootType} rootType The root type.
+ * @return {?string} The localized name, or null if not available.
  */
-PathUtil.isUnmountableByUser = function(path) {
-  if (!PathUtil.isRootPath(path))
-    return false;
-
-  var type = PathUtil.getRootType(path);
-  return (type == RootType.ARCHIVE || type == RootType.REMOVABLE);
-};
-
-/**
- * @param {string} parent_path The parent path.
- * @param {string} child_path The child path.
- * @return {boolean} True if |parent_path| is parent file path of |child_path|.
- */
-PathUtil.isParentPath = function(parent_path, child_path) {
-  if (!parent_path || parent_path.length == 0 ||
-      !child_path || child_path.length == 0)
-    return false;
-
-  if (parent_path[parent_path.length - 1] != '/')
-    parent_path += '/';
-
-  if (child_path[child_path.length - 1] != '/')
-    child_path += '/';
-
-  return child_path.indexOf(parent_path) == 0;
-};
-
-/**
- * Return the localized name for the root.
- * @param {string} path The full path of the root (starting with slash).
- * @return {string} The localized name.
- */
-PathUtil.getRootLabel = function(path) {
+PathUtil.getRootTypeLabel = function(rootType) {
   var str = function(id) {
     return loadTimeData.getString(id);
   };
 
-  if (path === RootDirectory.DOWNLOADS)
-    return str('DOWNLOADS_DIRECTORY_LABEL');
+  switch (rootType) {
+    case RootType.DOWNLOADS:
+      return str('DOWNLOADS_DIRECTORY_LABEL');
+    case RootType.DRIVE:
+      return str('DRIVE_MY_DRIVE_LABEL');
+    case RootType.DRIVE_OFFLINE:
+      return str('DRIVE_OFFLINE_COLLECTION_LABEL');
+    case RootType.DRIVE_SHARED_WITH_ME:
+      return str('DRIVE_SHARED_WITH_ME_COLLECTION_LABEL');
+    case RootType.DRIVE_RECENT:
+      return str('DRIVE_RECENT_COLLECTION_LABEL');
+  }
 
-  if (path === RootDirectory.ARCHIVE)
-    return str('ARCHIVE_DIRECTORY_LABEL');
-  if (PathUtil.isParentPath(RootDirectory.ARCHIVE, path))
-    return path.substring(RootDirectory.ARCHIVE.length + 1);
-
-  if (path === RootDirectory.REMOVABLE)
-    return str('REMOVABLE_DIRECTORY_LABEL');
-  if (PathUtil.isParentPath(RootDirectory.REMOVABLE, path))
-    return path.substring(RootDirectory.REMOVABLE.length + 1);
-
-  // TODO(haruki): Add support for "drive/root" and "drive/other".
-  if (path === RootDirectory.DRIVE + '/' + DriveSubRootDirectory.ROOT)
-    return str('DRIVE_DIRECTORY_LABEL');
-
-  if (path === RootDirectory.DRIVE_OFFLINE)
-    return str('DRIVE_OFFLINE_COLLECTION_LABEL');
-
-  if (path === RootDirectory.DRIVE_SHARED_WITH_ME)
-    return str('DRIVE_SHARED_WITH_ME_COLLECTION_LABEL');
-
-  if (path === RootDirectory.DRIVE_RECENT)
-    return str('DRIVE_RECENT_COLLECTION_LABEL');
-
-  return path;
-};
-
-/**
- * Return the label of the folder to be shown. Eg.
- *  - '/foo/bar/baz' -> 'baz'
- *  - '/hoge/fuga/ -> 'fuga'
- * If the directory is root, returns the root label, which is same as
- * PathUtil.getRootLabel().
- *
- * @param {string} directoryPath The full path of the folder.
- * @return {string} The label to be shown.
- */
-PathUtil.getFolderLabel = function(directoryPath) {
-  var label = '';
-  if (PathUtil.isRootPath(directoryPath))
-    label = PathUtil.getRootLabel(directoryPath);
-
-  if (label && label != directoryPath)
-    return label;
-
-  var matches = directoryPath.match(/([^\/]*)[\/]?$/);
-  if (matches[1])
-    return matches[1];
-
-  return directoryPath;
-};
-
-/**
- * Returns if the given path can be a target path of folder shortcut.
- *
- * @param {string} directoryPath Directory path to be checked.
- * @return {boolean} True if the path can be a target path of the shortcut.
- */
-PathUtil.isEligibleForFolderShortcut = function(directoryPath) {
-  return !PathUtil.isSpecialSearchRoot(directoryPath) &&
-         !PathUtil.isRootPath(directoryPath) &&
-         PathUtil.isDriveBasedPath(directoryPath);
+  // Translation not found.
+  return null;
 };
 
 /**

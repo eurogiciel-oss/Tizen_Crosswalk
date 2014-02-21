@@ -23,7 +23,8 @@
 #define ProcessingInstruction_h
 
 #include "core/dom/CharacterData.h"
-#include "core/fetch/ResourcePtr.h"
+#include "core/fetch/ResourceOwner.h"
+#include "core/fetch/StyleSheetResource.h"
 #include "core/fetch/StyleSheetResourceClient.h"
 
 namespace WebCore {
@@ -31,7 +32,7 @@ namespace WebCore {
 class StyleSheet;
 class CSSStyleSheet;
 
-class ProcessingInstruction FINAL : public CharacterData, private StyleSheetResourceClient {
+class ProcessingInstruction FINAL : public CharacterData, private ResourceOwner<StyleSheetResource> {
 public:
     static PassRefPtr<ProcessingInstruction> create(Document&, const String& target, const String& data);
     virtual ~ProcessingInstruction();
@@ -39,8 +40,6 @@ public:
     const String& target() const { return m_target; }
 
     void setCreatedByParser(bool createdByParser) { m_createdByParser = createdByParser; }
-
-    virtual void finishParsingChildren();
 
     const String& localHref() const { return m_localHref; }
     StyleSheet* sheet() const { return m_sheet.get(); }
@@ -55,20 +54,18 @@ private:
     friend class CharacterData;
     ProcessingInstruction(Document&, const String& target, const String& data);
 
-    virtual String nodeName() const;
-    virtual NodeType nodeType() const;
-    virtual PassRefPtr<Node> cloneNode(bool deep = true);
+    virtual String nodeName() const OVERRIDE;
+    virtual NodeType nodeType() const OVERRIDE;
+    virtual PassRefPtr<Node> cloneNode(bool deep = true) OVERRIDE;
 
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
     virtual void removedFrom(ContainerNode*) OVERRIDE;
 
     void checkStyleSheet();
-    virtual void setCSSStyleSheet(const String& href, const KURL& baseURL, const String& charset, const CSSStyleSheetResource*);
-    virtual void setXSLStyleSheet(const String& href, const KURL& baseURL, const String& sheet);
+    virtual void setCSSStyleSheet(const String& href, const KURL& baseURL, const String& charset, const CSSStyleSheetResource*) OVERRIDE;
+    virtual void setXSLStyleSheet(const String& href, const KURL& baseURL, const String& sheet) OVERRIDE;
 
-    virtual bool sheetLoaded();
-
-    virtual void addSubresourceAttributeURLs(ListHashSet<KURL>&) const;
+    virtual bool sheetLoaded() OVERRIDE;
 
     void parseStyleSheet(const String& sheet);
 
@@ -76,7 +73,6 @@ private:
     String m_localHref;
     String m_title;
     String m_media;
-    ResourcePtr<Resource> m_resource;
     RefPtr<StyleSheet> m_sheet;
     bool m_loading;
     bool m_alternate;

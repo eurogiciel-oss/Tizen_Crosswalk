@@ -35,7 +35,7 @@
 namespace WebCore {
 
 SVGDocument::SVGDocument(const DocumentInit& initializer)
-    : Document(initializer, SVGDocumentClass)
+    : XMLDocument(initializer, XMLDocumentClass | SVGDocumentClass)
 {
     ScriptWrappable::init(this);
 }
@@ -92,13 +92,6 @@ void SVGDocument::updatePan(const FloatPoint& pos) const
         if (renderer())
             renderer()->repaint();
     }
-}
-
-bool SVGDocument::childShouldCreateRenderer(const Node& child) const
-{
-    if (child.hasTagName(SVGNames::svgTag))
-        return toSVGSVGElement(&child)->isValid();
-    return true;
 }
 
 PassRefPtr<Document> SVGDocument::cloneDocumentWithoutChildren()

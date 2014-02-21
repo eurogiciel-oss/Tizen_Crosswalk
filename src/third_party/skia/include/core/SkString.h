@@ -11,6 +11,7 @@
 #define SkString_DEFINED
 
 #include "SkScalar.h"
+#include "SkTArray.h"
 
 #include <stdarg.h>
 
@@ -85,11 +86,7 @@ char*   SkStrAppendS64(char buffer[], int64_t, int minDigits);
  *  Thus if the caller wants to add a 0 at the end, buffer must be at least
  *  SkStrAppendScalar_MaxSize + 1 bytes large.
  */
-#ifdef SK_SCALAR_IS_FLOAT
-    #define SkStrAppendScalar SkStrAppendFloat
-#else
-    #define SkStrAppendScalar SkStrAppendFixed
-#endif
+#define SkStrAppendScalar SkStrAppendFloat
 
 char* SkStrAppendFloat(char buffer[], float);
 char* SkStrAppendFixed(char buffer[], SkFixed);
@@ -196,7 +193,7 @@ public:
 
     void printf(const char format[], ...) SK_PRINTF_LIKE(2, 3);
     void appendf(const char format[], ...) SK_PRINTF_LIKE(2, 3);
-    void appendf(const char format[], va_list);
+    void appendVAList(const char format[], va_list);
     void prependf(const char format[], ...) SK_PRINTF_LIKE(2, 3);
 
     void remove(size_t offset, size_t length);
@@ -235,24 +232,6 @@ private:
     static Rec* RefRec(Rec*);
 };
 
-class SkAutoUCS2 {
-public:
-    SkAutoUCS2(const char utf8[]);
-    ~SkAutoUCS2();
-
-    /** This returns the number of ucs2 characters
-    */
-    int count() const { return fCount; }
-
-    /** This returns a null terminated ucs2 string
-    */
-    const uint16_t* getUCS2() const { return fUCS2; }
-
-private:
-    int         fCount;
-    uint16_t*   fUCS2;
-};
-
 /// Creates a new string and writes into it using a printf()-style format.
 SkString SkStringPrintf(const char* format, ...);
 
@@ -261,5 +240,8 @@ SkString SkStringPrintf(const char* format, ...);
 template <> inline void SkTSwap(SkString& a, SkString& b) {
     a.swap(b);
 }
+
+// Split str on any characters in delimiters into out.  (Think, strtok with a sane API.)
+void SkStrSplit(const char* str, const char* delimiters, SkTArray<SkString>* out);
 
 #endif

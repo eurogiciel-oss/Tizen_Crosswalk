@@ -16,8 +16,6 @@ static inline void join_no_empty_check(const SkIRect& joinWith, SkIRect* out);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-SK_DEFINE_INST_COUNT(SkRTree)
-
 SkRTree* SkRTree::Create(int minChildren, int maxChildren, SkScalar aspectRatio,
             bool sortWhenBulkLoading) {
     if (minChildren < maxChildren && (maxChildren + 1) / 2 >= minChildren &&
@@ -347,9 +345,9 @@ SkRTree::Branch SkRTree::bulkLoad(SkTDArray<Branch>* branches, int level) {
             }
         }
 
-        int numStrips = SkScalarCeil(SkScalarSqrt(SkIntToScalar(numBranches) *
+        int numStrips = SkScalarCeilToInt(SkScalarSqrt(SkIntToScalar(numBranches) *
                                      SkScalarInvert(fAspectRatio)));
-        int numTiles = SkScalarCeil(SkIntToScalar(numBranches) /
+        int numTiles = SkScalarCeilToInt(SkIntToScalar(numBranches) /
                                     SkIntToScalar(numStrips));
         int currentBranch = 0;
 

@@ -387,7 +387,7 @@ TEST_F(RtpDataMediaChannelTest, SendDataRate) {
   // With rtp overhead of 32 bytes, each one of our packets is 36
   // bytes, or 288 bits.  So, a limit of 872bps will allow 3 packets,
   // but not four.
-  dmc->SetSendBandwidth(false, 872);
+  dmc->SetMaxSendBandwidth(872);
 
   EXPECT_TRUE(dmc->SendData(params, payload, &result));
   EXPECT_TRUE(dmc->SendData(params, payload, &result));
@@ -423,13 +423,13 @@ TEST_F(RtpDataMediaChannelTest, ReceiveData) {
   talk_base::scoped_ptr<cricket::RtpDataMediaChannel> dmc(CreateChannel());
 
   // SetReceived not called.
-  dmc->OnPacketReceived(&packet);
+  dmc->OnPacketReceived(&packet, talk_base::PacketTime());
   EXPECT_FALSE(HasReceivedData());
 
   dmc->SetReceive(true);
 
   // Unknown payload id
-  dmc->OnPacketReceived(&packet);
+  dmc->OnPacketReceived(&packet, talk_base::PacketTime());
   EXPECT_FALSE(HasReceivedData());
 
   cricket::DataCodec codec;
@@ -440,7 +440,7 @@ TEST_F(RtpDataMediaChannelTest, ReceiveData) {
   ASSERT_TRUE(dmc->SetRecvCodecs(codecs));
 
   // Unknown stream
-  dmc->OnPacketReceived(&packet);
+  dmc->OnPacketReceived(&packet, talk_base::PacketTime());
   EXPECT_FALSE(HasReceivedData());
 
   cricket::StreamParams stream;
@@ -448,7 +448,7 @@ TEST_F(RtpDataMediaChannelTest, ReceiveData) {
   ASSERT_TRUE(dmc->AddRecvStream(stream));
 
   // Finally works!
-  dmc->OnPacketReceived(&packet);
+  dmc->OnPacketReceived(&packet, talk_base::PacketTime());
   EXPECT_TRUE(HasReceivedData());
   EXPECT_EQ("abcde", GetReceivedData());
   EXPECT_EQ(5U, GetReceivedDataLen());
@@ -463,6 +463,6 @@ TEST_F(RtpDataMediaChannelTest, InvalidRtpPackets) {
   talk_base::scoped_ptr<cricket::RtpDataMediaChannel> dmc(CreateChannel());
 
   // Too short
-  dmc->OnPacketReceived(&packet);
+  dmc->OnPacketReceived(&packet, talk_base::PacketTime());
   EXPECT_FALSE(HasReceivedData());
 }

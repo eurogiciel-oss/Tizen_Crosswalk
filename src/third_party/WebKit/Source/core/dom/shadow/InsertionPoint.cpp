@@ -36,9 +36,6 @@
 #include "core/dom/QualifiedName.h"
 #include "core/dom/StaticNodeList.h"
 #include "core/dom/shadow/ElementShadow.h"
-#include "core/dom/shadow/ShadowRoot.h"
-#include "core/html/shadow/HTMLContentElement.h"
-#include "core/html/shadow/HTMLShadowElement.h"
 
 namespace WebCore {
 
@@ -100,8 +97,10 @@ void InsertionPoint::setDistribution(ContentDistribution& distribution)
 
 void InsertionPoint::attach(const AttachContext& context)
 {
-    // FIXME: This loop shouldn't be needed since the distributed nodes should
-    // never be detached, we can probably remove it.
+    // We need to attach the distribution here so that they're inserted in the right order
+    // otherwise the n^2 protection inside RenderTreeBuilder will cause them to be
+    // inserted in the wrong place later. This also lets distributed nodes benefit from
+    // the n^2 protection.
     for (size_t i = 0; i < m_distribution.size(); ++i) {
         if (m_distribution.at(i)->needsAttach())
             m_distribution.at(i)->attach(context);
@@ -135,16 +134,9 @@ bool InsertionPoint::canBeActive() const
 {
     if (!isInShadowTree())
         return false;
-    bool foundShadowElementInAncestors = false;
-    bool thisIsContentHTMLElement = isHTMLContentElement(this);
     for (Node* node = parentNode(); node; node = node->parentNode()) {
-        if (node->isInsertionPoint()) {
-            // For HTMLContentElement, at most one HTMLShadowElement may appear in its ancestors.
-            if (thisIsContentHTMLElement && isHTMLShadowElement(node) && !foundShadowElementInAncestors)
-                foundShadowElementInAncestors = true;
-            else
-                return false;
-        }
+        if (node->isInsertionPoint())
+            return false;
     }
     return true;
 }
@@ -155,14 +147,14 @@ bool InsertionPoint::isActive() const
         return false;
     ShadowRoot* shadowRoot = containingShadowRoot();
     ASSERT(shadowRoot);
-    if (!isHTMLShadowElement(this) || shadowRoot->descendantShadowElementCount() <= 1)
+    if (!hasTagName(shadowTag) || shadowRoot->descendantShadowElementCount() <= 1)
         return true;
 
     // Slow path only when there are more than one shadow elements in a shadow tree. That should be a rare case.
     const Vector<RefPtr<InsertionPoint> >& insertionPoints = shadowRoot->descendantInsertionPoints();
     for (size_t i = 0; i < insertionPoints.size(); ++i) {
         InsertionPoint* point = insertionPoints[i].get();
-        if (isHTMLShadowElement(point))
+        if (point->hasTagName(shadowTag))
             return point == this;
     }
     return true;
@@ -170,12 +162,12 @@ bool InsertionPoint::isActive() const
 
 bool InsertionPoint::isShadowInsertionPoint() const
 {
-    return isHTMLShadowElement(this) && isActive();
+    return hasTagName(shadowTag) && isActive();
 }
 
 bool InsertionPoint::isContentInsertionPoint() const
 {
-    return isHTMLContentElement(this) && isActive();
+    return hasTagName(contentTag) && isActive();
 }
 
 PassRefPtr<NodeList> InsertionPoint::getDistributedNodes()

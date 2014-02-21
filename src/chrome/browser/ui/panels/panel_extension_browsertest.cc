@@ -19,10 +19,10 @@
 #include "chrome/browser/web_applications/web_app.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/test_utils.h"
+#include "extensions/common/extension.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 #if defined(OS_MACOSX)
@@ -193,7 +193,7 @@ IN_PROC_BROWSER_TEST_F(PanelExtensionBrowserTest, BasicContextMenu) {
   {
     content::ContextMenuParams params;
     params.page_url = web_contents->GetURL();
-    params.selection_text = ASCIIToUTF16("Select me");
+    params.selection_text = base::ASCIIToUTF16("Select me");
     // Ensure context menu isn't swallowed by WebContentsDelegate (the panel).
     EXPECT_FALSE(web_contents->GetDelegate()->HandleContextMenu(params));
 

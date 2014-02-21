@@ -54,22 +54,26 @@
 #include <X11/Xlib.h>
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/keyboard_code_conversion.h"
-#include "ui/events/x/events_x_utils.h"
+#include "ui/events/test/events_test_utils_x11.h"
 #endif
 
-using WebKit::WebFrame;
-using WebKit::WebInputEvent;
-using WebKit::WebMouseEvent;
-using WebKit::WebRuntimeFeatures;
-using WebKit::WebString;
-using WebKit::WebTextDirection;
-using WebKit::WebURLError;
+#if defined(USE_OZONE)
+#include "ui/events/keycodes/keyboard_code_conversion.h"
+#endif
 
-namespace content  {
+using blink::WebFrame;
+using blink::WebInputEvent;
+using blink::WebMouseEvent;
+using blink::WebRuntimeFeatures;
+using blink::WebString;
+using blink::WebTextDirection;
+using blink::WebURLError;
+
+namespace content {
 
 namespace {
 
-#if defined(USE_AURA) && defined(USE_X11)
+#if (defined(USE_AURA) && defined(USE_X11)) || defined(USE_OZONE)
 // Converts MockKeyboard::Modifiers to ui::EventFlags.
 int ConvertMockKeyboardModifier(MockKeyboard::Modifiers modifiers) {
   static struct ModifierMap {
@@ -126,22 +130,25 @@ class RenderViewImplTest : public RenderViewTest {
 
   virtual void SetUp() OVERRIDE {
     RenderViewTest::SetUp();
-    // This test depends on Blink flag InputModeAttribute, which is enabled
-    // under only test. Content browser test doesn't enable the feature so we
-    // need enable it manually.
-    // TODO(yoichio): Remove this if InputMode feature is enabled by default.
-    WebRuntimeFeatures::enableInputModeAttribute(true);
+    // Enable Blink's experimental and test only features so that test code
+    // does not have to bother enabling each feature.
+    WebRuntimeFeatures::enableExperimentalFeatures(true);
+    WebRuntimeFeatures::enableTestOnlyFeatures(true);
   }
 
   RenderViewImpl* view() {
     return static_cast<RenderViewImpl*>(view_);
   }
 
+  RenderFrameImpl* frame() {
+    return static_cast<RenderFrameImpl*>(view()->GetMainRenderFrame());
+  }
+
   // Sends IPC messages that emulates a key-press event.
   int SendKeyEvent(MockKeyboard::Layout layout,
                    int key_code,
                    MockKeyboard::Modifiers modifiers,
-                   string16* output) {
+                   base::string16* output) {
 #if defined(OS_WIN)
     // Retrieve the Unicode character for the given tuple (keyboard-layout,
     // key-code, and modifiers).
@@ -195,36 +202,64 @@ class RenderViewImplTest : public RenderViewTest {
     CHECK(output);
     const int flags = ConvertMockKeyboardModifier(modifiers);
 
-    XEvent xevent1;
-    InitXKeyEventForTesting(ui::ET_KEY_PRESSED,
-                            static_cast<ui::KeyboardCode>(key_code),
-                            flags,
-                            &xevent1);
-    ui::KeyEvent event1(&xevent1, false);
+    ui::ScopedXI2Event xevent;
+    xevent.InitKeyEvent(ui::ET_KEY_PRESSED,
+                        static_cast<ui::KeyboardCode>(key_code),
+                        flags);
+    ui::KeyEvent event1(xevent, false);
     NativeWebKeyboardEvent keydown_event(&event1);
     SendNativeKeyEvent(keydown_event);
 
-    XEvent xevent2;
-    InitXKeyEventForTesting(ui::ET_KEY_PRESSED,
-                            static_cast<ui::KeyboardCode>(key_code),
-                            flags,
-                            &xevent2);
-    ui::KeyEvent event2(&xevent2, true);
+    xevent.InitKeyEvent(ui::ET_KEY_PRESSED,
+                        static_cast<ui::KeyboardCode>(key_code),
+                        flags);
+    ui::KeyEvent event2(xevent, true);
     NativeWebKeyboardEvent char_event(&event2);
     SendNativeKeyEvent(char_event);
 
-    XEvent xevent3;
-    InitXKeyEventForTesting(ui::ET_KEY_RELEASED,
-                            static_cast<ui::KeyboardCode>(key_code),
-                            flags,
-                            &xevent3);
-    ui::KeyEvent event3(&xevent3, false);
+    xevent.InitKeyEvent(ui::ET_KEY_RELEASED,
+                        static_cast<ui::KeyboardCode>(key_code),
+                        flags);
+    ui::KeyEvent event3(xevent, false);
     NativeWebKeyboardEvent keyup_event(&event3);
     SendNativeKeyEvent(keyup_event);
 
     long c = GetCharacterFromKeyCode(static_cast<ui::KeyboardCode>(key_code),
                                      flags);
-    output->assign(1, static_cast<char16>(c));
+    output->assign(1, static_cast<base::char16>(c));
+    return 1;
+#elif defined(USE_OZONE)
+    const int flags = ConvertMockKeyboardModifier(modifiers);
+
+    // Ozone's native events are ui::Events. So first create the "native" event,
+    // then create the actual ui::KeyEvent with the native event.
+    ui::KeyEvent keydown_native_event(ui::ET_KEY_PRESSED,
+                                   static_cast<ui::KeyboardCode>(key_code),
+                                   flags,
+                                   true);
+    ui::KeyEvent keydown_event(&keydown_native_event, false);
+    NativeWebKeyboardEvent keydown_web_event(&keydown_event);
+    SendNativeKeyEvent(keydown_web_event);
+
+    ui::KeyEvent char_native_event(ui::ET_KEY_PRESSED,
+                                   static_cast<ui::KeyboardCode>(key_code),
+                                   flags,
+                                   true);
+    ui::KeyEvent char_event(&char_native_event, true);
+    NativeWebKeyboardEvent char_web_event(&char_event);
+    SendNativeKeyEvent(char_web_event);
+
+    ui::KeyEvent keyup_native_event(ui::ET_KEY_RELEASED,
+                                    static_cast<ui::KeyboardCode>(key_code),
+                                    flags,
+                                    true);
+    ui::KeyEvent keyup_event(&keyup_native_event, false);
+    NativeWebKeyboardEvent keyup_web_event(&keyup_event);
+    SendNativeKeyEvent(keyup_web_event);
+
+    long c = GetCharacterFromKeyCode(static_cast<ui::KeyboardCode>(key_code),
+                                     flags);
+    output->assign(1, static_cast<base::char16>(c));
     return 1;
 #elif defined(TOOLKIT_GTK)
     // We ignore |layout|, which means we are only testing the layout of the
@@ -247,9 +282,9 @@ class RenderViewImplTest : public RenderViewTest {
         SendNativeKeyEvent(webkit_event);
 
         // Need to add a char event after the key down.
-        if (webkit_event.type == WebKit::WebInputEvent::RawKeyDown) {
+        if (webkit_event.type == blink::WebInputEvent::RawKeyDown) {
           NativeWebKeyboardEvent char_event = webkit_event;
-          char_event.type = WebKit::WebInputEvent::Char;
+          char_event.type = blink::WebInputEvent::Char;
           char_event.skip_in_browser = true;
           SendNativeKeyEvent(char_event);
         }
@@ -257,7 +292,7 @@ class RenderViewImplTest : public RenderViewTest {
       gdk_event_free(events[i]);
     }
 
-    output->assign(1, static_cast<char16>(unicode_key));
+    output->assign(1, static_cast<base::char16>(unicode_key));
     return 1;
 #else
     NOTIMPLEMENTED();
@@ -322,13 +357,13 @@ TEST_F(RenderViewImplTest, OnNavigationHttpPost) {
 
   // Check post data sent to browser matches
   EXPECT_TRUE(host_nav_params.a.page_state.IsValid());
-  const WebKit::WebHistoryItem item = PageStateToHistoryItem(
+  const blink::WebHistoryItem item = PageStateToHistoryItem(
       host_nav_params.a.page_state);
-  WebKit::WebHTTPBody body = item.httpBody();
-  WebKit::WebHTTPBody::Element element;
+  blink::WebHTTPBody body = item.httpBody();
+  blink::WebHTTPBody::Element element;
   bool successful = body.elementAt(0, element);
   EXPECT_TRUE(successful);
-  EXPECT_EQ(WebKit::WebHTTPBody::Element::TypeData, element.type);
+  EXPECT_EQ(blink::WebHTTPBody::Element::TypeData, element.type);
   EXPECT_EQ(length, element.data.size());
   EXPECT_EQ(0, memcmp(raw_data, element.data.data(), length));
 }
@@ -341,38 +376,68 @@ TEST_F(RenderViewImplTest, DecideNavigationPolicy) {
   state.set_navigation_state(NavigationState::CreateContentInitiated());
 
   // Navigations to normal HTTP URLs can be handled locally.
-  WebKit::WebURLRequest request(GURL("http://foo.com"));
-  WebKit::WebNavigationPolicy policy = view()->decidePolicyForNavigation(
-      GetMainFrame(),
-      &state,
-      request,
-      WebKit::WebNavigationTypeLinkClicked,
-      WebKit::WebNavigationPolicyCurrentTab,
-      false);
-  EXPECT_EQ(WebKit::WebNavigationPolicyCurrentTab, policy);
+  blink::WebURLRequest request(GURL("http://foo.com"));
+  blink::WebNavigationPolicy policy = frame()->decidePolicyForNavigation(
+          GetMainFrame(),
+          &state,
+          request,
+          blink::WebNavigationTypeLinkClicked,
+          blink::WebNavigationPolicyCurrentTab,
+          false);
+  EXPECT_EQ(blink::WebNavigationPolicyCurrentTab, policy);
 
   // Verify that form posts to WebUI URLs will be sent to the browser process.
-  WebKit::WebURLRequest form_request(GURL("chrome://foo"));
+  blink::WebURLRequest form_request(GURL("chrome://foo"));
   form_request.setHTTPMethod("POST");
-  policy = view()->decidePolicyForNavigation(
+  policy = frame()->decidePolicyForNavigation(
       GetMainFrame(),
       &state,
       form_request,
-      WebKit::WebNavigationTypeFormSubmitted,
-      WebKit::WebNavigationPolicyCurrentTab,
+      blink::WebNavigationTypeFormSubmitted,
+      blink::WebNavigationPolicyCurrentTab,
       false);
-  EXPECT_EQ(WebKit::WebNavigationPolicyIgnore, policy);
+  EXPECT_EQ(blink::WebNavigationPolicyIgnore, policy);
 
   // Verify that popup links to WebUI URLs also are sent to browser.
-  WebKit::WebURLRequest popup_request(GURL("chrome://foo"));
-  policy = view()->decidePolicyForNavigation(
+  blink::WebURLRequest popup_request(GURL("chrome://foo"));
+  policy = frame()->decidePolicyForNavigation(
       GetMainFrame(),
       &state,
       popup_request,
-      WebKit::WebNavigationTypeLinkClicked,
-      WebKit::WebNavigationPolicyNewForegroundTab,
+      blink::WebNavigationTypeLinkClicked,
+      blink::WebNavigationPolicyNewForegroundTab,
       false);
-  EXPECT_EQ(WebKit::WebNavigationPolicyIgnore, policy);
+  EXPECT_EQ(blink::WebNavigationPolicyIgnore, policy);
+}
+
+TEST_F(RenderViewImplTest, DecideNavigationPolicyHandlesAllTopLevel) {
+  DocumentState state;
+  state.set_navigation_state(NavigationState::CreateContentInitiated());
+
+  RendererPreferences prefs = view()->renderer_preferences();
+  prefs.browser_handles_all_top_level_requests = true;
+  view()->OnSetRendererPrefs(prefs);
+
+  const blink::WebNavigationType kNavTypes[] = {
+    blink::WebNavigationTypeLinkClicked,
+    blink::WebNavigationTypeFormSubmitted,
+    blink::WebNavigationTypeBackForward,
+    blink::WebNavigationTypeReload,
+    blink::WebNavigationTypeFormResubmitted,
+    blink::WebNavigationTypeOther,
+  };
+
+  blink::WebURLRequest request(GURL("http://foo.com"));
+  for (size_t i = 0; i < arraysize(kNavTypes); ++i) {
+    blink::WebNavigationPolicy policy = frame()->decidePolicyForNavigation(
+        GetMainFrame(),
+        &state,
+        request,
+        kNavTypes[i],
+        blink::WebNavigationPolicyCurrentTab,
+        false);
+    EXPECT_EQ(blink::WebNavigationPolicyIgnore, policy);
+  }
 }
 
 TEST_F(RenderViewImplTest, DecideNavigationPolicyForWebUI) {
@@ -383,55 +448,56 @@ TEST_F(RenderViewImplTest, DecideNavigationPolicyForWebUI) {
   state.set_navigation_state(NavigationState::CreateContentInitiated());
 
   // Navigations to normal HTTP URLs will be sent to browser process.
-  WebKit::WebURLRequest request(GURL("http://foo.com"));
-  WebKit::WebNavigationPolicy policy = view()->decidePolicyForNavigation(
+  blink::WebURLRequest request(GURL("http://foo.com"));
+  blink::WebNavigationPolicy policy = frame()->decidePolicyForNavigation(
       GetMainFrame(),
       &state,
       request,
-      WebKit::WebNavigationTypeLinkClicked,
-      WebKit::WebNavigationPolicyCurrentTab,
+      blink::WebNavigationTypeLinkClicked,
+      blink::WebNavigationPolicyCurrentTab,
       false);
-  EXPECT_EQ(WebKit::WebNavigationPolicyIgnore, policy);
+  EXPECT_EQ(blink::WebNavigationPolicyIgnore, policy);
 
   // Navigations to WebUI URLs will also be sent to browser process.
-  WebKit::WebURLRequest webui_request(GURL("chrome://foo"));
-  policy = view()->decidePolicyForNavigation(
+  blink::WebURLRequest webui_request(GURL("chrome://foo"));
+  policy = frame()->decidePolicyForNavigation(
       GetMainFrame(),
       &state,
       webui_request,
-      WebKit::WebNavigationTypeLinkClicked,
-      WebKit::WebNavigationPolicyCurrentTab,
+      blink::WebNavigationTypeLinkClicked,
+      blink::WebNavigationPolicyCurrentTab,
       false);
-  EXPECT_EQ(WebKit::WebNavigationPolicyIgnore, policy);
+  EXPECT_EQ(blink::WebNavigationPolicyIgnore, policy);
 
   // Verify that form posts to data URLs will be sent to the browser process.
-  WebKit::WebURLRequest data_request(GURL("data:text/html,foo"));
+  blink::WebURLRequest data_request(GURL("data:text/html,foo"));
   data_request.setHTTPMethod("POST");
-  policy = view()->decidePolicyForNavigation(
+  policy = frame()->decidePolicyForNavigation(
       GetMainFrame(),
       &state,
       data_request,
-      WebKit::WebNavigationTypeFormSubmitted,
-      WebKit::WebNavigationPolicyCurrentTab,
+      blink::WebNavigationTypeFormSubmitted,
+      blink::WebNavigationPolicyCurrentTab,
       false);
-  EXPECT_EQ(WebKit::WebNavigationPolicyIgnore, policy);
+  EXPECT_EQ(blink::WebNavigationPolicyIgnore, policy);
 
   // Verify that a popup that creates a view first and then navigates to a
   // normal HTTP URL will be sent to the browser process, even though the
   // new view does not have any enabled_bindings_.
-  WebKit::WebURLRequest popup_request(GURL("http://foo.com"));
-  WebKit::WebView* new_web_view = view()->createView(
-      GetMainFrame(), popup_request, WebKit::WebWindowFeatures(), "foo",
-      WebKit::WebNavigationPolicyNewForegroundTab);
+  blink::WebURLRequest popup_request(GURL("http://foo.com"));
+  blink::WebView* new_web_view = view()->createView(
+      GetMainFrame(), popup_request, blink::WebWindowFeatures(), "foo",
+      blink::WebNavigationPolicyNewForegroundTab, false);
   RenderViewImpl* new_view = RenderViewImpl::FromWebView(new_web_view);
-  policy = new_view->decidePolicyForNavigation(
-      new_web_view->mainFrame(),
-      &state,
-      popup_request,
-      WebKit::WebNavigationTypeLinkClicked,
-      WebKit::WebNavigationPolicyNewForegroundTab,
-      false);
-  EXPECT_EQ(WebKit::WebNavigationPolicyIgnore, policy);
+  policy = static_cast<RenderFrameImpl*>(new_view->GetMainRenderFrame())->
+      decidePolicyForNavigation(
+          new_web_view->mainFrame(),
+          &state,
+          popup_request,
+          blink::WebNavigationTypeLinkClicked,
+          blink::WebNavigationPolicyNewForegroundTab,
+          false);
+  EXPECT_EQ(blink::WebNavigationPolicyIgnore, policy);
 
   // Clean up after the new view so we don't leak it.
   new_view->Close();
@@ -886,7 +952,7 @@ TEST_F(RenderViewImplTest, OnImeTypeChanged) {
                              test_case->input_id);
       // Move the input focus to the target <input> element, where we should
       // activate IMEs.
-      ExecuteJavaScriptAndReturnIntValue(ASCIIToUTF16(javascript), NULL);
+      ExecuteJavaScriptAndReturnIntValue(base::ASCIIToUTF16(javascript), NULL);
       ProcessPendingMessages();
       render_thread_->sink().ClearMessages();
 
@@ -1006,23 +1072,23 @@ TEST_F(RenderViewImplTest, ImeComposition) {
 
       case IME_SETCOMPOSITION:
         view()->OnImeSetComposition(
-            WideToUTF16Hack(ime_message->ime_string),
-            std::vector<WebKit::WebCompositionUnderline>(),
+            base::WideToUTF16Hack(ime_message->ime_string),
+            std::vector<blink::WebCompositionUnderline>(),
             ime_message->selection_start,
             ime_message->selection_end);
         break;
 
       case IME_CONFIRMCOMPOSITION:
         view()->OnImeConfirmComposition(
-            WideToUTF16Hack(ime_message->ime_string),
+            base::WideToUTF16Hack(ime_message->ime_string),
             gfx::Range::InvalidRange(),
             false);
         break;
 
       case IME_CANCELCOMPOSITION:
         view()->OnImeSetComposition(
-            string16(),
-            std::vector<WebKit::WebCompositionUnderline>(),
+            base::string16(),
+            std::vector<blink::WebCompositionUnderline>(),
             0, 0);
         break;
     }
@@ -1037,7 +1103,7 @@ TEST_F(RenderViewImplTest, ImeComposition) {
       // Retrieve the content of this page and compare it with the expected
       // result.
       const int kMaxOutputCharacters = 128;
-      std::wstring output = UTF16ToWideHack(
+      std::wstring output = base::UTF16ToWideHack(
           GetMainFrame()->contentAsText(kMaxOutputCharacters));
       EXPECT_EQ(output, ime_message->result);
     }
@@ -1066,8 +1132,8 @@ TEST_F(RenderViewImplTest, OnSetTextDirection) {
     WebTextDirection direction;
     const wchar_t* expected_result;
   } kTextDirection[] = {
-    { WebKit::WebTextDirectionRightToLeft, L"\x000A" L"rtl,rtl" },
-    { WebKit::WebTextDirectionLeftToRight, L"\x000A" L"ltr,ltr" },
+    { blink::WebTextDirectionRightToLeft, L"\x000A" L"rtl,rtl" },
+    { blink::WebTextDirectionLeftToRight, L"\x000A" L"ltr,ltr" },
   };
   for (size_t i = 0; i < ARRAYSIZE_UNSAFE(kTextDirection); ++i) {
     // Set the text direction of the <textarea> element.
@@ -1086,7 +1152,7 @@ TEST_F(RenderViewImplTest, OnSetTextDirection) {
     // Copy the document content to std::wstring and compare with the
     // expected result.
     const int kMaxOutputCharacters = 16;
-    std::wstring output = UTF16ToWideHack(
+    std::wstring output = base::UTF16ToWideHack(
         GetMainFrame()->contentAsText(kMaxOutputCharacters));
     EXPECT_EQ(output, kTextDirection[i].expected_result);
   }
@@ -1209,7 +1275,7 @@ TEST_F(RenderViewImplTest, MAYBE_OnHandleKeyboardEvent) {
         // driver is installed in a PC and the driver can assign a Unicode
         // charcter for the given tuple (key-code and modifiers).
         int key_code = kKeyCodes[k];
-        string16 char_code;
+        base::string16 char_code;
         if (SendKeyEvent(layout, key_code, modifiers, &char_code) < 0)
           continue;
 
@@ -1234,7 +1300,7 @@ TEST_F(RenderViewImplTest, MAYBE_OnHandleKeyboardEvent) {
         // text created from a virtual-key code, a character code, and the
         // modifier-key status.
         const int kMaxOutputCharacters = 1024;
-        std::string output = UTF16ToUTF8(
+        std::string output = base::UTF16ToUTF8(
             GetMainFrame()->contentAsText(kMaxOutputCharacters));
         EXPECT_EQ(expected_result, output);
       }
@@ -1456,7 +1522,7 @@ TEST_F(RenderViewImplTest, MAYBE_InsertCharacters) {
         // driver is installed in a PC and the driver can assign a Unicode
         // charcter for the given tuple (layout, key-code, and modifiers).
         int key_code = kKeyCodes[k];
-        string16 char_code;
+        base::string16 char_code;
         if (SendKeyEvent(layout, key_code, modifiers, &char_code) < 0)
           continue;
       }
@@ -1466,7 +1532,7 @@ TEST_F(RenderViewImplTest, MAYBE_InsertCharacters) {
     // text created from a virtual-key code, a character code, and the
     // modifier-key status.
     const int kMaxOutputCharacters = 4096;
-    std::wstring output = UTF16ToWideHack(
+    std::wstring output = base::UTF16ToWideHack(
         GetMainFrame()->contentAsText(kMaxOutputCharacters));
     EXPECT_EQ(kLayouts[i].expected_result, output);
   }
@@ -1493,7 +1559,7 @@ TEST_F(RenderViewImplTest, DISABLED_DidFailProvisionalLoadWithErrorForError) {
   view()->OnNavigate(params);
 
   // An error occurred.
-  view()->didFailProvisionalLoad(web_frame, error);
+  view()->main_render_frame()->didFailProvisionalLoad(web_frame, error);
   // Frame should exit view-source mode.
   EXPECT_FALSE(web_frame->isViewSourceModeEnabled());
 }
@@ -1515,7 +1581,7 @@ TEST_F(RenderViewImplTest, DidFailProvisionalLoadWithErrorForCancellation) {
   view()->OnNavigate(params);
 
   // A cancellation occurred.
-  view()->didFailProvisionalLoad(web_frame, error);
+  view()->main_render_frame()->didFailProvisionalLoad(web_frame, error);
   // Frame should stay in view-source mode.
   EXPECT_TRUE(web_frame->isViewSourceModeEnabled());
 }
@@ -1523,7 +1589,7 @@ TEST_F(RenderViewImplTest, DidFailProvisionalLoadWithErrorForCancellation) {
 // Regression test for http://crbug.com/41562
 TEST_F(RenderViewImplTest, UpdateTargetURLWithInvalidURL) {
   const GURL invalid_gurl("http://");
-  view()->setMouseOverURL(WebKit::WebURL(invalid_gurl));
+  view()->setMouseOverURL(blink::WebURL(invalid_gurl));
   EXPECT_EQ(invalid_gurl, view()->target_url_);
 }
 
@@ -1712,31 +1778,31 @@ TEST_F(RenderViewImplTest, ContextMenu) {
 
 TEST_F(RenderViewImplTest, TestBackForward) {
   LoadHTML("<div id=pagename>Page A</div>");
-  WebKit::WebHistoryItem page_a_item = GetMainFrame()->currentHistoryItem();
+  blink::WebHistoryItem page_a_item = GetMainFrame()->currentHistoryItem();
   int was_page_a = -1;
-  string16 check_page_a =
-      ASCIIToUTF16(
+  base::string16 check_page_a =
+      base::ASCIIToUTF16(
           "Number(document.getElementById('pagename').innerHTML == 'Page A')");
   EXPECT_TRUE(ExecuteJavaScriptAndReturnIntValue(check_page_a, &was_page_a));
   EXPECT_EQ(1, was_page_a);
 
   LoadHTML("<div id=pagename>Page B</div>");
   int was_page_b = -1;
-  string16 check_page_b =
-      ASCIIToUTF16(
+  base::string16 check_page_b =
+      base::ASCIIToUTF16(
           "Number(document.getElementById('pagename').innerHTML == 'Page B')");
   EXPECT_TRUE(ExecuteJavaScriptAndReturnIntValue(check_page_b, &was_page_b));
   EXPECT_EQ(1, was_page_b);
 
   LoadHTML("<div id=pagename>Page C</div>");
   int was_page_c = -1;
-  string16 check_page_c =
-      ASCIIToUTF16(
+  base::string16 check_page_c =
+      base::ASCIIToUTF16(
           "Number(document.getElementById('pagename').innerHTML == 'Page C')");
   EXPECT_TRUE(ExecuteJavaScriptAndReturnIntValue(check_page_c, &was_page_c));
   EXPECT_EQ(1, was_page_b);
 
-  WebKit::WebHistoryItem forward_item = GetMainFrame()->currentHistoryItem();
+  blink::WebHistoryItem forward_item = GetMainFrame()->currentHistoryItem();
   GoBack(GetMainFrame()->previousHistoryItem());
   EXPECT_TRUE(ExecuteJavaScriptAndReturnIntValue(check_page_b, &was_page_b));
   EXPECT_EQ(1, was_page_b);
@@ -1771,14 +1837,14 @@ TEST_F(RenderViewImplTest, GetCompositionCharacterBoundsTest) {
   LoadHTML("<textarea id=\"test\"></textarea>");
   ExecuteJavaScript("document.getElementById('test').focus();");
 
-  const string16 empty_string = UTF8ToUTF16("");
-  const std::vector<WebKit::WebCompositionUnderline> empty_underline;
+  const base::string16 empty_string;
+  const std::vector<blink::WebCompositionUnderline> empty_underline;
   std::vector<gfx::Rect> bounds;
   view()->OnSetFocus(true);
   view()->OnSetInputMethodActive(true);
 
   // ASCII composition
-  const string16 ascii_composition = UTF8ToUTF16("aiueo");
+  const base::string16 ascii_composition = base::UTF8ToUTF16("aiueo");
   view()->OnImeSetComposition(ascii_composition, empty_underline, 0, 0);
   view()->GetCompositionCharacterBounds(&bounds);
   ASSERT_EQ(ascii_composition.size(), bounds.size());
@@ -1788,7 +1854,7 @@ TEST_F(RenderViewImplTest, GetCompositionCharacterBoundsTest) {
       empty_string, gfx::Range::InvalidRange(), false);
 
   // Non surrogate pair unicode character.
-  const string16 unicode_composition = UTF8ToUTF16(
+  const base::string16 unicode_composition = base::UTF8ToUTF16(
       "\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86\xE3\x81\x88\xE3\x81\x8A");
   view()->OnImeSetComposition(unicode_composition, empty_underline, 0, 0);
   view()->GetCompositionCharacterBounds(&bounds);
@@ -1799,7 +1865,8 @@ TEST_F(RenderViewImplTest, GetCompositionCharacterBoundsTest) {
       empty_string, gfx::Range::InvalidRange(), false);
 
   // Surrogate pair character.
-  const string16 surrogate_pair_char = UTF8ToUTF16("\xF0\xA0\xAE\x9F");
+  const base::string16 surrogate_pair_char =
+      base::UTF8ToUTF16("\xF0\xA0\xAE\x9F");
   view()->OnImeSetComposition(surrogate_pair_char,
                               empty_underline,
                               0,
@@ -1812,9 +1879,9 @@ TEST_F(RenderViewImplTest, GetCompositionCharacterBoundsTest) {
       empty_string, gfx::Range::InvalidRange(), false);
 
   // Mixed string.
-  const string16 surrogate_pair_mixed_composition =
-      surrogate_pair_char + UTF8ToUTF16("\xE3\x81\x82") + surrogate_pair_char +
-      UTF8ToUTF16("b") + surrogate_pair_char;
+  const base::string16 surrogate_pair_mixed_composition =
+      surrogate_pair_char + base::UTF8ToUTF16("\xE3\x81\x82") +
+      surrogate_pair_char + base::UTF8ToUTF16("b") + surrogate_pair_char;
   const size_t utf16_length = 8UL;
   const bool is_surrogate_pair_empty_rect[8] = {
     false, true, false, false, true, false, false, true };
@@ -1874,9 +1941,9 @@ TEST_F(RenderViewImplTest, SetEditableSelectionAndComposition) {
            "</html>");
   ExecuteJavaScript("document.getElementById('test1').focus();");
   view()->OnSetEditableSelectionOffsets(4, 8);
-  const std::vector<WebKit::WebCompositionUnderline> empty_underline;
+  const std::vector<blink::WebCompositionUnderline> empty_underline;
   view()->OnSetCompositionFromExistingText(7, 10, empty_underline);
-  WebKit::WebTextInputInfo info = view()->webview()->textInputInfo();
+  blink::WebTextInputInfo info = view()->webview()->textInputInfo();
   EXPECT_EQ(4, info.selectionStart);
   EXPECT_EQ(8, info.selectionEnd);
   EXPECT_EQ(7, info.compositionStart);
@@ -1900,7 +1967,7 @@ TEST_F(RenderViewImplTest, OnExtendSelectionAndDelete) {
   ExecuteJavaScript("document.getElementById('test1').focus();");
   view()->OnSetEditableSelectionOffsets(10, 10);
   view()->OnExtendSelectionAndDelete(3, 4);
-  WebKit::WebTextInputInfo info = view()->webview()->textInputInfo();
+  blink::WebTextInputInfo info = view()->webview()->textInputInfo();
   EXPECT_EQ("abcdefgopqrstuvwxyz", info.value);
   EXPECT_EQ(7, info.selectionStart);
   EXPECT_EQ(7, info.selectionEnd);
@@ -1933,7 +2000,7 @@ TEST_F(RenderViewImplTest, NavigateFrame) {
   // Copy the document content to std::wstring and compare with the
   // expected result.
   const int kMaxOutputCharacters = 256;
-  std::wstring output = UTF16ToWideHack(
+  std::wstring output = base::UTF16ToWideHack(
       GetMainFrame()->contentAsText(kMaxOutputCharacters));
   EXPECT_EQ(output, L"hello \n\nworld");
 }
@@ -1951,11 +2018,43 @@ TEST_F(RenderViewImplTest, GetSSLStatusOfFrame) {
   SSLStatus ssl_status = view()->GetSSLStatusOfFrame(frame);
   EXPECT_FALSE(net::IsCertStatusError(ssl_status.cert_status));
 
-  const_cast<WebKit::WebURLResponse&>(frame->dataSource()->response()).
+  const_cast<blink::WebURLResponse&>(frame->dataSource()->response()).
       setSecurityInfo(
-          SerializeSecurityInfo(0, net::CERT_STATUS_ALL_ERRORS, 0, 0));
+          SerializeSecurityInfo(0, net::CERT_STATUS_ALL_ERRORS, 0, 0,
+                                SignedCertificateTimestampIDStatusList()));
   ssl_status = view()->GetSSLStatusOfFrame(frame);
   EXPECT_TRUE(net::IsCertStatusError(ssl_status.cert_status));
+}
+
+TEST_F(RenderViewImplTest, MessageOrderInDidChangeSelection) {
+  view()->OnSetInputMethodActive(true);
+  view()->set_send_content_state_immediately(true);
+  LoadHTML("<textarea id=\"test\"></textarea>");
+
+  view()->handling_input_event_ = true;
+  ExecuteJavaScript("document.getElementById('test').focus();");
+
+  bool is_input_type_called = false;
+  bool is_selection_called = false;
+  size_t last_input_type = 0;
+  size_t last_selection = 0;
+
+  for (size_t i = 0; i < render_thread_->sink().message_count(); ++i) {
+    const uint32 type = render_thread_->sink().GetMessageAt(i)->type();
+    if (type == ViewHostMsg_TextInputTypeChanged::ID) {
+      is_input_type_called = true;
+      last_input_type = i;
+    } else if (type == ViewHostMsg_SelectionChanged::ID) {
+      is_selection_called = true;
+      last_selection = i;
+    }
+  }
+
+  EXPECT_TRUE(is_input_type_called);
+  EXPECT_TRUE(is_selection_called);
+
+  // InputTypeChange shold be called earlier than SelectionChanged.
+  EXPECT_LT(last_input_type, last_selection);
 }
 
 class SuppressErrorPageTest : public RenderViewTest {
@@ -1972,17 +2071,18 @@ class SuppressErrorPageTest : public RenderViewTest {
  private:
   class TestContentRendererClient : public ContentRendererClient {
    public:
-    virtual bool ShouldSuppressErrorPage(const GURL& url) OVERRIDE {
+    virtual bool ShouldSuppressErrorPage(RenderFrame* render_frame,
+                                         const GURL& url) OVERRIDE {
       return url == GURL("http://example.com/suppress");
     }
 
     virtual void GetNavigationErrorStrings(
-        WebKit::WebFrame* frame,
-        const WebKit::WebURLRequest& failed_request,
-        const WebKit::WebURLError& error,
-        const std::string& accept_languages,
+        content::RenderView* render_view,
+        blink::WebFrame* frame,
+        const blink::WebURLRequest& failed_request,
+        const blink::WebURLError& error,
         std::string* error_html,
-        string16* error_description) OVERRIDE {
+        base::string16* error_description) OVERRIDE {
       if (error_html)
         *error_html = "A suffusion of yellow.";
     }
@@ -2014,7 +2114,7 @@ TEST_F(SuppressErrorPageTest, MAYBE_Suppresses) {
   view()->OnNavigate(params);
 
   // An error occurred.
-  view()->didFailProvisionalLoad(web_frame, error);
+  view()->main_render_frame()->didFailProvisionalLoad(web_frame, error);
   const int kMaxOutputCharacters = 22;
   EXPECT_EQ("", UTF16ToASCII(web_frame->contentAsText(kMaxOutputCharacters)));
 }
@@ -2042,11 +2142,102 @@ TEST_F(SuppressErrorPageTest, MAYBE_DoesNotSuppress) {
   view()->OnNavigate(params);
 
   // An error occurred.
-  view()->didFailProvisionalLoad(web_frame, error);
+  view()->main_render_frame()->didFailProvisionalLoad(web_frame, error);
   ProcessPendingMessages();
   const int kMaxOutputCharacters = 22;
   EXPECT_EQ("A suffusion of yellow.",
             UTF16ToASCII(web_frame->contentAsText(kMaxOutputCharacters)));
+}
+
+// Tests if IME API's candidatewindow* events sent from browser are handled
+// in renderer.
+TEST_F(RenderViewImplTest, SendCandidateWindowEvents) {
+  // Sends an HTML with an <input> element and scripts to the renderer.
+  // The script handles all 3 of candidatewindow* events for an
+  // InputMethodContext object and once it received 'show', 'update', 'hide'
+  // should appear in the result div.
+  LoadHTML("<input id='test'>"
+           "<div id='result'>Result: </div>"
+           "<script>"
+           "window.onload = function() {"
+           "  var result = document.getElementById('result');"
+           "  var test = document.getElementById('test');"
+           "  test.focus();"
+           "  var context = test.inputMethodContext;"
+           "  if (context) {"
+           "    context.oncandidatewindowshow = function() {"
+           "        result.innerText += 'show'; };"
+           "    context.oncandidatewindowupdate = function(){"
+           "        result.innerText += 'update'; };"
+           "    context.oncandidatewindowhide = function(){"
+           "        result.innerText += 'hide'; };"
+           "  }"
+           "};"
+           "</script>");
+
+  // Fire candidatewindow events.
+  view()->OnCandidateWindowShown();
+  view()->OnCandidateWindowUpdated();
+  view()->OnCandidateWindowHidden();
+
+  // Retrieve the content and check if it is expected.
+  const int kMaxOutputCharacters = 50;
+  std::string output = base::UTF16ToUTF8(
+      GetMainFrame()->contentAsText(kMaxOutputCharacters));
+  EXPECT_EQ(output, "\nResult:showupdatehide");
+}
+
+// Ensure the render view sends favicon url update events correctly.
+TEST_F(RenderViewImplTest, SendFaviconURLUpdateEvent) {
+  // An event should be sent when a favicon url exists.
+  LoadHTML("<html>"
+           "<head>"
+           "<link rel='icon' href='http://www.google.com/favicon.ico'>"
+           "</head>"
+           "</html>");
+  EXPECT_TRUE(render_thread_->sink().GetFirstMessageMatching(
+      ViewHostMsg_UpdateFaviconURL::ID));
+  render_thread_->sink().ClearMessages();
+
+  // An event should not be sent if no favicon url exists. This is an assumption
+  // made by some of Chrome's favicon handling.
+  LoadHTML("<html>"
+           "<head>"
+           "</head>"
+           "</html>");
+  EXPECT_FALSE(render_thread_->sink().GetFirstMessageMatching(
+      ViewHostMsg_UpdateFaviconURL::ID));
+}
+
+TEST_F(RenderViewImplTest, FocusElementCallsFocusedNodeChanged) {
+  LoadHTML("<input id='test1' value='hello1'></input>"
+           "<input id='test2' value='hello2'></input>");
+
+  ExecuteJavaScript("document.getElementById('test1').focus();");
+  const IPC::Message* msg1 = render_thread_->sink().GetFirstMessageMatching(
+      ViewHostMsg_FocusedNodeChanged::ID);
+  EXPECT_TRUE(msg1);
+
+  ViewHostMsg_FocusedNodeChanged::Param params;
+  ViewHostMsg_FocusedNodeChanged::Read(msg1, &params);
+  EXPECT_TRUE(params.a);
+  render_thread_->sink().ClearMessages();
+
+  ExecuteJavaScript("document.getElementById('test2').focus();");
+  const IPC::Message* msg2 = render_thread_->sink().GetFirstMessageMatching(
+        ViewHostMsg_FocusedNodeChanged::ID);
+  EXPECT_TRUE(msg2);
+  ViewHostMsg_FocusedNodeChanged::Read(msg2, &params);
+  EXPECT_TRUE(params.a);
+  render_thread_->sink().ClearMessages();
+
+  view()->webview()->clearFocusedNode();
+  const IPC::Message* msg3 = render_thread_->sink().GetFirstMessageMatching(
+        ViewHostMsg_FocusedNodeChanged::ID);
+  EXPECT_TRUE(msg3);
+  ViewHostMsg_FocusedNodeChanged::Read(msg3, &params);
+  EXPECT_FALSE(params.a);
+  render_thread_->sink().ClearMessages();
 }
 
 }  // namespace content

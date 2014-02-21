@@ -4,6 +4,7 @@
 
 #include "net/quic/test_tools/simple_quic_framer.h"
 
+#include "base/stl_util.h"
 #include "net/quic/crypto/crypto_framer.h"
 #include "net/quic/crypto/quic_decrypter.h"
 #include "net/quic/crypto/quic_encrypter.h"
@@ -21,6 +22,10 @@ class SimpleFramerVisitor : public QuicFramerVisitorInterface {
       : error_(QUIC_NO_ERROR) {
   }
 
+  virtual ~SimpleFramerVisitor() {
+    STLDeleteElements(&stream_data_);
+  }
+
   virtual void OnError(QuicFramer* framer) OVERRIDE {
     error_ = framer->error();
   }
@@ -36,6 +41,14 @@ class SimpleFramerVisitor : public QuicFramerVisitorInterface {
       const QuicVersionNegotiationPacket& packet) OVERRIDE {}
   virtual void OnRevivedPacket() OVERRIDE {}
 
+  virtual bool OnUnauthenticatedPublicHeader(
+      const QuicPacketPublicHeader& header) OVERRIDE {
+    return true;
+  }
+  virtual bool OnUnauthenticatedHeader(
+      const QuicPacketHeader& header) OVERRIDE {
+    return true;
+  }
   virtual bool OnPacketHeader(const QuicPacketHeader& header) OVERRIDE {
     has_header_ = true;
     header_ = header;
@@ -46,10 +59,12 @@ class SimpleFramerVisitor : public QuicFramerVisitorInterface {
 
   virtual bool OnStreamFrame(const QuicStreamFrame& frame) OVERRIDE {
     // Save a copy of the data so it is valid after the packet is processed.
-    stream_data_.push_back(frame.data.as_string());
+    stream_data_.push_back(frame.GetDataAsString());
     QuicStreamFrame stream_frame(frame);
     // Make sure that the stream frame points to this data.
-    stream_frame.data = stream_data_.back();
+    stream_frame.data.Clear();
+    stream_frame.data.Append(const_cast<char*>(stream_data_.back()->data()),
+                             stream_data_.back()->size());
     stream_frames_.push_back(stream_frame);
     return true;
   }
@@ -122,13 +137,17 @@ class SimpleFramerVisitor : public QuicFramerVisitorInterface {
   vector<QuicRstStreamFrame> rst_stream_frames_;
   vector<QuicGoAwayFrame> goaway_frames_;
   vector<QuicConnectionCloseFrame> connection_close_frames_;
-  vector<string> stream_data_;
+  vector<string*> stream_data_;
 
   DISALLOW_COPY_AND_ASSIGN(SimpleFramerVisitor);
 };
 
 SimpleQuicFramer::SimpleQuicFramer()
     : framer_(QuicSupportedVersions(), QuicTime::Zero(), true) {
+}
+
+SimpleQuicFramer::SimpleQuicFramer(const QuicVersionVector& supported_versions)
+    : framer_(supported_versions, QuicTime::Zero(), true) {
 }
 
 SimpleQuicFramer::~SimpleQuicFramer() {

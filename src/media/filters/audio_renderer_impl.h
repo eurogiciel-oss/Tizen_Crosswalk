@@ -29,15 +29,15 @@
 #include "media/base/audio_renderer_sink.h"
 #include "media/base/decryptor.h"
 #include "media/filters/audio_renderer_algorithm.h"
+#include "media/filters/decoder_selector.h"
 
 namespace base {
-class MessageLoopProxy;
+class SingleThreadTaskRunner;
 }
 
 namespace media {
 
 class AudioBus;
-class AudioDecoderSelector;
 class AudioSplicer;
 class DecryptingDemuxerStream;
 
@@ -45,7 +45,7 @@ class MEDIA_EXPORT AudioRendererImpl
     : public AudioRenderer,
       NON_EXPORTED_BASE(public AudioRendererSink::RenderCallback) {
  public:
-  // |message_loop| is the thread on which AudioRendererImpl will execute.
+  // |task_runner| is the thread on which AudioRendererImpl will execute.
   //
   // |sink| is used as the destination for the rendered audio.
   //
@@ -53,14 +53,11 @@ class MEDIA_EXPORT AudioRendererImpl
   //
   // |set_decryptor_ready_cb| is fired when the audio decryptor is available
   // (only applicable if the stream is encrypted and we have a decryptor).
-  //
-  // |increase_preroll_on_underflow| Set to true if the preroll duration
-  // should be increased when ResumeAfterUnderflow() is called.
-  AudioRendererImpl(const scoped_refptr<base::MessageLoopProxy>& message_loop,
-                    AudioRendererSink* sink,
-                    ScopedVector<AudioDecoder> decoders,
-                    const SetDecryptorReadyCB& set_decryptor_ready_cb,
-                    bool increase_preroll_on_underflow);
+  AudioRendererImpl(
+      const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
+      AudioRendererSink* sink,
+      ScopedVector<AudioDecoder> decoders,
+      const SetDecryptorReadyCB& set_decryptor_ready_cb);
   virtual ~AudioRendererImpl();
 
   // AudioRenderer implementation.
@@ -97,9 +94,12 @@ class MEDIA_EXPORT AudioRendererImpl
  private:
   friend class AudioRendererImplTest;
 
+  // TODO(acolwell): Add a state machine graph.
   enum State {
     kUninitialized,
+    kInitializing,
     kPaused,
+    kFlushing,
     kPrerolling,
     kPlaying,
     kStopped,
@@ -153,7 +153,7 @@ class MEDIA_EXPORT AudioRendererImpl
   // Helper methods that schedule an asynchronous read from the decoder as long
   // as there isn't a pending read.
   //
-  // Must be called on |message_loop_|.
+  // Must be called on |task_runner_|.
   void AttemptRead();
   void AttemptRead_Locked();
   bool CanRead_Locked();
@@ -173,17 +173,26 @@ class MEDIA_EXPORT AudioRendererImpl
       scoped_ptr<AudioDecoder> decoder,
       scoped_ptr<DecryptingDemuxerStream> decrypting_demuxer_stream);
 
-  void ResetDecoder(const base::Closure& callback);
+  // Used to initiate the flush operation once all pending reads have
+  // completed.
+  void DoFlush_Locked();
 
-  scoped_refptr<base::MessageLoopProxy> message_loop_;
+  // Calls |decoder_|.Reset() and arranges for ResetDecoderDone() to get
+  // called when the reset completes.
+  void ResetDecoder();
+
+  // Called when the |decoder_|.Reset() has completed.
+  void ResetDecoderDone();
+
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
   base::WeakPtrFactory<AudioRendererImpl> weak_factory_;
   base::WeakPtr<AudioRendererImpl> weak_this_;
 
   scoped_ptr<AudioSplicer> splicer_;
 
   // The sink (destination) for rendered audio. |sink_| must only be accessed
-  // on |message_loop_|. |sink_| must never be called under |lock_| or else we
-  // may deadlock between |message_loop_| and the audio callback thread.
+  // on |task_runner_|. |sink_| must never be called under |lock_| or else we
+  // may deadlock between |task_runner_| and the audio callback thread.
   scoped_refptr<media::AudioRendererSink> sink_;
 
   scoped_ptr<AudioDecoderSelector> decoder_selector_;
@@ -204,8 +213,11 @@ class MEDIA_EXPORT AudioRendererImpl
   base::Closure disabled_cb_;
   PipelineStatusCB error_cb_;
 
-  // Callback provided to Pause().
-  base::Closure pause_cb_;
+  // Callback provided to Flush().
+  base::Closure flush_cb_;
+
+  // Callback provided to Stop().
+  base::Closure stop_cb_;
 
   // Callback provided to Preroll().
   PipelineStatusCB preroll_cb_;
@@ -258,7 +270,6 @@ class MEDIA_EXPORT AudioRendererImpl
   size_t total_frames_filled_;
 
   bool underflow_disabled_;
-  bool increase_preroll_on_underflow_;
 
   // True if the renderer receives a buffer with kAborted status during preroll,
   // false otherwise. This flag is cleared on the next Preroll() call.

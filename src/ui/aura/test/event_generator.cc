@@ -9,6 +9,7 @@
 #include "base/message_loop/message_loop_proxy.h"
 #include "ui/aura/client/screen_position_client.h"
 #include "ui/aura/root_window.h"
+#include "ui/aura/window_tree_host.h"
 #include "ui/events/event.h"
 #include "ui/events/event_utils.h"
 #include "ui/gfx/vector2d_conversions.h"
@@ -148,20 +149,20 @@ void EventGenerator::ReleaseRightButton() {
 
 void EventGenerator::SendMouseExit() {
   gfx::Point exit_location(current_location_);
-  ConvertPointToTarget(current_root_window_, &exit_location);
+  ConvertPointToTarget(current_root_window_->window(), &exit_location);
   ui::MouseEvent mouseev(ui::ET_MOUSE_EXITED, exit_location, exit_location,
-                         flags_);
+                         flags_, 0);
   Dispatch(&mouseev);
 }
 
 void EventGenerator::MoveMouseToInHost(const gfx::Point& point_in_host) {
   const ui::EventType event_type = (flags_ & ui::EF_LEFT_MOUSE_BUTTON) ?
       ui::ET_MOUSE_DRAGGED : ui::ET_MOUSE_MOVED;
-  ui::MouseEvent mouseev(event_type, point_in_host, point_in_host, flags_);
+  ui::MouseEvent mouseev(event_type, point_in_host, point_in_host, flags_, 0);
   Dispatch(&mouseev);
 
   current_location_ = point_in_host;
-  current_root_window_->ConvertPointFromHost(&current_location_);
+  current_root_window_->host()->ConvertPointFromHost(&current_location_);
 }
 
 void EventGenerator::MoveMouseTo(const gfx::Point& point_in_screen,
@@ -177,8 +178,8 @@ void EventGenerator::MoveMouseTo(const gfx::Point& point_in_screen,
     gfx::Point move_point = current_location_ + gfx::ToRoundedVector2d(step);
     if (!grab_)
       UpdateCurrentRootWindow(move_point);
-    ConvertPointToTarget(current_root_window_, &move_point);
-    ui::MouseEvent mouseev(event_type, move_point, move_point, flags_);
+    ConvertPointToTarget(current_root_window_->window(), &move_point);
+    ui::MouseEvent mouseev(event_type, move_point, move_point, flags_, 0);
     Dispatch(&mouseev);
   }
   current_location_ = point_in_screen;
@@ -511,7 +512,8 @@ void EventGenerator::PressButton(int flag) {
     flags_ |= flag;
     grab_ = flags_ & kAllButtonMask;
     gfx::Point location = GetLocationInCurrentRoot();
-    ui::MouseEvent mouseev(ui::ET_MOUSE_PRESSED, location, location, flags_);
+    ui::MouseEvent mouseev(ui::ET_MOUSE_PRESSED, location, location, flags_,
+                           flag);
     Dispatch(&mouseev);
   }
 }
@@ -520,7 +522,7 @@ void EventGenerator::ReleaseButton(int flag) {
   if (flags_ & flag) {
     gfx::Point location = GetLocationInCurrentRoot();
     ui::MouseEvent mouseev(ui::ET_MOUSE_RELEASED, location,
-                           location, flags_);
+                           location, flags_, flag);
     Dispatch(&mouseev);
     flags_ ^= flag;
   }
@@ -551,7 +553,7 @@ void EventGenerator::ConvertPointToTarget(const aura::Window* target,
 
 gfx::Point EventGenerator::GetLocationInCurrentRoot() const {
   gfx::Point p(current_location_);
-  ConvertPointToTarget(current_root_window_, &p);
+  ConvertPointToTarget(current_root_window_->window(), &p);
   return p;
 }
 
@@ -585,8 +587,8 @@ void EventGenerator::DoDispatchEvent(ui::Event* event, bool async) {
     }
     pending_events_.push_back(pending_event);
   } else {
-    RootWindowHostDelegate* root_window_host_delegate =
-        current_root_window_->AsRootWindowHostDelegate();
+    WindowTreeHostDelegate* root_window_host_delegate =
+        current_root_window_->AsWindowTreeHostDelegate();
     if (event->IsKeyEvent()) {
       root_window_host_delegate->OnHostKeyEvent(
           static_cast<ui::KeyEvent*>(event));

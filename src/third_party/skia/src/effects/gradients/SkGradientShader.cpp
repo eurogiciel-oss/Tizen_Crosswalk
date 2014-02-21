@@ -154,8 +154,13 @@ SkGradientShaderBase::SkGradientShaderBase(SkFlattenableReadBuffer& buffer) : IN
 
     int colorCount = fColorCount = buffer.getArrayCount();
     if (colorCount > kColorStorageCount) {
-        size_t size = sizeof(SkColor) + sizeof(SkPMColor) + sizeof(Rec);
-        fOrigColors = (SkColor*)sk_malloc_throw(size * colorCount);
+        size_t allocSize = (sizeof(SkColor) + sizeof(SkPMColor) + sizeof(Rec)) * colorCount;
+        if (buffer.validateAvailable(allocSize)) {
+            fOrigColors = reinterpret_cast<SkColor*>(sk_malloc_throw(allocSize));
+        } else {
+            fOrigColors =  NULL;
+            colorCount = fColorCount = 0;
+        }
     } else {
         fOrigColors = fStorage;
     }
@@ -513,13 +518,14 @@ const uint16_t* SkGradientShaderBase::getCache16() const {
 
 const SkPMColor* SkGradientShaderBase::getCache32() const {
     if (fCache32 == NULL) {
-        // double the count for dither entries
-        const int entryCount = kCache32Count * 4;
-        const size_t allocSize = sizeof(SkPMColor) * entryCount;
+        SkImageInfo info;
+        info.fWidth = kCache32Count;
+        info.fHeight = 4;   // for our 4 dither rows
+        info.fAlphaType = kPremul_SkAlphaType;
+        info.fColorType = kPMColor_SkColorType;
 
         if (NULL == fCache32PixelRef) {
-            fCache32PixelRef = SkNEW_ARGS(SkMallocPixelRef,
-                                          (NULL, allocSize, NULL));
+            fCache32PixelRef = SkMallocPixelRef::NewAllocate(info, 0, NULL);
         }
         fCache32 = (SkPMColor*)fCache32PixelRef->getAddr();
         if (fColorCount == 2) {
@@ -541,8 +547,7 @@ const SkPMColor* SkGradientShaderBase::getCache32() const {
         }
 
         if (fMapper) {
-            SkMallocPixelRef* newPR = SkNEW_ARGS(SkMallocPixelRef,
-                                                 (NULL, allocSize, NULL));
+            SkMallocPixelRef* newPR = SkMallocPixelRef::NewAllocate(info, 0, NULL);
             SkPMColor* linear = fCache32;           // just computed linear data
             SkPMColor* mapped = (SkPMColor*)newPR->getAddr();    // storage for mapped data
             SkUnitMapper* map = fMapper;

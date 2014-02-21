@@ -14,6 +14,7 @@
 #include "base/threading/sequenced_worker_pool.h"
 #include "base/values.h"
 #include "chrome/browser/chromeos/login/managed/locally_managed_user_constants.h"
+#include "chrome/browser/chromeos/login/managed/supervised_user_authentication.h"
 #include "chrome/browser/chromeos/login/mount_manager.h"
 #include "chrome/browser/chromeos/login/supervised_user_manager.h"
 #include "chrome/browser/chromeos/login/user.h"
@@ -39,7 +40,7 @@ bool StoreManagedUserFiles(const std::string& token,
                            const base::FilePath& base_path) {
   if (!base::SysInfo::IsRunningOnChromeOS()) {
     // If running on desktop, cryptohome stub does not create home directory.
-    file_util::CreateDirectory(base_path);
+    base::CreateDirectory(base_path);
   }
   base::FilePath token_file = base_path.Append(kManagedUserTokenFilename);
   int bytes = file_util::WriteFile(token_file, token.c_str(), token.length());
@@ -84,7 +85,7 @@ LocallyManagedUserCreationController::~LocallyManagedUserCreationController() {
 }
 
 void LocallyManagedUserCreationController::SetUpCreation(
-    const string16& display_name,
+    const base::string16& display_name,
     const std::string& password,
     int avatar_index) {
   DCHECK(creation_context_);
@@ -94,7 +95,7 @@ void LocallyManagedUserCreationController::SetUpCreation(
 }
 
 void LocallyManagedUserCreationController::StartImport(
-    const string16& display_name,
+    const base::string16& display_name,
     const std::string& password,
     int avatar_index,
     const std::string& sync_id,
@@ -149,10 +150,19 @@ void LocallyManagedUserCreationController::StartCreation() {
       creation_context_->display_name);
 
   manager->SetCreationTransactionUserId(creation_context_->local_user_id);
+  SupervisedUserAuthentication* authentication = manager->GetAuthentication();
+  if (authentication->FillDataForNewUser(creation_context_->local_user_id,
+                                         creation_context_->password,
+                                         &creation_context_->password_data)) {
+    authentication->StorePasswordData(creation_context_->local_user_id,
+                                      creation_context_->password_data);
+  }
   VLOG(1) << "Creating cryptohome";
   authenticator_ = new ManagedUserAuthenticator(this);
   authenticator_->AuthenticateToCreate(creation_context_->local_user_id,
-                                       creation_context_->password);
+                                       authentication->TransformPassword(
+                                           creation_context_->local_user_id,
+                                           creation_context_->password));
 }
 
 void LocallyManagedUserCreationController::OnAuthenticationFailure(
@@ -190,8 +200,13 @@ void LocallyManagedUserCreationController::OnMountSuccess(
   }
 
   VLOG(1) << "Adding master key";
+  SupervisedUserAuthentication* authentication = UserManager::Get()->
+      GetSupervisedUserManager()->GetAuthentication();
+
   authenticator_->AddMasterKey(creation_context_->local_user_id,
-                               creation_context_->password,
+                               authentication->TransformPassword(
+                                   creation_context_->local_user_id,
+                                   creation_context_->password),
                                creation_context_->master_key);
 }
 
@@ -201,6 +216,8 @@ void LocallyManagedUserCreationController::OnAddKeySuccess() {
           creation_context_->manager_profile);
 
   VLOG(1) << "Creating user on server";
+  // TODO(antrim) : add password data to sync once API is ready.
+  // http://crbug.com/316168
   ManagedUserRegistrationInfo info(creation_context_->display_name,
                                    creation_context_->avatar_index);
   info.master_key = creation_context_->master_key;
@@ -269,7 +286,7 @@ void LocallyManagedUserCreationController::OnManagedUserFilesStored(
   timeout_timer_.Stop();
 
   content::RecordAction(
-      content::UserMetricsAction("ManagedMode_LocallyManagedUserCreated"));
+      base::UserMetricsAction("ManagedMode_LocallyManagedUserCreated"));
 
   if (!success) {
     if (consumer_)

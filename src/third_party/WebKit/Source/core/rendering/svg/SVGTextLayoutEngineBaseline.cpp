@@ -21,11 +21,11 @@
 
 #include "core/rendering/svg/SVGTextLayoutEngineBaseline.h"
 
-#include "core/platform/graphics/Font.h"
 #include "core/rendering/RenderObject.h"
 #include "core/rendering/style/SVGRenderStyle.h"
 #include "core/rendering/svg/SVGTextMetrics.h"
 #include "core/svg/SVGLengthContext.h"
+#include "platform/fonts/Font.h"
 #include "platform/text/UnicodeRange.h"
 
 namespace WebCore {
@@ -38,12 +38,12 @@ SVGTextLayoutEngineBaseline::SVGTextLayoutEngineBaseline(const Font& font)
 float SVGTextLayoutEngineBaseline::calculateBaselineShift(const SVGRenderStyle* style, SVGElement* contextElement) const
 {
     if (style->baselineShift() == BS_LENGTH) {
-        SVGLength baselineShiftValueLength = style->baselineShiftValue();
-        if (baselineShiftValueLength.unitType() == LengthTypePercentage)
-            return baselineShiftValueLength.valueAsPercentage() * m_font.pixelSize();
+        RefPtr<SVGLength> baselineShiftValueLength = style->baselineShiftValue();
+        if (baselineShiftValueLength->unitType() == LengthTypePercentage)
+            return baselineShiftValueLength->valueAsPercentage() * m_font.pixelSize();
 
         SVGLengthContext lengthContext(contextElement);
-        return baselineShiftValueLength.value(lengthContext);
+        return baselineShiftValueLength->value(lengthContext);
     }
 
     switch (style->baselineShift()) {

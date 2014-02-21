@@ -9,7 +9,6 @@
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
 #include "content/public/browser/web_contents.h"
-#include "content/public/browser/web_contents_view.h"
 #include "grit/generated_resources.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/views/controls/message_box_view.h"
@@ -71,8 +70,7 @@ PDFPasswordDialogViews::PDFPasswordDialogViews(
   init_params.inter_row_vertical_spacing =
       views::kUnrelatedControlVerticalSpacing;
   message_box_view_ = new views::MessageBoxView(init_params);
-
-  message_box_view_->text_box()->SetObscured(true);
+  message_box_view_->text_box()->SetTextInputType(ui::TEXT_INPUT_TYPE_PASSWORD);
 
   web_modal::WebContentsModalDialogManager* web_contents_modal_dialog_manager =
       web_modal::WebContentsModalDialogManager::FromWebContents(web_contents);
@@ -80,9 +78,7 @@ PDFPasswordDialogViews::PDFPasswordDialogViews(
       web_contents_modal_dialog_manager->delegate();
   DCHECK(modal_delegate);
   dialog_ = views::Widget::CreateWindowAsFramelessChild(
-      this,
-      web_contents->GetView()->GetNativeView(),
-      modal_delegate->GetWebContentsModalDialogHost()->GetHostView());
+      this, modal_delegate->GetWebContentsModalDialogHost()->GetHostView());
   web_contents_modal_dialog_manager->ShowDialog(dialog_->GetNativeView());
 }
 

@@ -10,9 +10,10 @@
 #include <vector>
 
 #include "base/memory/memory_pressure_listener.h"
+#include "base/metrics/user_metrics_action.h"
 #include "base/observer_list.h"
-#include "base/process/process_handle.h"
 #include "base/strings/string16.h"
+#include "base/threading/thread_checker.h"
 #include "base/timer/timer.h"
 #include "build/build_config.h"
 #include "content/child/child_thread.h"
@@ -23,11 +24,15 @@
 #include "ipc/ipc_channel_proxy.h"
 #include "ui/gfx/native_widget_types.h"
 
+#if defined(OS_MACOSX)
+#include "third_party/WebKit/public/web/mac/WebScrollbarTheme.h"
+#endif
+
 class GrContext;
 class SkBitmap;
 struct ViewMsg_New_Params;
 
-namespace WebKit {
+namespace blink {
 class WebGamepads;
 class WebGraphicsContext3D;
 class WebMediaStreamCenter;
@@ -37,12 +42,6 @@ class WebMediaStreamCenterClient;
 namespace base {
 class MessageLoopProxy;
 class Thread;
-
-#if defined(OS_WIN)
-namespace win {
-class ScopedCOMInitializer;
-}
-#endif
 }
 
 namespace cc {
@@ -63,6 +62,7 @@ class Extension;
 
 namespace webkit {
 namespace gpu {
+class ContextProviderWebContext;
 class GrContextForWebGraphicsContext3D;
 }
 }
@@ -77,6 +77,7 @@ class ContextProviderCommandBuffer;
 class DBMessageFilter;
 class DevToolsAgentFilter;
 class DomStorageDispatcher;
+class EmbeddedWorkerDispatcher;
 class GamepadSharedMemoryReader;
 class GpuChannelHost;
 class IndexedDBDispatcher;
@@ -91,7 +92,6 @@ class RendererDemuxerAndroid;
 class RendererWebKitPlatformSupportImpl;
 class RenderProcessObserver;
 class VideoCaptureImplManager;
-class WebDatabaseObserverImpl;
 class WebGraphicsContext3DCommandBufferImpl;
 class WebRTCIdentityService;
 
@@ -137,10 +137,9 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
   virtual void RemoveObserver(RenderProcessObserver* observer) OVERRIDE;
   virtual void SetResourceDispatcherDelegate(
       ResourceDispatcherDelegate* delegate) OVERRIDE;
-  virtual void WidgetHidden() OVERRIDE;
-  virtual void WidgetRestored() OVERRIDE;
   virtual void EnsureWebKitInitialized() OVERRIDE;
-  virtual void RecordUserMetrics(const std::string& action) OVERRIDE;
+  virtual void RecordAction(const base::UserMetricsAction& action) OVERRIDE;
+  virtual void RecordComputedAction(const std::string& action) OVERRIDE;
   virtual scoped_ptr<base::SharedMemory> HostAllocateSharedMemoryBuffer(
       size_t buffer_size) OVERRIDE;
   virtual void RegisterExtension(v8::Extension* extension) OVERRIDE;
@@ -149,7 +148,6 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
   virtual int64 GetIdleNotificationDelayInMs() const OVERRIDE;
   virtual void SetIdleNotificationDelayInMs(
       int64 idle_notification_delay_in_ms) OVERRIDE;
-  virtual void ToggleWebKitSharedTimer(bool suspend) OVERRIDE;
   virtual void UpdateHistograms(int sequence_number) OVERRIDE;
   virtual int PostTaskToAllWebWorkers(const base::Closure& closure) OVERRIDE;
   virtual bool ResolveProxy(const GURL& url, std::string* proxy_list) OVERRIDE;
@@ -204,6 +202,10 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
     return dom_storage_dispatcher_.get();
   }
 
+  EmbeddedWorkerDispatcher* embedded_worker_dispatcher() const {
+    return embedded_worker_dispatcher_.get();
+  }
+
   AudioInputMessageFilter* audio_input_message_filter() {
     return audio_input_message_filter_.get();
   }
@@ -224,8 +226,8 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
 
   // Creates the embedder implementation of WebMediaStreamCenter.
   // The resulting object is owned by WebKit and deleted by WebKit at tear-down.
-  WebKit::WebMediaStreamCenter* CreateMediaStreamCenter(
-      WebKit::WebMediaStreamCenterClient* client);
+  blink::WebMediaStreamCenter* CreateMediaStreamCenter(
+      blink::WebMediaStreamCenterClient* client);
 
   // Returns a factory used for creating RTC PeerConnection objects.
   MediaStreamDependencyFactory* GetMediaStreamDependencyFactory();
@@ -265,7 +267,8 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
   scoped_refptr<RendererGpuVideoAcceleratorFactories> GetGpuFactories();
 
   scoped_refptr<cc::ContextProvider> OffscreenCompositorContextProvider();
-  scoped_refptr<cc::ContextProvider> SharedMainThreadContextProvider();
+  scoped_refptr<webkit::gpu::ContextProviderWebContext>
+      SharedMainThreadContextProvider();
 
   // AudioRendererMixerManager instance which manages renderer side mixer
   // instances shared based on configured audio parameters.  Lazily created on
@@ -278,7 +281,8 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
   media::AudioHardwareConfig* GetAudioHardwareConfig();
 
 #if defined(OS_WIN)
-  void PreCacheFontCharacters(const LOGFONT& log_font, const string16& str);
+  void PreCacheFontCharacters(const LOGFONT& log_font,
+                              const base::string16& str);
 #endif
 
 #if defined(ENABLE_WEBRTC)
@@ -337,12 +341,14 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
                                const std::vector<float>& new_touchscreen);
 
   // Retrieve current gamepad data.
-  void SampleGamepads(WebKit::WebGamepads* data);
+  void SampleGamepads(blink::WebGamepads* data);
 
-  // Get the browser process's notion of the renderer process's ID.
-  // This is the first argument to RenderWidgetHost::FromID. Ideally
-  // this would be available on all platforms via base::Process.
-  base::ProcessId renderer_process_id() const;
+  // Called by a RenderWidget when it is created or destroyed. This
+  // allows the process to know when there are no visible widgets.
+  void WidgetCreated();
+  void WidgetDestroyed();
+  void WidgetHidden();
+  void WidgetRestored();
 
  private:
   // ChildThread
@@ -379,10 +385,18 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
   void OnNetworkStateChanged(bool online);
   void OnGetAccessibilityTree();
   void OnTempCrashWithData(const GURL& data);
-  void OnSetRendererProcessID(base::ProcessId process_id);
-  void OnSetWebKitSharedTimersSuspended(bool suspend);
   void OnMemoryPressure(
       base::MemoryPressureListener::MemoryPressureLevel memory_pressure_level);
+#if defined(OS_ANDROID)
+  void OnSetWebKitSharedTimersSuspended(bool suspend);
+#endif
+#if defined(OS_MACOSX)
+  void OnUpdateScrollbarTheme(float initial_button_delay,
+                              float autoscroll_button_delay,
+                              bool jump_on_track_click,
+                              blink::ScrollerStyle preferred_scroller_style,
+                              bool redraw);
+#endif
 
   void IdleHandlerInForegroundTab();
 
@@ -393,9 +407,10 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
   scoped_ptr<DomStorageDispatcher> dom_storage_dispatcher_;
   scoped_ptr<IndexedDBDispatcher> main_thread_indexed_db_dispatcher_;
   scoped_ptr<RendererWebKitPlatformSupportImpl> webkit_platform_support_;
+  scoped_ptr<EmbeddedWorkerDispatcher> embedded_worker_dispatcher_;
 
   // Used on the render thread and deleted by WebKit at shutdown.
-  WebKit::WebMediaStreamCenter* media_stream_center_;
+  blink::WebMediaStreamCenter* media_stream_center_;
 
   // Used on the renderer and IPC threads.
   scoped_refptr<DBMessageFilter> db_message_filter_;
@@ -416,16 +431,8 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
   // Dispatches all P2P sockets.
   scoped_refptr<P2PSocketDispatcher> p2p_socket_dispatcher_;
 
-  // Used on multiple threads.
-  scoped_refptr<VideoCaptureImplManager> vc_manager_;
-
-  // Used on multiple script execution context threads.
-  scoped_ptr<WebDatabaseObserverImpl> web_database_observer_impl_;
-
-#if defined(OS_WIN)
-  // Initialize COM when using plugins outside the sandbox.
-  scoped_ptr<base::win::ScopedCOMInitializer> initialize_com_;
-#endif
+  // Used on the render thread.
+  scoped_ptr<VideoCaptureImplManager> vc_manager_;
 
   // The count of RenderWidgets running through this thread.
   int widget_count_;
@@ -441,6 +448,7 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
 
   bool suspend_webkit_shared_timer_;
   bool notify_webkit_of_modal_loop_;
+  bool webkit_shared_timer_suspended_;
 
   // The following flag is used to control layout test specific behavior.
   bool layout_test_mode_;
@@ -492,7 +500,10 @@ class CONTENT_EXPORT RenderThreadImpl : public RenderThread,
 
   scoped_ptr<GamepadSharedMemoryReader> gamepad_shared_memory_reader_;
 
-  base::ProcessId renderer_process_id_;
+  // TODO(reveman): Allow AllocateGpuMemoryBuffer to be called from
+  // multiple threads. Current allocation mechanism for IOSurface
+  // backed GpuMemoryBuffers prevent this. crbug.com/325045
+  base::ThreadChecker allocate_gpu_memory_buffer_thread_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(RenderThreadImpl);
 };

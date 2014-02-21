@@ -31,12 +31,13 @@
 #include "config.h"
 #include "core/inspector/InspectorInstrumentation.h"
 
+#include "core/events/EventTarget.h"
 #include "core/fetch/FetchInitiatorInfo.h"
-#include "core/inspector/InspectorAgent.h"
 #include "core/inspector/InspectorCSSAgent.h"
 #include "core/inspector/InspectorConsoleAgent.h"
 #include "core/inspector/InspectorController.h"
 #include "core/inspector/InspectorDebuggerAgent.h"
+#include "core/inspector/InspectorInspectorAgent.h"
 #include "core/inspector/InspectorProfilerAgent.h"
 #include "core/inspector/InspectorResourceAgent.h"
 #include "core/inspector/InspectorTimelineAgent.h"
@@ -101,8 +102,7 @@ void continueAfterPingLoaderImpl(InstrumentingAgents* instrumentingAgents, unsig
 
 void didReceiveResourceResponseButCanceledImpl(Frame* frame, DocumentLoader* loader, unsigned long identifier, const ResourceResponse& r)
 {
-    InspectorInstrumentationCookie cookie = willReceiveResourceResponse(frame, identifier, r);
-    didReceiveResourceResponse(cookie, identifier, loader, r, 0);
+    didReceiveResourceResponse(frame, identifier, loader, r, 0);
 }
 
 void continueAfterXFrameOptionsDeniedImpl(Frame* frame, DocumentLoader* loader, unsigned long identifier, const ResourceResponse& r)
@@ -132,16 +132,9 @@ void willDestroyResourceImpl(Resource* cachedResource)
     }
 }
 
-bool profilerEnabledImpl(InstrumentingAgents* instrumentingAgents)
-{
-    if (InspectorProfilerAgent* profilerAgent = instrumentingAgents->inspectorProfilerAgent())
-        return profilerAgent->enabled();
-    return false;
-}
-
 bool collectingHTMLParseErrorsImpl(InstrumentingAgents* instrumentingAgents)
 {
-    if (InspectorAgent* inspectorAgent = instrumentingAgents->inspectorAgent())
+    if (InspectorInspectorAgent* inspectorAgent = instrumentingAgents->inspectorInspectorAgent())
         return inspectorAgent->hasFrontend();
     return false;
 }
@@ -214,6 +207,13 @@ InstrumentingAgents* instrumentingAgentsFor(Page* page)
     return instrumentationForPage(page);
 }
 
+InstrumentingAgents* instrumentingAgentsFor(EventTarget* eventTarget)
+{
+    if (!eventTarget)
+        return 0;
+    return instrumentingAgentsFor(eventTarget->executionContext());
+}
+
 InstrumentingAgents* instrumentingAgentsFor(RenderObject* renderer)
 {
     return instrumentingAgentsFor(renderer->frame());
@@ -237,21 +237,18 @@ InstrumentingAgents* instrumentingAgentsForNonDocumentContext(ExecutionContext* 
 
 namespace InstrumentationEvents {
 const char PaintSetup[] = "PaintSetup";
-const char PaintLayer[] = "PaintLayer";
 const char RasterTask[] = "RasterTask";
-const char ImageDecodeTask[] = "ImageDecodeTask";
 const char Paint[] = "Paint";
 const char Layer[] = "Layer";
 const char BeginFrame[] = "BeginFrame";
-const char UpdateLayer[] = "UpdateLayer";
+const char ActivateLayerTree[] = "ActivateLayerTree";
 };
 
 namespace InstrumentationEventArguments {
+const char FrameId[] = "frameId";
 const char LayerId[] = "layerId";
 const char LayerTreeId[] = "layerTreeId";
-const char NodeId[] = "nodeId";
 const char PageId[] = "pageId";
-const char PixelRefId[] = "pixelRefId";
 };
 
 InstrumentingAgents* instrumentationForPage(Page* page)

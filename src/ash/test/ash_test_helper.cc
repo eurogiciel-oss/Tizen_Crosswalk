@@ -22,10 +22,11 @@
 #include "ui/compositor/test/context_factories_for_test.h"
 #include "ui/message_center/message_center.h"
 #include "ui/views/corewm/capture_controller.h"
+#include "ui/views/corewm/wm_state.h"
 
 #if defined(OS_CHROMEOS)
 #include "chromeos/audio/cras_audio_handler.h"
-#include "chromeos/network/network_handler.h"
+#include "chromeos/dbus/dbus_thread_manager.h"
 #endif
 
 #if defined(USE_X11)
@@ -39,7 +40,7 @@ AshTestHelper::AshTestHelper(base::MessageLoopForUI* message_loop)
     : message_loop_(message_loop),
       test_shell_delegate_(NULL),
       test_screenshot_delegate_(NULL),
-      tear_down_network_handler_(false) {
+      dbus_thread_manager_initialized_(false) {
   CHECK(message_loop_);
 #if defined(USE_X11)
   aura::test::SetUseOverrideRedirectWindowByDefault(true);
@@ -50,6 +51,8 @@ AshTestHelper::~AshTestHelper() {
 }
 
 void AshTestHelper::SetUp(bool start_session) {
+  wm_state_.reset(new views::corewm::WMState);
+
   // Disable animations during tests.
   zero_duration_mode_.reset(new ui::ScopedAnimationDurationScaleMode(
       ui::ScopedAnimationDurationScaleMode::ZERO_DURATION));
@@ -66,18 +69,14 @@ void AshTestHelper::SetUp(bool start_session) {
   message_center::MessageCenter::Initialize();
 
 #if defined(OS_CHROMEOS)
+  // Create DBusThreadManager for testing.
+  if (!chromeos::DBusThreadManager::IsInitialized()) {
+    chromeos::DBusThreadManager::InitializeWithStub();
+    dbus_thread_manager_initialized_ = true;
+  }
   // Create CrasAudioHandler for testing since g_browser_process is not
   // created in AshTestBase tests.
   chromeos::CrasAudioHandler::InitializeForTesting();
-
-  // Some tests may not initialize NetworkHandler. Initialize it here if that
-  // is the case.
-  if (!chromeos::NetworkHandler::IsInitialized()) {
-    tear_down_network_handler_ = true;
-    chromeos::NetworkHandler::Initialize();
-  }
-
-  RunAllPendingInMessageLoop();
 #endif
   ash::Shell::CreateInstance(test_shell_delegate_);
   aura::test::EnvTestHelper(aura::Env::GetInstance()).SetInputStateLookup(
@@ -109,9 +108,11 @@ void AshTestHelper::TearDown() {
   message_center::MessageCenter::Shutdown();
 
 #if defined(OS_CHROMEOS)
-  if (tear_down_network_handler_ && chromeos::NetworkHandler::IsInitialized())
-    chromeos::NetworkHandler::Shutdown();
   chromeos::CrasAudioHandler::Shutdown();
+  if (dbus_thread_manager_initialized_) {
+    chromeos::DBusThreadManager::Shutdown();
+    dbus_thread_manager_initialized_ = false;
+  }
 #endif
 
   aura::Env::DeleteInstance();
@@ -124,6 +125,8 @@ void AshTestHelper::TearDown() {
   zero_duration_mode_.reset();
 
   CHECK(!views::corewm::ScopedCaptureClient::IsActive());
+
+  wm_state_.reset();
 }
 
 void AshTestHelper::RunAllPendingInMessageLoop() {

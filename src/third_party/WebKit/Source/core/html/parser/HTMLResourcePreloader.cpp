@@ -48,20 +48,19 @@ bool PreloadRequest::isSafeToSendToAnotherThread() const
 
 KURL PreloadRequest::completeURL(Document* document)
 {
-    return document->completeURL(m_resourceURL, m_baseURL.isEmpty() ? document->url() : m_baseURL);
+    return document->completeURLWithOverride(m_resourceURL, m_baseURL.isEmpty() ? document->url() : m_baseURL);
 }
 
 FetchRequest PreloadRequest::resourceRequest(Document* document)
 {
     ASSERT(isMainThread());
     FetchInitiatorInfo initiatorInfo;
-    initiatorInfo.name = m_initiatorName;
+    initiatorInfo.name = AtomicString(m_initiatorName);
     initiatorInfo.position = m_initiatorPosition;
     FetchRequest request(ResourceRequest(completeURL(document)), initiatorInfo);
 
-    // FIXME: It's possible CORS should work for other request types?
-    if (m_resourceType == Resource::Script)
-        request.mutableResourceRequest().setAllowCookies(m_crossOriginModeAllowsCookies);
+    if (m_isCORSEnabled)
+        request.setCrossOriginAccessControl(document->securityOrigin(), m_allowCredentials);
     return request;
 }
 
@@ -93,7 +92,7 @@ void HTMLResourcePreloader::preload(PassOwnPtr<PreloadRequest> preload)
         return;
 
     FetchRequest request = preload->resourceRequest(m_document);
-    WebKit::Platform::current()->histogramCustomCounts("WebCore.PreloadDelayMs", static_cast<int>(1000 * (monotonicallyIncreasingTime() - preload->discoveryTime())), 0, 2000, 20);
+    blink::Platform::current()->histogramCustomCounts("WebCore.PreloadDelayMs", static_cast<int>(1000 * (monotonicallyIncreasingTime() - preload->discoveryTime())), 0, 2000, 20);
     loadingDocument->fetcher()->preload(preload->resourceType(), request, preload->charset());
 }
 

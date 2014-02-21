@@ -22,89 +22,22 @@
 
 #include "core/svg/SVGFitToViewBox.h"
 
-#include "SVGNames.h"
 #include "core/dom/Attribute.h"
 #include "core/dom/Document.h"
 #include "core/svg/SVGDocumentExtensions.h"
 #include "core/svg/SVGParserUtilities.h"
-#include "core/svg/SVGPreserveAspectRatio.h"
 #include "platform/geometry/FloatRect.h"
 #include "platform/transforms/AffineTransform.h"
 #include "wtf/text/StringImpl.h"
 
 namespace WebCore {
 
-template<typename CharType>
-static bool parseViewBoxInternal(Document* document, const CharType*& ptr, const CharType* end, FloatRect& viewBox, bool validate)
-{
-    const CharType* start = ptr;
-
-    skipOptionalSVGSpaces(ptr, end);
-
-    float x = 0.0f;
-    float y = 0.0f;
-    float width = 0.0f;
-    float height = 0.0f;
-    bool valid = parseNumber(ptr, end, x) && parseNumber(ptr, end, y) && parseNumber(ptr, end, width) && parseNumber(ptr, end, height, false);
-    if (!validate) {
-        viewBox = FloatRect(x, y, width, height);
-        return true;
-    }
-    if (!valid) {
-        document->accessSVGExtensions()->reportWarning("Problem parsing viewBox=\"" + String(start, end - start) + "\"");
-        return false;
-    }
-
-    if (width < 0.0) { // check that width is positive
-        document->accessSVGExtensions()->reportError("A negative value for ViewBox width is not allowed");
-        return false;
-    }
-    if (height < 0.0) { // check that height is positive
-        document->accessSVGExtensions()->reportError("A negative value for ViewBox height is not allowed");
-        return false;
-    }
-    skipOptionalSVGSpaces(ptr, end);
-    if (ptr < end) { // nothing should come after the last, fourth number
-        document->accessSVGExtensions()->reportWarning("Problem parsing viewBox=\"" + String(start, end - start) + "\"");
-        return false;
-    }
-
-    viewBox = FloatRect(x, y, width, height);
-    return true;
-}
-
-bool SVGFitToViewBox::parseViewBox(Document* document, const LChar*& ptr, const LChar* end, FloatRect& viewBox, bool validate)
-{
-    return parseViewBoxInternal(document, ptr, end, viewBox, validate);
-}
-
-bool SVGFitToViewBox::parseViewBox(Document* document, const UChar*& ptr, const UChar* end, FloatRect& viewBox, bool validate)
-{
-    return parseViewBoxInternal(document, ptr, end, viewBox, validate);
-}
-
-bool SVGFitToViewBox::parseViewBox(Document* document, const String& string, FloatRect& viewBox)
-{
-    if (string.isEmpty()) {
-        const LChar* ptr = 0;
-        return parseViewBoxInternal<LChar>(document, ptr, ptr, viewBox, true);
-    }
-    if (string.is8Bit()) {
-        const LChar* ptr = string.characters8();
-        const LChar* end = ptr + string.length();
-        return parseViewBox(document, ptr, end, viewBox, true);
-    }
-    const UChar* ptr = string.characters16();
-    const UChar* end = ptr + string.length();
-    return parseViewBox(document, ptr, end, viewBox, true);
-}
-
-AffineTransform SVGFitToViewBox::viewBoxToViewTransform(const FloatRect& viewBoxRect, const SVGPreserveAspectRatio& preserveAspectRatio, float viewWidth, float viewHeight)
+AffineTransform SVGFitToViewBox::viewBoxToViewTransform(const FloatRect& viewBoxRect, PassRefPtr<SVGPreserveAspectRatio> preserveAspectRatio, float viewWidth, float viewHeight)
 {
     if (!viewBoxRect.width() || !viewBoxRect.height())
         return AffineTransform();
 
-    return preserveAspectRatio.getCTM(viewBoxRect.x(), viewBoxRect.y(), viewBoxRect.width(), viewBoxRect.height(), viewWidth, viewHeight);
+    return preserveAspectRatio->getCTM(viewBoxRect.x(), viewBoxRect.y(), viewBoxRect.width(), viewBoxRect.height(), viewWidth, viewHeight);
 }
 
 bool SVGFitToViewBox::isKnownAttribute(const QualifiedName& attrName)

@@ -36,7 +36,7 @@
         '../components/components.gyp:navigation_interception_java',
         '../components/components.gyp:web_contents_delegate_android_java',
         '../content/content.gyp:content_java',
-        '../ui/ui.gyp:ui_java',
+        '../ui/android/ui_android.gyp:ui_java',
         'xwalk_core_extensions_java',
       ],
       'variables': {
@@ -194,12 +194,13 @@
         'additional_input_paths': [
           '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/jsapi/contacts_api.js',
           '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/jsapi/device_capabilities_api.js',
+          '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/jsapi/launch_screen_api.js',
           '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/jsapi/messaging_api.js',
           '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/jsapi/presentation_api.js',
           '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/jsapi/screen_orientation_api.js',
           '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/xwalk.pak',
         ],
-        'asset_location': '<(ant_build_out)/xwalk_runtime_lib/assets',
+        'asset_location': '<(PRODUCT_DIR)/xwalk_runtime_lib/assets',
         'app_manifest_version_name': '<(xwalk_version)',
         'app_manifest_version_code': '<(xwalk_version_code)',
       },
@@ -227,6 +228,7 @@
         {
           'destination': '<(PRODUCT_DIR)/xwalk_runtime_lib/assets/jsapi',
           'files': [
+            'experimental/launch_screen/launch_screen_api.js',
             'experimental/presentation/presentation_api.js',
             'runtime/android/java/src/org/xwalk/runtime/extension/api/contacts/contacts_api.js',
             'runtime/android/java/src/org/xwalk/runtime/extension/api/device_capabilities/device_capabilities_api.js',

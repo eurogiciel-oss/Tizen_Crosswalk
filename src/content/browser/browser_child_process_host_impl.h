@@ -54,7 +54,8 @@ class CONTENT_EXPORT BrowserChildProcessHostImpl
   virtual ChildProcessHost* GetHost() const OVERRIDE;
   virtual base::TerminationStatus GetTerminationStatus(
       bool known_dead, int* exit_code) OVERRIDE;
-  virtual void SetName(const string16& name) OVERRIDE;
+  virtual void SetNaClDebugStubPort(int port) OVERRIDE;
+  virtual void SetName(const base::string16& name) OVERRIDE;
   virtual void SetHandle(base::ProcessHandle handle) OVERRIDE;
 
   // Returns the handle of the child process. This can be called only after

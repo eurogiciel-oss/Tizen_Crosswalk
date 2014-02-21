@@ -283,11 +283,11 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             self.assertRaises(BaseException, logging_run,
                 ['--child-processes', '2', '--skipped=ignore', 'failures/expected/exception.html', 'passes/text.html'], tests_included=True, shared_port=False)
 
-    def test_device_offline(self):
+    def test_device_failure(self):
         # Test that we handle a device going offline during a test properly.
-        details, regular_output, _ = logging_run(['failures/expected/device_offline.html'], tests_included=True)
+        details, regular_output, _ = logging_run(['failures/expected/device_failure.html'], tests_included=True)
         self.assertEqual(details.exit_code, 0)
-        self.assertTrue('worker/0 has gone offline' in regular_output.getvalue())
+        self.assertTrue('worker/0 has failed' in regular_output.getvalue())
 
     def test_full_results_html(self):
         host = MockHost()
@@ -762,6 +762,10 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         test_results = get_test_results(['failures/unexpected/crash-reftest.html'])
         # The list of references should be empty since the test crashed and we didn't run any references.
         self.assertEqual(test_results[0].references, [])
+
+    def test_reftest_with_virtual_reference(self):
+        _, err, _ = logging_run(['--details', 'virtual/passes/reftest.html'], tests_included=True)
+        self.assertTrue('ref: virtual/passes/reftest-expected.html' in err.getvalue())
 
     def test_additional_platform_directory(self):
         self.assertTrue(passing_run(['--additional-platform-directory', '/tmp/foo']))

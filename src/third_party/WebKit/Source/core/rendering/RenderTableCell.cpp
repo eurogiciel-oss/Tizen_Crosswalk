@@ -28,7 +28,7 @@
 #include "HTMLNames.h"
 #include "core/css/StylePropertySet.h"
 #include "core/html/HTMLTableCellElement.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/PaintInfo.h"
 #include "core/rendering/RenderTableCol.h"
 #include "core/rendering/RenderView.h"
@@ -36,6 +36,7 @@
 #include "core/rendering/style/CollapsedBorderValue.h"
 #include "platform/geometry/FloatQuad.h"
 #include "platform/geometry/TransformState.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 
 using namespace std;
 
@@ -152,7 +153,7 @@ void RenderTableCell::computePreferredLogicalWidths()
     if (node() && style()->autoWrap()) {
         // See if nowrap was set.
         Length w = styleOrColLogicalWidth();
-        String nowrap = toElement(node())->getAttribute(nowrapAttr);
+        const AtomicString& nowrap = toElement(node())->getAttribute(nowrapAttr);
         if (!nowrap.isNull() && w.isFixed())
             // Nowrap is set, but we didn't actually use it because of the
             // fixed width set on the cell.  Even so, it is a WinIE/Moz trait
@@ -235,6 +236,8 @@ void RenderTableCell::setCellLogicalWidth(int tableLayoutLogicalWidth, SubtreeLa
 void RenderTableCell::layout()
 {
     ASSERT(needsLayout());
+
+    LayoutRectRecorder recorder(*this);
 
     updateFirstLetter();
 
@@ -357,10 +360,12 @@ LayoutRect RenderTableCell::clippedOverflowRectForRepaint(const RenderLayerModel
     LayoutPoint location(max<LayoutUnit>(left, -visualOverflowRect().x()), max<LayoutUnit>(top, -visualOverflowRect().y()));
     LayoutRect r(-location.x(), -location.y(), location.x() + max(width() + right, visualOverflowRect().maxX()), location.y() + max(height() + bottom, visualOverflowRect().maxY()));
 
-    if (RenderView* v = view()) {
-        // FIXME: layoutDelta needs to be applied in parts before/after transforms and
-        // repaint containers. https://bugs.webkit.org/show_bug.cgi?id=23308
-        r.move(v->layoutDelta());
+    if (!RuntimeEnabledFeatures::repaintAfterLayoutEnabled()) {
+        if (RenderView* v = view()) {
+            // FIXME: layoutDelta needs to be applied in parts before/after transforms and
+            // repaint containers. https://bugs.webkit.org/show_bug.cgi?id=23308
+            r.move(v->layoutDelta());
+        }
     }
     computeRectForRepaint(repaintContainer, r);
     return r;
@@ -1156,7 +1161,7 @@ void RenderTableCell::paintCollapsedBorders(PaintInfo& paintInfo, const LayoutPo
     for (CollapsedBorder* border = borders.nextBorder(); border; border = borders.nextBorder()) {
         if (border->borderValue.isSameIgnoringColor(*table()->currentBorderValue())) {
             drawLineForBoxSide(graphicsContext, border->x1, border->y1, border->x2, border->y2, border->side,
-                resolveColor(border->borderValue.color()), border->style, 0, 0, antialias);
+                border->borderValue.color().resolve(style()->visitedDependentColor(CSSPropertyColor)), border->style, 0, 0, antialias);
         }
     }
 }
@@ -1183,7 +1188,7 @@ void RenderTableCell::paintBackgroundsBehindCell(PaintInfo& paintInfo, const Lay
     Color c = backgroundObject->resolveColor(CSSPropertyBackgroundColor);
     const FillLayer* bgLayer = backgroundObject->style()->backgroundLayers();
 
-    if (bgLayer->hasImage() || c.isValid()) {
+    if (bgLayer->hasImage() || c.alpha()) {
         // We have to clip here because the background would paint
         // on top of the borders otherwise.  This only matters for cells and rows.
         bool shouldClip = backgroundObject->hasLayer() && (backgroundObject == this || backgroundObject == parent()) && tableElt->collapseBorders();

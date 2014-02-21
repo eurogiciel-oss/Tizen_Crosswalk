@@ -19,6 +19,7 @@
         'array_output.cc',
         'audio.cc',
         'audio_config.cc',
+        'audio_frame.cc',
         'core.cc',
         'directory_entry.cc',
         'file_io.cc',
@@ -33,6 +34,8 @@
         'input_event.cc',
         'instance.cc',
         'instance_handle.cc',
+        'media_stream_audio_track.cc',
+        'media_stream_video_track.cc',
         'message_loop.cc',
         'module.cc',
         'mouse_cursor.cc',
@@ -54,12 +57,13 @@
         'var_array.cc',
         'var.cc',
         'var_dictionary.cc',
+        'video_frame.cc',
         'view.cc',
         'websocket.cc',
 
         # ppapi/cpp/dev
+        'alarms_dev.cc',
         'widget_client_dev.cc',
-        'resource_array_dev.cc',
         'video_capture_client_dev.cc',
         'video_decoder_client_dev.cc',
         'crypto_dev.cc',
@@ -83,16 +87,12 @@
         'scriptable_object_deprecated.cc',
         'audio_input_dev.cc',
         'scrollbar_dev.cc',
+        'string_wrapper_dev.cc',
         'graphics_2d_dev.cc',
         'widget_dev.cc',
         'var_resource_dev.cc',
 
-        # ppapi/cpp/extensions
-        'event_base.cc',
-
         # ppapi/cpp/extensions/dev
-        'alarms_dev.cc',
-        'events_dev.cc',
         'socket_dev.cc',
 
         # ppapi/utility/graphics
@@ -113,6 +113,7 @@
       'FILES': [
         'array_output.h',
         'audio_config.h',
+        'audio_frame.h',
         'audio.h',
         'completion_callback.h',
         'core.h',
@@ -130,6 +131,8 @@
         'instance.h',
         'instance_handle.h',
         'logging.h',
+        'media_stream_audio_track.h',
+        'media_stream_video_track.h',
         'message_loop.h',
         'module_embedder.h',
         'module.h',
@@ -157,6 +160,7 @@
         'var_array.h',
         'var_dictionary.h',
         'var.h',
+        'video_frame.h',
         'view.h',
         'websocket.h',
       ],
@@ -164,6 +168,8 @@
     },
     {
       'FILES': [
+        'alarms_dev.h',
+        'array_dev.h',
         'audio_input_dev.h',
         'buffer_dev.h',
         'crypto_dev.h',
@@ -174,13 +180,17 @@
         'font_dev.h',
         'graphics_2d_dev.h',
         'ime_input_event_dev.h',
+        'may_own_ptr_dev.h',
         'memory_dev.h',
+        'optional_dev.h',
         'printing_dev.h',
-        'resource_array_dev.h',
         'scriptable_object_deprecated.h',
         'scrollbar_dev.h',
         'selection_dev.h',
+        'string_wrapper_dev.h',
+        'struct_wrapper_output_traits_dev.h',
         'text_input_dev.h',
+        'to_c_type_converter_dev.h',
         'truetype_font_dev.h',
         'url_util_dev.h',
         'var_resource_dev.h',
@@ -198,7 +208,6 @@
     {
       'FILES': [
         'dict_field.h',
-        'event_base.h',
         'ext_output_traits.h',
         'from_var_converter.h',
         'optional.h',
@@ -208,8 +217,6 @@
     },
     {
       'FILES': [
-        'alarms_dev.h',
-        'events_dev.h',
         'socket_dev.h',
       ],
       'DEST': 'include/ppapi/cpp/extensions/dev',

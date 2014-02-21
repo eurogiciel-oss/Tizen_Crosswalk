@@ -29,8 +29,7 @@
 #include "core/loader/CookieJar.h"
 #include "core/loader/FrameLoader.h"
 #include "core/frame/Frame.h"
-#include "core/page/Page.h"
-#include "core/page/Settings.h"
+#include "core/frame/Settings.h"
 #include "core/plugins/DOMMimeTypeArray.h"
 #include "core/plugins/DOMPluginArray.h"
 #include "platform/Language.h"
@@ -59,34 +58,7 @@ Navigator::~Navigator()
 {
 }
 
-// If this function returns true, we need to hide the substring "4." that would otherwise
-// appear in the appVersion string. This is to avoid problems with old versions of a
-// library called OpenCube QuickMenu, which as of this writing is still being used on
-// sites such as nwa.com -- the library thinks Safari is Netscape 4 if we don't do this!
-static bool shouldHideFourDot(Frame* frame)
-{
-    const String* sourceURL = frame->script().sourceURL();
-    if (!sourceURL)
-        return false;
-    if (!(sourceURL->endsWith("/dqm_script.js") || sourceURL->endsWith("/dqm_loader.js") || sourceURL->endsWith("/tdqm_loader.js")))
-        return false;
-    Settings* settings = frame->settings();
-    if (!settings)
-        return false;
-    return settings->needsSiteSpecificQuirks();
-}
-
-String Navigator::appVersion() const
-{
-    if (!m_frame)
-        return String();
-    String appVersion = NavigatorID::appVersion(this);
-    if (shouldHideFourDot(m_frame))
-        appVersion.replace("4.", "4_");
-    return appVersion;
-}
-
-String Navigator::language() const
+AtomicString Navigator::language() const
 {
     return defaultLanguage();
 }
@@ -108,12 +80,8 @@ String Navigator::vendorSub() const
 
 String Navigator::userAgent() const
 {
-    if (!m_frame)
-        return String();
-
-    // If the frame is already detached, FrameLoader::userAgent may malfunction, because it calls a client method
-    // that uses frame's WebView (at least, in Mac WebKit).
-    if (!m_frame->page())
+    // If the frame is already detached it no longer has a meaningful useragent.
+    if (!m_frame || !m_frame->page())
         return String();
 
     return m_frame->loader().userAgent(m_frame->document()->url());
@@ -138,7 +106,8 @@ bool Navigator::cookieEnabled() const
     if (!m_frame)
         return false;
 
-    if (m_frame->page() && !m_frame->page()->settings().cookieEnabled())
+    Settings* settings = m_frame->settings();
+    if (!settings || !settings->cookieEnabled())
         return false;
 
     return cookiesEnabled(m_frame->document());
@@ -149,7 +118,7 @@ bool Navigator::javaEnabled() const
     if (!m_frame || !m_frame->settings())
         return false;
 
-    if (!m_frame->settings()->isJavaEnabled())
+    if (!m_frame->settings()->javaEnabled())
         return false;
 
     return true;

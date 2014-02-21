@@ -26,8 +26,8 @@
 #ifndef RenderScrollbar_h
 #define RenderScrollbar_h
 
-#include "core/platform/Scrollbar.h"
 #include "core/rendering/style/RenderStyleConstants.h"
+#include "platform/scroll/Scrollbar.h"
 #include "wtf/HashMap.h"
 
 namespace WebCore {
@@ -38,7 +38,7 @@ class RenderBox;
 class RenderScrollbarPart;
 class RenderStyle;
 
-class RenderScrollbar : public Scrollbar {
+class RenderScrollbar FINAL : public Scrollbar {
 protected:
     RenderScrollbar(ScrollableArea*, ScrollbarOrientation, Node*, Frame*);
 
@@ -57,20 +57,20 @@ public:
 
     int minimumThumbLength();
 
-    virtual bool isOverlayScrollbar() const { return false; }
+    virtual bool isOverlayScrollbar() const OVERRIDE { return false; }
 
 private:
     virtual void setParent(Widget*) OVERRIDE;
-    virtual void setEnabled(bool);
+    virtual void setEnabled(bool) OVERRIDE;
 
-    virtual void paint(GraphicsContext*, const IntRect& damageRect);
+    virtual void paint(GraphicsContext*, const IntRect& damageRect) OVERRIDE;
 
-    virtual void setHoveredPart(ScrollbarPart);
-    virtual void setPressedPart(ScrollbarPart);
+    virtual void setHoveredPart(ScrollbarPart) OVERRIDE;
+    virtual void setPressedPart(ScrollbarPart) OVERRIDE;
 
-    virtual void styleChanged();
+    virtual void styleChanged() OVERRIDE;
 
-    virtual bool isCustomScrollbar() const { return true; }
+    virtual bool isCustomScrollbar() const OVERRIDE { return true; }
 
     void updateScrollbarParts(bool destroy = false);
 
@@ -87,14 +87,7 @@ private:
     HashMap<unsigned, RenderScrollbarPart*> m_parts;
 };
 
-inline RenderScrollbar* toRenderScrollbar(ScrollbarThemeClient* scrollbar)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(!scrollbar || scrollbar->isCustomScrollbar());
-    return static_cast<RenderScrollbar*>(scrollbar);
-}
-
-// This will catch anyone doing an unnecessary cast.
-void toRenderScrollbar(const RenderScrollbar*);
+DEFINE_TYPE_CASTS(RenderScrollbar, ScrollbarThemeClient, scrollbar, scrollbar->isCustomScrollbar(), scrollbar.isCustomScrollbar());
 
 } // namespace WebCore
 

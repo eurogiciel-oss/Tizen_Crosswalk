@@ -62,13 +62,13 @@ class CONTENT_EXPORT WorkerServiceImpl
   int next_worker_route_id() { return ++next_worker_route_id_; }
 
   // Given a worker's process id, return the IDs of the renderer process and
-  // render view that created it.  For shared workers, this returns the first
+  // render frame that created it.  For shared workers, this returns the first
   // parent.
   // TODO(dimich): This code assumes there is 1 worker per worker process, which
   // is how it is today until V8 can run in separate threads.
   bool GetRendererForWorker(int worker_process_id,
                             int* render_process_id,
-                            int* render_view_id) const;
+                            int* render_frame_id) const;
   const WorkerProcessHost::WorkerInstance* FindWorkerInstance(
       int worker_process_id);
 
@@ -80,7 +80,7 @@ class CONTENT_EXPORT WorkerServiceImpl
 
   // Used when we run each worker in a separate process.
   static const int kMaxWorkersWhenSeparate;
-  static const int kMaxWorkersPerTabWhenSeparate;
+  static const int kMaxWorkersPerFrameWhenSeparate;
 
  private:
   friend struct DefaultSingletonTraits<WorkerServiceImpl>;
@@ -96,11 +96,11 @@ class CONTENT_EXPORT WorkerServiceImpl
   bool CanCreateWorkerProcess(
       const WorkerProcessHost::WorkerInstance& instance);
 
-  // Checks if the tab associated with the passed RenderView can create a
+  // Checks if the frame associated with the passed RenderFrame can create a
   // worker process based on the process limit when we're using a strategy of
   // one worker per process.
-  bool TabCanCreateWorkerProcess(
-      int render_process_id, int render_route_id, bool* hit_total_worker_limit);
+  bool FrameCanCreateWorkerProcess(
+      int render_process_id, int render_frame_id, bool* hit_total_worker_limit);
 
   // Tries to see if any of the queued workers can be created.
   void TryStartingQueuedWorker();
@@ -108,23 +108,23 @@ class CONTENT_EXPORT WorkerServiceImpl
   // APIs for manipulating our set of pending shared worker instances.
   WorkerProcessHost::WorkerInstance* CreatePendingInstance(
       const GURL& url,
-      const string16& name,
+      const base::string16& name,
       ResourceContext* resource_context,
       const WorkerStoragePartition& worker_partition);
   WorkerProcessHost::WorkerInstance* FindPendingInstance(
       const GURL& url,
-      const string16& name,
+      const base::string16& name,
       const WorkerStoragePartition& worker_partition,
       ResourceContext* resource_context);
   void RemovePendingInstances(
       const GURL& url,
-      const string16& name,
+      const base::string16& name,
       const WorkerStoragePartition& worker_partition,
       ResourceContext* resource_context);
 
   WorkerProcessHost::WorkerInstance* FindSharedWorkerInstance(
       const GURL& url,
-      const string16& name,
+      const base::string16& name,
       const WorkerStoragePartition& worker_partition,
       ResourceContext* resource_context);
 

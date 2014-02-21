@@ -59,6 +59,7 @@ struct SenderInfo;
 namespace voe {
 
 class Statistics;
+class StatisticsProxy;
 class TransmitMixer;
 class OutputMixer;
 
@@ -201,6 +202,7 @@ public:
 
     // VoENetEqStats
     int GetNetworkStatistics(NetworkStatistics& stats);
+    void GetDecodingCallStatistics(AudioDecodingCallStats* stats) const;
 
     // VoEVideoSync
     bool GetDelayEstimate(int* jitter_buffer_delay_ms,
@@ -431,7 +433,7 @@ private:
                              int packet_length,
                              const RTPHeader& header);
     bool IsPacketInOrder(const RTPHeader& header) const;
-    bool IsPacketRetransmitted(const RTPHeader& header) const;
+    bool IsPacketRetransmitted(const RTPHeader& header, bool in_order) const;
     int ResendPackets(const uint16_t* sequence_numbers, int length);
     int InsertInbandDtmfTone();
     int32_t MixOrReplaceAudioWithFile(int mixingFrequency);
@@ -441,7 +443,6 @@ private:
     void UpdatePacketDelay(uint32_t timestamp,
                            uint16_t sequenceNumber);
     void RegisterReceiveCodecsToRTPModule();
-    int ApmProcessRx(AudioFrame& audioFrame);
 
     int SetRedPayloadType(int red_payload_type);
 
@@ -454,6 +455,7 @@ private:
     scoped_ptr<RtpHeaderParser> rtp_header_parser_;
     scoped_ptr<RTPPayloadRegistry> rtp_payload_registry_;
     scoped_ptr<ReceiveStatistics> rtp_receive_statistics_;
+    scoped_ptr<StatisticsProxy> statistics_proxy_;
     scoped_ptr<RtpReceiver> rtp_receiver_;
     TelephoneEventHandler* telephone_event_handler_;
     scoped_ptr<RtpRtcp> _rtpRtcpModule;
@@ -488,6 +490,9 @@ private:
     uint8_t* _decryptionRTCPBufferPtr;
     uint32_t _timeStamp;
     uint8_t _sendTelephoneEventPayloadType;
+
+    // Timestamp of the audio pulled from NetEq.
+    uint32_t jitter_buffer_playout_timestamp_;
     uint32_t playout_timestamp_rtp_;
     uint32_t playout_timestamp_rtcp_;
     uint32_t playout_delay_ms_;

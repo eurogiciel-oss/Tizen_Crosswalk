@@ -36,10 +36,7 @@
 #include "WebFileSystemType.h"
 #include "WebURL.h"
 
-namespace WebKit {
-
-// FIXME: Remove this after the switch is over.
-#define NON_SELFDESTRUCT_WEBFILESYSTEMCALLBACKS
+namespace blink {
 
 class WebFileWriter;
 class WebFileWriterClient;
@@ -142,12 +139,6 @@ public:
     virtual void readDirectory(const WebURL& path, WebFileSystemCallbacks) { BLINK_ASSERT_NOT_REACHED(); }
 
     // Creates a WebFileWriter that can be used to write to the given file.
-    // This is a fast, synchronous call, and should not stat the filesystem.
-    // FIXME: deprecate this after async version of createFileWriter is
-    // implemented.
-    virtual WebFileWriter* createFileWriter(const WebURL& path, WebFileWriterClient*) { BLINK_ASSERT_NOT_REACHED(); return 0; }
-
-    // Creates a WebFileWriter that can be used to write to the given file.
     // WebFileSystemCallbacks::didCreateFileWriter() must be called with the created WebFileWriter when the operation is completed successfully.
     // WebFileSystemCallbacks::didFail() must be called otherwise.
     virtual void createFileWriter(const WebURL& path, WebFileWriterClient*, WebFileSystemCallbacks) { BLINK_ASSERT_NOT_REACHED(); }
@@ -166,6 +157,6 @@ protected:
     virtual ~WebFileSystem() { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

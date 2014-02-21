@@ -29,7 +29,7 @@
 #include "core/workers/WorkerScriptLoader.h"
 
 #include "core/dom/ExecutionContext.h"
-#include "core/fetch/TextResourceDecoder.h"
+#include "core/html/parser/TextResourceDecoder.h"
 #include "core/loader/WorkerThreadableLoader.h"
 #include "core/workers/WorkerGlobalScope.h"
 #include "core/workers/WorkerScriptLoaderClient.h"
@@ -37,7 +37,6 @@
 
 #include "wtf/OwnPtr.h"
 #include "wtf/RefPtr.h"
-#include "wtf/UnusedParam.h"
 
 namespace WebCore {
 
@@ -67,7 +66,6 @@ void WorkerScriptLoader::loadSynchronously(ExecutionContext* executionContext, c
     ThreadableLoaderOptions options;
     options.allowCredentials = AllowStoredCredentials;
     options.crossOriginRequestPolicy = crossOriginRequestPolicy;
-    options.sendLoadCallbacks = SendCallbacks;
     // FIXME: Should we add EnforceScriptSrcDirective here?
     options.contentSecurityPolicyEnforcement = DoNotEnforceContentSecurityPolicy;
 
@@ -87,7 +85,6 @@ void WorkerScriptLoader::loadAsynchronously(ExecutionContext* executionContext, 
     ThreadableLoaderOptions options;
     options.allowCredentials = AllowStoredCredentials;
     options.crossOriginRequestPolicy = crossOriginRequestPolicy;
-    options.sendLoadCallbacks = SendCallbacks;
 
     // During create, callbacks may happen which remove the last reference to this object.
     RefPtr<WorkerScriptLoader> protect(this);
@@ -169,6 +166,12 @@ void WorkerScriptLoader::notifyError()
 {
     m_failed = true;
     notifyFinished();
+}
+
+void WorkerScriptLoader::cancel()
+{
+    if (m_threadableLoader)
+        m_threadableLoader->cancel();
 }
 
 String WorkerScriptLoader::script()

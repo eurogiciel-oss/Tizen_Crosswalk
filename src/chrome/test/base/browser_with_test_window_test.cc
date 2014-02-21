@@ -25,6 +25,10 @@
 #include "ash/test/ash_test_helper.h"
 #endif
 
+#if defined(TOOLKIT_VIEWS)
+#include "ui/views/test/test_views_delegate.h"
+#endif
+
 using content::NavigationController;
 using content::RenderViewHost;
 using content::RenderViewHostTester;
@@ -55,8 +59,13 @@ void BrowserWithTestWindowTest::SetUp() {
 #elif defined(USE_AURA)
   aura_test_helper_.reset(new aura::test::AuraTestHelper(
       base::MessageLoopForUI::current()));
-  aura_test_helper_->SetUp();
+  bool allow_test_contexts = true;
+  aura_test_helper_->SetUp(allow_test_contexts);
 #endif  // USE_AURA
+#if defined(TOOLKIT_VIEWS)
+  views_delegate_.reset(CreateViewsDelegate());
+  views::ViewsDelegate::views_delegate = views_delegate_.get();
+#endif
 
   // Subclasses can provide their own Profile.
   profile_ = CreateProfile();
@@ -65,9 +74,7 @@ void BrowserWithTestWindowTest::SetUp() {
   // is responsible for cleaning it up (usually by NativeWidget destruction).
   window_.reset(CreateBrowserWindow());
 
-  Browser::CreateParams params(profile(), host_desktop_type_);
-  params.window = window_.get();
-  browser_.reset(new Browser(params));
+  browser_.reset(CreateBrowser(profile(), host_desktop_type_, window_.get()));
 }
 
 void BrowserWithTestWindowTest::TearDown() {
@@ -91,6 +98,11 @@ void BrowserWithTestWindowTest::TearDown() {
   base::MessageLoop::current()->PostTask(FROM_HERE,
                                          base::MessageLoop::QuitClosure());
   base::MessageLoop::current()->Run();
+
+#if defined(TOOLKIT_VIEWS)
+  views::ViewsDelegate::views_delegate = NULL;
+  views_delegate_.reset(NULL);
+#endif
 }
 
 void BrowserWithTestWindowTest::AddTab(Browser* browser, const GURL& url) {
@@ -160,7 +172,7 @@ void BrowserWithTestWindowTest::NavigateAndCommitActiveTab(const GURL& url) {
 void BrowserWithTestWindowTest::NavigateAndCommitActiveTabWithTitle(
     Browser* navigating_browser,
     const GURL& url,
-    const string16& title) {
+    const base::string16& title) {
   NavigationController* controller = &navigating_browser->tab_strip_model()->
       GetActiveWebContents()->GetController();
   NavigateAndCommit(controller, url);
@@ -195,3 +207,18 @@ void BrowserWithTestWindowTest::DestroyProfile(TestingProfile* profile) {
 BrowserWindow* BrowserWithTestWindowTest::CreateBrowserWindow() {
   return new TestBrowserWindow();
 }
+
+Browser* BrowserWithTestWindowTest::CreateBrowser(
+    Profile* profile,
+    chrome::HostDesktopType host_desktop_type,
+    BrowserWindow* browser_window) {
+  Browser::CreateParams params(profile, host_desktop_type);
+  params.window = browser_window;
+  return new Browser(params);
+}
+
+#if defined(TOOLKIT_VIEWS)
+views::ViewsDelegate* BrowserWithTestWindowTest::CreateViewsDelegate() {
+  return new views::TestViewsDelegate;
+}
+#endif

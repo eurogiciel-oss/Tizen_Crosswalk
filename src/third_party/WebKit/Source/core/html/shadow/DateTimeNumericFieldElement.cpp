@@ -30,15 +30,12 @@
 #include "CSSPropertyNames.h"
 #include "CSSValueKeywords.h"
 #include "core/events/KeyboardEvent.h"
-#include "core/platform/graphics/Font.h"
+#include "platform/fonts/Font.h"
 #include "platform/text/PlatformLocale.h"
-#include "wtf/text/StringBuilder.h"
 
 using namespace WTF::Unicode;
 
 namespace WebCore {
-
-static const DOMTimeStamp typeAheadTimeout = 1000;
 
 int DateTimeNumericFieldElement::Range::clampValue(int value) const
 {
@@ -54,7 +51,6 @@ bool DateTimeNumericFieldElement::Range::isInRange(int value) const
 
 DateTimeNumericFieldElement::DateTimeNumericFieldElement(Document& document, FieldOwner& fieldOwner, const Range& range, const Range& hardLimits, const String& placeholder, const DateTimeNumericFieldElement::Step& step)
     : DateTimeFieldElement(document, fieldOwner)
-    , m_lastDigitCharTime(0)
     , m_placeholder(placeholder)
     , m_range(range)
     , m_hardLimits(hardLimits)
@@ -126,13 +122,14 @@ void DateTimeNumericFieldElement::handleKeyboardEvent(KeyboardEvent* keyboardEve
     if (digit < 0 || digit > 9)
         return;
 
-    DOMTimeStamp delta = keyboardEvent->timeStamp() - m_lastDigitCharTime;
-    m_lastDigitCharTime = keyboardEvent->timeStamp();
-
-    if (delta > typeAheadTimeout)
+    unsigned maximumLength = DateTimeNumericFieldElement::formatValue(m_range.maximum).length();
+    if (m_typeAheadBuffer.length() >= maximumLength) {
+        String current = m_typeAheadBuffer.toString();
         m_typeAheadBuffer.clear();
+        unsigned desiredLength = maximumLength - 1;
+        m_typeAheadBuffer.append(current, current.length() - desiredLength, desiredLength);
+    }
     m_typeAheadBuffer.append(number);
-
     int newValue = typeAheadValue();
     if (newValue >= m_hardLimits.minimum)
         setValueAsInteger(newValue, DispatchEvent);
@@ -141,7 +138,7 @@ void DateTimeNumericFieldElement::handleKeyboardEvent(KeyboardEvent* keyboardEve
         updateVisibleValue(DispatchEvent);
     }
 
-    if (m_typeAheadBuffer.length() >= DateTimeNumericFieldElement::formatValue(m_range.maximum).length() || newValue * 10 > m_range.maximum)
+    if (m_typeAheadBuffer.length() >= maximumLength || newValue * 10 > m_range.maximum)
         focusOnNextField();
 
     keyboardEvent->setDefaultHandled();

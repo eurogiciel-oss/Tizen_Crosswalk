@@ -57,6 +57,7 @@ class SpellChecker;
 class StylePropertySet;
 class Text;
 class TextEvent;
+class UndoStack;
 
 enum EditorCommandSource { CommandFromMenuOrKeyBinding, CommandFromDOM, CommandFromDOMWithUserInterface };
 enum EditorParagraphSeparator { EditorParagraphSeparatorIsDiv, EditorParagraphSeparatorIsP };
@@ -87,7 +88,7 @@ public:
     bool canCopy() const;
     bool canPaste() const;
     bool canDelete() const;
-    bool canSmartCopyOrDelete();
+    bool canSmartCopyOrDelete() const;
 
     void cut();
     void copy();
@@ -111,14 +112,6 @@ public:
 
     TriState selectionUnorderedListState() const;
     TriState selectionOrderedListState() const;
-    PassRefPtr<Node> insertOrderedList();
-    PassRefPtr<Node> insertUnorderedList();
-    bool canIncreaseSelectionListLevel();
-    bool canDecreaseSelectionListLevel();
-    PassRefPtr<Node> increaseSelectionListLevel();
-    PassRefPtr<Node> increaseSelectionListLevelOrdered();
-    PassRefPtr<Node> increaseSelectionListLevelUnordered();
-    void decreaseSelectionListLevel();
 
     void removeFormattingAndStyle();
 
@@ -126,9 +119,6 @@ public:
 
     bool deleteWithDirection(SelectionDirection, TextGranularity, bool killRing, bool isTypingAction);
     void deleteSelectionWithSmartDelete(bool smartDelete);
-
-    Node* removedAnchor() const { return m_removedAnchor.get(); }
-    void setRemovedAnchor(PassRefPtr<Node> n) { m_removedAnchor = n; }
 
     void applyStyle(StylePropertySet*, EditAction = EditActionUnspecified);
     void applyParagraphStyle(StylePropertySet*, EditAction = EditActionUnspecified);
@@ -165,7 +155,6 @@ public:
     };
     Command command(const String& commandName); // Command source is CommandFromMenuOrKeyBinding.
     Command command(const String& commandName, EditorCommandSource);
-    static bool commandIsSupportedFromMenuOrKeyBinding(const String& commandName); // Works without a frame.
 
     bool insertText(const String&, Event* triggeringEvent);
     bool insertTextWithoutSendingTextEvent(const String&, bool selectInsertedText, TextEvent* triggeringEvent);
@@ -175,32 +164,27 @@ public:
     bool isOverwriteModeEnabled() const { return m_overwriteModeEnabled; }
     void toggleOverwriteModeEnabled();
 
-    void clearUndoRedoOperations();
     bool canUndo();
     void undo();
     bool canRedo();
     void redo();
 
-    void didBeginEditing(Element*);
-
     void setBaseWritingDirection(WritingDirection);
 
     // smartInsertDeleteEnabled and selectTrailingWhitespaceEnabled are
     // mutually exclusive, meaning that enabling one will disable the other.
-    bool smartInsertDeleteEnabled();
-    bool isSelectTrailingWhitespaceEnabled();
+    bool smartInsertDeleteEnabled() const;
+    bool isSelectTrailingWhitespaceEnabled() const;
 
     bool preventRevealSelection() const { return m_preventRevealSelection; }
 
     void setStartNewKillRingSequence(bool);
 
-    PassRefPtr<Range> rangeForPoint(const IntPoint& windowPoint);
-
     void clear();
 
     VisibleSelection selectionForCommand(Event*);
 
-    KillRing* killRing() const { return m_killRing.get(); }
+    KillRing& killRing() const { return *m_killRing; }
 
     EditingBehavior behavior() const;
 
@@ -217,7 +201,6 @@ public:
     // FIXME: Switch callers over to the FindOptions version and retire this one.
     bool findString(const String&, bool forward, bool caseFlag, bool wrapFlag, bool startInSelection);
 
-    PassRefPtr<Range> rangeOfString(const String&, Range*, FindOptions);
     PassRefPtr<Range> findStringAndScrollToVisible(const String&, Range*, FindOptions);
 
     const VisibleSelection& mark() const; // Mark, to be used as emacs uses it.
@@ -232,15 +215,8 @@ public:
     bool markedTextMatchesAreHighlighted() const;
     void setMarkedTextMatchesAreHighlighted(bool);
 
-    void textAreaOrTextFieldDidBeginEditing(Element*);
-    void textFieldDidEndEditing(Element*);
-    void textDidChangeInTextField(Element*);
-    bool doTextFieldCommandFromEvent(Element*, KeyboardEvent*);
-
     void replaceSelectionWithFragment(PassRefPtr<DocumentFragment>, bool selectReplacement, bool smartReplace, bool matchStyle);
     void replaceSelectionWithText(const String&, bool selectReplacement, bool smartReplace);
-
-    void simplifyMarkup(Node* startNode, Node* endNode);
 
     EditorParagraphSeparator defaultParagraphSeparator() const { return m_defaultParagraphSeparator; }
     void setDefaultParagraphSeparator(EditorParagraphSeparator separator) { m_defaultParagraphSeparator = separator; }
@@ -258,11 +234,10 @@ public:
 private:
     Frame& m_frame;
     RefPtr<CompositeEditCommand> m_lastEditCommand;
-    RefPtr<Node> m_removedAnchor;
     int m_preventRevealSelection;
     bool m_shouldStartNewKillRingSequence;
     bool m_shouldStyleWithCSS;
-    OwnPtr<KillRing> m_killRing;
+    const OwnPtr<KillRing> m_killRing;
     VisibleSelection m_mark;
     bool m_areMarkedTextMatchesHighlighted;
     EditorParagraphSeparator m_defaultParagraphSeparator;
@@ -272,6 +247,8 @@ private:
 
     bool canDeleteRange(Range*) const;
 
+    UndoStack* undoStack() const;
+
     bool tryDHTMLCopy();
     bool tryDHTMLCut();
     bool tryDHTMLPaste(PasteMode);
@@ -279,6 +256,7 @@ private:
     bool canSmartReplaceWithPasteboard(Pasteboard*);
     void pasteAsPlainTextWithPasteboard(Pasteboard*);
     void pasteWithPasteboard(Pasteboard*);
+    void writeSelectionToPasteboard(Pasteboard*, Range*, const String& plainText);
     bool dispatchCPPEvent(const AtomicString&, ClipboardAccessPolicy, PasteMode = AllMimeTypes);
 
     void revealSelectionAfterEditingOperation(const ScrollAlignment& = ScrollAlignment::alignCenterIfNeeded, RevealExtentOption = DoNotRevealExtent);
@@ -287,8 +265,11 @@ private:
 
     Node* findEventTargetFromSelection() const;
 
+    PassRefPtr<Range> rangeOfString(const String&, Range*, FindOptions);
+
     SpellChecker& spellChecker() const;
-    bool isContinuousSpellCheckingEnabled() const;
+
+    bool handleEditingKeyboardEvent(WebCore::KeyboardEvent*);
 };
 
 inline void Editor::setStartNewKillRingSequence(bool flag)

@@ -24,6 +24,7 @@
 #include "core/editing/EditingBehaviorTypes.h"
 
 namespace WebCore {
+class KeyboardEvent;
 
 class EditingBehavior {
 
@@ -83,6 +84,18 @@ public:
     // should not be selected and the cursor should be placed where the deletion started.
     bool shouldUndoOfDeleteSelectText() const { return m_type == EditingMacBehavior; }
 
+    // Support for global selections, used on platforms like the X Window
+    // System that treat selection as a type of clipboard.
+    bool supportsGlobalSelection() const
+    {
+        return m_type != EditingWindowsBehavior && m_type != EditingMacBehavior;
+    }
+
+    // Convert a KeyboardEvent to a command name like "Copy", "Undo" and so on.
+    // If nothing, return empty string.
+    const char* interpretKeyEvent(const KeyboardEvent&) const;
+
+    bool shouldInsertCharacter(const KeyboardEvent&) const;
 private:
     EditingBehaviorType m_type;
 };

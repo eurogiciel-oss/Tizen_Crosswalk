@@ -26,23 +26,22 @@
 #include "HTMLNames.h"
 #include "core/dom/Attribute.h"
 #include "core/dom/Document.h"
-#include "core/fetch/TextResourceDecoder.h"
 #include "core/html/parser/HTMLParserIdioms.h"
+#include "core/html/parser/TextResourceDecoder.h"
 
 namespace WebCore {
 
 using namespace HTMLNames;
 
-inline HTMLBaseElement::HTMLBaseElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+inline HTMLBaseElement::HTMLBaseElement(Document& document)
+    : HTMLElement(baseTag, document)
 {
-    ASSERT(hasTagName(baseTag));
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<HTMLBaseElement> HTMLBaseElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<HTMLBaseElement> HTMLBaseElement::create(Document& document)
 {
-    return adoptRef(new HTMLBaseElement(tagName, document));
+    return adoptRef(new HTMLBaseElement(document));
 }
 
 void HTMLBaseElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
@@ -71,11 +70,6 @@ void HTMLBaseElement::removedFrom(ContainerNode* insertionPoint)
 bool HTMLBaseElement::isURLAttribute(const Attribute& attribute) const
 {
     return attribute.name().localName() == hrefAttr || HTMLElement::isURLAttribute(attribute);
-}
-
-String HTMLBaseElement::target() const
-{
-    return fastGetAttribute(targetAttr);
 }
 
 KURL HTMLBaseElement::href() const

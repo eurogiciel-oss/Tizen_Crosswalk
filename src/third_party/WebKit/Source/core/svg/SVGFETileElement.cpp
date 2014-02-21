@@ -23,7 +23,7 @@
 #include "core/svg/SVGFETileElement.h"
 
 #include "SVGNames.h"
-#include "core/platform/graphics/filters/FilterEffect.h"
+#include "platform/graphics/filters/FilterEffect.h"
 #include "core/svg/SVGElementInstance.h"
 #include "core/svg/graphics/filters/SVGFilterBuilder.h"
 
@@ -37,17 +37,16 @@ BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGFETileElement)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGFilterPrimitiveStandardAttributes)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGFETileElement::SVGFETileElement(const QualifiedName& tagName, Document& document)
-    : SVGFilterPrimitiveStandardAttributes(tagName, document)
+inline SVGFETileElement::SVGFETileElement(Document& document)
+    : SVGFilterPrimitiveStandardAttributes(SVGNames::feTileTag, document)
 {
-    ASSERT(hasTagName(SVGNames::feTileTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGFETileElement();
 }
 
-PassRefPtr<SVGFETileElement> SVGFETileElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGFETileElement> SVGFETileElement::create(Document& document)
 {
-    return adoptRef(new SVGFETileElement(tagName, document));
+    return adoptRef(new SVGFETileElement(document));
 }
 
 bool SVGFETileElement::isSupportedAttribute(const QualifiedName& attrName)
@@ -92,7 +91,7 @@ void SVGFETileElement::svgAttributeChanged(const QualifiedName& attrName)
 
 PassRefPtr<FilterEffect> SVGFETileElement::build(SVGFilterBuilder* filterBuilder, Filter* filter)
 {
-    FilterEffect* input1 = filterBuilder->getEffectById(in1CurrentValue());
+    FilterEffect* input1 = filterBuilder->getEffectById(AtomicString(in1CurrentValue()));
 
     if (!input1)
         return 0;

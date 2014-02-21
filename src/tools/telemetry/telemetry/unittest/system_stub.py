@@ -20,6 +20,7 @@ class Override(object):
              'open': OpenFunctionStub,
              'os': OsModuleStub,
              'perf_control': PerfControlModuleStub,
+             'raw_input': RawInputFunctionStub,
              'subprocess': SubprocessModuleStub,
              'sys': SysModuleStub,
              'thermal_throttle': ThermalThrottleModuleStub,
@@ -67,6 +68,12 @@ class AdbCommandsModuleStub(object):
     def IsRootEnabled(self):
       return self.is_root_enabled
 
+    def RestartAdbdOnDevice(self):
+      pass
+
+    def IsUserBuild(self):
+      return False
+
   def __init__(self):
     self.attached_devices = []
     self.shell_command_handlers = {}
@@ -82,9 +89,11 @@ class AdbCommandsModuleStub(object):
   def GetAttachedDevices(self):
     return self.attached_devices
 
-  @staticmethod
-  def HasForwarder(_=None):
+  def SetupPrebuiltTools(self, _):
     return True
+
+  def CleanupLeftoverProcesses(self):
+    pass
 
 
 class CloudStorageModuleStub(object):
@@ -211,6 +220,14 @@ class PerfControlModuleStub(object):
     self.PerfControl = PerfControlModuleStub.PerfControlStub
 
 
+class RawInputFunctionStub(object):
+  def __init__(self):
+    self.input = ''
+
+  def __call__(self, name, *args, **kwargs):
+    return self.input
+
+
 class SubprocessModuleStub(object):
   class PopenStub(object):
     def __init__(self):
@@ -227,7 +244,7 @@ class SubprocessModuleStub(object):
     self.PIPE = None
 
   def call(self, *args, **kwargs):
-    raise NotImplementedError()
+    pass
 
 
 class SysModuleStub(object):

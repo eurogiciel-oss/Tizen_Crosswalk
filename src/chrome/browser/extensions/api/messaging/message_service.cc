@@ -17,18 +17,13 @@
 #include "chrome/browser/extensions/api/messaging/incognito_connectability.h"
 #include "chrome/browser/extensions/api/messaging/native_message_port.h"
 #include "chrome/browser/extensions/extension_host.h"
-#include "chrome/browser/extensions/extension_process_manager.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/extension_util.h"
-#include "chrome/browser/extensions/process_map.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_contents/tab_util.h"
-#include "chrome/common/extensions/background_info.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_messages.h"
-#include "chrome/common/extensions/incognito_handler.h"
 #include "chrome/common/extensions/manifest_handlers/externally_connectable.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/render_process_host.h"
@@ -38,7 +33,11 @@
 #include "content/public/browser/site_instance.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/lazy_background_task_queue.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest_constants.h"
+#include "extensions/common/manifest_handlers/background_info.h"
+#include "extensions/common/manifest_handlers/incognito_info.h"
 #include "net/base/completion_callback.h"
 #include "url/gurl.h"
 
@@ -64,6 +63,9 @@ const char kReceivingEndDoesntExistError[] =
 #if defined(OS_WIN) || defined(OS_MACOSX) || defined(OS_LINUX)
 const char kMissingPermissionError[] =
     "Access to native messaging requires nativeMessaging permission.";
+const char kProhibitedByPoliciesError[] =
+    "Access to the native messaging host was disabled by the system "
+    "administrator.";
 #endif
 
 struct MessageService::MessageChannel {
@@ -181,11 +183,12 @@ g_factory = LAZY_INSTANCE_INITIALIZER;
 
 // static
 ProfileKeyedAPIFactory<MessageService>* MessageService::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 // static
-MessageService* MessageService::Get(Profile* profile) {
+MessageService* MessageService::Get(content::BrowserContext* context) {
+  Profile* profile = Profile::FromBrowserContext(context);
   return ProfileKeyedAPIFactory<MessageService>::GetForProfile(profile);
 }
 
@@ -202,9 +205,20 @@ void MessageService::OpenChannelToExtension(
     return;
   Profile* profile = Profile::FromBrowserContext(source->GetBrowserContext());
 
-  const Extension* target_extension = ExtensionSystem::Get(profile)->
-      extension_service()->extensions()->GetByID(target_extension_id);
+  ExtensionSystem* extension_system = ExtensionSystem::Get(profile);
+  DCHECK(extension_system);
+  const Extension* target_extension = extension_system->extension_service()->
+      extensions()->GetByID(target_extension_id);
   if (!target_extension) {
+    DispatchOnDisconnect(
+        source, receiver_port_id, kReceivingEndDoesntExistError);
+    return;
+  }
+
+  // Only running ephemeral apps can receive messages. Idle cached ephemeral
+  // apps are invisible and should not be connectable.
+  if (target_extension->is_ephemeral() &&
+      util::IsExtensionIdle(target_extension_id, profile)) {
     DispatchOnDisconnect(
         source, receiver_port_id, kReceivingEndDoesntExistError);
     return;
@@ -254,14 +268,11 @@ void MessageService::OpenChannelToExtension(
     }
   }
 
-  ExtensionService* extension_service =
-      ExtensionSystem::Get(profile)->extension_service();
   WebContents* source_contents = tab_util::GetWebContentsByID(
       source_process_id, source_routing_id);
 
   if (profile->IsOffTheRecord() &&
-      !extension_util::IsIncognitoEnabled(target_extension_id,
-                                          extension_service)) {
+      !util::IsIncognitoEnabled(target_extension_id, profile)) {
     // Give the user a chance to accept an incognito connection if they haven't
     // already - but only for spanning-mode incognito. We don't want the
     // complication of spinning up an additional process here which might need
@@ -359,6 +370,16 @@ void MessageService::OpenChannelToNativeApp(
     return;
   }
 
+  PrefService* pref_service = profile->GetPrefs();
+
+  // Verify that the host is not blocked by policies.
+  NativeMessageProcessHost::PolicyPermission policy_permission =
+      NativeMessageProcessHost::IsHostAllowed(pref_service, native_app_name);
+  if (policy_permission == NativeMessageProcessHost::DISALLOW) {
+    DispatchOnDisconnect(source, receiver_port_id, kProhibitedByPoliciesError);
+    return;
+  }
+
   scoped_ptr<MessageChannel> channel(new MessageChannel());
   channel->opener.reset(new ExtensionMessagePort(source, MSG_ROUTING_CONTROL,
                                                  source_extension_id));
@@ -373,7 +394,8 @@ void MessageService::OpenChannelToNativeApp(
           native_view,
           base::WeakPtr<NativeMessageProcessHost::Client>(
               weak_factory_.GetWeakPtr()),
-          source_extension_id, native_app_name, receiver_port_id);
+          source_extension_id, native_app_name, receiver_port_id,
+          policy_permission == NativeMessageProcessHost::ALLOW_ALL);
 
   // Abandon the channel.
   if (!native_process.get()) {

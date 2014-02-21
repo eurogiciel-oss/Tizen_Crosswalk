@@ -7,13 +7,15 @@
 
 #include <wayland-client.h>
 
-#include "ozone/impl/ozone_display.h"
+#include "ozone/ui/events/event_converter_ozone_wayland.h"
 #include "ozone/wayland/display.h"
 
 namespace ozonewayland {
 
 WaylandScreen::WaylandScreen(WaylandDisplay* display, uint32_t id)
-    : output_(NULL) {
+    : output_(NULL),
+      refresh_(0),
+      rect_(0, 0, 0, 0) {
   static const wl_output_listener kOutputListener = {
     WaylandScreen::OutputHandleGeometry,
     WaylandScreen::OutputHandleMode,
@@ -22,11 +24,11 @@ WaylandScreen::WaylandScreen(WaylandDisplay* display, uint32_t id)
   output_ = static_cast<wl_output*>(
       wl_registry_bind(display->registry(), id, &wl_output_interface, 1));
   wl_output_add_listener(output_, &kOutputListener, this);
+  DCHECK(output_);
 }
 
 WaylandScreen::~WaylandScreen() {
-  if (output_)
-    wl_output_destroy(output_);
+  wl_output_destroy(output_);
 }
 
 // static
@@ -41,8 +43,7 @@ void WaylandScreen::OutputHandleGeometry(void *data,
                                          const char* model,
                                          int32_t output_transform) {
   WaylandScreen* screen = static_cast<WaylandScreen*>(data);
-  gfx::Point point = gfx::Point(x, y);
-  screen->rect_.set_origin(point);
+  screen->rect_.set_origin(gfx::Point(x, y));
 }
 
 // static
@@ -54,10 +55,14 @@ void WaylandScreen::OutputHandleMode(void* data,
                                      int32_t refresh) {
   WaylandScreen* screen = static_cast<WaylandScreen*>(data);
   if (flags & WL_OUTPUT_MODE_CURRENT) {
-      screen->rect_.set_width(width);
-      screen->rect_.set_height(height);
-      screen->refresh_ = refresh;
-      OzoneDisplay::GetInstance()->OnOutputSizeChanged(screen, width, height);
+    screen->rect_.set_width(width);
+    screen->rect_.set_height(height);
+    screen->refresh_ = refresh;
+    // Dont Send OutputSizeChanged notification in case a dummy display is
+    // created to get current output size at start up.
+    if (WaylandDisplay::GetInstance()->GetCompositor())
+      EventConverterOzoneWayland::GetInstance()->OutputSizeChanged(width,
+                                                                   height);
   }
 }
 

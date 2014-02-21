@@ -16,6 +16,7 @@
 
 package com.google.ipc.invalidation.examples.android2;
 
+import com.google.ipc.invalidation.external.client.InvalidationClientConfig;
 import com.google.ipc.invalidation.external.client.contrib.AndroidListener;
 import com.google.ipc.invalidation.external.client.contrib.MultiplexingGcmListener;
 import com.google.ipc.invalidation.external.client.types.ObjectId;
@@ -93,7 +94,14 @@ public final class MainActivity extends Activity {
     // Create and start a notification client. When the client is available, or if there is an
     // existing client, AndroidListener.reissueRegistrations() is called.
     Context context = getApplicationContext();
-    Intent startIntent = AndroidListener.createStartIntent(context, CLIENT_TYPE, CLIENT_NAME);
+
+    // Setting this to true allows us to see invalidations that may suppress older invalidations.
+    // When this flag is 'false', AndroidListener#invalidateUnknownVersion is called instead of
+    // AndroidListener#invalidate when suppression has potentially occurred.
+    final boolean allowSuppression = true;
+    InvalidationClientConfig config = new InvalidationClientConfig(CLIENT_TYPE, CLIENT_NAME,
+        "ExampleListener", allowSuppression);
+    Intent startIntent = AndroidListener.createStartIntent(context, config);
     context.startService(startIntent);
 
     // Setup UI.

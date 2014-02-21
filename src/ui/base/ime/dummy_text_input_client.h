@@ -20,10 +20,10 @@ class DummyTextInputClient : public TextInputClient {
       const ui::CompositionText& composition) OVERRIDE;
   virtual void ConfirmCompositionText() OVERRIDE;
   virtual void ClearCompositionText() OVERRIDE;
-  virtual void InsertText(const string16& text) OVERRIDE;
-  virtual void InsertChar(char16 ch, int flags) OVERRIDE;
+  virtual void InsertText(const base::string16& text) OVERRIDE;
+  virtual void InsertChar(base::char16 ch, int flags) OVERRIDE;
   virtual gfx::NativeWindow GetAttachedWindow() const OVERRIDE;
-  virtual ui::TextInputType GetTextInputType()   const OVERRIDE;
+  virtual ui::TextInputType GetTextInputType() const OVERRIDE;
   virtual ui::TextInputMode GetTextInputMode() const OVERRIDE;
   virtual bool CanComposeInline() const OVERRIDE;
   virtual gfx::Rect GetCaretBounds() const OVERRIDE;
@@ -36,12 +36,15 @@ class DummyTextInputClient : public TextInputClient {
   virtual bool SetSelectionRange(const gfx::Range& range) OVERRIDE;
   virtual bool DeleteRange(const gfx::Range& range) OVERRIDE;
   virtual bool GetTextFromRange(const gfx::Range& range,
-                                string16* text) const OVERRIDE;
+                                base::string16* text) const OVERRIDE;
   virtual void OnInputMethodChanged() OVERRIDE;
   virtual bool ChangeTextDirectionAndLayoutAlignment(
       base::i18n::TextDirection direction) OVERRIDE;
   virtual void ExtendSelectionAndDelete(size_t before, size_t after) OVERRIDE;
   virtual void EnsureCaretInRect(const gfx::Rect& rect) OVERRIDE;
+  virtual void OnCandidateWindowShown() OVERRIDE;
+  virtual void OnCandidateWindowUpdated() OVERRIDE;
+  virtual void OnCandidateWindowHidden() OVERRIDE;
 };
 
 }  // namespace ui

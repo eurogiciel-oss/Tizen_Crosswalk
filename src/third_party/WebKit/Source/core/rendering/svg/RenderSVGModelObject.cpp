@@ -35,13 +35,18 @@
 #include "SVGNames.h"
 #include "core/rendering/svg/RenderSVGRoot.h"
 #include "core/rendering/svg/SVGResourcesCache.h"
-#include "core/svg/SVGElement.h"
+#include "core/svg/SVGGraphicsElement.h"
 
 namespace WebCore {
 
 RenderSVGModelObject::RenderSVGModelObject(SVGElement* node)
     : RenderObject(node)
 {
+}
+
+bool RenderSVGModelObject::isChildAllowed(RenderObject* child, RenderStyle*) const
+{
+    return child->isSVG() && !(child->isSVGInline() || child->isSVGInlineText());
 }
 
 LayoutRect RenderSVGModelObject::clippedOverflowRectForRepaint(const RenderLayerModelObject* repaintContainer) const
@@ -123,12 +128,12 @@ bool RenderSVGModelObject::nodeAtPoint(const HitTestRequest&, HitTestResult&, co
     return false;
 }
 
-static void getElementCTM(SVGElement* element, AffineTransform& transform)
+static void getElementCTM(SVGGraphicsElement* element, AffineTransform& transform)
 {
     ASSERT(element);
     element->document().updateLayoutIgnorePendingStylesheets();
 
-    SVGElement* stopAtElement = SVGLocatable::nearestViewportElement(element);
+    SVGElement* stopAtElement = element->nearestViewportElement();
     ASSERT(stopAtElement);
 
     AffineTransform localTransform;
@@ -175,27 +180,27 @@ void RenderSVGModelObject::absoluteFocusRingQuads(Vector<FloatQuad>& quads)
     quads.append(localToAbsoluteQuad(FloatQuad(repaintRectInLocalCoordinates())));
 }
 
-bool RenderSVGModelObject::checkIntersection(RenderObject* renderer, const SVGRect& rect)
+bool RenderSVGModelObject::checkIntersection(RenderObject* renderer, const FloatRect& rect)
 {
     if (!renderer || renderer->style()->pointerEvents() == PE_NONE)
         return false;
     if (!isGraphicsElement(renderer))
         return false;
     AffineTransform ctm;
-    SVGElement* svgElement = toSVGElement(renderer->node());
+    SVGGraphicsElement* svgElement = toSVGGraphicsElement(renderer->node());
     getElementCTM(svgElement, ctm);
     ASSERT(svgElement->renderer());
     return intersectsAllowingEmpty(rect, ctm.mapRect(svgElement->renderer()->repaintRectInLocalCoordinates()));
 }
 
-bool RenderSVGModelObject::checkEnclosure(RenderObject* renderer, const SVGRect& rect)
+bool RenderSVGModelObject::checkEnclosure(RenderObject* renderer, const FloatRect& rect)
 {
     if (!renderer || renderer->style()->pointerEvents() == PE_NONE)
         return false;
     if (!isGraphicsElement(renderer))
         return false;
     AffineTransform ctm;
-    SVGElement* svgElement = toSVGElement(renderer->node());
+    SVGGraphicsElement* svgElement = toSVGGraphicsElement(renderer->node());
     getElementCTM(svgElement, ctm);
     ASSERT(svgElement->renderer());
     return rect.contains(ctm.mapRect(svgElement->renderer()->repaintRectInLocalCoordinates()));

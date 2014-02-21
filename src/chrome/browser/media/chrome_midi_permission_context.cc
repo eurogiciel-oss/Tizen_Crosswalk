@@ -50,10 +50,14 @@ void ChromeMIDIPermissionContext::RequestMIDISysExPermission(
   if (!web_contents)
     return;
 
-  const PermissionRequestID id(render_process_id, render_view_id, bridge_id);
+  const PermissionRequestID id(render_process_id, render_view_id, bridge_id, 0);
 
   GURL embedder = web_contents->GetURL();
-  if (!requesting_frame.is_valid() || !embedder.is_valid()) {
+  // |requesting_frame| can be empty and invalid when the frame is a local
+  // file. Here local files should be granted to show an infobar.
+  // Any user's action will not be stored to content settings data base.
+  if ((!requesting_frame.is_valid() && !requesting_frame.is_empty()) ||
+      !embedder.is_valid()) {
     LOG(WARNING) << "Attempt to use MIDI sysex from an invalid URL: "
                  << requesting_frame << "," << embedder
                  << " (Web MIDI is not supported in popups)";
@@ -69,8 +73,8 @@ void ChromeMIDIPermissionContext::CancelMIDISysExPermissionRequest(
     int render_view_id,
     int bridge_id,
     const GURL& requesting_frame) {
-  CancelPendingInfoBarRequest(
-      PermissionRequestID(render_process_id, render_view_id, bridge_id));
+  CancelPendingInfobarRequest(
+      PermissionRequestID(render_process_id, render_view_id, bridge_id, 0));
 }
 
 void ChromeMIDIPermissionContext::DecidePermission(
@@ -140,7 +144,7 @@ PermissionQueueController* ChromeMIDIPermissionContext::GetQueueController() {
   return permission_queue_controller_.get();
 }
 
-void ChromeMIDIPermissionContext::CancelPendingInfoBarRequest(
+void ChromeMIDIPermissionContext::CancelPendingInfobarRequest(
     const PermissionRequestID& id) {
   DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
   if (shutting_down_)

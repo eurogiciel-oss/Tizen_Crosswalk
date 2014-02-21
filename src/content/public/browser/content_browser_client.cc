@@ -75,7 +75,7 @@ bool ContentBrowserClient::ShouldTryToUseExistingProcessHost(
   return false;
 }
 
-bool ContentBrowserClient::ShouldSwapProcessesForNavigation(
+bool ContentBrowserClient::ShouldSwapBrowsingInstancesForNavigation(
     SiteInstance* site_instance,
     const GURL& current_url,
     const GURL& new_url) {
@@ -121,7 +121,7 @@ bool ContentBrowserClient::AllowGetCookie(const GURL& url,
                                           const net::CookieList& cookie_list,
                                           ResourceContext* context,
                                           int render_process_id,
-                                          int render_view_id) {
+                                          int render_frame_id) {
   return true;
 }
 
@@ -130,7 +130,7 @@ bool ContentBrowserClient::AllowSetCookie(const GURL& url,
                                           const std::string& cookie_line,
                                           ResourceContext* context,
                                           int render_process_id,
-                                          int render_view_id,
+                                          int render_frame_id,
                                           net::CookieOptions* options) {
   return true;
 }
@@ -141,26 +141,26 @@ bool ContentBrowserClient::AllowSaveLocalState(ResourceContext* context) {
 
 bool ContentBrowserClient::AllowWorkerDatabase(
     const GURL& url,
-    const string16& name,
-    const string16& display_name,
+    const base::string16& name,
+    const base::string16& display_name,
     unsigned long estimated_size,
     ResourceContext* context,
-    const std::vector<std::pair<int, int> >& render_views) {
+    const std::vector<std::pair<int, int> >& render_frames) {
   return true;
 }
 
 bool ContentBrowserClient::AllowWorkerFileSystem(
     const GURL& url,
     ResourceContext* context,
-    const std::vector<std::pair<int, int> >& render_views) {
+    const std::vector<std::pair<int, int> >& render_frames) {
   return true;
 }
 
 bool ContentBrowserClient::AllowWorkerIndexedDB(
     const GURL& url,
-    const string16& name,
+    const base::string16& name,
     ResourceContext* context,
-    const std::vector<std::pair<int, int> >& render_views) {
+    const std::vector<std::pair<int, int> >& render_frames) {
   return true;
 }
 
@@ -203,12 +203,12 @@ MediaObserver* ContentBrowserClient::GetMediaObserver() {
   return NULL;
 }
 
-WebKit::WebNotificationPresenter::Permission
+blink::WebNotificationPresenter::Permission
     ContentBrowserClient::CheckDesktopNotificationPermission(
         const GURL& source_origin,
         ResourceContext* context,
         int render_process_id) {
-  return WebKit::WebNotificationPresenter::PermissionAllowed;
+  return blink::WebNotificationPresenter::PermissionAllowed;
 }
 
 bool ContentBrowserClient::CanCreateWindow(
@@ -219,7 +219,7 @@ bool ContentBrowserClient::CanCreateWindow(
     const GURL& target_url,
     const content::Referrer& referrer,
     WindowOpenDisposition disposition,
-    const WebKit::WebWindowFeatures& features,
+    const blink::WebWindowFeatures& features,
     bool user_gesture,
     bool opener_suppressed,
     content::ResourceContext* context,
@@ -298,16 +298,13 @@ const wchar_t* ContentBrowserClient::GetResourceDllName() {
 }
 #endif
 
-#if defined(USE_NSS)
-crypto::CryptoModuleBlockingPasswordDelegate*
-    ContentBrowserClient::GetCryptoPasswordDelegate(const GURL& url) {
-  return NULL;
-}
-#endif
-
 bool ContentBrowserClient::IsPluginAllowedToCallRequestOSFileHandle(
     content::BrowserContext* browser_context,
     const GURL& url) {
+  return false;
+}
+
+bool ContentBrowserClient::IsPluginAllowedToUseDevChannelAPIs() {
   return false;
 }
 

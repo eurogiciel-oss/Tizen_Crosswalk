@@ -64,13 +64,13 @@ void LocallyManagedUserCreationScreenHandler::DeclareLocalizedValues(
                IDS_CREATE_LOCALLY_MANAGED_INTRO_TEXT_2);
   builder->AddF("createManagedUserIntroText3",
                IDS_CREATE_LOCALLY_MANAGED_INTRO_TEXT_3,
-               UTF8ToUTF16(chrome::kSupervisedUserManagementDisplayURL));
+               base::UTF8ToUTF16(chrome::kSupervisedUserManagementDisplayURL));
 
   builder->Add("createManagedUserPickManagerTitle",
                IDS_CREATE_LOCALLY_MANAGED_USER_CREATE_PICK_MANAGER_TITLE);
   builder->AddF("createManagedUserPickManagerTitleExplanation",
                IDS_CREATE_LOCALLY_MANAGED_USER_CREATE_PICK_MANAGER_EXPLANATION,
-               UTF8ToUTF16(chrome::kSupervisedUserManagementDisplayURL));
+               base::UTF8ToUTF16(chrome::kSupervisedUserManagementDisplayURL));
   builder->Add("createManagedUserManagerPasswordHint",
                IDS_CREATE_LOCALLY_MANAGED_USER_CREATE_MANAGER_PASSWORD_HINT);
   builder->Add("createManagedUserWrongManagerPasswordText",
@@ -185,8 +185,8 @@ void LocallyManagedUserCreationScreenHandler::RegisterMessages() {
 void LocallyManagedUserCreationScreenHandler::PrepareToShow() {}
 
 void LocallyManagedUserCreationScreenHandler::Show() {
-  scoped_ptr<DictionaryValue> data(new base::DictionaryValue());
-  scoped_ptr<ListValue> users_list(new base::ListValue());
+  scoped_ptr<base::DictionaryValue> data(new base::DictionaryValue());
+  scoped_ptr<base::ListValue> users_list(new base::ListValue());
   const UserList& users = UserManager::Get()->GetUsers();
   std::string owner;
   chromeos::CrosSettings::Get()->GetString(chromeos::kDeviceOwner, &owner);
@@ -195,7 +195,7 @@ void LocallyManagedUserCreationScreenHandler::Show() {
     if ((*it)->GetType() != User::USER_TYPE_REGULAR)
       continue;
     bool is_owner = ((*it)->email() == owner);
-    DictionaryValue* user_dict = new DictionaryValue();
+    base::DictionaryValue* user_dict = new base::DictionaryValue();
     SigninScreenHandler::FillUserDictionary(*it, is_owner, user_dict);
     users_list->Append(user_dict);
   }
@@ -219,7 +219,7 @@ void LocallyManagedUserCreationScreenHandler::ShowManagerPasswordError() {
 
 void LocallyManagedUserCreationScreenHandler::ShowStatusMessage(
     bool is_progress,
-    const string16& message) {
+    const base::string16& message) {
   if (is_progress)
     CallJS("showProgress", message);
   else
@@ -235,9 +235,9 @@ void LocallyManagedUserCreationScreenHandler::ShowTutorialPage() {
 }
 
 void LocallyManagedUserCreationScreenHandler::ShowErrorPage(
-    const string16& title,
-    const string16& message,
-    const string16& button_text) {
+    const base::string16& title,
+    const base::string16& message,
+    const base::string16& button_text) {
   CallJS("showErrorPage", title, message, button_text);
 }
 
@@ -259,7 +259,7 @@ void LocallyManagedUserCreationScreenHandler::HandleManagerSelected(
     const std::string& manager_id) {
   if (!delegate_)
     return;
-  WallpaperManager::Get()->SetUserWallpaper(manager_id);
+  WallpaperManager::Get()->SetUserWallpaperNow(manager_id);
 }
 
 void LocallyManagedUserCreationScreenHandler::HandleImportUserSelected(
@@ -269,7 +269,7 @@ void LocallyManagedUserCreationScreenHandler::HandleImportUserSelected(
 }
 
 void LocallyManagedUserCreationScreenHandler::HandleCheckLocallyManagedUserName(
-    const string16& name) {
+    const base::string16& name) {
   std::string user_id;
   if (NULL != UserManager::Get()->GetSupervisedUserManager()->
           FindByDisplayName(CollapseWhitespace(name, true))) {
@@ -289,11 +289,12 @@ void LocallyManagedUserCreationScreenHandler::HandleCheckLocallyManagedUserName(
 }
 
 void LocallyManagedUserCreationScreenHandler::HandleCreateManagedUser(
-    const string16& new_raw_user_name,
+    const base::string16& new_raw_user_name,
     const std::string& new_user_password) {
   if (!delegate_)
     return;
-  const string16 new_user_name = CollapseWhitespace(new_raw_user_name, true);
+  const base::string16 new_user_name =
+      CollapseWhitespace(new_raw_user_name, true);
   if (NULL != UserManager::Get()->GetSupervisedUserManager()->
           FindByDisplayName(new_user_name)) {
     CallJS("managedUserNameError", new_user_name,

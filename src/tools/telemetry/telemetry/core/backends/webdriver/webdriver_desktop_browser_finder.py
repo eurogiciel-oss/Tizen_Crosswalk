@@ -22,11 +22,11 @@ try:
 except ImportError:
   webdriver = None
 
-ALL_BROWSER_TYPES = ''
+ALL_BROWSER_TYPES = []
 if webdriver:
-  ALL_BROWSER_TYPES = ','.join([
+  ALL_BROWSER_TYPES = [
       'internet-explorer',
-      'internet-explorer-x64'])
+      'internet-explorer-x64']
 else:
   logging.warning('Webdriver backend is unsupported without selenium pylib. '
                   'For installation of selenium pylib, please refer to '
@@ -37,7 +37,11 @@ class PossibleWebDriverBrowser(possible_browser.PossibleBrowser):
   """A browser that can be controlled through webdriver API."""
 
   def __init__(self, browser_type, finder_options):
-    super(PossibleWebDriverBrowser, self).__init__(browser_type, finder_options)
+    target_os = sys.platform.lower()
+    super(PossibleWebDriverBrowser, self).__init__(browser_type, target_os,
+        finder_options)
+    assert browser_type in ALL_BROWSER_TYPES, \
+        'Please add %s to ALL_BROWSER_TYPES' % browser_type
 
   def CreateWebDriverBackend(self, platform_backend):
     raise NotImplementedError()
@@ -71,7 +75,7 @@ class PossibleDesktopIE(PossibleWebDriverBrowser):
     def DriverCreator():
       ie_driver_exe = os.path.join(util.GetTelemetryDir(), 'bin',
                                    'IEDriverServer_%s.exe' % self._architecture)
-      cloud_storage.GetIfChanged(cloud_storage.PUBLIC_BUCKET, ie_driver_exe)
+      cloud_storage.GetIfChanged(ie_driver_exe, cloud_storage.PUBLIC_BUCKET)
       return webdriver.Ie(executable_path=ie_driver_exe)
     return webdriver_ie_backend.WebDriverIEBackend(
         platform_backend, DriverCreator, self.finder_options.browser_options)

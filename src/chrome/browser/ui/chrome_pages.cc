@@ -37,7 +37,7 @@
 #include "chromeos/chromeos_switches.h"
 #endif
 
-using content::UserMetricsAction;
+using base::UserMetricsAction;
 
 namespace chrome {
 namespace {
@@ -76,7 +76,6 @@ void ShowHelpImpl(Browser* browser,
 #if defined(OS_CHROMEOS) && defined(OFFICIAL_BUILD)
   const CommandLine* command_line = CommandLine::ForCurrentProcess();
   if (!command_line->HasSwitch(chromeos::switches::kDisableGeniusApp)) {
-    Profile* profile = ProfileManager::GetDefaultProfileOrOffTheRecord();
     const extensions::Extension* extension = profile->GetExtensionService()->
         GetInstalledExtension(genius_app::kGeniusAppId);
     OpenApplication(

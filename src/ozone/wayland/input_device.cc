@@ -5,34 +5,37 @@
 
 #include "ozone/wayland/input_device.h"
 
+#include "base/logging.h"
 #include "ozone/wayland/display.h"
 #include "ozone/wayland/input/keyboard.h"
 #include "ozone/wayland/input/pointer.h"
 
 namespace ozonewayland {
 
-WaylandInputDevice::WaylandInputDevice(WaylandDisplay* display, uint32_t id)
-    : input_keyboard_(NULL),
+WaylandInputDevice::WaylandInputDevice(WaylandDisplay* display,
+                                       uint32_t id)
+    : focused_window_handle_(0),
+      grab_window_handle_(0),
+      grab_button_(0),
+      input_seat_(NULL),
+      input_keyboard_(NULL),
       input_pointer_(NULL) {
+  IMEStateChangeHandler::SetInstance(this);
   static const struct wl_seat_listener kInputSeatListener = {
     WaylandInputDevice::OnSeatCapabilities,
   };
 
   input_seat_ = static_cast<wl_seat*>(
       wl_registry_bind(display->registry(), id, &wl_seat_interface, 1));
+  DCHECK(input_seat_);
   wl_seat_add_listener(input_seat_, &kInputSeatListener, this);
   wl_seat_set_user_data(input_seat_, this);
 }
 
 WaylandInputDevice::~WaylandInputDevice() {
-  if (input_keyboard_)
-    delete input_keyboard_;
-
-  if (input_pointer_)
-    delete input_pointer_;
-
-  if (input_seat_)
-    wl_seat_destroy(input_seat_);
+  delete input_keyboard_;
+  delete input_pointer_;
+  wl_seat_destroy(input_seat_);
 }
 
 void WaylandInputDevice::OnSeatCapabilities(void *data,
@@ -58,6 +61,24 @@ void WaylandInputDevice::OnSeatCapabilities(void *data,
 
   if (device->input_pointer_)
     device->input_pointer_->OnSeatCapabilities(seat, caps);
+}
+
+void WaylandInputDevice::SetFocusWindowHandle(unsigned windowhandle) {
+  focused_window_handle_ = windowhandle;
+}
+
+void WaylandInputDevice::SetGrabWindowHandle(unsigned windowhandle,
+                                             uint32_t button) {
+  grab_window_handle_ = windowhandle;
+  grab_button_ = button;
+}
+
+void WaylandInputDevice::ResetIme() {
+  NOTIMPLEMENTED();
+}
+
+void WaylandInputDevice::ImeCaretBoundsChanged(gfx::Rect rect) {
+  NOTIMPLEMENTED();
 }
 
 }  // namespace ozonewayland

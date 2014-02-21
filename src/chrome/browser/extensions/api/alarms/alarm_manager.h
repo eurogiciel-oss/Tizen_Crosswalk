@@ -14,10 +14,10 @@
 #include "base/memory/weak_ptr.h"
 #include "base/timer/timer.h"
 #include "chrome/browser/extensions/api/profile_keyed_api_factory.h"
-#include "chrome/browser/extensions/extension_function.h"
 #include "chrome/common/extensions/api/alarms.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
+#include "extensions/browser/extension_function.h"
 
 class Profile;
 
@@ -122,6 +122,10 @@ class AlarmManager
                            ReleasedExtensionPollsInfrequently);
   FRIEND_TEST_ALL_PREFIXES(ExtensionAlarmsSchedulingTest, TimerRunning);
   FRIEND_TEST_ALL_PREFIXES(ExtensionAlarmsSchedulingTest, MinimumGranularity);
+  FRIEND_TEST_ALL_PREFIXES(ExtensionAlarmsSchedulingTest,
+                           DifferentMinimumGranularities);
+  FRIEND_TEST_ALL_PREFIXES(ExtensionAlarmsSchedulingTest,
+                           RepeatingAlarmsScheduledPredictably);
   friend class ProfileKeyedAPIFactory<AlarmManager>;
 
   typedef std::string ExtensionId;

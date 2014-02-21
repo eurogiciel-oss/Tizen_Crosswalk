@@ -48,6 +48,7 @@
 #include "net/cert/nss_cert_database.h"
 #endif  // defined(USE_NSS)
 
+using base::ASCIIToUTF16;
 using content::InterstitialPage;
 using content::NavigationController;
 using content::NavigationEntry;
@@ -75,11 +76,11 @@ class ProvisionalLoadWaiter : public content::WebContentsObserver {
 
   virtual void DidFailProvisionalLoad(
       int64 frame_id,
-      const string16& frame_unique_name,
+      const base::string16& frame_unique_name,
       bool is_main_frame,
       const GURL& validated_url,
       int error_code,
-      const string16& error_description,
+      const base::string16& error_description,
       content::RenderViewHost* render_view_host) OVERRIDE {
     seen_ = true;
     if (waiting_)
@@ -610,7 +611,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, MAYBE_TestWSSInvalidCertAndClose) {
   // Visit a page which waits for one TLS handshake failure.
   // The title will be changed to 'PASS'.
   ui_test_utils::NavigateToURL(browser(), master_url);
-  const string16 result = watcher.WaitAndGetTitle();
+  const base::string16 result = watcher.WaitAndGetTitle();
   EXPECT_TRUE(LowerCaseEqualsASCII(result, "pass"));
 
   // Close tabs which contains the test page.
@@ -647,7 +648,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, TestWSSInvalidCertAndGoForward) {
 
   // Test page run a WebSocket wss connection test. The result will be shown
   // as page title.
-  const string16 result = watcher.WaitAndGetTitle();
+  const base::string16 result = watcher.WaitAndGetTitle();
   EXPECT_TRUE(LowerCaseEqualsASCII(result, "pass"));
 }
 
@@ -673,7 +674,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, DISABLED_TestWSSClientCert) {
   EXPECT_TRUE(base::ReadFileToString(cert_path, &pkcs12_data));
   EXPECT_EQ(net::OK,
             cert_db->ImportFromPKCS12(
-                crypt_module.get(), pkcs12_data, string16(), true, NULL));
+                crypt_module.get(), pkcs12_data, base::string16(), true, NULL));
 
   // Start WebSocket test server with TLS and client cert authentication.
   net::SpawnedTestServer::SSLOptions options(
@@ -701,7 +702,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, DISABLED_TestWSSClientCert) {
   // cert selection.
   Profile* profile = Profile::FromBrowserContext(tab->GetBrowserContext());
   DCHECK(profile);
-  scoped_ptr<DictionaryValue> dict(new DictionaryValue());
+  scoped_ptr<base::DictionaryValue> dict(new base::DictionaryValue());
   dict->SetString("ISSUER.CN", "pywebsocket");
   profile->GetHostContentSettingsMap()->SetWebsiteSetting(
       ContentSettingsPattern::FromURL(url),
@@ -716,7 +717,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, DISABLED_TestWSSClientCert) {
 
   // Test page runs a WebSocket wss connection test. The result will be shown
   // as page title.
-  const string16 result = watcher.WaitAndGetTitle();
+  const base::string16 result = watcher.WaitAndGetTitle();
   EXPECT_TRUE(LowerCaseEqualsASCII(result, "pass"));
 }
 #endif  // defined(USE_NSS)
@@ -1636,7 +1637,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITestIgnoreCertErrors, TestWSS) {
 
   // Test page run a WebSocket wss connection test. The result will be shown
   // as page title.
-  const string16 result = watcher.WaitAndGetTitle();
+  const base::string16 result = watcher.WaitAndGetTitle();
   EXPECT_TRUE(LowerCaseEqualsASCII(result, "pass"));
 }
 

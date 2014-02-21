@@ -16,6 +16,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/l10n/l10n_util.h"
 
+using base::ASCIIToUTF16;
+
 namespace chromeos {
 
 extern const char* kExtensionImePrefix;
@@ -67,6 +69,7 @@ class InputMethodUtilTest : public testing::Test {
                                      layouts,
                                      languages,
                                      false,
+                                     GURL(""),
                                      GURL(""));
     input_methods.push_back(pinyin_ime);
 
@@ -77,6 +80,7 @@ class InputMethodUtilTest : public testing::Test {
                                      layouts,
                                      languages,
                                      false,
+                                     GURL(""),
                                      GURL(""));
     input_methods.push_back(zhuyin_ime);
 
@@ -95,10 +99,11 @@ class InputMethodUtilTest : public testing::Test {
                                  layouts,
                                  languages,
                                  true,
-                                 GURL());  // options page url
+                                 GURL(),  // options page url
+                                 GURL());  // input view page url
   }
 
-  static string16 GetDisplayLanguageName(const std::string& language_code) {
+  static base::string16 GetDisplayLanguageName(const std::string& language_code) {
     return l10n_util::GetDisplayNameForLocale(language_code, "en", true);
   }
 
@@ -117,7 +122,7 @@ TEST_F(InputMethodUtilTest, GetInputMethodShortNameTest) {
   }
   {
     InputMethodDescriptor desc = GetDesc("mozc-hangul", "us", "ko");
-    EXPECT_EQ(UTF8ToUTF16("\xed\x95\x9c"),
+    EXPECT_EQ(base::UTF8ToUTF16("\xed\x95\x9c"),
               util_.GetInputMethodShortName(desc));
   }
   {
@@ -154,12 +159,12 @@ TEST_F(InputMethodUtilTest, GetInputMethodShortNameTest) {
   }
   {
     InputMethodDescriptor desc = GetDesc(pinyin_ime_id, "us", "zh-CN");
-    EXPECT_EQ(UTF8ToUTF16("\xe6\x8b\xbc"),
+    EXPECT_EQ(base::UTF8ToUTF16("\xe6\x8b\xbc"),
               util_.GetInputMethodShortName(desc));
   }
   {
     InputMethodDescriptor desc = GetDesc(zhuyin_ime_id, "us", "zh-TW");
-    EXPECT_EQ(UTF8ToUTF16("\xE6\xB3\xA8"),
+    EXPECT_EQ(base::UTF8ToUTF16("\xE6\xB3\xA8"),
               util_.GetInputMethodShortName(desc));
   }
 }
@@ -180,8 +185,8 @@ TEST_F(InputMethodUtilTest, GetInputMethodMediumNameTest) {
     const int len = ARRAYSIZE_UNSAFE(input_method_id);
     for (int i=0; i<len; ++i) {
       InputMethodDescriptor desc = GetDesc(input_method_id[i], "", "");
-      string16 medium_name = util_.GetInputMethodMediumName(desc);
-      string16 short_name = util_.GetInputMethodShortName(desc);
+      base::string16 medium_name = util_.GetInputMethodMediumName(desc);
+      base::string16 short_name = util_.GetInputMethodShortName(desc);
       EXPECT_EQ(medium_name,short_name);
     }
   }
@@ -199,8 +204,8 @@ TEST_F(InputMethodUtilTest, GetInputMethodMediumNameTest) {
     const int len = ARRAYSIZE_UNSAFE(input_method_id);
     for (int i=0; i<len; ++i) {
       InputMethodDescriptor desc = GetDesc(input_method_id[i], "", "");
-      string16 medium_name = util_.GetInputMethodMediumName(desc);
-      string16 short_name = util_.GetInputMethodShortName(desc);
+      base::string16 medium_name = util_.GetInputMethodMediumName(desc);
+      base::string16 short_name = util_.GetInputMethodShortName(desc);
       EXPECT_NE(medium_name,short_name);
     }
   }
@@ -463,7 +468,7 @@ TEST_F(InputMethodUtilTest, TestIBusInputMethodText) {
   for (size_t i = 0; i < util_.supported_input_methods_->size(); ++i) {
     const std::string language_code =
         util_.supported_input_methods_->at(i).language_codes().at(0);
-    const string16 display_name =
+    const base::string16 display_name =
         l10n_util::GetDisplayNameForLocale(language_code, "en", false);
     // Only two formats, like "fr" (lower case) and "en-US" (lower-upper), are
     // allowed. See the text file for details.
@@ -475,7 +480,7 @@ TEST_F(InputMethodUtilTest, TestIBusInputMethodText) {
     EXPECT_FALSE(display_name.empty())
         << "Invalid language code " << language_code;
     // On error, GetDisplayNameForLocale() returns the |language_code| as-is.
-    EXPECT_NE(language_code, UTF16ToUTF8(display_name))
+    EXPECT_NE(language_code, base::UTF16ToUTF8(display_name))
         << "Invalid language code " << language_code;
   }
 }

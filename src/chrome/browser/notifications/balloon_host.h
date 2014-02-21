@@ -39,7 +39,7 @@ class BalloonHost : public content::WebContentsDelegate,
       const OVERRIDE;
   virtual content::WebContents* GetAssociatedWebContents() const OVERRIDE;
 
-  const string16& GetSource() const;
+  const base::string16& GetSource() const;
 
   content::WebContents* web_contents() const { return web_contents_.get(); }
 
@@ -48,9 +48,6 @@ class BalloonHost : public content::WebContentsDelegate,
 
   // Returns whether the associated render view is ready. Used only for testing.
   bool IsRenderViewReady() const;
-
-  // content::WebContentsDelegate implementation:
-  virtual bool CanLoadDataURLsInWebUI() const OVERRIDE;
 
  protected:
   virtual ~BalloonHost();

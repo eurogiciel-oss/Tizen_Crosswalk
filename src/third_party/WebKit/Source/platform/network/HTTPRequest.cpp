@@ -60,7 +60,6 @@ PassRefPtr<HTTPRequest> HTTPRequest::parseHTTPRequestFromBuffer(const char* data
 
     // 3. Parse HTTP Data.
     size_t dataLength = request->parseRequestBody(pos, remainingLength);
-    pos += dataLength;
     remainingLength -= dataLength;
 
     // We should have processed the entire input.
@@ -81,7 +80,7 @@ size_t HTTPRequest::parseHeaders(const char* data, size_t length, String& failur
     const char* p = data;
     const char* end = data + length;
     AtomicString name;
-    String value;
+    AtomicString value;
     for (; p < data + length; p++) {
         size_t consumedLength = parseHTTPHeader(p, end - p, failureReason, name, value);
         if (!consumedLength)

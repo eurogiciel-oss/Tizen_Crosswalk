@@ -50,7 +50,7 @@ public:
     bool unique() const {
         bool const unique = (1 == fRefCnt);
         if (unique) {
-            // Aquire barrier (L/SL), if not provided by load of fRefCnt.
+            // Acquire barrier (L/SL), if not provided by load of fRefCnt.
             // Prevents user's 'unique' code from happening before decrements.
             //TODO: issue the barrier.
         }
@@ -72,9 +72,9 @@ public:
         SkASSERT(fRefCnt > 0);
         // Release barrier (SL/S), if not provided below.
         if (sk_atomic_dec(&fRefCnt) == 1) {
-            // Aquire barrier (L/SL), if not provided above.
+            // Acquire barrier (L/SL), if not provided above.
             // Prevents code in dispose from happening before the decrement.
-            sk_membar_aquire__after_atomic_dec();
+            sk_membar_acquire__after_atomic_dec();
             internal_dispose();
         }
     }
@@ -237,11 +237,13 @@ public:
 private:
     T*  fObj;
 };
+// Can't use the #define trick below to guard a bare SkAutoTUnref(...) because it's templated. :(
 
 class SkAutoUnref : public SkAutoTUnref<SkRefCnt> {
 public:
     SkAutoUnref(SkRefCnt* obj) : SkAutoTUnref<SkRefCnt>(obj) {}
 };
+#define SkAutoUnref(...) SK_REQUIRE_LOCAL_VAR(SkAutoUnref)
 
 class SkAutoRef : SkNoncopyable {
 public:
@@ -250,6 +252,7 @@ public:
 private:
     SkRefCnt* fObj;
 };
+#define SkAutoRef(...) SK_REQUIRE_LOCAL_VAR(SkAutoRef)
 
 /** Wrapper class for SkRefCnt pointers. This manages ref/unref of a pointer to
     a SkRefCnt (or subclass) object.

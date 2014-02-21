@@ -171,7 +171,7 @@ bool ShellMainDelegate::BasicStartupComplete(int* exit_code) {
     command_line.AppendSwitch(switches::kDisableDelegatedRenderer);
 #endif
 
-    net::CookieMonster::EnableFileScheme();
+    command_line.AppendSwitch(switches::kEnableFileCookies);
 
     // Unless/until WebM files are added to the media layout tests, we need to
     // avoid removing MP4/H264/AAC so that layout tests can run on Android.
@@ -192,23 +192,23 @@ bool ShellMainDelegate::BasicStartupComplete(int* exit_code) {
 void ShellMainDelegate::PreSandboxStartup() {
   if (CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kEnableCrashReporter)) {
-    breakpad::SetBreakpadClient(g_shell_breakpad_client.Pointer());
-#if defined(OS_MACOSX)
-    base::mac::DisableOSCrashDumps();
-    breakpad::InitCrashReporter();
-    breakpad::InitCrashProcessInfo();
-#elif defined(OS_POSIX) && !defined(OS_MACOSX)
     std::string process_type =
         CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
             switches::kProcessType);
+    breakpad::SetBreakpadClient(g_shell_breakpad_client.Pointer());
+#if defined(OS_MACOSX)
+    base::mac::DisableOSCrashDumps();
+    breakpad::InitCrashReporter(process_type);
+    breakpad::InitCrashProcessInfo(process_type);
+#elif defined(OS_POSIX) && !defined(OS_MACOSX)
     if (process_type != switches::kZygoteProcess) {
 #if defined(OS_ANDROID)
       if (process_type.empty())
-        breakpad::InitCrashReporter();
+        breakpad::InitCrashReporter(process_type);
       else
-        breakpad::InitNonBrowserCrashReporterForAndroid();
+        breakpad::InitNonBrowserCrashReporterForAndroid(process_type);
 #else
-      breakpad::InitCrashReporter();
+      breakpad::InitCrashReporter(process_type);
 #endif
     }
 #elif defined(OS_WIN)
@@ -216,7 +216,7 @@ void ShellMainDelegate::PreSandboxStartup() {
         SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX;
     UINT existing_flags = SetErrorMode(new_flags);
     SetErrorMode(existing_flags | new_flags);
-    breakpad::InitCrashReporter();
+    breakpad::InitCrashReporter(process_type);
 #endif
   }
 
@@ -243,7 +243,10 @@ int ShellMainDelegate::RunProcess(
 void ShellMainDelegate::ZygoteForked() {
   if (CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kEnableCrashReporter)) {
-    breakpad::InitCrashReporter();
+    std::string process_type =
+        CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+            switches::kProcessType);
+    breakpad::InitCrashReporter(process_type);
   }
 }
 #endif
@@ -256,9 +259,10 @@ void ShellMainDelegate::InitializeResourceBundle() {
   int pak_fd =
       base::GlobalDescriptors::GetInstance()->MaybeGet(kShellPakDescriptor);
   if (pak_fd != base::kInvalidPlatformFileValue) {
-    ui::ResourceBundle::InitSharedInstanceWithPakFile(pak_fd, false);
+    ui::ResourceBundle::InitSharedInstanceWithPakFile(base::File(pak_fd),
+                                                      false);
     ResourceBundle::GetSharedInstance().AddDataPackFromFile(
-        pak_fd, ui::SCALE_FACTOR_100P);
+        base::File(pak_fd), ui::SCALE_FACTOR_100P);
     return;
   }
 #endif

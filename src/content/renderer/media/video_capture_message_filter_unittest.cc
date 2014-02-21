@@ -11,11 +11,10 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 using ::testing::_;
-using ::testing::AllOf;
 using ::testing::AnyNumber;
-using ::testing::Field;
 using ::testing::Mock;
 using ::testing::Return;
+using ::testing::SaveArg;
 using ::testing::StrictMock;
 
 namespace content {
@@ -30,10 +29,13 @@ class MockVideoCaptureDelegate : public VideoCaptureMessageFilter::Delegate {
                                      int length,
                                      int buffer_id));
   MOCK_METHOD1(OnBufferDestroyed, void(int buffer_id));
-  MOCK_METHOD3(OnBufferReceived, void(int buffer_id,
-                                      base::Time timestamp,
-                                      const media::VideoCaptureFormat& format));
+  MOCK_METHOD3(OnBufferReceived,
+               void(int buffer_id,
+                    base::TimeTicks timestamp,
+                    const media::VideoCaptureFormat& format));
   MOCK_METHOD1(OnStateChanged, void(VideoCaptureState state));
+  MOCK_METHOD1(OnDeviceSupportedFormatsEnumerated,
+               void(const media::VideoCaptureFormats& formats));
 
   virtual void OnDelegateAdded(int32 device_id) OVERRIDE {
     ASSERT_TRUE(device_id != 0);
@@ -80,17 +82,19 @@ TEST(VideoCaptureMessageFilterTest, Basic) {
 
   // VideoCaptureMsg_BufferReady
   int buffer_id = 22;
-  base::Time timestamp = base::Time::FromInternalValue(1);
+  base::TimeTicks timestamp = base::TimeTicks::FromInternalValue(1);
 
-  media::VideoCaptureFormat format(234, 512, 30,
-      media::ConstantResolutionVideoCaptureDevice);
-  EXPECT_CALL(delegate, OnBufferReceived(buffer_id, timestamp,
-      AllOf(Field(&media::VideoCaptureFormat::width, 234),
-            Field(&media::VideoCaptureFormat::height, 512),
-            Field(&media::VideoCaptureFormat::frame_rate, 30))));
+  media::VideoCaptureFormat format(
+      gfx::Size(234, 512), 30, media::PIXEL_FORMAT_I420);
+  media::VideoCaptureFormat saved_format;
+  EXPECT_CALL(delegate, OnBufferReceived(buffer_id, timestamp, _))
+      .WillRepeatedly(SaveArg<2>(&saved_format));
   filter->OnMessageReceived(VideoCaptureMsg_BufferReady(
       delegate.device_id(), buffer_id, timestamp, format));
   Mock::VerifyAndClearExpectations(&delegate);
+  EXPECT_EQ(234, saved_format.frame_size.width());
+  EXPECT_EQ(512, saved_format.frame_size.height());
+  EXPECT_EQ(30, saved_format.frame_rate);
 
   // VideoCaptureMsg_FreeBuffer
   EXPECT_CALL(delegate, OnBufferDestroyed(buffer_id));
@@ -137,6 +141,23 @@ TEST(VideoCaptureMessageFilterTest, Delegates) {
   filter->OnMessageReceived(
       VideoCaptureMsg_StateChanged(delegate2.device_id(),
                                    VIDEO_CAPTURE_STATE_ENDED));
+}
+
+TEST(VideoCaptureMessageFilterTest, GetSomeDeviceCapabilities) {
+  scoped_refptr<VideoCaptureMessageFilter> filter(
+      new VideoCaptureMessageFilter());
+
+  IPC::TestSink channel;
+  filter->OnFilterAdded(&channel);
+  MockVideoCaptureDelegate delegate;
+  filter->AddDelegate(&delegate);
+  ASSERT_EQ(1, delegate.device_id());
+
+  // VideoCaptureMsg_OnDeviceCapabilitiesEnumerated
+  EXPECT_CALL(delegate, OnDeviceSupportedFormatsEnumerated(_));
+  media::VideoCaptureFormats supported_formats;
+  filter->OnMessageReceived(VideoCaptureMsg_DeviceSupportedFormatsEnumerated(
+      delegate.device_id(), supported_formats));
 }
 
 }  // namespace content

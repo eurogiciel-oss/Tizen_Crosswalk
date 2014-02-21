@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="sw">
+<translation id="3234920859344197194">Tovuti hii inatumia programu jalizi ya Chrome Frame ambayo hivi karibuni itaacha kupokea taarifa za usalama na uthabiti. Tafadhali iondoe na upate toleo jipya la kivinjari cha kisasa.</translation>
 <translation id="8914504000324227558">Zindua upya Chrome</translation>
 <translation id="8000275528373650868">Google Chrome inahitaji Windows Vista au Windows XP iliyo na SP2 au ya juu zaidi.</translation>
 <translation id="8485767968786176057">Katika hali hii, anwani iliyo kwenye cheti hailingani na anwani ya tovuti ambayo kivinjari chako kilijaribu kwenda. Sababu mojawapo huenda ikawa kuwa mawasiliano yako yananaswa na mshambulizi anayetoa cheti cha tovuti tofauti, hivi kusababisha kutolingana. Sababu nyingine yaweza kuwa seva imepangwa kutoa cheti kimoja kwa tovuti nyingi, pamoja na ile unayojaribu kutembelea, ingawa cheti hicho sio sahihi kwa tovuti hizo zote. Google Chrome inaweza kusema kwa uhakika kuwa umefika &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, lakini haiwezi kuthibitisha kuwa hiyo ni tovuti sawa na &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt; uliyotaka kufikia. Iwapo utaendelea, Chrome haitachunguza kutolingana kwa majina tena.</translation>
@@ -27,7 +28,6 @@ Baadhi ya vipengele huenda visipatikane na mabadiliko katika mapendeleo hayatahi
 <translation id="4891791193823137474">Ruhusu Google Chrome iendeshe katika mandharinyuma</translation>
 <translation id="2896252579017640304">Zindua programu za Chrome</translation>
 <translation id="2370289711218562573">Google Chrome sasa inaingiza Vipendwa/Alamisho.</translation>
-<translation id="8762286861469007470">Kigunduzi cha Chrome Captive Portal</translation>
 <translation id="2721687379934343312">Kwenye Mac, manenosiri yanahifadhiwa kwenye Msururu wako wa kitufe na yanaweza kufikiwa au kulandanishwa na watumiaji wengine wa Chrome wanaoshiriki akaunti hii ya OS X.</translation>
 <translation id="1761870329818521071">Haiwezi kusakinisha toleo sawia la Google Chrome Frame ambalo linaendeshwa kwa sasa. Tafadhali funga Fremu ya Google Chrome na ujaribu tena.</translation>
 <translation id="6014844626092547096">Sasa umeingia kwenye Chrome! Usawazishaji umezimwa na msimamizi wako.</translation>
@@ -63,10 +63,10 @@ Baadhi ya vipengele huenda visipatikane na mabadiliko katika mapendeleo hayatahi
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Maelezo yako ya utozwaji yamehifadhiwa katika Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome inatumia maikrofoni yako.</translation>
-<translation id="3590194807845837023">Fungua Wasifu na Uzindue tena</translation>
 <translation id="4053720452172726777">Dhibiti  na ugeuze Google Chrome ikufae</translation>
 <translation id="6423071462708908582">Ulijaribu kufikia &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, lakini seva iliwasilisha cheti ambacho muda wake wa kutumika umeisha. Hakuna maelezo yanayopatikana ili kuonyesha iwapo cheti hicho kimeathirika tangu muda wake kuisha. Hii inamaanisha Google Chrome haiwezi kuhakikisha kuwa unawasiliana na &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt; na siyo mshambulizi. Saa ya kompyuta yako sasa imewekwa kama <ph name="CURRENT_TIME"/>. Je, iko sawa? Kama haiko, unapaswa kurekebisha hitilafu na uonyeshe upya ukurasa huu.</translation>
 <translation id="3197823471738295152">Kifaa chako kimesasishwa.</translation>
+<translation id="8286862437124483331">Google Chrome inajaribu kuonyesha manenosiri. Chapa nenosiri lako la Windows ili uruhusu hili.</translation>
 <translation id="3889417619312448367">Ondoa Google Chrome</translation>
 <translation id="1434626383986940139">Programu za Chrome Canary</translation>
 <translation id="8551886023433311834">Inakaribia kusasishwa! Anzisha kifaa chako upya kifaa ili kukamilisha kusasisha.</translation>
@@ -175,7 +175,7 @@ Kuingia bila kujali kutaunganisha maelezo ya Chrome kama vile alamisho, historia
 <translation id="8614913330719544658">Google Chrome imelemazwa. Izindue upya sasa?</translation>
 <translation id="1175529839152551794">Kwa kuwa sasa umeingia katika akaunti, unaweza kupata vichupo vyako, alamisho na vitu vingine vya Chrome vilivyo katika kompyuta yako ndogo, simu na kompyuta kibao. Pia utapokea mapendekezo na vipengele vinavyofaa zaidi kuhusu huduma za Google.</translation>
 <translation id="6126631249883707068">Je, ungependa Google Chrome ihifadhi nenosiri lako?</translation>
-<translation id="7773845170078702898">Je, unataka Google Chrome ihifadhi nenosiri lako la tovuti hii?</translation>
+<translation id="7773845170078702898">Je, unataka Google Chrome ihifadhi nenosiri lako kwa tovuti hii?</translation>
 <translation id="5046764976540625289">Ondoka Chrome</translation>
 <translation id="4251615635259297716">Ungependa kuunganisha data yako ya Chrome kwenye akaunti hii?</translation>
 <translation id="9171640504251796339">http://www.google.com/support/chrome/bin/answer.py?hl=<ph name="GRITLANGCODE_1"/>&amp;answer=161796</translation>
@@ -185,7 +185,6 @@ Kuingia bila kujali kutaunganisha maelezo ya Chrome kama vile alamisho, historia
 <translation id="2189123953385179981">Google ChromeOS haiauni kuzindua programu ya nje kushughulikia viungo vya <ph name="SCHEME"/>. Kiungo kilichoitishwa ni <ph name="PROTOLINK"/>.</translation>
 <translation id="7396375882099008034">Ruhusu Chrome ifikie mtandao kwenye mipangilio yako ya ngome au kingavirusi.</translation>
 <translation id="9102715433345326100">Faili hii ni hasidi, na Chrome imeizuia.</translation>
-<translation id="3170677364322086041">Tovuti hii inatumia programu jalizi ya Chrome Frame ambayo haipokei tena taarifa za usalama na uthabiti. Tafadhali iondoe na upate toleo jipya la kivinjari cha kisasa.</translation>
 <translation id="8205111949707227942">Hiari: Saidia kuifanya Chrome OS kuwa bora kwa kutuma kiotomatiki takwimu za utumiaji na ripoti za kuvurugika kwa Google.</translation>
 <translation id="7253415505590551024">Upakuaji unaendelea kwa sasa. Je, unataka kuondoka kwenye Google Chrome na kughairi upakuaji?</translation>
 <translation id="7196020411877309443">Ni kwa kwa nini ninaona hii?</translation>
@@ -202,6 +201,7 @@ Kuingia bila kujali kutaunganisha maelezo ya Chrome kama vile alamisho, historia
           Mipangilio ya LAN
           na uondoe tiki kwenye &quot;Tumia seva ya proksi kwa LAN yako&quot;.</translation>
 <translation id="7825851276765848807">Usanidi umeshindwa kwa sababu ya hitilafu isiyojulikana. Tafadhali pakua Google Chrome tena.</translation>
+<translation id="4919523385405675060">Tovuti hii inatumia programu jalizi ya Chrome Frame ambayo hivi karibuni itaacha kupokea taarifa za usalama na uthabiti. Tafadhali iondoe na upakue kivinjari kinachooana.</translation>
 <translation id="1061257178446858647">Sasa umeingia kwenye Chrome! Alamisho, historia, na mipangilio yako mingine itasawazishwa na Akaunti yako ya Google.</translation>
 <translation id="3335672657969596251">Google Chrome haichukuani na <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Tafadhali toka na uingie tena ili mabadiliko haya yafanye kazi.</translation>

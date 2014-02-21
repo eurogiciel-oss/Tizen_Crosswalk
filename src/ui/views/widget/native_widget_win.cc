@@ -101,12 +101,12 @@ NativeWidgetWin::~NativeWidgetWin() {
 }
 
 // static
-gfx::Font NativeWidgetWin::GetWindowTitleFont() {
+gfx::FontList NativeWidgetWin::GetWindowTitleFontList() {
   NONCLIENTMETRICS ncm;
   base::win::GetNonClientMetrics(&ncm);
   l10n_util::AdjustUIFont(&(ncm.lfCaptionFont));
   base::win::ScopedHFONT caption_font(CreateFontIndirect(&(ncm.lfCaptionFont)));
-  return gfx::Font(caption_font);
+  return gfx::FontList(gfx::Font(caption_font));
 }
 
 void NativeWidgetWin::Show(int show_state) {
@@ -232,8 +232,8 @@ void NativeWidgetWin::GetWindowPlacement(
   *bounds = gfx::win::ScreenToDIPRect(*bounds);
 }
 
-void NativeWidgetWin::SetWindowTitle(const string16& title) {
-  message_handler_->SetTitle(title);
+bool NativeWidgetWin::SetWindowTitle(const base::string16& title) {
+  return message_handler_->SetTitle(title);
 }
 
 void NativeWidgetWin::SetWindowIcons(const gfx::ImageSkia& window_icon,
@@ -625,7 +625,7 @@ void NativeWidgetWin::HandleAppDeactivated() {
     // TODO(pkotwicz): Remove need for SchedulePaint(). crbug.com/165841
     View* non_client_view = GetWidget()->non_client_view();
     if (non_client_view)
-      non_client_view->SchedulePaint();
+      non_client_view->frame_view()->SchedulePaint();
   }
 }
 
@@ -701,8 +701,8 @@ void NativeWidgetWin::HandleDestroyed() {
   OnFinalMessage(GetNativeView());
 }
 
-bool NativeWidgetWin::HandleInitialFocus() {
-  return GetWidget()->SetInitialFocus();
+bool NativeWidgetWin::HandleInitialFocus(ui::WindowShowState show_state) {
+  return GetWidget()->SetInitialFocus(show_state);
 }
 
 void NativeWidgetWin::HandleDisplayChange() {
@@ -740,7 +740,7 @@ void NativeWidgetWin::HandleClientSizeChanged(const gfx::Size& new_size) {
 
 void NativeWidgetWin::HandleFrameChanged() {
   // Replace the frame and layout the contents.
-  GetWidget()->non_client_view()->UpdateFrame(true);
+  GetWidget()->non_client_view()->UpdateFrame();
 }
 
 void NativeWidgetWin::HandleNativeFocus(HWND last_focused_window) {
@@ -851,6 +851,9 @@ void NativeWidgetWin::HandleTooltipMouseMove(UINT message,
     tooltip_manager_->OnMouse(message, w_param, l_param);
 }
 
+void NativeWidgetWin::HandleMenuLoop(bool in_menu_loop) {
+}
+
 bool NativeWidgetWin::PreHandleMSG(UINT message,
                                    WPARAM w_param,
                                    LPARAM l_param,
@@ -885,11 +888,6 @@ void NativeWidgetWin::SetInitParams(const Widget::InitParams& params) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Widget, public:
-
-// static
-void Widget::NotifyLocaleChanged() {
-  NOTIMPLEMENTED();
-}
 
 namespace {
 BOOL CALLBACK WindowCallbackProc(HWND hwnd, LPARAM lParam) {

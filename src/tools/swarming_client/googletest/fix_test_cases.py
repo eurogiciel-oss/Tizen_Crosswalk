@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Runs through isolate_test_cases.py all the tests cases in a google-test
 executable, grabs the failures and traces them to generate a new .isolate.
@@ -23,8 +23,8 @@ if not ROOT_DIR in sys.path:
   sys.path.insert(0, ROOT_DIR)
 
 import isolate
-import isolate_test_cases
-import run_test_cases
+from googletest import isolate_test_cases
+from googletest import run_test_cases
 from utils import tools
 
 

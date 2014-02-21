@@ -56,7 +56,7 @@ ProxySettingsDialog::ProxySettingsDialog(const NetworkState& network,
                                          gfx::NativeWindow window)
     : LoginWebDialog(delegate,
                      window,
-                     string16(),
+                     base::string16(),
                      GetURLForProxySettings(network.path()),
                      LoginWebDialog::STYLE_BUBBLE) {
   DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
@@ -77,7 +77,7 @@ ProxySettingsDialog::ProxySettingsDialog(const NetworkState& network,
   }
 
   SetDialogTitle(l10n_util::GetStringFUTF16(IDS_PROXY_PAGE_TITLE_FORMAT,
-                                            ASCIIToUTF16(network_name)));
+                                            base::ASCIIToUTF16(network_name)));
 }
 
 ProxySettingsDialog::~ProxySettingsDialog() {

@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "ash/metrics/user_metrics_recorder.h"
 #include "ash/root_window_controller.h"
 #include "ash/shelf/shelf_widget.h"
 #include "ash/shell.h"
@@ -127,8 +128,8 @@ class IMEDetailedView : public TrayDetailsView,
           property_list[i].name,
           property_list[i].selected ? gfx::Font::BOLD : gfx::Font::NORMAL);
       if (i == 0)
-        container->set_border(views::Border::CreateSolidSidedBorder(1, 0, 0, 0,
-        kBorderLightColor));
+        container->SetBorder(views::Border::CreateSolidSidedBorder(
+            1, 0, 0, 0, kBorderLightColor));
       scroll_content()->AddChildView(container);
       property_map_[container] = property_list[i].key;
     }
@@ -147,13 +148,17 @@ class IMEDetailedView : public TrayDetailsView,
   virtual void OnViewClicked(views::View* sender) OVERRIDE {
     SystemTrayDelegate* delegate = Shell::GetInstance()->system_tray_delegate();
     if (sender == footer()->content()) {
-      owner()->system_tray()->ShowDefaultView(BUBBLE_USE_EXISTING);
+      TransitionToDefaultView();
     } else if (sender == settings_) {
+      Shell::GetInstance()->metrics()->RecordUserMetricsAction(
+          ash::UMA_STATUS_AREA_IME_SHOW_DETAILED);
       delegate->ShowIMESettings();
     } else {
       std::map<views::View*, std::string>::const_iterator ime_find;
       ime_find = ime_map_.find(sender);
       if (ime_find != ime_map_.end()) {
+        Shell::GetInstance()->metrics()->RecordUserMetricsAction(
+            ash::UMA_STATUS_AREA_IME_SWITCH_MODE);
         std::string ime_id = ime_find->second;
         delegate->SwitchIME(ime_id);
         GetWidget()->Close();
@@ -198,7 +203,8 @@ TrayIME::~TrayIME() {
 void TrayIME::UpdateTrayLabel(const IMEInfo& current, size_t count) {
   if (tray_label_) {
     if (current.third_party) {
-      tray_label_->label()->SetText(current.short_name + UTF8ToUTF16("*"));
+      tray_label_->label()->SetText(
+          current.short_name + base::UTF8ToUTF16("*"));
     } else {
       tray_label_->label()->SetText(current.short_name);
     }
@@ -231,7 +237,9 @@ void TrayIME::UpdateOrCreateNotification() {
       base::string16(),  // message
       bundle.GetImageNamed(IDR_AURA_UBER_TRAY_IME),
       base::string16(),  // display_source
-      message_center::NotifierId(system_notifier::NOTIFIER_INPUT_METHOD),
+      message_center::NotifierId(
+          message_center::NotifierId::SYSTEM_COMPONENT,
+          system_notifier::kNotifierInputMethod),
       message_center::RichNotificationData(),
       new message_center::HandleNotificationClickedDelegate(
           base::Bind(&TrayIME::PopupDetailedView,

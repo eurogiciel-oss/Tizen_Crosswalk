@@ -10,7 +10,8 @@
 #include "third_party/WebKit/public/web/WebSettings.h"
 #include "third_party/icu/source/common/unicode/uchar.h"
 
-using WebKit::WebSettings;
+using base::ASCIIToWide;
+using blink::WebSettings;
 
 WebPreferences::WebPreferences()
     : default_font_size(16),
@@ -43,12 +44,11 @@ WebPreferences::WebPreferences()
       caret_browsing_enabled(false),
       hyperlink_auditing_enabled(true),
       is_online(true),
-      user_style_sheet_enabled(false),
-      author_and_user_styles_enabled(true),
       allow_universal_access_from_file_urls(false),
       allow_file_access_from_file_urls(false),
       webaudio_enabled(false),
       experimental_webgl_enabled(false),
+      pepper_3d_enabled(false),
       flash_3d_enabled(true),
       flash_stage3d_enabled(false),
       flash_stage3d_baseline_enabled(false),
@@ -60,6 +60,7 @@ WebPreferences::WebPreferences()
       accelerated_compositing_for_scrollable_frames_enabled(false),
       composited_scrolling_for_frames_enabled(false),
       mock_scrollbars_enabled(false),
+      layer_squashing_enabled(false),
       threaded_html_parser(true),
       show_paint_rects(false),
       asynchronous_spell_checking_enabled(true),
@@ -74,6 +75,7 @@ WebPreferences::WebPreferences()
       antialiased_2d_canvas_disabled(false),
       accelerated_2d_canvas_msaa_sample_count(0),
       accelerated_filters_enabled(false),
+      deferred_filters_enabled(false),
       gesture_tap_highlight_enabled(false),
       accelerated_compositing_for_plugins_enabled(false),
       memory_info_enabled(false),
@@ -82,6 +84,7 @@ WebPreferences::WebPreferences()
       allow_running_insecure_content(false),
       password_echo_enabled(false),
       should_print_backgrounds(false),
+      should_clear_document_background(true),
       enable_scroll_animator(false),
       visual_word_movement_enabled(false),
       lazy_layout_enabled(false),
@@ -109,6 +112,8 @@ WebPreferences::WebPreferences()
 #endif
       supports_multiple_windows(true),
       viewport_enabled(false),
+      viewport_meta_enabled(false),
+      main_frame_resizes_are_orientation_changes(false),
       initialize_at_minimum_page_scale(true),
 #if defined(OS_MACOSX)
       smart_insert_delete_enabled(true),
@@ -137,25 +142,27 @@ WebPreferences::WebPreferences()
       use_wide_viewport(true),
       viewport_meta_layout_size_quirk(false),
       viewport_meta_merge_content_quirk(false),
+      viewport_meta_non_user_scalable_quirk(false),
       viewport_meta_zero_values_quirk(false),
+      clobber_user_agent_initial_scale_quirk(false),
       ignore_main_frame_overflow_hidden_quirk(false),
       report_screen_size_in_physical_pixels_quirk(false)
 #endif
 {
   standard_font_family_map[webkit_glue::kCommonScript] =
-      ASCIIToUTF16("Times New Roman");
+      base::ASCIIToUTF16("Times New Roman");
   fixed_font_family_map[webkit_glue::kCommonScript] =
-      ASCIIToUTF16("Courier New");
+      base::ASCIIToUTF16("Courier New");
   serif_font_family_map[webkit_glue::kCommonScript] =
-      ASCIIToUTF16("Times New Roman");
+      base::ASCIIToUTF16("Times New Roman");
   sans_serif_font_family_map[webkit_glue::kCommonScript] =
-      ASCIIToUTF16("Arial");
+      base::ASCIIToUTF16("Arial");
   cursive_font_family_map[webkit_glue::kCommonScript] =
-      ASCIIToUTF16("Script");
+      base::ASCIIToUTF16("Script");
   fantasy_font_family_map[webkit_glue::kCommonScript] =
-      ASCIIToUTF16("Impact");
+      base::ASCIIToUTF16("Impact");
   pictograph_font_family_map[webkit_glue::kCommonScript] =
-      ASCIIToUTF16("Times New Roman");
+      base::ASCIIToUTF16("Times New Roman");
 }
 
 WebPreferences::~WebPreferences() {

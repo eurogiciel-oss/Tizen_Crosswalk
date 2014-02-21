@@ -11,7 +11,8 @@
 
 #include "ash/ash_switches.h"
 #include "ash/display/display_layout_store.h"
-#include "ash/screen_ash.h"
+#include "ash/display/screen_ash.h"
+#include "ash/screen_util.h"
 #include "ash/shell.h"
 #include "base/auto_reset.h"
 #include "base/command_line.h"
@@ -48,6 +49,10 @@ typedef std::vector<DisplayInfo> DisplayInfoList;
 
 namespace {
 
+// We need to keep this in order for unittests to tell if
+// the object in gfx::Screen::GetScreenByType is for shutdown.
+gfx::Screen* screen_for_shutdown = NULL;
+
 // The number of pixels to overlap between the primary and secondary displays,
 // in case that the offset value is too large.
 const int kMinimumOverlapForInvalidOffset = 100;
@@ -56,7 +61,8 @@ const int kMinimumOverlapForInvalidOffset = 100;
 // 800, 1024, 1280, 1440, 1600 and 1920 pixel width respectively on
 // 2560 pixel width 2x density display. Please see crbug.com/233375
 // for the full list of resolutions.
-const float kUIScalesFor2x[] = {0.5f, 0.625f, 0.8f, 1.0f, 1.125f, 1.25f, 1.5f};
+const float kUIScalesFor2x[] =
+    {0.5f, 0.625f, 0.8f, 1.0f, 1.125f, 1.25f, 1.5f, 2.0f};
 const float kUIScalesFor1280[] = {0.5f, 0.625f, 0.8f, 1.0f, 1.125f };
 const float kUIScalesFor1366[] = {0.5f, 0.6f, 0.75f, 1.0f, 1.125f };
 
@@ -142,6 +148,8 @@ using std::vector;
 
 DisplayManager::DisplayManager()
     : delegate_(NULL),
+      screen_ash_(new ScreenAsh),
+      screen_(screen_ash_.get()),
       layout_store_(new DisplayLayoutStore),
       first_display_id_(gfx::Display::kInvalidDisplayID),
       num_connected_displays_(0),
@@ -152,6 +160,17 @@ DisplayManager::DisplayManager()
 #if defined(OS_CHROMEOS)
   change_display_upon_host_resize_ = !base::SysInfo::IsRunningOnChromeOS();
 #endif
+  gfx::Screen::SetScreenInstance(gfx::SCREEN_TYPE_ALTERNATE,
+                                 screen_ash_.get());
+  gfx::Screen* current_native =
+      gfx::Screen::GetScreenByType(gfx::SCREEN_TYPE_NATIVE);
+  // If there is no native, or the native was for shutdown,
+  // use ash's screen.
+  if (!current_native ||
+      current_native == screen_for_shutdown) {
+    gfx::Screen::SetScreenInstance(gfx::SCREEN_TYPE_NATIVE,
+                                   screen_ash_.get());
+  }
 }
 
 DisplayManager::~DisplayManager() {
@@ -187,7 +206,7 @@ std::vector<float> DisplayManager::GetScalesForDisplay(
 
 // static
 float DisplayManager::GetNextUIScale(const DisplayInfo& info, bool up) {
-  float scale = info.ui_scale();
+  float scale = info.configured_ui_scale();
   std::vector<float> scales = GetScalesForDisplay(info);
   for (size_t i = 0; i < scales.size(); ++i) {
     if (ScaleComparator(scales[i])(scale)) {
@@ -277,7 +296,12 @@ DisplayLayout DisplayManager::GetCurrentDisplayLayout() {
 
 DisplayIdPair DisplayManager::GetCurrentDisplayIdPair() const {
   if (IsMirrored()) {
-    DCHECK_LE(2u, num_connected_displays());
+    if (software_mirroring_enabled()) {
+      CHECK_EQ(2u, num_connected_displays());
+      // This comment is to make it easy to distinguish the crash
+      // between two checks.
+      CHECK_EQ(1u, displays_.size());
+    }
     return std::make_pair(displays_[0].id(), mirrored_display_id_);
   } else {
     CHECK_GE(2u, displays_.size());
@@ -296,7 +320,7 @@ void DisplayManager::SetLayoutForCurrentDisplays(
   DCHECK_EQ(2U, GetNumDisplays());
   if (GetNumDisplays() < 2)
     return;
-  const gfx::Display& primary = Shell::GetScreen()->GetPrimaryDisplay();
+  const gfx::Display& primary = screen_->GetPrimaryDisplay();
   const DisplayIdPair pair = GetCurrentDisplayIdPair();
   // Invert if the primary was swapped.
   DisplayLayout to_set = pair.first == primary.id() ?
@@ -316,13 +340,12 @@ void DisplayManager::SetLayoutForCurrentDisplays(
     const DisplayLayout layout = GetCurrentDisplayLayout();
     UpdateDisplayBoundsForLayoutById(
         layout, primary,
-        ScreenAsh::GetSecondaryDisplay().id());
+        ScreenUtil::GetSecondaryDisplay().id());
 
-    //UpdateCurrentDisplayBoundsForLayout();
     // Primary's bounds stay the same. Just notify bounds change
     // on the secondary.
-    Shell::GetInstance()->screen()->NotifyBoundsChanged(
-        ScreenAsh::GetSecondaryDisplay());
+    screen_ash_->NotifyBoundsChanged(
+        ScreenUtil::GetSecondaryDisplay());
     if (delegate_)
       delegate_->PostDisplayConfigurationChange();
   }
@@ -380,6 +403,12 @@ void DisplayManager::SetDisplayRotation(int64 display_id,
     display_info_list.push_back(info);
   }
   AddMirrorDisplayInfoIfAny(&display_info_list);
+  if (virtual_keyboard_root_window_enabled() &&
+      display_id == non_desktop_display_.id()) {
+    DisplayInfo info = GetDisplayInfo(display_id);
+    info.set_rotation(rotation);
+    display_info_list.push_back(info);
+  }
   UpdateDisplays(display_info_list);
 }
 
@@ -395,7 +424,7 @@ void DisplayManager::SetDisplayUIScale(int64 display_id,
        iter != displays_.end(); ++iter) {
     DisplayInfo info = GetDisplayInfo(iter->id());
     if (info.id() == display_id) {
-      if (info.ui_scale() == ui_scale)
+      if (info.configured_ui_scale() == ui_scale)
         return;
       std::vector<float> scales = GetScalesForDisplay(info);
       ScaleComparator comparator(ui_scale);
@@ -403,7 +432,7 @@ void DisplayManager::SetDisplayUIScale(int64 display_id,
           scales.end()) {
         return;
       }
-      info.set_ui_scale(ui_scale);
+      info.set_configured_ui_scale(ui_scale);
     }
     display_info_list.push_back(info);
   }
@@ -453,7 +482,7 @@ void DisplayManager::RegisterDisplayProperty(
   display_info_[display_id].set_rotation(rotation);
   // Just in case the preference file was corrupted.
   if (0.5f <= ui_scale && ui_scale <= 2.0f)
-    display_info_[display_id].set_ui_scale(ui_scale);
+    display_info_[display_id].set_configured_ui_scale(ui_scale);
   if (overscan_insets)
     display_info_[display_id].SetOverscanInsets(*overscan_insets);
   if (!resolution_in_pixels.IsEmpty())
@@ -485,6 +514,8 @@ gfx::Insets DisplayManager::GetOverscanInsets(int64 display_id) const {
 void DisplayManager::OnNativeDisplaysChanged(
     const std::vector<DisplayInfo>& updated_displays) {
   if (updated_displays.empty()) {
+    VLOG(1) << "OnNativeDisplayChanged(0): # of current displays="
+            << displays_.size();
     // If the device is booted without display, or chrome is started
     // without --ash-host-window-bounds on linux desktop, use the
     // default display.
@@ -537,6 +568,21 @@ void DisplayManager::OnNativeDisplaysChanged(
       origins.insert(origin);
       new_display_info_list.push_back(*iter);
     }
+
+    const gfx::Size& resolution = iter->bounds_in_native().size();
+    const std::vector<Resolution>& resolutions = iter->resolutions();
+    // This is empty the displays are initialized from InitFromCommandLine.
+    if (!resolutions.size())
+      continue;
+    std::vector<Resolution>::const_iterator resolution_iter =
+        std::find_if(resolutions.begin(),
+                     resolutions.end(),
+                     ResolutionMatcher(resolution));
+    // Update the actual resolution selected as the resolution request may fail.
+    if (resolution_iter == resolutions.begin())
+      resolutions_.erase(iter->id());
+    else if (resolutions_.find(iter->id()) != resolutions_.end())
+      resolutions_[iter->id()] = resolution;
   }
   if (HasInternalDisplay() &&
       !internal_display_connected &&
@@ -691,8 +737,14 @@ void DisplayManager::UpdateDisplays(
       removed_displays.empty()) {
     return;
   }
+  // Clear focus if the display has been removed, but don't clear focus if
+  // the destkop has been moved from one display to another
+  // (mirror -> docked, docked -> single internal).
+  bool clear_focus =
+      !removed_displays.empty() &&
+      !(removed_displays.size() == 1 && added_display_indices.size() == 1);
   if (delegate_)
-    delegate_->PreDisplayConfigurationChange(!removed_displays.empty());
+    delegate_->PreDisplayConfigurationChange(clear_focus);
 
   size_t updated_index;
   if (UpdateSecondaryDisplayBoundsForLayout(&new_displays, &updated_index) &&
@@ -716,7 +768,7 @@ void DisplayManager::UpdateDisplays(
 
   for (DisplayList::const_reverse_iterator iter = removed_displays.rbegin();
        iter != removed_displays.rend(); ++iter) {
-    Shell::GetInstance()->screen()->NotifyDisplayRemoved(displays_.back());
+    screen_ash_->NotifyDisplayRemoved(displays_.back());
     displays_.pop_back();
   }
   // Close the non desktop window here to avoid creating two compositor on
@@ -725,7 +777,7 @@ void DisplayManager::UpdateDisplays(
     non_desktop_display_updater.reset();
   for (std::vector<size_t>::iterator iter = added_display_indices.begin();
        iter != added_display_indices.end(); ++iter) {
-    Shell::GetInstance()->screen()->NotifyDisplayAdded(displays_[*iter]);
+    screen_ash_->NotifyDisplayAdded(displays_[*iter]);
   }
   // Create the non destkop window after all displays are added so that
   // it can mirror the display newly added. This can happen when switching
@@ -733,7 +785,7 @@ void DisplayManager::UpdateDisplays(
   non_desktop_display_updater.reset();
   for (std::vector<size_t>::iterator iter = changed_display_indices.begin();
        iter != changed_display_indices.end(); ++iter) {
-    Shell::GetInstance()->screen()->NotifyBoundsChanged(displays_[*iter]);
+    screen_ash_->NotifyBoundsChanged(displays_[*iter]);
   }
   if (delegate_)
     delegate_->PostDisplayConfigurationChange();
@@ -837,6 +889,7 @@ void DisplayManager::AddRemoveDisplay() {
   }
   num_connected_displays_ = new_display_info_list.size();
   mirrored_display_id_ = gfx::Display::kInvalidDisplayID;
+  non_desktop_display_ = gfx::Display();
   UpdateDisplays(new_display_info_list);
 }
 
@@ -879,7 +932,7 @@ bool DisplayManager::UpdateDisplayBounds(int64 display_id,
       return false;
     gfx::Display* display = FindDisplayForId(display_id);
     display->SetSize(display_info_[display_id].size_in_pixel());
-    Shell::GetInstance()->screen()->NotifyBoundsChanged(*display);
+    screen_ash_->NotifyBoundsChanged(*display);
     return true;
   }
   return false;
@@ -887,6 +940,20 @@ bool DisplayManager::UpdateDisplayBounds(int64 display_id,
 
 void DisplayManager::CreateMirrorWindowIfAny() {
   NonDesktopDisplayUpdater updater(this, delegate_);
+}
+
+void DisplayManager::CreateScreenForShutdown() const {
+  bool native_is_ash =
+      gfx::Screen::GetScreenByType(gfx::SCREEN_TYPE_NATIVE) ==
+      screen_ash_.get();
+  delete screen_for_shutdown;
+  screen_for_shutdown = screen_ash_->CloneForShutdown();
+  gfx::Screen::SetScreenInstance(gfx::SCREEN_TYPE_ALTERNATE,
+                                 screen_for_shutdown);
+  if (native_is_ash) {
+    gfx::Screen::SetScreenInstance(gfx::SCREEN_TYPE_NATIVE,
+                                   screen_for_shutdown);
+  }
 }
 
 gfx::Display* DisplayManager::FindDisplayForId(int64 id) {
@@ -923,12 +990,15 @@ gfx::Display DisplayManager::CreateDisplayFromDisplayInfoById(int64 id) {
 
   gfx::Display new_display(display_info.id());
   gfx::Rect bounds_in_native(display_info.size_in_pixel());
+  float device_scale_factor = display_info.device_scale_factor();
+  if (device_scale_factor == 2.0f && display_info.configured_ui_scale() == 2.0f)
+    device_scale_factor = 1.0f;
 
   // Simply set the origin to (0,0).  The primary display's origin is
   // always (0,0) and the secondary display's bounds will be updated
   // in |UpdateSecondaryDisplayBoundsForLayout| called in |UpdateDisplay|.
   new_display.SetScaleAndBounds(
-      display_info.device_scale_factor(), gfx::Rect(bounds_in_native.size()));
+      device_scale_factor, gfx::Rect(bounds_in_native.size()));
   new_display.set_rotation(display_info.rotation());
   new_display.set_touch_support(display_info.touch_support());
   return new_display;

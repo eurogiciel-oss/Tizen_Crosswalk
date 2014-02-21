@@ -6,8 +6,10 @@
 
 #include "base/command_line.h"
 #include "base/strings/utf_string_conversions.h"
+#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_view.h"
+#include "content/shell/browser/shell_platform_data_aura.h"
 #include "ui/aura/env.h"
 #include "ui/aura/root_window.h"
 #include "ui/aura/window.h"
@@ -16,6 +18,7 @@
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/events/event.h"
 #include "ui/gfx/screen.h"
+#include "ui/views/background.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/controls/textfield/textfield.h"
 #include "ui/views/controls/textfield/textfield_controller.h"
@@ -31,7 +34,7 @@
 #if defined(OS_CHROMEOS)
 #include "chromeos/dbus/dbus_thread_manager.h"
 #include "ui/aura/test/test_screen.h"
-#include "ui/shell/minimal_shell.h"
+#include "ui/wm/test/wm_test_helper.h"
 #endif
 
 #if defined(OS_WIN)
@@ -53,11 +56,6 @@ class ShellViewsDelegateAura : public views::DesktopTestViewsDelegate {
 
   void SetUseTransparentWindows(bool transparent) {
     use_transparent_windows_ = transparent;
-  }
-
-  // Overridden from views::TestViewsDelegate:
-  virtual bool UseTransparentWindows() const OVERRIDE {
-    return use_transparent_windows_;
   }
 
  private:
@@ -86,17 +84,30 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
 
   // Update the state of UI controls
   void SetAddressBarURL(const GURL& url) {
-    url_entry_->SetText(ASCIIToUTF16(url.spec()));
+    url_entry_->SetText(base::ASCIIToUTF16(url.spec()));
   }
-  void SetWebContents(WebContents* web_contents) {
+  void SetWebContents(WebContents* web_contents, const gfx::Size& size) {
     contents_view_->SetLayoutManager(new views::FillLayout());
     web_view_ = new views::WebView(web_contents->GetBrowserContext());
     web_view_->SetWebContents(web_contents);
+    web_view_->SetPreferredSize(size);
     web_contents->GetView()->Focus();
     contents_view_->AddChildView(web_view_);
     Layout();
+
+    // Resize the widget, keeping the same origin.
+    gfx::Rect bounds = GetWidget()->GetWindowBoundsInScreen();
+    bounds.set_size(GetWidget()->GetRootView()->GetPreferredSize());
+    GetWidget()->SetBounds(bounds);
+
+    // Resizing a widget on chromeos doesn't automatically resize the root, need
+    // to explicitly do that.
+#if defined(OS_CHROMEOS)
+    GetWidget()->GetNativeWindow()->GetDispatcher()->host()->SetBounds(bounds);
+#endif
   }
-  void SetWindowTitle(const string16& title) { title_ = title; }
+
+  void SetWindowTitle(const base::string16& title) { title_ = title; }
   void EnableUIControl(UIControl control, bool is_enabled) {
     if (control == BACK_BUTTON) {
       back_button_->SetState(is_enabled ? views::CustomButton::STATE_NORMAL
@@ -135,8 +146,8 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
       views::ColumnSet* toolbar_column_set =
           toolbar_layout->AddColumnSet(0);
       // Back button
-      back_button_ = new views::LabelButton(this, ASCIIToUTF16("Back"));
-      back_button_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+      back_button_ = new views::LabelButton(this, base::ASCIIToUTF16("Back"));
+      back_button_->SetStyle(views::Button::STYLE_BUTTON);
       gfx::Size back_button_size = back_button_->GetPreferredSize();
       toolbar_column_set->AddColumn(views::GridLayout::CENTER,
                                     views::GridLayout::CENTER, 0,
@@ -144,8 +155,9 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
                                     back_button_size.width(),
                                     back_button_size.width() / 2);
       // Forward button
-      forward_button_ = new views::LabelButton(this, ASCIIToUTF16("Forward"));
-      forward_button_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+      forward_button_ =
+          new views::LabelButton(this, base::ASCIIToUTF16("Forward"));
+      forward_button_->SetStyle(views::Button::STYLE_BUTTON);
       gfx::Size forward_button_size = forward_button_->GetPreferredSize();
       toolbar_column_set->AddColumn(views::GridLayout::CENTER,
                                     views::GridLayout::CENTER, 0,
@@ -153,8 +165,9 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
                                     forward_button_size.width(),
                                     forward_button_size.width() / 2);
       // Refresh button
-      refresh_button_ = new views::LabelButton(this, ASCIIToUTF16("Refresh"));
-      refresh_button_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+      refresh_button_ =
+          new views::LabelButton(this, base::ASCIIToUTF16("Refresh"));
+      refresh_button_->SetStyle(views::Button::STYLE_BUTTON);
       gfx::Size refresh_button_size = refresh_button_->GetPreferredSize();
       toolbar_column_set->AddColumn(views::GridLayout::CENTER,
                                     views::GridLayout::CENTER, 0,
@@ -162,8 +175,8 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
                                     refresh_button_size.width(),
                                     refresh_button_size.width() / 2);
       // Stop button
-      stop_button_ = new views::LabelButton(this, ASCIIToUTF16("Stop"));
-      stop_button_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+      stop_button_ = new views::LabelButton(this, base::ASCIIToUTF16("Stop"));
+      stop_button_->SetStyle(views::Button::STYLE_BUTTON);
       gfx::Size stop_button_size = stop_button_->GetPreferredSize();
       toolbar_column_set->AddColumn(views::GridLayout::CENTER,
                                     views::GridLayout::CENTER, 0,
@@ -173,7 +186,7 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
       toolbar_column_set->AddPaddingColumn(0, 2);
       // URL entry
       url_entry_ = new views::Textfield();
-      url_entry_->SetController(this);
+      url_entry_->set_controller(this);
       toolbar_column_set->AddColumn(views::GridLayout::FILL,
                                     views::GridLayout::FILL, 1,
                                     views::GridLayout::USE_PREF, 0, 0);
@@ -198,19 +211,32 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
     }
 
     layout->AddPaddingRow(0, 5);
+
+    InitAccelerators();
+  }
+  void InitAccelerators() {
+    static const ui::KeyboardCode keys[] = { ui::VKEY_F5,
+                                             ui::VKEY_BROWSER_BACK,
+                                             ui::VKEY_BROWSER_FORWARD };
+    for (size_t i = 0; i < arraysize(keys); ++i) {
+      GetFocusManager()->RegisterAccelerator(
+        ui::Accelerator(keys[i], ui::EF_NONE),
+        ui::AcceleratorManager::kNormalPriority,
+        this);
+    }
   }
   // Overridden from TextfieldController
   virtual void ContentsChanged(views::Textfield* sender,
-                               const string16& new_contents) OVERRIDE {
+                               const base::string16& new_contents) OVERRIDE {
   }
   virtual bool HandleKeyEvent(views::Textfield* sender,
                               const ui::KeyEvent& key_event) OVERRIDE {
    if (sender == url_entry_ && key_event.key_code() == ui::VKEY_RETURN) {
-     std::string text = UTF16ToUTF8(url_entry_->text());
+     std::string text = base::UTF16ToUTF8(url_entry_->text());
      GURL url(text);
      if (!url.has_scheme()) {
        url = GURL(std::string("http://") + std::string(text));
-       url_entry_->SetText(ASCIIToUTF16(url.spec()));
+       url_entry_->SetText(base::ASCIIToUTF16(url.spec()));
      }
      shell_->LoadURL(url);
      return true;
@@ -234,7 +260,7 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
   // Overridden from WidgetDelegateView
   virtual bool CanResize() const OVERRIDE { return true; }
   virtual bool CanMaximize() const OVERRIDE { return true; }
-  virtual string16 GetWindowTitle() const OVERRIDE {
+  virtual base::string16 GetWindowTitle() const OVERRIDE {
     return title_;
   }
   virtual void WindowClosing() OVERRIDE {
@@ -246,10 +272,32 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
   virtual View* GetContentsView() OVERRIDE { return this; }
 
   // Overridden from View
+  virtual gfx::Size GetMinimumSize() OVERRIDE {
+    // We want to be able to make the window smaller than its initial
+    // (preferred) size.
+    return gfx::Size();
+  }
   virtual void ViewHierarchyChanged(
       const ViewHierarchyChangedDetails& details) OVERRIDE {
     if (details.is_add && details.child == this) {
       InitShellWindow();
+    }
+  }
+
+  // Overridden from AcceleratorTarget:
+  virtual bool AcceleratorPressed(const ui::Accelerator& accelerator) OVERRIDE {
+    switch (accelerator.key_code()) {
+    case ui::VKEY_F5:
+      shell_->Reload();
+      return true;
+    case ui::VKEY_BROWSER_BACK:
+      shell_->GoBackOrForward(-1);
+      return true;
+    case ui::VKEY_BROWSER_FORWARD:
+      shell_->GoBackOrForward(1);
+      return true;
+    default:
+      return views::WidgetDelegateView::AcceleratorPressed(accelerator);
     }
   }
 
@@ -258,7 +306,7 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
   Shell* shell_;
 
   // Window title
-  string16 title_;
+  base::string16 title_;
 
   // Toolbar view contains forward/backward/reload button and URL entry
   View* toolbar_view_;
@@ -278,7 +326,7 @@ class ShellWindowDelegateView : public views::WidgetDelegateView,
 }  // namespace
 
 #if defined(OS_CHROMEOS)
-shell::MinimalShell* Shell::minimal_shell_ = NULL;
+wm::WMTestHelper* Shell::wm_test_helper_ = NULL;
 #endif
 views::ViewsDelegate* Shell::views_delegate_ = NULL;
 
@@ -292,7 +340,7 @@ void Shell::PlatformInitialize(const gfx::Size& default_window_size) {
   chromeos::DBusThreadManager::Initialize();
   gfx::Screen::SetScreenInstance(
       gfx::SCREEN_TYPE_NATIVE, aura::TestScreen::Create());
-  minimal_shell_ = new shell::MinimalShell(default_window_size);
+  wm_test_helper_ = new wm::WMTestHelper(default_window_size);
 #else
   gfx::Screen::SetScreenInstance(
       gfx::SCREEN_TYPE_NATIVE, views::CreateDesktopScreen());
@@ -301,17 +349,13 @@ void Shell::PlatformInitialize(const gfx::Size& default_window_size) {
 }
 
 void Shell::PlatformExit() {
-  std::vector<Shell*> windows = windows_;
-  for (std::vector<Shell*>::iterator it = windows.begin();
-       it != windows.end(); ++it) {
-    (*it)->window_widget_->Close();
-  }
 #if defined(OS_CHROMEOS)
-  if (minimal_shell_)
-    delete minimal_shell_;
+  delete wm_test_helper_;
 #endif
-  if (views_delegate_)
-    delete views_delegate_;
+  delete views_delegate_;
+  views_delegate_ = NULL;
+  delete platform_;
+  platform_ = NULL;
 #if defined(OS_CHROMEOS)
   chromeos::DBusThreadManager::Shutdown();
 #endif
@@ -322,6 +366,8 @@ void Shell::PlatformCleanUp() {
 }
 
 void Shell::PlatformEnableUIControl(UIControl control, bool is_enabled) {
+  if (headless_)
+    return;
   ShellWindowDelegateView* delegate_view =
     static_cast<ShellWindowDelegateView*>(window_widget_->widget_delegate());
   if (control == BACK_BUTTON) {
@@ -337,6 +383,8 @@ void Shell::PlatformEnableUIControl(UIControl control, bool is_enabled) {
 }
 
 void Shell::PlatformSetAddressBarURL(const GURL& url) {
+  if (headless_)
+    return;
   ShellWindowDelegateView* delegate_view =
     static_cast<ShellWindowDelegateView*>(window_widget_->widget_delegate());
   delegate_view->SetAddressBarURL(url);
@@ -346,39 +394,67 @@ void Shell::PlatformSetIsLoading(bool loading) {
 }
 
 void Shell::PlatformCreateWindow(int width, int height) {
+  if (headless_) {
+    content_size_ = gfx::Size(width, height);
+    if (!platform_)
+      platform_ = new ShellPlatformDataAura(content_size_);
+    else
+      platform_->ResizeWindow(content_size_);
+    return;
+  }
 #if defined(OS_CHROMEOS)
-  window_widget_ =
-      views::Widget::CreateWindowWithContextAndBounds(
-          new ShellWindowDelegateView(this),
-          minimal_shell_->GetDefaultParent(NULL, NULL, gfx::Rect()),
-          gfx::Rect(0, 0, width, height));
+  window_widget_ = views::Widget::CreateWindowWithContextAndBounds(
+      new ShellWindowDelegateView(this),
+      wm_test_helper_->GetDefaultParent(NULL, NULL, gfx::Rect()),
+      gfx::Rect(0, 0, width, height));
 #else
-  window_widget_ =
-      views::Widget::CreateWindowWithBounds(new ShellWindowDelegateView(this),
-               gfx::Rect(0, 0, width, height));
+  window_widget_ = views::Widget::CreateWindowWithBounds(
+      new ShellWindowDelegateView(this), gfx::Rect(0, 0, width, height));
 #endif
 
+  content_size_ = gfx::Size(width, height);
+
   window_ = window_widget_->GetNativeWindow();
-  // Call ShowRootWindow on RootWindow created by MinimalShell without
+  // Call ShowRootWindow on RootWindow created by WMTestHelper without
   // which XWindow owned by RootWindow doesn't get mapped.
-  window_->GetDispatcher()->ShowRootWindow();
+  window_->GetDispatcher()->host()->Show();
   window_widget_->Show();
 }
 
 void Shell::PlatformSetContents() {
-  ShellWindowDelegateView* delegate_view =
-    static_cast<ShellWindowDelegateView*>(window_widget_->widget_delegate());
-  delegate_view->SetWebContents(web_contents_.get());
+  if (headless_) {
+    CHECK(platform_);
+    aura::Window* content = web_contents_->GetView()->GetNativeView();
+    aura::Window* parent = platform_->window()->window();
+    if (!parent->Contains(content)) {
+      parent->AddChild(content);
+      content->Show();
+    }
+    content->SetBounds(gfx::Rect(content_size_));
+    RenderWidgetHostView* host_view = web_contents_->GetRenderWidgetHostView();
+    if (host_view)
+      host_view->SetSize(content_size_);
+  } else {
+    views::WidgetDelegate* widget_delegate = window_widget_->widget_delegate();
+    ShellWindowDelegateView* delegate_view =
+        static_cast<ShellWindowDelegateView*>(widget_delegate);
+    delegate_view->SetWebContents(web_contents_.get(), content_size_);
+  }
 }
 
 void Shell::PlatformResizeSubViews() {
 }
 
 void Shell::Close() {
-  window_widget_->CloseNow();
+  if (headless_)
+    delete this;
+  else
+    window_widget_->CloseNow();
 }
 
-void Shell::PlatformSetTitle(const string16& title) {
+void Shell::PlatformSetTitle(const base::string16& title) {
+  if (headless_)
+    return;
   ShellWindowDelegateView* delegate_view =
     static_cast<ShellWindowDelegateView*>(window_widget_->widget_delegate());
   delegate_view->SetWindowTitle(title);

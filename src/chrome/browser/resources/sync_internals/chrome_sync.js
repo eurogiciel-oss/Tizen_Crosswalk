@@ -33,6 +33,10 @@ Event.prototype.removeListener = function(listener) {
   this.listeners_.splice(i, 1);
 };
 
+Event.prototype.removeListeners = function() {
+  this.listeners_ = [];
+}
+
 Event.prototype.hasListener = function(listener) {
   return this.findListener_(listener) > -1;
 };
@@ -142,15 +146,13 @@ var syncFunctions = [
   'getNotificationState',
   'getNotificationInfo',
 
+  // Get a static list of available data types.
+  'getListOfTypes',
+
   // Client server communication logging functions.
   'getClientServerTraffic',
 
-  // Node lookup functions.  See chrome/browser/sync/engine/syncapi.h
-  // for docs.
-  'getRootNodeDetails',
-  'getNodeSummariesById',
-  'getNodeDetailsById',
-  'getChildNodeIds',
+  // Get an array containing a JSON representations of all known sync nodes.
   'getAllNodes',
 ];
 

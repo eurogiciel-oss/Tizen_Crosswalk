@@ -36,26 +36,25 @@ class HTMLSelectElement;
 class HTMLOptionElement FINAL : public HTMLElement {
 public:
     static PassRefPtr<HTMLOptionElement> create(Document&);
-    static PassRefPtr<HTMLOptionElement> create(const QualifiedName&, Document&);
-    static PassRefPtr<HTMLOptionElement> createForJSConstructor(Document&, const String& data, const String& value,
+    static PassRefPtr<HTMLOptionElement> createForJSConstructor(Document&, const String& data, const AtomicString& value,
         bool defaultSelected, bool selected, ExceptionState&);
 
-    virtual String text() const;
+    String text() const;
     void setText(const String&, ExceptionState&);
 
     int index() const;
 
     String value() const;
-    void setValue(const String&);
+    void setValue(const AtomicString&);
 
-    bool selected();
+    bool selected() const;
     void setSelected(bool);
 
     HTMLDataListElement* ownerDataListElement() const;
     HTMLSelectElement* ownerSelectElement() const;
 
     String label() const;
-    void setLabel(const String&);
+    void setLabel(const AtomicString&);
 
     bool ownElementDisabled() const { return m_disabled; }
 
@@ -65,27 +64,30 @@ public:
 
     void setSelectedState(bool);
 
+    HTMLFormElement* form() const;
+
 private:
-    HTMLOptionElement(const QualifiedName&, Document&);
+    explicit HTMLOptionElement(Document&);
 
     virtual bool rendererIsFocusable() const OVERRIDE;
-    virtual bool rendererIsNeeded(const RenderStyle&) { return false; }
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE { return false; }
     virtual void attach(const AttachContext& = AttachContext()) OVERRIDE;
     virtual void detach(const AttachContext& = AttachContext()) OVERRIDE;
 
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
 
     virtual InsertionNotificationRequest insertedInto(ContainerNode*) OVERRIDE;
-    virtual void accessKeyAction(bool);
+    virtual void accessKeyAction(bool) OVERRIDE;
 
-    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0);
+    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0) OVERRIDE;
 
     // <option> never has a renderer so we manually manage a cached style.
     void updateNonRenderStyle();
     virtual RenderStyle* nonRendererStyle() const OVERRIDE;
     virtual PassRefPtr<RenderStyle> customStyleForRenderer() OVERRIDE;
 
-    void didRecalcStyle(StyleRecalcChange) OVERRIDE;
+    virtual void didRecalcStyle(StyleRecalcChange) OVERRIDE;
+    virtual void willRecalcStyle(StyleRecalcChange) OVERRIDE;
 
     String collectOptionInnerText() const;
 

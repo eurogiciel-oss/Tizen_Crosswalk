@@ -101,7 +101,8 @@ bool isSpecialElement(const Node*);
 bool isTabSpanNode(const Node*);
 bool isTabSpanTextNode(const Node*);
 bool isMailBlockquote(const Node*);
-bool isTableElement(Node*);
+bool isRenderedTable(const Node*);
+bool isTableElement(const Node*);
 bool isTableCell(const Node*);
 bool isEmptyTableCell(const Node*);
 bool isTableStructureNode(const Node*);
@@ -126,7 +127,6 @@ Position previousCandidate(const Position&);
 Position nextVisuallyDistinctCandidate(const Position&);
 Position previousVisuallyDistinctCandidate(const Position&);
 
-Position positionOutsideTabSpan(const Position&);
 Position positionBeforeContainingSpecialElement(const Position&, Node** containingSpecialElement = 0);
 Position positionAfterContainingSpecialElement(const Position&, Node** containingSpecialElement = 0);
 

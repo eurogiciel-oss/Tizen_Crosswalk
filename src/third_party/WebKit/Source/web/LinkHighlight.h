@@ -26,28 +26,30 @@
 #ifndef LinkHighlight_h
 #define LinkHighlight_h
 
-#include "core/platform/graphics/GraphicsLayer.h"
-#include "core/platform/graphics/Path.h"
 #include "platform/geometry/FloatPoint.h"
 #include "platform/geometry/IntPoint.h"
+#include "platform/graphics/GraphicsLayer.h"
+#include "platform/graphics/Path.h"
 #include "public/platform/WebAnimationDelegate.h"
 #include "public/platform/WebContentLayer.h"
 #include "public/platform/WebContentLayerClient.h"
 #include "public/platform/WebLayer.h"
 #include "wtf/OwnPtr.h"
+#include "wtf/Vector.h"
 
 namespace WebCore {
 class RenderLayer;
+class RenderObject;
 class Node;
 }
 
-namespace WebKit {
+namespace blink {
 
 struct WebFloatRect;
 struct WebRect;
 class WebViewImpl;
 
-class LinkHighlight : public WebContentLayerClient, public WebAnimationDelegate, WebCore::LinkHighlightClient {
+class LinkHighlight FINAL : public WebContentLayerClient, public WebAnimationDelegate, WebCore::LinkHighlightClient {
 public:
     static PassOwnPtr<LinkHighlight> create(WebCore::Node*, WebViewImpl*);
     virtual ~LinkHighlight();
@@ -61,8 +63,8 @@ public:
     virtual void paintContents(WebCanvas*, const WebRect& clipRect, bool canPaintLCDText, WebFloatRect& opaque) OVERRIDE;
 
     // WebAnimationDelegate implementation.
-    virtual void notifyAnimationStarted(double time) OVERRIDE;
-    virtual void notifyAnimationFinished(double time) OVERRIDE;
+    virtual void notifyAnimationStarted(double wallClockTime, double monotonicTime, blink::WebAnimation::TargetProperty) OVERRIDE;
+    virtual void notifyAnimationFinished(double wallClockTime, double monotonicTime, blink::WebAnimation::TargetProperty) OVERRIDE;
 
     // LinkHighlightClient inplementation.
     virtual void invalidate() OVERRIDE;
@@ -75,6 +77,7 @@ private:
     LinkHighlight(WebCore::Node*, WebViewImpl*);
 
     void releaseResources();
+    void computeQuads(WebCore::Node*, WTF::Vector<WebCore::FloatQuad>&) const;
 
     WebCore::RenderLayer* computeEnclosingCompositingLayer();
     void clearGraphicsLayerLinkHighlightPointer();
@@ -95,6 +98,6 @@ private:
     double m_startTime;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

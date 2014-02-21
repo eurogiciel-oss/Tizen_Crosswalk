@@ -34,8 +34,8 @@
 
 namespace WebCore {
 
-class EditorClient;
 class Frame;
+class SpellCheckerClient;
 class SpellCheckRequest;
 class SpellCheckRequester;
 class TextCheckerClient;
@@ -49,14 +49,13 @@ public:
 
     ~SpellChecker();
 
-    EditorClient& editorClient() const;
+    SpellCheckerClient& spellCheckerClient() const;
     TextCheckerClient& textChecker() const;
 
     bool isContinuousSpellCheckingEnabled() const;
     void toggleContinuousSpellChecking();
     bool isGrammarCheckingEnabled();
     void ignoreSpelling();
-    String misspelledWordAtCaretOrRange(Node* clickedNode) const;
     bool isSpellCheckingEnabledInFocusedNode() const;
     bool isSpellCheckingEnabledFor(Node*) const;
     void markMisspellingsAfterTypingToWord(const VisiblePosition &wordStart, const VisibleSelection& selectionAfterTyping);

@@ -38,7 +38,7 @@
 
 namespace WebCore {
 
-class WebSocketExtensionDeflateFrame : public WebSocketExtensionProcessor {
+class WebSocketExtensionDeflateFrame FINAL : public WebSocketExtensionProcessor {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     static PassOwnPtr<WebSocketExtensionDeflateFrame> create(WebSocketDeflateFramer* framer)
@@ -81,7 +81,7 @@ bool WebSocketExtensionDeflateFrame::processResponse(const HashMap<String, Strin
     }
     m_responseProcessed = true;
 
-    int expectedNumParameters = 0;
+    unsigned expectedNumParameters = 0;
     int windowBits = 15;
     HashMap<String, String>::const_iterator parameter = serverParameters.find("max_window_bits");
     if (parameter != serverParameters.end()) {

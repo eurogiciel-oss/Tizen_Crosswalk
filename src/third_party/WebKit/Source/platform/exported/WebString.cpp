@@ -37,7 +37,7 @@
 #include "wtf/text/StringUTF8Adaptor.h"
 #include "wtf/text/WTFString.h"
 
-namespace WebKit {
+namespace blink {
 
 void WebString::reset()
 {
@@ -121,8 +121,8 @@ bool WebString::equals(const WebString& s) const
 }
 
 WebString::WebString(const WTF::String& s)
+    : m_private(s.impl())
 {
-    m_private = s.impl();
 }
 
 WebString& WebString::operator=(const WTF::String& s)
@@ -157,4 +157,4 @@ void WebString::assign(WTF::StringImpl* p)
     m_private = p;
 }
 
-} // namespace WebKit
+} // namespace blink

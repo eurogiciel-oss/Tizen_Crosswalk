@@ -21,10 +21,10 @@
 #ifndef SVGFilter_h
 #define SVGFilter_h
 
-#include "core/platform/graphics/filters/Filter.h"
-#include "core/platform/graphics/filters/FilterEffect.h"
 #include "platform/geometry/FloatRect.h"
 #include "platform/geometry/FloatSize.h"
+#include "platform/graphics/filters/Filter.h"
+#include "platform/graphics/filters/FilterEffect.h"
 #include "platform/transforms/AffineTransform.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/RefCounted.h"
@@ -32,20 +32,20 @@
 
 namespace WebCore {
 
-class SVGFilter : public Filter {
+class SVGFilter FINAL : public Filter {
 public:
-    static PassRefPtr<SVGFilter> create(const AffineTransform&, const FloatRect&, const FloatRect&, const FloatRect&, bool);
+    static PassRefPtr<SVGFilter> create(const AffineTransform&, const IntRect&, const FloatRect&, const FloatRect&, bool);
 
-    virtual float applyHorizontalScale(float value) const;
-    virtual float applyVerticalScale(float value) const;
+    virtual float applyHorizontalScale(float value) const OVERRIDE;
+    virtual float applyVerticalScale(float value) const OVERRIDE;
 
-    virtual FloatRect sourceImageRect() const { return m_absoluteSourceDrawingRegion; }
+    virtual IntRect sourceImageRect() const OVERRIDE { return m_absoluteSourceDrawingRegion; }
     FloatRect targetBoundingBox() const { return m_targetBoundingBox; }
 
 private:
-    SVGFilter(const AffineTransform& absoluteTransform, const FloatRect& absoluteSourceDrawingRegion, const FloatRect& targetBoundingBox, const FloatRect& filterRegion, bool effectBBoxMode);
+    SVGFilter(const AffineTransform& absoluteTransform, const IntRect& absoluteSourceDrawingRegion, const FloatRect& targetBoundingBox, const FloatRect& filterRegion, bool effectBBoxMode);
 
-    FloatRect m_absoluteSourceDrawingRegion;
+    IntRect m_absoluteSourceDrawingRegion;
     FloatRect m_targetBoundingBox;
     bool m_effectBBoxMode;
 };

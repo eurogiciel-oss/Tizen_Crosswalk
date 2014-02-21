@@ -16,9 +16,11 @@ from telemetry.core import discover
 from telemetry.core import util
 from telemetry.core import wpr_modes
 from telemetry.page import page_measurement
+from telemetry.page import page_measurement_results
 from telemetry.page import page_runner
 from telemetry.page import page_set
 from telemetry.page import page_test
+from telemetry.page import profile_creator
 from telemetry.page import test_expectations
 
 
@@ -31,39 +33,61 @@ class RecordPage(page_test.PageTest):
         [measurement().action_name_to_run
          for measurement in measurements.values()
          if measurement().action_name_to_run])
+    self.test = None
 
   def CanRunForPage(self, page):
     return page.url.startswith('http')
 
-  def CustomizeBrowserOptionsForPage(self, page, options):
-    for compound_action in self._CompoundActionsForPage(page):
-      for action in compound_action:
-        action.CustomizeBrowserOptions(options)
+  def CustomizeBrowserOptionsForPageSet(self, pset, options):
+    for page in pset:
+      for compound_action in self._CompoundActionsForPage(page, options):
+        for action in compound_action:
+          action.CustomizeBrowserOptionsForPageSet(options)
 
-  def WillNavigateToPage(self, _, tab):
+  def WillNavigateToPage(self, page, tab):
     """Override to ensure all resources are fetched from network."""
     tab.ClearCache()
+    if self.test:
+      self.test.WillNavigateToPage(page, tab)
+
+  def DidNavigateToPage(self, page, tab):
+    """Forward the call to the test."""
+    if self.test:
+      self.test.DidNavigateToPage(page, tab)
 
   def Run(self, options, page, tab, results):
     # When recording, sleep to catch any resources that load post-onload.
     tab.WaitForDocumentReadyStateToBeComplete()
-    time.sleep(3)
+
+    if self.test:
+      dummy_results = page_measurement_results.PageMeasurementResults()
+      dummy_results.WillMeasurePage(page)
+      self.test.MeasurePage(page, tab, dummy_results)
+      dummy_results.DidMeasurePage()
+    else:
+      # TODO(tonyg): This should probably monitor resource timing for activity
+      # and sleep until 2s since the last network event with some timeout like
+      # 20s. We could wrap this up as WaitForNetworkIdle() and share with the
+      # speed index metric.
+      time.sleep(3)
 
     # Run the actions for all measurements. Reload the page between
     # actions.
     should_reload = False
-    for compound_action in self._CompoundActionsForPage(page):
+    for compound_action in self._CompoundActionsForPage(page, options):
       if should_reload:
         self.RunNavigateSteps(page, tab)
       self._RunCompoundAction(page, tab, compound_action)
       should_reload = True
 
-  def _CompoundActionsForPage(self, page):
+  def _CompoundActionsForPage(self, page, options):
     actions = []
     for action_name in self._action_names:
       if not hasattr(page, action_name):
         continue
-      actions.append(page_test.GetCompoundActionFromPage(page, action_name))
+      interactive = options and options.interactive
+      actions.append(page_test.GetCompoundActionFromPage(
+          page, action_name, interactive))
     return actions
 
 
@@ -82,10 +106,15 @@ def _CreatePageSetForUrl(url):
 
 
 def Main(base_dir):
-  measurements = discover.DiscoverClasses(base_dir, base_dir,
-                                          page_measurement.PageMeasurement)
+  measurements = {
+      n: cls for n, cls in discover.DiscoverClasses(
+          base_dir, base_dir, page_measurement.PageMeasurement).items()
+      # Filter out unneeded ProfileCreators (crbug.com/319573).
+      if not issubclass(cls, profile_creator.ProfileCreator)
+      }
   tests = discover.DiscoverClasses(base_dir, base_dir, test.Test,
                                    index_by_class_name=True)
+
   options = browser_options.BrowserFinderOptions()
   parser = options.CreateParser('%prog <PageSet|Measurement|Test|URL>')
   page_runner.AddCommandLineOptions(parser)
@@ -93,20 +122,27 @@ def Main(base_dir):
   recorder = RecordPage(measurements)
   recorder.AddCommandLineOptions(parser)
 
-  _, args = parser.parse_args()
-
-  if len(args) != 1:
+  quick_args = [a for a in sys.argv[1:] if not a.startswith('-')]
+  if len(quick_args) != 1:
     parser.print_usage()
     sys.exit(1)
-
-  if args[0].endswith('.json'):
-    ps = page_set.PageSet.FromFile(args[0])
-  elif args[0] in tests:
-    ps = tests[args[0]]().CreatePageSet(options)
-  elif args[0] in measurements:
-    ps = measurements[args[0]]().CreatePageSet(args, options)
-  elif args[0].startswith('http'):
-    ps = _CreatePageSetForUrl(args[0])
+  target = quick_args[0]
+  if target in tests:
+    recorder.test = tests[target]().test()
+    recorder.test.AddCommandLineOptions(parser)
+    parser.parse_args()
+    ps = tests[target]().CreatePageSet(options)
+  elif target in measurements:
+    recorder.test = measurements[target]()
+    recorder.test.AddCommandLineOptions(parser)
+    _, args = parser.parse_args()
+    ps = recorder.test.CreatePageSet(args, options)
+  elif target.endswith('.json'):
+    parser.parse_args()
+    ps = page_set.PageSet.FromFile(target)
+  elif target.startswith('http'):
+    parser.parse_args()
+    ps = _CreatePageSetForUrl(target)
   else:
     parser.print_usage()
     sys.exit(1)

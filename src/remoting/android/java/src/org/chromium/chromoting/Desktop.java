@@ -7,11 +7,9 @@ package org.chromium.chromoting;
 import android.app.Activity;
 import android.content.res.Configuration;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 
 import org.chromium.chromoting.jni.JniInterface;
@@ -61,6 +59,24 @@ public class Desktop extends Activity {
                 return true;
             case R.id.actionbar_hide:
                 getActionBar().hide();
+                return true;
+            case R.id.actionbar_disconnect:
+                JniInterface.disconnectFromHost();
+                return true;
+            case R.id.actionbar_send_ctrl_alt_del:
+                {
+                    int[] keys = {
+                        KeyEvent.KEYCODE_CTRL_LEFT,
+                        KeyEvent.KEYCODE_ALT_LEFT,
+                        KeyEvent.KEYCODE_FORWARD_DEL,
+                    };
+                    for (int key : keys) {
+                        JniInterface.keyboardAction(key, true);
+                    }
+                    for (int key : keys) {
+                        JniInterface.keyboardAction(key, false);
+                    }
+                }
                 return true;
             default:
                 return super.onOptionsItemSelected(item);

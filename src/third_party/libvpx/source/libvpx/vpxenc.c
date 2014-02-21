@@ -8,31 +8,26 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "vpx_config.h"
+#include "./vpxenc.h"
+#include "./vpx_config.h"
 
-#if defined(_WIN32) || defined(__OS2__) || !CONFIG_OS_SUPPORT
-#define USE_POSIX_MMAP 0
-#else
-#define USE_POSIX_MMAP 1
-#endif
-
+#include <assert.h>
+#include <limits.h>
+#include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
-#include <limits.h>
-#include <assert.h>
+
 #include "vpx/vpx_encoder.h"
 #if CONFIG_DECODERS
 #include "vpx/vpx_decoder.h"
 #endif
-#if USE_POSIX_MMAP
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <unistd.h>
-#endif
+
+#include "third_party/libyuv/include/libyuv/scale.h"
+#include "./args.h"
+#include "./ivfdec.h"
+#include "./ivfenc.h"
 
 #if CONFIG_VP8_ENCODER || CONFIG_VP9_ENCODER
 #include "vpx/vp8cx.h"
@@ -41,37 +36,13 @@
 #include "vpx/vp8dx.h"
 #endif
 
+#include "./tools_common.h"
 #include "vpx_ports/mem_ops.h"
 #include "vpx_ports/vpx_timer.h"
-#include "tools_common.h"
-#include "y4minput.h"
-#include "third_party/libmkv/EbmlWriter.h"
-#include "third_party/libmkv/EbmlIDs.h"
-#include "third_party/libyuv/include/libyuv/scale.h"
-
-/* Need special handling of these functions on Windows */
-#if defined(_MSC_VER)
-/* MSVS doesn't define off_t, and uses _f{seek,tell}i64 */
-typedef __int64 off_t;
-#define fseeko _fseeki64
-#define ftello _ftelli64
-#elif defined(_WIN32)
-/* MinGW defines off_t as long
-   and uses f{seek,tell}o64/off64_t for large files */
-#define fseeko fseeko64
-#define ftello ftello64
-#define off_t off64_t
-#endif
-
-#define LITERALU64(hi,lo) ((((uint64_t)hi)<<32)|lo)
-
-/* We should use 32-bit file operations in WebM file format
- * when building ARM executable file (.axf) with RVCT */
-#if !CONFIG_OS_SUPPORT
-typedef long off_t;
-#define fseeko fseek
-#define ftello ftell
-#endif
+#include "./vpxstats.h"
+#include "./warnings.h"
+#include "./webmenc.h"
+#include "./y4minput.h"
 
 /* Swallow warnings about unused results of fread/fwrite */
 static size_t wrap_fread(void *ptr, size_t size, size_t nmemb,
@@ -89,8 +60,6 @@ static size_t wrap_fwrite(const void *ptr, size_t size, size_t nmemb,
 
 static const char *exec_name;
 
-#define VP8_FOURCC (0x30385056)
-#define VP9_FOURCC (0x30395056)
 static const struct codec_item {
   char const              *name;
   const vpx_codec_iface_t *(*iface)(void);
@@ -108,37 +77,6 @@ static const struct codec_item {
   {"vp9", &vpx_codec_vp9_cx, NULL, VP9_FOURCC},
 #endif
 };
-
-static void usage_exit();
-
-#define LOG_ERROR(label) do \
-  {\
-    const char *l=label;\
-    va_list ap;\
-    va_start(ap, fmt);\
-    if(l)\
-      fprintf(stderr, "%s: ", l);\
-    vfprintf(stderr, fmt, ap);\
-    fprintf(stderr, "\n");\
-    va_end(ap);\
-  } while(0)
-
-void die(const char *fmt, ...) {
-  LOG_ERROR(NULL);
-  usage_exit();
-}
-
-
-void fatal(const char *fmt, ...) {
-  LOG_ERROR("Fatal");
-  exit(EXIT_FAILURE);
-}
-
-
-void warn(const char *fmt, ...) {
-  LOG_ERROR("Warning");
-}
-
 
 static void warn_or_exit_on_errorv(vpx_codec_ctx_t *ctx, int fatal,
                                    const char *s, va_list ap) {
@@ -173,697 +111,26 @@ static void warn_or_exit_on_error(vpx_codec_ctx_t *ctx, int fatal,
   va_end(ap);
 }
 
-/* This structure is used to abstract the different ways of handling
- * first pass statistics.
- */
-typedef struct {
-  vpx_fixed_buf_t buf;
-  int             pass;
-  FILE           *file;
-  char           *buf_ptr;
-  size_t          buf_alloc_sz;
-} stats_io_t;
-
-int stats_open_file(stats_io_t *stats, const char *fpf, int pass) {
-  int res;
-
-  stats->pass = pass;
-
-  if (pass == 0) {
-    stats->file = fopen(fpf, "wb");
-    stats->buf.sz = 0;
-    stats->buf.buf = NULL,
-               res = (stats->file != NULL);
-  } else {
-#if 0
-#elif USE_POSIX_MMAP
-    struct stat stat_buf;
-    int fd;
-
-    fd = open(fpf, O_RDONLY);
-    stats->file = fdopen(fd, "rb");
-    fstat(fd, &stat_buf);
-    stats->buf.sz = stat_buf.st_size;
-    stats->buf.buf = mmap(NULL, stats->buf.sz, PROT_READ, MAP_PRIVATE,
-                          fd, 0);
-    res = (stats->buf.buf != NULL);
-#else
-    size_t nbytes;
-
-    stats->file = fopen(fpf, "rb");
-
-    if (fseek(stats->file, 0, SEEK_END))
-      fatal("First-pass stats file must be seekable!");
-
-    stats->buf.sz = stats->buf_alloc_sz = ftell(stats->file);
-    rewind(stats->file);
-
-    stats->buf.buf = malloc(stats->buf_alloc_sz);
-
-    if (!stats->buf.buf)
-      fatal("Failed to allocate first-pass stats buffer (%lu bytes)",
-            (unsigned long)stats->buf_alloc_sz);
-
-    nbytes = fread(stats->buf.buf, 1, stats->buf.sz, stats->file);
-    res = (nbytes == stats->buf.sz);
-#endif
-  }
-
-  return res;
-}
-
-int stats_open_mem(stats_io_t *stats, int pass) {
-  int res;
-  stats->pass = pass;
-
-  if (!pass) {
-    stats->buf.sz = 0;
-    stats->buf_alloc_sz = 64 * 1024;
-    stats->buf.buf = malloc(stats->buf_alloc_sz);
-  }
-
-  stats->buf_ptr = stats->buf.buf;
-  res = (stats->buf.buf != NULL);
-  return res;
-}
-
-
-void stats_close(stats_io_t *stats, int last_pass) {
-  if (stats->file) {
-    if (stats->pass == last_pass) {
-#if 0
-#elif USE_POSIX_MMAP
-      munmap(stats->buf.buf, stats->buf.sz);
-#else
-      free(stats->buf.buf);
-#endif
-    }
-
-    fclose(stats->file);
-    stats->file = NULL;
-  } else {
-    if (stats->pass == last_pass)
-      free(stats->buf.buf);
-  }
-}
-
-void stats_write(stats_io_t *stats, const void *pkt, size_t len) {
-  if (stats->file) {
-    (void) fwrite(pkt, 1, len, stats->file);
-  } else {
-    if (stats->buf.sz + len > stats->buf_alloc_sz) {
-      size_t  new_sz = stats->buf_alloc_sz + 64 * 1024;
-      char   *new_ptr = realloc(stats->buf.buf, new_sz);
-
-      if (new_ptr) {
-        stats->buf_ptr = new_ptr + (stats->buf_ptr - (char *)stats->buf.buf);
-        stats->buf.buf = new_ptr;
-        stats->buf_alloc_sz = new_sz;
-      } else
-        fatal("Failed to realloc firstpass stats buffer.");
-    }
-
-    memcpy(stats->buf_ptr, pkt, len);
-    stats->buf.sz += len;
-    stats->buf_ptr += len;
-  }
-}
-
-vpx_fixed_buf_t stats_get(stats_io_t *stats) {
-  return stats->buf;
-}
-
-/* Stereo 3D packed frame format */
-typedef enum stereo_format {
-  STEREO_FORMAT_MONO       = 0,
-  STEREO_FORMAT_LEFT_RIGHT = 1,
-  STEREO_FORMAT_BOTTOM_TOP = 2,
-  STEREO_FORMAT_TOP_BOTTOM = 3,
-  STEREO_FORMAT_RIGHT_LEFT = 11
-} stereo_format_t;
-
-enum video_file_type {
-  FILE_TYPE_RAW,
-  FILE_TYPE_IVF,
-  FILE_TYPE_Y4M
-};
-
-struct detect_buffer {
-  char buf[4];
-  size_t buf_read;
-  size_t position;
-};
-
-
-struct input_state {
-  char                 *fn;
-  FILE                 *file;
-  off_t                 length;
-  y4m_input             y4m;
-  struct detect_buffer  detect;
-  enum video_file_type  file_type;
-  unsigned int          w;
-  unsigned int          h;
-  struct vpx_rational   framerate;
-  int                   use_i420;
-  int                   only_i420;
-};
-
-
-#define IVF_FRAME_HDR_SZ (4+8) /* 4 byte size + 8 byte timestamp */
-static int read_frame(struct input_state *input, vpx_image_t *img) {
-  FILE *f = input->file;
-  enum video_file_type file_type = input->file_type;
-  y4m_input *y4m = &input->y4m;
-  struct detect_buffer *detect = &input->detect;
-  int plane = 0;
+int read_frame(struct VpxInputContext *input_ctx, vpx_image_t *img) {
+  FILE *f = input_ctx->file;
+  y4m_input *y4m = &input_ctx->y4m;
   int shortread = 0;
 
-  if (file_type == FILE_TYPE_Y4M) {
+  if (input_ctx->file_type == FILE_TYPE_Y4M) {
     if (y4m_input_fetch_frame(y4m, f, img) < 1)
       return 0;
   } else {
-    if (file_type == FILE_TYPE_IVF) {
-      char junk[IVF_FRAME_HDR_SZ];
-
-      /* Skip the frame header. We know how big the frame should be. See
-       * write_ivf_frame_header() for documentation on the frame header
-       * layout.
-       */
-      (void) fread(junk, 1, IVF_FRAME_HDR_SZ, f);
-    }
-
-    for (plane = 0; plane < 3; plane++) {
-      unsigned char *ptr;
-      int w = (plane ? (1 + img->d_w) / 2 : img->d_w);
-      int h = (plane ? (1 + img->d_h) / 2 : img->d_h);
-      int r;
-
-      /* Determine the correct plane based on the image format. The for-loop
-       * always counts in Y,U,V order, but this may not match the order of
-       * the data on disk.
-       */
-      switch (plane) {
-        case 1:
-          ptr = img->planes[img->fmt == VPX_IMG_FMT_YV12 ? VPX_PLANE_V : VPX_PLANE_U];
-          break;
-        case 2:
-          ptr = img->planes[img->fmt == VPX_IMG_FMT_YV12 ? VPX_PLANE_U : VPX_PLANE_V];
-          break;
-        default:
-          ptr = img->planes[plane];
-      }
-
-      for (r = 0; r < h; r++) {
-        size_t needed = w;
-        size_t buf_position = 0;
-        const size_t left = detect->buf_read - detect->position;
-        if (left > 0) {
-          const size_t more = (left < needed) ? left : needed;
-          memcpy(ptr, detect->buf + detect->position, more);
-          buf_position = more;
-          needed -= more;
-          detect->position += more;
-        }
-        if (needed > 0) {
-          shortread |= (fread(ptr + buf_position, 1, needed, f) < needed);
-        }
-
-        ptr += img->stride[plane];
-      }
-    }
+    shortread = read_yuv_frame(input_ctx, img);
   }
 
   return !shortread;
 }
 
-
-unsigned int file_is_y4m(FILE      *infile,
-                         y4m_input *y4m,
-                         char       detect[4]) {
+int file_is_y4m(FILE *infile, y4m_input *y4m, const char detect[4]) {
   if (memcmp(detect, "YUV4", 4) == 0) {
     return 1;
   }
   return 0;
-}
-
-#define IVF_FILE_HDR_SZ (32)
-unsigned int file_is_ivf(struct input_state *input,
-                         unsigned int *fourcc) {
-  char raw_hdr[IVF_FILE_HDR_SZ];
-  int is_ivf = 0;
-  FILE *infile = input->file;
-  unsigned int *width = &input->w;
-  unsigned int *height = &input->h;
-  struct detect_buffer *detect = &input->detect;
-
-  if (memcmp(detect->buf, "DKIF", 4) != 0)
-    return 0;
-
-  /* See write_ivf_file_header() for more documentation on the file header
-   * layout.
-   */
-  if (fread(raw_hdr + 4, 1, IVF_FILE_HDR_SZ - 4, infile)
-      == IVF_FILE_HDR_SZ - 4) {
-    {
-      is_ivf = 1;
-
-      if (mem_get_le16(raw_hdr + 4) != 0)
-        warn("Unrecognized IVF version! This file may not decode "
-             "properly.");
-
-      *fourcc = mem_get_le32(raw_hdr + 8);
-    }
-  }
-
-  if (is_ivf) {
-    *width = mem_get_le16(raw_hdr + 12);
-    *height = mem_get_le16(raw_hdr + 14);
-    detect->position = 4;
-  }
-
-  return is_ivf;
-}
-
-
-static void write_ivf_file_header(FILE *outfile,
-                                  const vpx_codec_enc_cfg_t *cfg,
-                                  unsigned int fourcc,
-                                  int frame_cnt) {
-  char header[32];
-
-  if (cfg->g_pass != VPX_RC_ONE_PASS && cfg->g_pass != VPX_RC_LAST_PASS)
-    return;
-
-  header[0] = 'D';
-  header[1] = 'K';
-  header[2] = 'I';
-  header[3] = 'F';
-  mem_put_le16(header + 4,  0);                 /* version */
-  mem_put_le16(header + 6,  32);                /* headersize */
-  mem_put_le32(header + 8,  fourcc);            /* headersize */
-  mem_put_le16(header + 12, cfg->g_w);          /* width */
-  mem_put_le16(header + 14, cfg->g_h);          /* height */
-  mem_put_le32(header + 16, cfg->g_timebase.den); /* rate */
-  mem_put_le32(header + 20, cfg->g_timebase.num); /* scale */
-  mem_put_le32(header + 24, frame_cnt);         /* length */
-  mem_put_le32(header + 28, 0);                 /* unused */
-
-  (void) fwrite(header, 1, 32, outfile);
-}
-
-
-static void write_ivf_frame_header(FILE *outfile,
-                                   const vpx_codec_cx_pkt_t *pkt) {
-  char             header[12];
-  vpx_codec_pts_t  pts;
-
-  if (pkt->kind != VPX_CODEC_CX_FRAME_PKT)
-    return;
-
-  pts = pkt->data.frame.pts;
-  mem_put_le32(header, (int)pkt->data.frame.sz);
-  mem_put_le32(header + 4, pts & 0xFFFFFFFF);
-  mem_put_le32(header + 8, pts >> 32);
-
-  (void) fwrite(header, 1, 12, outfile);
-}
-
-static void write_ivf_frame_size(FILE *outfile, size_t size) {
-  char             header[4];
-  mem_put_le32(header, (int)size);
-  (void) fwrite(header, 1, 4, outfile);
-}
-
-
-typedef off_t EbmlLoc;
-
-
-struct cue_entry {
-  unsigned int time;
-  uint64_t     loc;
-};
-
-
-struct EbmlGlobal {
-  int debug;
-
-  FILE    *stream;
-  int64_t last_pts_ms;
-  vpx_rational_t  framerate;
-
-  /* These pointers are to the start of an element */
-  off_t    position_reference;
-  off_t    seek_info_pos;
-  off_t    segment_info_pos;
-  off_t    track_pos;
-  off_t    cue_pos;
-  off_t    cluster_pos;
-
-  /* This pointer is to a specific element to be serialized */
-  off_t    track_id_pos;
-
-  /* These pointers are to the size field of the element */
-  EbmlLoc  startSegment;
-  EbmlLoc  startCluster;
-
-  uint32_t cluster_timecode;
-  int      cluster_open;
-
-  struct cue_entry *cue_list;
-  unsigned int      cues;
-
-};
-
-
-void Ebml_Write(EbmlGlobal *glob, const void *buffer_in, unsigned long len) {
-  (void) fwrite(buffer_in, 1, len, glob->stream);
-}
-
-#define WRITE_BUFFER(s) \
-  for(i = len-1; i>=0; i--)\
-  { \
-    x = (char)(*(const s *)buffer_in >> (i * CHAR_BIT)); \
-    Ebml_Write(glob, &x, 1); \
-  }
-void Ebml_Serialize(EbmlGlobal *glob, const void *buffer_in, int buffer_size, unsigned long len) {
-  char x;
-  int i;
-
-  /* buffer_size:
-   * 1 - int8_t;
-   * 2 - int16_t;
-   * 3 - int32_t;
-   * 4 - int64_t;
-   */
-  switch (buffer_size) {
-    case 1:
-      WRITE_BUFFER(int8_t)
-      break;
-    case 2:
-      WRITE_BUFFER(int16_t)
-      break;
-    case 4:
-      WRITE_BUFFER(int32_t)
-      break;
-    case 8:
-      WRITE_BUFFER(int64_t)
-      break;
-    default:
-      break;
-  }
-}
-#undef WRITE_BUFFER
-
-/* Need a fixed size serializer for the track ID. libmkv provides a 64 bit
- * one, but not a 32 bit one.
- */
-static void Ebml_SerializeUnsigned32(EbmlGlobal *glob, unsigned long class_id, uint64_t ui) {
-  unsigned char sizeSerialized = 4 | 0x80;
-  Ebml_WriteID(glob, class_id);
-  Ebml_Serialize(glob, &sizeSerialized, sizeof(sizeSerialized), 1);
-  Ebml_Serialize(glob, &ui, sizeof(ui), 4);
-}
-
-
-static void
-Ebml_StartSubElement(EbmlGlobal *glob, EbmlLoc *ebmlLoc,
-                     unsigned long class_id) {
-  /* todo this is always taking 8 bytes, this may need later optimization */
-  /* this is a key that says length unknown */
-  uint64_t unknownLen = LITERALU64(0x01FFFFFF, 0xFFFFFFFF);
-
-  Ebml_WriteID(glob, class_id);
-  *ebmlLoc = ftello(glob->stream);
-  Ebml_Serialize(glob, &unknownLen, sizeof(unknownLen), 8);
-}
-
-static void
-Ebml_EndSubElement(EbmlGlobal *glob, EbmlLoc *ebmlLoc) {
-  off_t pos;
-  uint64_t size;
-
-  /* Save the current stream pointer */
-  pos = ftello(glob->stream);
-
-  /* Calculate the size of this element */
-  size = pos - *ebmlLoc - 8;
-  size |= LITERALU64(0x01000000, 0x00000000);
-
-  /* Seek back to the beginning of the element and write the new size */
-  fseeko(glob->stream, *ebmlLoc, SEEK_SET);
-  Ebml_Serialize(glob, &size, sizeof(size), 8);
-
-  /* Reset the stream pointer */
-  fseeko(glob->stream, pos, SEEK_SET);
-}
-
-
-static void
-write_webm_seek_element(EbmlGlobal *ebml, unsigned long id, off_t pos) {
-  uint64_t offset = pos - ebml->position_reference;
-  EbmlLoc start;
-  Ebml_StartSubElement(ebml, &start, Seek);
-  Ebml_SerializeBinary(ebml, SeekID, id);
-  Ebml_SerializeUnsigned64(ebml, SeekPosition, offset);
-  Ebml_EndSubElement(ebml, &start);
-}
-
-
-static void
-write_webm_seek_info(EbmlGlobal *ebml) {
-
-  off_t pos;
-
-  /* Save the current stream pointer */
-  pos = ftello(ebml->stream);
-
-  if (ebml->seek_info_pos)
-    fseeko(ebml->stream, ebml->seek_info_pos, SEEK_SET);
-  else
-    ebml->seek_info_pos = pos;
-
-  {
-    EbmlLoc start;
-
-    Ebml_StartSubElement(ebml, &start, SeekHead);
-    write_webm_seek_element(ebml, Tracks, ebml->track_pos);
-    write_webm_seek_element(ebml, Cues,   ebml->cue_pos);
-    write_webm_seek_element(ebml, Info,   ebml->segment_info_pos);
-    Ebml_EndSubElement(ebml, &start);
-  }
-  {
-    /* segment info */
-    EbmlLoc startInfo;
-    uint64_t frame_time;
-    char version_string[64];
-
-    /* Assemble version string */
-    if (ebml->debug)
-      strcpy(version_string, "vpxenc");
-    else {
-      strcpy(version_string, "vpxenc ");
-      strncat(version_string,
-              vpx_codec_version_str(),
-              sizeof(version_string) - 1 - strlen(version_string));
-    }
-
-    frame_time = (uint64_t)1000 * ebml->framerate.den
-                 / ebml->framerate.num;
-    ebml->segment_info_pos = ftello(ebml->stream);
-    Ebml_StartSubElement(ebml, &startInfo, Info);
-    Ebml_SerializeUnsigned(ebml, TimecodeScale, 1000000);
-    Ebml_SerializeFloat(ebml, Segment_Duration,
-                        (double)(ebml->last_pts_ms + frame_time));
-    Ebml_SerializeString(ebml, 0x4D80, version_string);
-    Ebml_SerializeString(ebml, 0x5741, version_string);
-    Ebml_EndSubElement(ebml, &startInfo);
-  }
-}
-
-
-static void
-write_webm_file_header(EbmlGlobal                *glob,
-                       const vpx_codec_enc_cfg_t *cfg,
-                       const struct vpx_rational *fps,
-                       stereo_format_t            stereo_fmt,
-                       unsigned int               fourcc) {
-  {
-    EbmlLoc start;
-    Ebml_StartSubElement(glob, &start, EBML);
-    Ebml_SerializeUnsigned(glob, EBMLVersion, 1);
-    Ebml_SerializeUnsigned(glob, EBMLReadVersion, 1);
-    Ebml_SerializeUnsigned(glob, EBMLMaxIDLength, 4);
-    Ebml_SerializeUnsigned(glob, EBMLMaxSizeLength, 8);
-    Ebml_SerializeString(glob, DocType, "webm");
-    Ebml_SerializeUnsigned(glob, DocTypeVersion, 2);
-    Ebml_SerializeUnsigned(glob, DocTypeReadVersion, 2);
-    Ebml_EndSubElement(glob, &start);
-  }
-  {
-    Ebml_StartSubElement(glob, &glob->startSegment, Segment);
-    glob->position_reference = ftello(glob->stream);
-    glob->framerate = *fps;
-    write_webm_seek_info(glob);
-
-    {
-      EbmlLoc trackStart;
-      glob->track_pos = ftello(glob->stream);
-      Ebml_StartSubElement(glob, &trackStart, Tracks);
-      {
-        unsigned int trackNumber = 1;
-        uint64_t     trackID = 0;
-
-        EbmlLoc start;
-        Ebml_StartSubElement(glob, &start, TrackEntry);
-        Ebml_SerializeUnsigned(glob, TrackNumber, trackNumber);
-        glob->track_id_pos = ftello(glob->stream);
-        Ebml_SerializeUnsigned32(glob, TrackUID, trackID);
-        Ebml_SerializeUnsigned(glob, TrackType, 1);
-        Ebml_SerializeString(glob, CodecID,
-                             fourcc == VP8_FOURCC ? "V_VP8" : "V_VP9");
-        {
-          unsigned int pixelWidth = cfg->g_w;
-          unsigned int pixelHeight = cfg->g_h;
-
-          EbmlLoc videoStart;
-          Ebml_StartSubElement(glob, &videoStart, Video);
-          Ebml_SerializeUnsigned(glob, PixelWidth, pixelWidth);
-          Ebml_SerializeUnsigned(glob, PixelHeight, pixelHeight);
-          Ebml_SerializeUnsigned(glob, StereoMode, stereo_fmt);
-          Ebml_EndSubElement(glob, &videoStart);
-        }
-        Ebml_EndSubElement(glob, &start); /* Track Entry */
-      }
-      Ebml_EndSubElement(glob, &trackStart);
-    }
-    /* segment element is open */
-  }
-}
-
-
-static void
-write_webm_block(EbmlGlobal                *glob,
-                 const vpx_codec_enc_cfg_t *cfg,
-                 const vpx_codec_cx_pkt_t  *pkt) {
-  unsigned long  block_length;
-  unsigned char  track_number;
-  unsigned short block_timecode = 0;
-  unsigned char  flags;
-  int64_t        pts_ms;
-  int            start_cluster = 0, is_keyframe;
-
-  /* Calculate the PTS of this frame in milliseconds */
-  pts_ms = pkt->data.frame.pts * 1000
-           * (uint64_t)cfg->g_timebase.num / (uint64_t)cfg->g_timebase.den;
-  if (pts_ms <= glob->last_pts_ms)
-    pts_ms = glob->last_pts_ms + 1;
-  glob->last_pts_ms = pts_ms;
-
-  /* Calculate the relative time of this block */
-  if (pts_ms - glob->cluster_timecode > SHRT_MAX)
-    start_cluster = 1;
-  else
-    block_timecode = (unsigned short)pts_ms - glob->cluster_timecode;
-
-  is_keyframe = (pkt->data.frame.flags & VPX_FRAME_IS_KEY);
-  if (start_cluster || is_keyframe) {
-    if (glob->cluster_open)
-      Ebml_EndSubElement(glob, &glob->startCluster);
-
-    /* Open the new cluster */
-    block_timecode = 0;
-    glob->cluster_open = 1;
-    glob->cluster_timecode = (uint32_t)pts_ms;
-    glob->cluster_pos = ftello(glob->stream);
-    Ebml_StartSubElement(glob, &glob->startCluster, Cluster); /* cluster */
-    Ebml_SerializeUnsigned(glob, Timecode, glob->cluster_timecode);
-
-    /* Save a cue point if this is a keyframe. */
-    if (is_keyframe) {
-      struct cue_entry *cue, *new_cue_list;
-
-      new_cue_list = realloc(glob->cue_list,
-                             (glob->cues + 1) * sizeof(struct cue_entry));
-      if (new_cue_list)
-        glob->cue_list = new_cue_list;
-      else
-        fatal("Failed to realloc cue list.");
-
-      cue = &glob->cue_list[glob->cues];
-      cue->time = glob->cluster_timecode;
-      cue->loc = glob->cluster_pos;
-      glob->cues++;
-    }
-  }
-
-  /* Write the Simple Block */
-  Ebml_WriteID(glob, SimpleBlock);
-
-  block_length = (unsigned long)pkt->data.frame.sz + 4;
-  block_length |= 0x10000000;
-  Ebml_Serialize(glob, &block_length, sizeof(block_length), 4);
-
-  track_number = 1;
-  track_number |= 0x80;
-  Ebml_Write(glob, &track_number, 1);
-
-  Ebml_Serialize(glob, &block_timecode, sizeof(block_timecode), 2);
-
-  flags = 0;
-  if (is_keyframe)
-    flags |= 0x80;
-  if (pkt->data.frame.flags & VPX_FRAME_IS_INVISIBLE)
-    flags |= 0x08;
-  Ebml_Write(glob, &flags, 1);
-
-  Ebml_Write(glob, pkt->data.frame.buf, (unsigned long)pkt->data.frame.sz);
-}
-
-
-static void
-write_webm_file_footer(EbmlGlobal *glob, long hash) {
-
-  if (glob->cluster_open)
-    Ebml_EndSubElement(glob, &glob->startCluster);
-
-  {
-    EbmlLoc start;
-    unsigned int i;
-
-    glob->cue_pos = ftello(glob->stream);
-    Ebml_StartSubElement(glob, &start, Cues);
-    for (i = 0; i < glob->cues; i++) {
-      struct cue_entry *cue = &glob->cue_list[i];
-      EbmlLoc start;
-
-      Ebml_StartSubElement(glob, &start, CuePoint);
-      {
-        EbmlLoc start;
-
-        Ebml_SerializeUnsigned(glob, CueTime, cue->time);
-
-        Ebml_StartSubElement(glob, &start, CueTrackPositions);
-        Ebml_SerializeUnsigned(glob, CueTrack, 1);
-        Ebml_SerializeUnsigned64(glob, CueClusterPosition,
-                                 cue->loc - glob->position_reference);
-        Ebml_EndSubElement(glob, &start);
-      }
-      Ebml_EndSubElement(glob, &start);
-    }
-    Ebml_EndSubElement(glob, &start);
-  }
-
-  Ebml_EndSubElement(glob, &glob->startSegment);
-
-  /* Patch up the seek info block */
-  write_webm_seek_info(glob);
-
-  /* Patch up the track id */
-  fseeko(glob->stream, glob->track_id_pos, SEEK_SET);
-  Ebml_SerializeUnsigned32(glob, TrackUID, glob->debug ? 0xDEADBEEF : hash);
-
-  fseeko(glob->stream, 0, SEEK_END);
 }
 
 
@@ -914,24 +181,7 @@ static unsigned int murmur(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-#include "math.h"
-#define MAX_PSNR 100
-static double vp8_mse2psnr(double Samples, double Peak, double Mse) {
-  double psnr;
 
-  if ((double)Mse > 0.0)
-    psnr = 10.0 * log10(Peak * Peak * Samples / Mse);
-  else
-    psnr = MAX_PSNR;      /* Limit to prevent / 0 */
-
-  if (psnr > MAX_PSNR)
-    psnr = MAX_PSNR;
-
-  return psnr;
-}
-
-
-#include "args.h"
 static const arg_def_t debugmode = ARG_DEF("D", "debug", 0,
                                            "Debug mode (makes output deterministic)");
 static const arg_def_t outputfile = ARG_DEF("o", "output", 1,
@@ -966,11 +216,7 @@ static const arg_def_t verbosearg       = ARG_DEF("v", "verbose", 0,
                                                   "Show encoder parameters");
 static const arg_def_t psnrarg          = ARG_DEF(NULL, "psnr", 0,
                                                   "Show PSNR in status line");
-enum TestDecodeFatality {
-  TEST_DECODE_OFF,
-  TEST_DECODE_FATAL,
-  TEST_DECODE_WARN,
-};
+
 static const struct arg_enum_list test_decode_enum[] = {
   {"off",   TEST_DECODE_OFF},
   {"fatal", TEST_DECODE_FATAL},
@@ -990,11 +236,19 @@ static const arg_def_t q_hist_n         = ARG_DEF(NULL, "q-hist", 1,
                                                   "Show quantizer histogram (n-buckets)");
 static const arg_def_t rate_hist_n         = ARG_DEF(NULL, "rate-hist", 1,
                                                      "Show rate histogram (n-buckets)");
+static const arg_def_t disable_warnings =
+    ARG_DEF(NULL, "disable-warnings", 0,
+            "Disable warnings about potentially incorrect encode settings.");
+static const arg_def_t disable_warning_prompt =
+    ARG_DEF("y", "disable-warning-prompt", 0,
+            "Display warnings, but do not prompt user to continue.");
+
 static const arg_def_t *main_args[] = {
   &debugmode,
   &outputfile, &codecarg, &passes, &pass_arg, &fpf_name, &limit, &skip,
   &deadline, &best_dl, &good_dl, &rt_dl,
-  &quietarg, &verbosearg, &psnrarg, &use_ivf, &out_part, &q_hist_n, &rate_hist_n,
+  &quietarg, &verbosearg, &psnrarg, &use_ivf, &out_part, &q_hist_n,
+  &rate_hist_n, &disable_warnings, &disable_warning_prompt,
   NULL
 };
 
@@ -1132,6 +386,9 @@ static const arg_def_t lossless = ARG_DEF(NULL, "lossless", 1, "Lossless mode");
 #if CONFIG_VP9_ENCODER
 static const arg_def_t frame_parallel_decoding  = ARG_DEF(
     NULL, "frame-parallel", 1, "Enable frame parallel decodability features");
+static const arg_def_t aq_mode  = ARG_DEF(
+    NULL, "aq-mode", 1,
+    "Adaptive q mode (0: off (by default), 1: variance 2: complexity)");
 #endif
 
 #if CONFIG_VP8_ENCODER
@@ -1156,7 +413,7 @@ static const arg_def_t *vp9_args[] = {
   &cpu_used, &auto_altref, &noise_sens, &sharpness, &static_thresh,
   &tile_cols, &tile_rows, &arnr_maxframes, &arnr_strength, &arnr_type,
   &tune_ssim, &cq_level, &max_intra_rate_pct, &lossless,
-  &frame_parallel_decoding,
+  &frame_parallel_decoding, &aq_mode,
   NULL
 };
 static const int vp9_arg_ctrl_map[] = {
@@ -1165,14 +422,14 @@ static const int vp9_arg_ctrl_map[] = {
   VP9E_SET_TILE_COLUMNS, VP9E_SET_TILE_ROWS,
   VP8E_SET_ARNR_MAXFRAMES, VP8E_SET_ARNR_STRENGTH, VP8E_SET_ARNR_TYPE,
   VP8E_SET_TUNING, VP8E_SET_CQ_LEVEL, VP8E_SET_MAX_INTRA_BITRATE_PCT,
-  VP9E_SET_LOSSLESS, VP9E_SET_FRAME_PARALLEL_DECODING,
+  VP9E_SET_LOSSLESS, VP9E_SET_FRAME_PARALLEL_DECODING, VP9E_SET_AQ_MODE,
   0
 };
 #endif
 
 static const arg_def_t *no_args[] = { NULL };
 
-static void usage_exit() {
+void usage_exit() {
   int i;
 
   fprintf(stderr, "Usage: %s <options> -o dst_filename src_filename \n",
@@ -1385,9 +642,9 @@ struct rate_hist {
 };
 
 
-static void init_rate_histogram(struct rate_hist          *hist,
+static void init_rate_histogram(struct rate_hist *hist,
                                 const vpx_codec_enc_cfg_t *cfg,
-                                const vpx_rational_t      *fps) {
+                                const vpx_rational_t *fps) {
   int i;
 
   /* Determine the number of samples in the buffer. Use the file's framerate
@@ -1605,29 +862,6 @@ static int compare_img(vpx_image_t *img1, vpx_image_t *img2)
                              NELEMENTS(vp9_arg_ctrl_map))
 #endif
 
-/* Configuration elements common to all streams */
-struct global_config {
-  const struct codec_item  *codec;
-  int                       passes;
-  int                       pass;
-  int                       usage;
-  int                       deadline;
-  int                       use_i420;
-  int                       quiet;
-  int                       verbose;
-  int                       limit;
-  int                       skip_frames;
-  int                       show_psnr;
-  enum TestDecodeFatality   test_decode;
-  int                       have_framerate;
-  struct vpx_rational       framerate;
-  int                       out_part;
-  int                       debug;
-  int                       show_q_hist_buckets;
-  int                       show_rate_hist_buckets;
-};
-
-
 /* Per-stream configuration */
 struct stream_config {
   struct vpx_codec_enc_cfg  cfg;
@@ -1647,7 +881,7 @@ struct stream_state {
   struct stream_config      config;
   FILE                     *file;
   struct rate_hist          rate_hist;
-  EbmlGlobal                ebml;
+  struct EbmlGlobal         ebml;
   uint32_t                  hash;
   uint64_t                  psnr_sse_total;
   uint64_t                  psnr_samples_total;
@@ -1680,7 +914,7 @@ void validate_positive_rational(const char          *msg,
 }
 
 
-static void parse_global_config(struct global_config *global, char **argv) {
+static void parse_global_config(struct VpxEncoderConfig *global, char **argv) {
   char       **argi, **argj;
   struct arg   arg;
 
@@ -1757,6 +991,10 @@ static void parse_global_config(struct global_config *global, char **argv) {
       global->show_q_hist_buckets = arg_parse_uint(&arg);
     else if (arg_match(&arg, &rate_hist_n, argi))
       global->show_rate_hist_buckets = arg_parse_uint(&arg);
+    else if (arg_match(&arg, &disable_warnings, argi))
+      global->disable_warnings = 1;
+    else if (arg_match(&arg, &disable_warning_prompt, argi))
+      global->disable_warning_prompt = 1;
     else
       argj++;
   }
@@ -1783,12 +1021,10 @@ static void parse_global_config(struct global_config *global, char **argv) {
 }
 
 
-void open_input_file(struct input_state *input) {
-  unsigned int fourcc;
-
+void open_input_file(struct VpxInputContext *input) {
   /* Parse certain options from the input file, if possible */
-  input->file = strcmp(input->fn, "-") ? fopen(input->fn, "rb")
-                : set_binary_mode(stdin);
+  input->file = strcmp(input->filename, "-")
+      ? fopen(input->filename, "rb") : set_binary_mode(stdin);
 
   if (!input->file)
     fatal("Failed to open input file");
@@ -1812,39 +1048,29 @@ void open_input_file(struct input_state *input) {
     if (y4m_input_open(&input->y4m, input->file, input->detect.buf, 4,
                        input->only_i420) >= 0) {
       input->file_type = FILE_TYPE_Y4M;
-      input->w = input->y4m.pic_w;
-      input->h = input->y4m.pic_h;
-      input->framerate.num = input->y4m.fps_n;
-      input->framerate.den = input->y4m.fps_d;
+      input->width = input->y4m.pic_w;
+      input->height = input->y4m.pic_h;
+      input->framerate.numerator = input->y4m.fps_n;
+      input->framerate.denominator = input->y4m.fps_d;
       input->use_i420 = 0;
     } else
       fatal("Unsupported Y4M stream.");
-  } else if (input->detect.buf_read == 4 && file_is_ivf(input, &fourcc)) {
-    input->file_type = FILE_TYPE_IVF;
-    switch (fourcc) {
-      case 0x32315659:
-        input->use_i420 = 0;
-        break;
-      case 0x30323449:
-        input->use_i420 = 1;
-        break;
-      default:
-        fatal("Unsupported fourcc (%08x) in IVF", fourcc);
-    }
+  } else if (input->detect.buf_read == 4 && file_is_ivf(input)) {
+    fatal("IVF is not supported as input.");
   } else {
     input->file_type = FILE_TYPE_RAW;
   }
 }
 
 
-static void close_input_file(struct input_state *input) {
+static void close_input_file(struct VpxInputContext *input) {
   fclose(input->file);
   if (input->file_type == FILE_TYPE_Y4M)
     y4m_input_close(&input->y4m);
 }
 
-static struct stream_state *new_stream(struct global_config *global,
-                                       struct stream_state  *prev) {
+static struct stream_state *new_stream(struct VpxEncoderConfig *global,
+                                       struct stream_state *prev) {
   struct stream_state *stream;
 
   stream = calloc(1, sizeof(*stream));
@@ -1892,7 +1118,7 @@ static struct stream_state *new_stream(struct global_config *global,
 }
 
 
-static int parse_stream_params(struct global_config *global,
+static int parse_stream_params(struct VpxEncoderConfig *global,
                                struct stream_state  *stream,
                                char **argv) {
   char                   **argi, **argj;
@@ -2038,14 +1264,13 @@ static int parse_stream_params(struct global_config *global,
 }
 
 
-#define FOREACH_STREAM(func)\
-  do\
-  {\
-    struct stream_state  *stream;\
-    \
-    for(stream = streams; stream; stream = stream->next)\
-      func;\
-  }while(0)
+#define FOREACH_STREAM(func) \
+  do { \
+    struct stream_state *stream; \
+    for (stream = streams; stream; stream = stream->next) { \
+      func; \
+    } \
+  } while (0)
 
 
 static void validate_stream_config(struct stream_state *stream) {
@@ -2097,8 +1322,8 @@ static void set_stream_dimensions(struct stream_state *stream,
 }
 
 
-static void set_default_kf_interval(struct stream_state  *stream,
-                                    struct global_config *global) {
+static void set_default_kf_interval(struct stream_state *stream,
+                                    struct VpxEncoderConfig *global) {
   /* Use a max keyframe interval of 5 seconds, if none was
    * specified on the command line.
    */
@@ -2110,9 +1335,9 @@ static void set_default_kf_interval(struct stream_state  *stream,
 }
 
 
-static void show_stream_config(struct stream_state  *stream,
-                               struct global_config *global,
-                               struct input_state   *input) {
+static void show_stream_config(struct stream_state *stream,
+                               struct VpxEncoderConfig *global,
+                               struct VpxInputContext *input) {
 
 #define SHOW(field) \
   fprintf(stderr, "    %-28s = %d\n", #field, stream->config.cfg.field)
@@ -2120,7 +1345,7 @@ static void show_stream_config(struct stream_state  *stream,
   if (stream->index == 0) {
     fprintf(stderr, "Codec: %s\n",
             vpx_codec_iface_name(global->codec->iface()));
-    fprintf(stderr, "Source file: %s Format: %s\n", input->fn,
+    fprintf(stderr, "Source file: %s Format: %s\n", input->filename,
             input->use_i420 ? "I420" : "YV12");
   }
   if (stream->next || stream->index)
@@ -2161,7 +1386,7 @@ static void show_stream_config(struct stream_state  *stream,
 
 
 static void open_output_file(struct stream_state *stream,
-                             struct global_config *global) {
+                             struct VpxEncoderConfig *global) {
   const char *fn = stream->config.out_fn;
 
   stream->file = strcmp(fn, "-") ? fopen(fn, "wb") : set_binary_mode(stdout);
@@ -2179,7 +1404,7 @@ static void open_output_file(struct stream_state *stream,
                            stream->config.stereo_fmt,
                            global->codec->fourcc);
   } else
-    write_ivf_file_header(stream->file, &stream->config.cfg,
+    ivf_write_file_header(stream->file, &stream->config.cfg,
                           global->codec->fourcc, 0);
 }
 
@@ -2192,7 +1417,7 @@ static void close_output_file(struct stream_state *stream,
     stream->ebml.cue_list = NULL;
   } else {
     if (!fseek(stream->file, 0, SEEK_SET))
-      write_ivf_file_header(stream->file, &stream->config.cfg,
+      ivf_write_file_header(stream->file, &stream->config.cfg,
                             fourcc,
                             stream->frames_out);
   }
@@ -2201,9 +1426,9 @@ static void close_output_file(struct stream_state *stream,
 }
 
 
-static void setup_pass(struct stream_state  *stream,
-                       struct global_config *global,
-                       int                   pass) {
+static void setup_pass(struct stream_state *stream,
+                       struct VpxEncoderConfig *global,
+                       int pass) {
   if (stream->config.stats_fn) {
     if (!stats_open_file(&stream->stats, stream->config.stats_fn,
                          pass))
@@ -2225,8 +1450,8 @@ static void setup_pass(struct stream_state  *stream,
 }
 
 
-static void initialize_encoder(struct stream_state  *stream,
-                               struct global_config *global) {
+static void initialize_encoder(struct stream_state *stream,
+                               struct VpxEncoderConfig *global) {
   int i;
   int flags = 0;
 
@@ -2260,10 +1485,10 @@ static void initialize_encoder(struct stream_state  *stream,
 }
 
 
-static void encode_frame(struct stream_state  *stream,
-                         struct global_config *global,
-                         struct vpx_image     *img,
-                         unsigned int          frames_in) {
+static void encode_frame(struct stream_state *stream,
+                         struct VpxEncoderConfig *global,
+                         struct vpx_image *img,
+                         unsigned int frames_in) {
   vpx_codec_pts_t frame_start, next_frame_start;
   struct vpx_codec_enc_cfg *cfg = &stream->config.cfg;
   struct vpx_usec_timer timer;
@@ -2318,9 +1543,9 @@ static void update_quantizer_histogram(struct stream_state *stream) {
 }
 
 
-static void get_cx_data(struct stream_state  *stream,
-                        struct global_config *global,
-                        int                  *got_data) {
+static void get_cx_data(struct stream_state *stream,
+                        struct VpxEncoderConfig *global,
+                        int *got_data) {
   const vpx_codec_cx_pkt_t *pkt;
   const struct vpx_codec_enc_cfg *cfg = &stream->config.cfg;
   vpx_codec_iter_t iter = NULL;
@@ -2352,14 +1577,14 @@ static void get_cx_data(struct stream_state  *stream,
             ivf_header_pos = ftello(stream->file);
             fsize = pkt->data.frame.sz;
 
-            write_ivf_frame_header(stream->file, pkt);
+            ivf_write_frame_header(stream->file, pkt);
           } else {
             fsize += pkt->data.frame.sz;
 
             if (!(pkt->data.frame.flags & VPX_FRAME_IS_FRAGMENT)) {
               off_t currpos = ftello(stream->file);
               fseeko(stream->file, ivf_header_pos, SEEK_SET);
-              write_ivf_frame_size(stream->file, fsize);
+              ivf_write_frame_size(stream->file, fsize);
               fseeko(stream->file, currpos, SEEK_SET);
             }
           }
@@ -2512,18 +1737,19 @@ static void print_time(const char *label, int64_t etl) {
   }
 }
 
-int main(int argc, const char **argv_) {
-  int                    pass;
-  vpx_image_t            raw;
-  int                    frame_avail, got_data;
 
-  struct input_state       input = {0};
-  struct global_config     global;
-  struct stream_state     *streams = NULL;
-  char                   **argv, **argi;
-  uint64_t                 cx_time = 0;
-  int                      stream_cnt = 0;
-  int                      res = 0;
+int main(int argc, const char **argv_) {
+  int pass;
+  vpx_image_t raw;
+  int frame_avail, got_data;
+
+  struct VpxInputContext input = {0};
+  struct VpxEncoderConfig global;
+  struct stream_state *streams = NULL;
+  char **argv, **argi;
+  uint64_t cx_time = 0;
+  int stream_cnt = 0;
+  int res = 0;
 
   exec_name = argv_[0];
 
@@ -2531,8 +1757,8 @@ int main(int argc, const char **argv_) {
     usage_exit();
 
   /* Setup default input stream settings */
-  input.framerate.num = 30;
-  input.framerate.den = 1;
+  input.framerate.numerator = 30;
+  input.framerate.denominator = 1;
   input.use_i420 = 1;
   input.only_i420 = 1;
 
@@ -2542,6 +1768,7 @@ int main(int argc, const char **argv_) {
    */
   argv = argv_dup(argc - 1, argv_ + 1);
   parse_global_config(&global, argv);
+
 
   {
     /* Now parse each stream's parameters. Using a local scope here
@@ -2563,10 +1790,13 @@ int main(int argc, const char **argv_) {
     if (argi[0][0] == '-' && argi[0][1])
       die("Error: Unrecognized option %s\n", *argi);
 
-  /* Handle non-option arguments */
-  input.fn = argv[0];
+  FOREACH_STREAM(check_encoder_config(global.disable_warning_prompt,
+                                      &global, &stream->config.cfg););
 
-  if (!input.fn)
+  /* Handle non-option arguments */
+  input.filename = argv[0];
+
+  if (!input.filename)
     usage_exit();
 
 #if CONFIG_NON420
@@ -2586,20 +1816,20 @@ int main(int argc, const char **argv_) {
     /* If the input file doesn't specify its w/h (raw files), try to get
      * the data from the first stream's configuration.
      */
-    if (!input.w || !input.h)
+    if (!input.width || !input.height)
       FOREACH_STREAM( {
       if (stream->config.cfg.g_w && stream->config.cfg.g_h) {
-        input.w = stream->config.cfg.g_w;
-        input.h = stream->config.cfg.g_h;
+        input.width = stream->config.cfg.g_w;
+        input.height = stream->config.cfg.g_h;
         break;
       }
     });
 
     /* Update stream configurations from the input file's parameters */
-    if (!input.w || !input.h)
+    if (!input.width || !input.height)
       fatal("Specify stream dimensions with --width (-w) "
             " and --height (-h)");
-    FOREACH_STREAM(set_stream_dimensions(stream, input.w, input.h));
+    FOREACH_STREAM(set_stream_dimensions(stream, input.width, input.height));
     FOREACH_STREAM(validate_stream_config(stream));
 
     /* Ensure that --passes and --pass are consistent. If --pass is set and
@@ -2615,8 +1845,10 @@ int main(int argc, const char **argv_) {
     /* Use the frame rate from the file only if none was specified
      * on the command-line.
      */
-    if (!global.have_framerate)
-      global.framerate = input.framerate;
+    if (!global.have_framerate) {
+      global.framerate.num = input.framerate.numerator;
+      global.framerate.den = input.framerate.denominator;
+    }
 
     FOREACH_STREAM(set_default_kf_interval(stream, &global));
 
@@ -2634,7 +1866,7 @@ int main(int argc, const char **argv_) {
         vpx_img_alloc(&raw,
                       input.use_i420 ? VPX_IMG_FMT_I420
                       : VPX_IMG_FMT_YV12,
-                      input.w, input.h, 32);
+                      input.width, input.height, 32);
 
       FOREACH_STREAM(init_rate_histogram(&stream->rate_hist,
                                          &stream->config.cfg,

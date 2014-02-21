@@ -11,6 +11,7 @@
 #include "third_party/skia/include/core/SkPaint.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/effects/SkBlurImageFilter.h"
+#include "ui/aura/window.h"
 #include "ui/base/accessibility/accessible_view_state.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/compositor/layer.h"
@@ -22,6 +23,7 @@
 #include "ui/gfx/rect.h"
 #include "ui/gfx/skia_util.h"
 #include "ui/views/bubble/bubble_frame_view.h"
+#include "ui/views/bubble/bubble_window_targeter.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/widget/widget.h"
 
@@ -120,8 +122,8 @@ class TrayBubbleBorder : public BubbleBorder {
     const int x = position_relative_to.x() +
         position_relative_to.width() / 2 - border_size.width() / 2;
     // Position the bubble on top of the anchor.
-    const int y = position_relative_to.y() - border_size.height()
-        + insets.height() - kBubbleSpacing;
+    const int y = position_relative_to.y() - border_size.height() +
+        insets.height() - kBubbleSpacing;
     return gfx::Rect(x, y, border_size.width(), border_size.height());
   }
 
@@ -325,6 +327,7 @@ TrayBubbleView::TrayBubbleView(gfx::NativeView parent_window,
       mouse_actively_entered_(false) {
   set_parent_window(parent_window);
   set_notify_enter_exit_on_child(true);
+  set_move_with_anchor(true);
   set_close_on_deactivate(init_params.close_on_deactivate);
   set_margins(gfx::Insets());
   bubble_border_ = new TrayBubbleBorder(this, GetAnchorView(), params_);
@@ -353,6 +356,8 @@ void TrayBubbleView::InitializeAndShowBubble() {
     layer()->parent()->SetMaskLayer(bubble_content_mask_->layer());
 
   GetWidget()->Show();
+  GetWidget()->GetNativeWindow()->set_event_targeter(
+      scoped_ptr<ui::EventTargeter>(new BubbleWindowTargeter(this)));
   UpdateBubble();
 }
 
@@ -407,7 +412,7 @@ bool TrayBubbleView::CanActivate() const {
 
 NonClientFrameView* TrayBubbleView::CreateNonClientFrameView(Widget* widget) {
   BubbleFrameView* frame = new BubbleFrameView(margins());
-  frame->SetBubbleBorder(bubble_border_);
+  frame->SetBubbleBorder(scoped_ptr<views::BubbleBorder>(bubble_border_));
   return frame;
 }
 

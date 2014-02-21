@@ -47,6 +47,7 @@ struct NPObject;
 namespace WebCore {
 
 class DOMWrapperWorld;
+class ExecutionContext;
 class Event;
 class Frame;
 class HTMLDocument;
@@ -125,11 +126,10 @@ public:
     // It is potentially slow and consumes memory.
     static v8::Local<v8::Context> mainWorldContext(Frame*);
     v8::Local<v8::Context> mainWorldContext();
-    v8::Local<v8::Context> currentWorldContext();
+    // If we're currently not in a context, returns the main world. The latter case will most likely result in cross-world leaks.
+    v8::Local<v8::Context> currentWorldContextOrMainWorldContext();
 
     TextPosition eventHandlerPosition() const;
-
-    const String* sourceURL() const { return m_sourceURL; } // 0 if we are not evaluating any script.
 
     void clearWindowShell();
     void updateDocument();
@@ -137,7 +137,7 @@ public:
     void namedItemAdded(HTMLDocument*, const AtomicString&);
     void namedItemRemoved(HTMLDocument*, const AtomicString&);
 
-    void updateSecurityOrigin();
+    void updateSecurityOrigin(SecurityOrigin*);
     void clearScriptObjects();
     void cleanupScriptObjectsForPlugin(Widget*);
 

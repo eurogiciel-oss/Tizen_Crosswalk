@@ -57,7 +57,7 @@ class SocketStreamHandle;
 class SocketStreamError;
 class WebSocketChannelClient;
 
-class MainThreadWebSocketChannel : public RefCounted<MainThreadWebSocketChannel>, public SocketStreamHandleClient, public WebSocketChannel, public FileReaderLoaderClient {
+class MainThreadWebSocketChannel FINAL : public RefCounted<MainThreadWebSocketChannel>, public SocketStreamHandleClient, public WebSocketChannel, public FileReaderLoaderClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     // You can specify the source file and the line number information
@@ -96,10 +96,10 @@ public:
     virtual void didFailSocketStream(SocketStreamHandle*, const SocketStreamError&) OVERRIDE;
 
     // FileReaderLoaderClient functions.
-    virtual void didStartLoading();
-    virtual void didReceiveData();
-    virtual void didFinishLoading();
-    virtual void didFail(FileError::ErrorCode);
+    virtual void didStartLoading() OVERRIDE;
+    virtual void didReceiveData() OVERRIDE;
+    virtual void didFinishLoading() OVERRIDE;
+    virtual void didFail(FileError::ErrorCode) OVERRIDE;
 
     using RefCounted<MainThreadWebSocketChannel>::ref;
     using RefCounted<MainThreadWebSocketChannel>::deref;
@@ -111,6 +111,10 @@ protected:
 
 private:
     MainThreadWebSocketChannel(Document*, WebSocketChannelClient*, const String&, unsigned);
+
+    void clearDocument();
+
+    void disconnectHandle();
 
     bool appendToBuffer(const char* data, size_t len);
     void skipBuffer(size_t len);
@@ -150,7 +154,7 @@ private:
     void enqueueRawFrame(WebSocketFrame::OpCode, const char* data, size_t dataLength);
     void enqueueBlobFrame(WebSocketFrame::OpCode, PassRefPtr<BlobDataHandle>);
 
-    void failAsError(const String& reason) { fail(reason, ErrorMessageLevel, m_sourceURLAtConnection, m_lineNumberAtConnection); }
+    void failAsError(const String& reason) { fail(reason, ErrorMessageLevel, m_sourceURLAtConstruction, m_lineNumberAtConstruction); }
     void processOutgoingFrameQueue();
     void abortOutgoingFrameQueue();
 
@@ -193,6 +197,8 @@ private:
     Timer<MainThreadWebSocketChannel> m_resumeTimer;
     bool m_suspended;
     bool m_didFailOfClientAlreadyRun;
+    // Set to true iff this instance called disconnect() on m_handle.
+    bool m_hasCalledDisconnectOnHandle;
     bool m_receivedClosingHandshake;
     Timer<MainThreadWebSocketChannel> m_closingTimer;
     ChannelState m_state;
@@ -215,9 +221,13 @@ private:
     OwnPtr<FileReaderLoader> m_blobLoader;
     BlobLoaderStatus m_blobLoaderStatus;
 
-    String m_sourceURLAtConnection;
-    unsigned m_lineNumberAtConnection;
+    // Source code position where construction happened. To be used to show a
+    // console message where no JS callstack info available.
+    String m_sourceURLAtConstruction;
+    unsigned m_lineNumberAtConstruction;
+
     WebSocketPerMessageDeflate m_perMessageDeflate;
+
     WebSocketDeflateFramer m_deflateFramer;
 };
 

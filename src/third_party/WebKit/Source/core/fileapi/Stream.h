@@ -33,7 +33,7 @@
 
 #include "bindings/v8/ScriptWrappable.h"
 #include "core/dom/ActiveDOMObject.h"
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/RefCounted.h"
 #include "wtf/text/WTFString.h"
@@ -42,7 +42,7 @@ namespace WebCore {
 
 class ExecutionContext;
 
-class Stream : public ScriptWrappable, public ActiveDOMObject, public RefCounted<Stream> {
+class Stream FINAL : public ScriptWrappable, public ActiveDOMObject, public RefCounted<Stream> {
 public:
     static PassRefPtr<Stream> create(ExecutionContext* context, const String& mediaType)
     {

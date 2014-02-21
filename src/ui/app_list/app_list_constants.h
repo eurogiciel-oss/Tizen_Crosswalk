@@ -30,14 +30,25 @@ APP_LIST_EXPORT extern const SkColor kResultURLTextColor;
 APP_LIST_EXPORT extern const SkColor kGridTitleColor;
 APP_LIST_EXPORT extern const SkColor kGridTitleHoverColor;
 
+APP_LIST_EXPORT extern const SkColor kFolderBubbleColor;
+
 APP_LIST_EXPORT extern const int kPageTransitionDurationInMs;
 APP_LIST_EXPORT extern const int kOverscrollPageTransitionDurationMs;
+APP_LIST_EXPORT extern const int kFolderTransitionInDurationMs;
+APP_LIST_EXPORT extern const int kFolderTransitionOutDurationMs;
 
 APP_LIST_EXPORT extern const int kPreferredCols;
 APP_LIST_EXPORT extern const int kPreferredRows;
 APP_LIST_EXPORT extern const int kPreferredIconDimension;
 
+APP_LIST_EXPORT extern const size_t kNumFolderTopItems;
+
 APP_LIST_EXPORT extern const ui::ResourceBundle::FontStyle kItemTextFontStyle;
+
+#if defined(OS_LINUX)
+// The WM_CLASS name for the app launcher window on Linux.
+APP_LIST_EXPORT extern const char kAppListWMClass[];
+#endif
 
 }  // namespace app_list
 

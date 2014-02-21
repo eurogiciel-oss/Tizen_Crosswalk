@@ -47,37 +47,46 @@ class InstrumentingAgents;
 class Page;
 class RenderLayerCompositor;
 
+struct LayerSnapshot;
+
 typedef String ErrorString;
 
-class InspectorLayerTreeAgent : public InspectorBaseAgent<InspectorLayerTreeAgent>, public InspectorBackendDispatcher::LayerTreeCommandHandler {
+class InspectorLayerTreeAgent FINAL : public InspectorBaseAgent<InspectorLayerTreeAgent>, public InspectorBackendDispatcher::LayerTreeCommandHandler {
 public:
-    static PassOwnPtr<InspectorLayerTreeAgent> create(InstrumentingAgents* instrumentingAgents, InspectorCompositeState* state, InspectorDOMAgent* domAgent, Page* page)
+    static PassOwnPtr<InspectorLayerTreeAgent> create(InspectorDOMAgent* domAgent, Page* page)
     {
-        return adoptPtr(new InspectorLayerTreeAgent(instrumentingAgents, state, domAgent, page));
+        return adoptPtr(new InspectorLayerTreeAgent(domAgent, page));
     }
-    ~InspectorLayerTreeAgent();
+    virtual ~InspectorLayerTreeAgent();
 
-    virtual void setFrontend(InspectorFrontend*);
-    virtual void clearFrontend();
-    virtual void restore();
+    virtual void setFrontend(InspectorFrontend*) OVERRIDE;
+    virtual void clearFrontend() OVERRIDE;
+    virtual void restore() OVERRIDE;
 
     // Called from InspectorInstrumentation
     void layerTreeDidChange();
-    void didPaint(RenderObject*, GraphicsContext*, const LayoutRect&);
+    void didPaint(RenderObject*, const GraphicsLayer*, GraphicsContext*, const LayoutRect&);
 
     // Called from the front-end.
-    virtual void enable(ErrorString*);
-    virtual void disable(ErrorString*);
-    virtual void compositingReasons(ErrorString*, const String& layerId, RefPtr<TypeBuilder::Array<String> >&);
+    virtual void enable(ErrorString*) OVERRIDE;
+    virtual void disable(ErrorString*) OVERRIDE;
+    virtual void compositingReasons(ErrorString*, const String& layerId, RefPtr<TypeBuilder::Array<String> >&) OVERRIDE;
+    virtual void makeSnapshot(ErrorString*, const String& layerId, String* snapshotId) OVERRIDE;
+    virtual void releaseSnapshot(ErrorString*, const String& snapshotId) OVERRIDE;
+    virtual void replaySnapshot(ErrorString*, const String& snapshotId, const int* fromStep, const int* toStep, String* dataURL) OVERRIDE;
+    virtual void profileSnapshot(ErrorString*, const String& snapshotId, const int* minRepeatCount, const double* minDuration, RefPtr<TypeBuilder::Array<TypeBuilder::Array<double> > >&) OVERRIDE;
 
 private:
-    typedef HashMap<int, int> LayerIdToNodeIdMap;
+    static unsigned s_lastSnapshotId;
 
-    InspectorLayerTreeAgent(InstrumentingAgents*, InspectorCompositeState*, InspectorDOMAgent*, Page*);
+    InspectorLayerTreeAgent(InspectorDOMAgent*, Page*);
 
     RenderLayerCompositor* renderLayerCompositor();
     GraphicsLayer* layerById(ErrorString*, const String& layerId);
+    const LayerSnapshot* snapshotById(ErrorString*, const String& snapshotId);
     PassRefPtr<TypeBuilder::Array<TypeBuilder::LayerTree::Layer> > buildLayerTree();
+
+    typedef HashMap<int, int> LayerIdToNodeIdMap;
     void buildLayerIdToNodeIdMap(RenderLayer*, LayerIdToNodeIdMap&);
     int idForNode(Node*);
 
@@ -85,7 +94,8 @@ private:
     Page* m_page;
     InspectorDOMAgent* m_domAgent;
 
-    HashMap<const RenderLayer*, String> m_documentLayerToIdMap;
+    typedef HashMap<String, LayerSnapshot> SnapshotById;
+    SnapshotById m_snapshotById;
 };
 
 } // namespace WebCore

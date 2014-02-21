@@ -31,10 +31,7 @@
 #include "core/editing/InputMethodController.h"
 #include "core/frame/Frame.h"
 #include "core/page/Page.h"
-#include "core/page/Settings.h"
-#include "core/platform/graphics/FontCache.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
-#include "core/platform/graphics/WidthIterator.h"
+#include "core/frame/Settings.h"
 #include "core/rendering/AbstractInlineTextBox.h"
 #include "core/rendering/EllipsisBox.h"
 #include "core/rendering/HitTestResult.h"
@@ -47,7 +44,10 @@
 #include "core/rendering/RenderTheme.h"
 #include "core/rendering/style/ShadowList.h"
 #include "core/rendering/svg/SVGTextRunRenderingContext.h"
+#include "platform/fonts/FontCache.h"
+#include "platform/fonts/WidthIterator.h"
 #include "platform/graphics/DrawLooper.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
 #include "wtf/Vector.h"
 #include "wtf/text/CString.h"
 #include "wtf/text/StringBuilder.h"
@@ -211,8 +211,6 @@ LayoutRect InlineTextBox::localSelectionRect(int startPos, int endPos)
     StringBuilder charactersWithHyphen;
     bool respectHyphen = ePos == m_len && hasHyphen();
     TextRun textRun = constructTextRun(styleToUse, font, respectHyphen ? &charactersWithHyphen : 0);
-    if (respectHyphen)
-        endPos = textRun.length();
 
     FloatPoint startingPoint = FloatPoint(logicalLeft(), selTop);
     LayoutRect r;
@@ -269,8 +267,8 @@ float InlineTextBox::placeEllipsisBox(bool flowIsLTR, float visibleLeftEdge, flo
     // Criteria for full truncation:
     // LTR: the left edge of the ellipsis is to the left of our text run.
     // RTL: the right edge of the ellipsis is to the right of our text run.
-    bool ltrFullTruncation = flowIsLTR && ellipsisX <= left();
-    bool rtlFullTruncation = !flowIsLTR && ellipsisX >= left() + logicalWidth();
+    bool ltrFullTruncation = flowIsLTR && ellipsisX <= logicalLeft();
+    bool rtlFullTruncation = !flowIsLTR && ellipsisX >= logicalLeft() + logicalWidth();
     if (ltrFullTruncation || rtlFullTruncation) {
         // Too far.  Just set full truncation, but return -1 and let the ellipsis just be placed at the edge of the box.
         m_truncation = cFullTruncation;
@@ -278,8 +276,8 @@ float InlineTextBox::placeEllipsisBox(bool flowIsLTR, float visibleLeftEdge, flo
         return -1;
     }
 
-    bool ltrEllipsisWithinBox = flowIsLTR && (ellipsisX < right());
-    bool rtlEllipsisWithinBox = !flowIsLTR && (ellipsisX > left());
+    bool ltrEllipsisWithinBox = flowIsLTR && (ellipsisX < logicalRight());
+    bool rtlEllipsisWithinBox = !flowIsLTR && (ellipsisX > logicalLeft());
     if (ltrEllipsisWithinBox || rtlEllipsisWithinBox) {
         foundBox = true;
 
@@ -288,9 +286,9 @@ float InlineTextBox::placeEllipsisBox(bool flowIsLTR, float visibleLeftEdge, flo
         // must keep track of these separately.
         bool ltr = isLeftToRightDirection();
         if (ltr != flowIsLTR) {
-          // Width in pixels of the visible portion of the box, excluding the ellipsis.
-          int visibleBoxWidth = visibleRightEdge - visibleLeftEdge  - ellipsisWidth;
-          ellipsisX = ltr ? left() + visibleBoxWidth : right() - visibleBoxWidth;
+            // Width in pixels of the visible portion of the box, excluding the ellipsis.
+            int visibleBoxWidth = visibleRightEdge - visibleLeftEdge  - ellipsisWidth;
+            ellipsisX = ltr ? logicalLeft() + visibleBoxWidth : logicalRight() - visibleBoxWidth;
         }
 
         int offset = offsetForPosition(ellipsisX, false);
@@ -299,7 +297,7 @@ float InlineTextBox::placeEllipsisBox(bool flowIsLTR, float visibleLeftEdge, flo
             // and the ellipsis edge.
             m_truncation = cFullTruncation;
             truncatedWidth += ellipsisWidth;
-            return min(ellipsisX, x());
+            return min(ellipsisX, logicalLeft());
         }
 
         // Set the truncation index on the text run.
@@ -307,7 +305,7 @@ float InlineTextBox::placeEllipsisBox(bool flowIsLTR, float visibleLeftEdge, flo
 
         // If we got here that means that we were only partially truncated and we need to return the pixel offset at which
         // to place the ellipsis.
-        float widthOfVisibleText = toRenderText(renderer())->width(m_start, offset, textPos(), isFirstLineStyle());
+        float widthOfVisibleText = toRenderText(renderer())->width(m_start, offset, textPos(), flowIsLTR ? LTR : RTL, isFirstLineStyle());
 
         // The ellipsis needs to be placed just after the last visible character.
         // Where "after" is defined by the flow directionality, not the inline
@@ -316,9 +314,9 @@ float InlineTextBox::placeEllipsisBox(bool flowIsLTR, float visibleLeftEdge, flo
         // have a situation such as |Hello| -> |...He|
         truncatedWidth += widthOfVisibleText + ellipsisWidth;
         if (flowIsLTR)
-            return left() + widthOfVisibleText;
+            return logicalLeft() + widthOfVisibleText;
         else
-            return right() - widthOfVisibleText - ellipsisWidth;
+            return logicalRight() - widthOfVisibleText - ellipsisWidth;
     }
     truncatedWidth += logicalWidth();
     return -1;
@@ -402,10 +400,10 @@ static void paintTextWithShadows(GraphicsContext* context,
         DrawLooper drawLooper;
         for (size_t i = shadowList->shadows().size(); i--; ) {
             const ShadowData& shadow = shadowList->shadows()[i];
-            int shadowX = horizontal ? shadow.x() : shadow.y();
-            int shadowY = horizontal ? shadow.y() : -shadow.x();
+            float shadowX = horizontal ? shadow.x() : shadow.y();
+            float shadowY = horizontal ? shadow.y() : -shadow.x();
             FloatSize offset(shadowX, shadowY);
-            drawLooper.addShadow(offset, shadow.blur(), renderer->resolveColor(shadow.color()),
+            drawLooper.addShadow(offset, shadow.blur(), shadow.color(),
                 DrawLooper::ShadowRespectsTransforms, DrawLooper::ShadowIgnoresAlpha);
         }
         drawLooper.addUnmodifiedContent();
@@ -467,14 +465,6 @@ bool InlineTextBox::getEmphasisMarkPosition(RenderStyle* style, TextEmphasisPosi
     return !rubyText || !rubyText->firstLineBox();
 }
 
-enum RotationDirection { Counterclockwise, Clockwise };
-
-static inline AffineTransform rotation(const FloatRect& boxRect, RotationDirection clockwise)
-{
-    return clockwise ? AffineTransform(0, 1, -1, 0, boxRect.x() + boxRect.maxY(), boxRect.maxY() - boxRect.x())
-        : AffineTransform(0, -1, 1, 0, boxRect.x() - boxRect.maxY(), boxRect.x() + boxRect.maxY());
-}
-
 void InlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, LayoutUnit /*lineTop*/, LayoutUnit /*lineBottom*/)
 {
     if (isLineBreak() || !paintInfo.shouldPaintWithinRoot(renderer()) || renderer()->style()->visibility() != VISIBLE ||
@@ -514,7 +504,7 @@ void InlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
             // farther to the right.
             // NOTE: WebKit's behavior differs from that of IE which appears to just overlay the ellipsis on top of the
             // truncated string i.e.  |Hello|CBA| -> |...lo|CBA|
-            LayoutUnit widthOfVisibleText = toRenderText(renderer())->width(m_start, m_truncation, textPos(), isFirstLineStyle());
+            LayoutUnit widthOfVisibleText = toRenderText(renderer())->width(m_start, m_truncation, textPos(), isLeftToRightDirection() ? LTR : RTL, isFirstLineStyle());
             LayoutUnit widthOfHiddenText = m_logicalWidth - widthOfVisibleText;
             // FIXME: The hit testing logic also needs to take this translation into account.
             LayoutSize truncationOffset(isLeftToRightDirection() ? widthOfHiddenText : -widthOfHiddenText, 0);
@@ -595,14 +585,14 @@ void InlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
     if (haveSelection) {
         // Check foreground color first.
         Color foreground = paintInfo.forceBlackText() ? Color::black : renderer()->selectionForegroundColor();
-        if (foreground.isValid() && foreground != selectionFillColor && foreground != Color::transparent) {
+        if (foreground != selectionFillColor) {
             if (!paintSelectedTextOnly)
                 paintSelectedTextSeparately = true;
             selectionFillColor = foreground;
         }
 
         Color emphasisMarkForeground = paintInfo.forceBlackText() ? Color::black : renderer()->selectionEmphasisMarkColor();
-        if (emphasisMarkForeground.isValid() && emphasisMarkForeground != selectionEmphasisMarkColor) {
+        if (emphasisMarkForeground != selectionEmphasisMarkColor) {
             if (!paintSelectedTextOnly)
                 paintSelectedTextSeparately = true;
             selectionEmphasisMarkColor = emphasisMarkForeground;
@@ -831,7 +821,7 @@ void InlineTextBox::paintSelection(GraphicsContext* context, const FloatPoint& b
         return;
 
     Color c = renderer()->selectionBackgroundColor();
-    if (!c.isValid() || !c.alpha())
+    if (!c.alpha())
         return;
 
     // If the text color ends up being the same as the selection background, invert the selection
@@ -922,10 +912,8 @@ static int computeUnderlineOffset(const TextUnderlinePosition underlinePosition,
     // pixel gap, if underline is thick then use a bigger gap.
     const int gap = std::max<int>(1, ceilf(textDecorationThickness / 2.f));
 
-    // According to the specification TextUnderlinePositionAuto should default to 'alphabetic' for horizontal text
-    // and to 'under Left' for vertical text (e.g. japanese). We support only horizontal text for now.
+    // FIXME: We support only horizontal text for now.
     switch (underlinePosition) {
-    case TextUnderlinePositionAlphabetic:
     case TextUnderlinePositionAuto:
         return fontMetrics.ascent() + gap; // Position underline near the alphabetic baseline.
     case TextUnderlinePositionUnder: {
@@ -1074,13 +1062,13 @@ void InlineTextBox::paintDecoration(GraphicsContext* context, const FloatPoint& 
 
     float width = m_logicalWidth;
     if (m_truncation != cNoTruncation) {
-        width = toRenderText(renderer())->width(m_start, m_truncation, textPos(), isFirstLineStyle());
+        width = toRenderText(renderer())->width(m_start, m_truncation, textPos(), isLeftToRightDirection() ? LTR : RTL, isFirstLineStyle());
         if (!isLeftToRightDirection())
             localOrigin.move(m_logicalWidth - width, 0);
     }
 
     // Get the text decoration colors.
-    Color underline, overline, linethrough;
+    Color underline(Color::transparent), overline(Color::transparent), linethrough(Color::transparent);
     renderer()->getTextDecorationColors(deco, underline, overline, linethrough, true);
     if (isFirstLineStyle())
         renderer()->getTextDecorationColors(deco, underline, overline, linethrough, true, true);
@@ -1099,18 +1087,18 @@ void InlineTextBox::paintDecoration(GraphicsContext* context, const FloatPoint& 
     const float textDecorationThickness = std::max(1.f, styleToUse->computedFontSize() / 10.f);
     context->setStrokeThickness(textDecorationThickness);
 
-    int extraOffset = 0;
+    float extraOffset = 0;
     if (!linesAreOpaque && shadowCount > 1) {
         FloatRect clipRect(localOrigin, FloatSize(width, baseline + 2));
         for (size_t i = shadowCount; i--; ) {
             const ShadowData& s = shadowList->shadows()[i];
             FloatRect shadowRect(localOrigin, FloatSize(width, baseline + 2));
             shadowRect.inflate(s.blur());
-            int shadowX = isHorizontal() ? s.x() : s.y();
-            int shadowY = isHorizontal() ? s.y() : -s.x();
+            float shadowX = isHorizontal() ? s.x() : s.y();
+            float shadowY = isHorizontal() ? s.y() : -s.x();
             shadowRect.move(shadowX, shadowY);
             clipRect.unite(shadowRect);
-            extraOffset = max(extraOffset, max(0, shadowY) + s.blur());
+            extraOffset = max(extraOffset, max(0.0f, shadowY) + s.blur());
         }
         context->clip(clipRect);
         extraOffset += baseline + 2;
@@ -1126,8 +1114,8 @@ void InlineTextBox::paintDecoration(GraphicsContext* context, const FloatPoint& 
                 extraOffset = 0;
             }
             const ShadowData& shadow = shadowList->shadows()[i];
-            int shadowX = isHorizontal() ? shadow.x() : shadow.y();
-            int shadowY = isHorizontal() ? shadow.y() : -shadow.x();
+            float shadowX = isHorizontal() ? shadow.x() : shadow.y();
+            float shadowY = isHorizontal() ? shadow.y() : -shadow.x();
             context->setShadow(FloatSize(shadowX, shadowY - extraOffset), shadow.blur(), shadow.color());
         }
 
@@ -1303,7 +1291,7 @@ void InlineTextBox::paintDocumentMarkers(GraphicsContext* pt, const FloatPoint& 
 
     // Give any document markers that touch this run a chance to draw before the text has been drawn.
     // Note end() points at the last char, not one past it like endOffset and ranges do.
-    for ( ; markerIt != markers.end(); markerIt++) {
+    for ( ; markerIt != markers.end(); ++markerIt) {
         DocumentMarker* marker = *markerIt;
 
         // Paint either the background markers or the foreground markers, but not both
@@ -1361,7 +1349,7 @@ void InlineTextBox::paintCompositionUnderline(GraphicsContext* ctx, const FloatP
     if (paintStart <= underline.startOffset) {
         paintStart = underline.startOffset;
         useWholeWidth = false;
-        start = toRenderText(renderer())->width(m_start, paintStart - m_start, textPos(), isFirstLineStyle());
+        start = toRenderText(renderer())->width(m_start, paintStart - m_start, textPos(), isLeftToRightDirection() ? LTR : RTL, isFirstLineStyle());
     }
     if (paintEnd != underline.endOffset) {      // end points at the last char, not past it
         paintEnd = min(paintEnd, (unsigned)underline.endOffset);
@@ -1372,7 +1360,7 @@ void InlineTextBox::paintCompositionUnderline(GraphicsContext* ctx, const FloatP
         useWholeWidth = false;
     }
     if (!useWholeWidth) {
-        width = toRenderText(renderer())->width(paintStart, paintEnd - paintStart, textPos() + start, isFirstLineStyle());
+        width = toRenderText(renderer())->width(paintStart, paintEnd - paintStart, textPos() + start, isLeftToRightDirection() ? LTR : RTL, isFirstLineStyle());
     }
 
     // Thick marked text underlines are 2px thick as long as there is room for the 2px line under the baseline.
@@ -1533,6 +1521,7 @@ TextRun InlineTextBox::constructTextRun(RenderStyle* style, const Font& font, St
 
     TextRun run(string, textPos(), expansion(), expansionBehavior(), direction(), dirOverride() || style->rtlOrdering() == VisualOrder, !textRenderer->canUseSimpleFontCodePath());
     run.setTabSize(!style->collapseWhiteSpace(), style->tabSize());
+    run.setCharacterScanForCodePath(!textRenderer->canUseSimpleFontCodePath());
     if (textRunNeedsRenderingContext(font))
         run.setRenderingContext(SVGTextRunRenderingContext::create(textRenderer));
 

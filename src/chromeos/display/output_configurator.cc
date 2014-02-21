@@ -94,7 +94,7 @@ int GetOutputPower(
     output_power->resize(outputs.size());
 
   for (size_t i = 0; i < outputs.size(); ++i) {
-    bool internal = outputs[i].is_internal;
+    bool internal = outputs[i].type == OUTPUT_TYPE_INTERNAL;
     bool on = state == DISPLAY_POWER_ALL_ON ||
         (state == DISPLAY_POWER_INTERNAL_OFF_EXTERNAL_ON && !internal) ||
         (state == DISPLAY_POWER_INTERNAL_ON_EXTERNAL_OFF && internal);
@@ -104,20 +104,6 @@ int GetOutputPower(
       num_on_outputs++;
   }
   return num_on_outputs;
-}
-
-// Determine if there is an "internal" output and how many outputs are
-// connected.
-bool IsProjecting(
-    const std::vector<OutputConfigurator::OutputSnapshot>& outputs) {
-  bool has_internal_output = false;
-  int connected_output_count = outputs.size();
-  for (size_t i = 0; i < outputs.size(); ++i)
-    has_internal_output |= outputs[i].is_internal;
-
-  // "Projecting" is defined as having more than 1 output connected while at
-  // least one of them is an internal output.
-  return has_internal_output && (connected_output_count > 1);
 }
 
 }  // namespace
@@ -154,7 +140,6 @@ OutputConfigurator::OutputSnapshot::OutputSnapshot()
       y(0),
       width_mm(0),
       height_mm(0),
-      is_internal(false),
       is_aspect_preserving_scaling(false),
       type(OUTPUT_TYPE_UNKNOWN),
       touch_device_id(0),
@@ -253,7 +238,8 @@ OutputConfigurator::OutputConfigurator()
       xrandr_event_base_(0),
       output_state_(STATE_INVALID),
       power_state_(DISPLAY_POWER_ALL_ON),
-      next_output_protection_client_id_(1) {
+      next_output_protection_client_id_(1),
+      casting_session_count_(0) {
 }
 
 OutputConfigurator::~OutputConfigurator() {}
@@ -295,7 +281,7 @@ void OutputConfigurator::Start(uint32 background_color_argb) {
   // that all displays are on when signing out.
   delegate_->ForceDPMSOn();
   delegate_->UngrabServer();
-  delegate_->SendProjectingStateToPowerManager(IsProjecting(cached_outputs_));
+  SendProjectingStateToPowerManager();
   NotifyObservers(success, new_state);
 }
 
@@ -334,6 +320,22 @@ bool OutputConfigurator::ApplyProtections(const DisplayProtections& requests) {
   }
 
   return true;
+}
+
+void OutputConfigurator::SendProjectingStateToPowerManager() {
+  bool has_internal_output = false;
+  int connected_output_count = cached_outputs_.size() + casting_session_count_;
+  for (size_t i = 0; i < cached_outputs_.size(); ++i) {
+    if (cached_outputs_[i].type == OUTPUT_TYPE_INTERNAL) {
+      has_internal_output = true;
+      break;
+    }
+  }
+
+  // "Projecting" is defined as having more than 1 output connected while at
+  // least one of them is an internal output.
+  bool is_projecting = has_internal_output && (connected_output_count > 1);
+  delegate_->SendProjectingStateToPowerManager(is_projecting);
 }
 
 OutputConfigurator::OutputProtectionClientId
@@ -484,7 +486,8 @@ bool OutputConfigurator::SetDisplayPower(DisplayPowerState power_state,
   bool only_if_single_internal_display =
       flags & kSetDisplayPowerOnlyIfSingleInternalDisplay;
   bool single_internal_display =
-      cached_outputs_.size() == 1 && cached_outputs_[0].is_internal;
+      cached_outputs_.size() == 1 &&
+      cached_outputs_[0].type == OUTPUT_TYPE_INTERNAL;
   if (single_internal_display || !only_if_single_internal_display) {
     success = EnterStateOrFallBackToSoftwareMirroring(new_state, power_state);
     attempted_change = true;
@@ -599,6 +602,18 @@ base::EventStatus OutputConfigurator::WillProcessEvent(
 void OutputConfigurator::DidProcessEvent(const base::NativeEvent& event) {
 }
 
+void OutputConfigurator::OnCastingSessionStartedOrStopped(bool started) {
+  if (started) {
+    ++casting_session_count_;
+  } else {
+    DCHECK_GT(casting_session_count_, 0);
+    --casting_session_count_;
+    if (casting_session_count_ < 0)
+      casting_session_count_ = 0;
+  }
+  SendProjectingStateToPowerManager();
+}
+
 void OutputConfigurator::AddObserver(Observer* observer) {
   observers_.AddObserver(observer);
 }
@@ -665,8 +680,8 @@ void OutputConfigurator::UpdateCachedOutputs() {
 
   // Set |mirror_mode| fields.
   if (cached_outputs_.size() == 2) {
-    bool one_is_internal = cached_outputs_[0].is_internal;
-    bool two_is_internal = cached_outputs_[1].is_internal;
+    bool one_is_internal = cached_outputs_[0].type == OUTPUT_TYPE_INTERNAL;
+    bool two_is_internal = cached_outputs_[1].type == OUTPUT_TYPE_INTERNAL;
     int internal_outputs = (one_is_internal ? 1 : 0) +
         (two_is_internal ? 1 : 0);
     DCHECK_LT(internal_outputs, 2);
@@ -777,7 +792,7 @@ void OutputConfigurator::ConfigureOutputs() {
   delegate_->UngrabServer();
 
   NotifyObservers(success, new_state);
-  delegate_->SendProjectingStateToPowerManager(IsProjecting(cached_outputs_));
+  SendProjectingStateToPowerManager();
 }
 
 void OutputConfigurator::NotifyObservers(bool success,
@@ -932,16 +947,8 @@ bool OutputConfigurator::EnterState(
 
       for (size_t i = 0; i < updated_outputs.size(); ++i) {
         OutputSnapshot* output = &updated_outputs[i];
-        if (output->touch_device_id) {
-          const ModeInfo* mode_info =
-              GetModeInfo(*output, output->selected_mode);
-          DCHECK(mode_info);
-          CoordinateTransformation* ctm = &(output->transform);
-          ctm->x_scale = static_cast<float>(mode_info->width) / width;
-          ctm->x_offset = static_cast<float>(output->x) / width;
-          ctm->y_scale = static_cast<float>(mode_info->height) / height;
-          ctm->y_offset = static_cast<float>(output->y) / height;
-        }
+        if (output->touch_device_id)
+          output->transform = GetExtendedModeCTM(*output, width, height);
       }
       break;
     }
@@ -949,28 +956,73 @@ bool OutputConfigurator::EnterState(
 
   // Finally, apply the desired changes.
   DCHECK_EQ(cached_outputs_.size(), updated_outputs.size());
+  bool all_succeeded = true;
   if (!updated_outputs.empty()) {
     delegate_->CreateFrameBuffer(width, height, updated_outputs);
     for (size_t i = 0; i < updated_outputs.size(); ++i) {
       const OutputSnapshot& output = updated_outputs[i];
-      if (delegate_->ConfigureCrtc(output.crtc, output.current_mode,
-                                   output.output, output.x, output.y)) {
-        if (output.touch_device_id)
-          delegate_->ConfigureCTM(output.touch_device_id, output.transform);
-        cached_outputs_[i] = updated_outputs[i];
-      } else {
+      bool configure_succeeded =false;
+
+      while (true) {
+        if (delegate_->ConfigureCrtc(output.crtc, output.current_mode,
+                                       output.output, output.x, output.y)) {
+          configure_succeeded = true;
+          break;
+        }
+
         LOG(WARNING) << "Unable to configure CRTC " << output.crtc << ":"
                      << " mode=" << output.current_mode
                      << " output=" << output.output
                      << " x=" << output.x
                      << " y=" << output.y;
+
+        const ModeInfo* mode_info = GetModeInfo(output, output.current_mode);
+        if (!mode_info)
+          break;
+
+        // Find the mode with the next-best resolution and see if that can
+        // be set.
+        int best_mode_pixels = 0;
+
+        int current_mode_pixels = mode_info->width * mode_info->height;
+        for (ModeInfoMap::const_iterator it = output.mode_infos.begin();
+             it != output.mode_infos.end(); it++) {
+          int pixel_count = it->second.width * it->second.height;
+          if ((pixel_count < current_mode_pixels) &&
+              (pixel_count > best_mode_pixels)) {
+            updated_outputs[i].current_mode = it->first;
+            best_mode_pixels = pixel_count;
+          }
+        }
+
+        if (best_mode_pixels == 0)
+          break;
       }
+
+      if (configure_succeeded) {
+        if (output.touch_device_id)
+          delegate_->ConfigureCTM(output.touch_device_id, output.transform);
+        cached_outputs_[i] = updated_outputs[i];
+      } else {
+        all_succeeded = false;
+      }
+
+      // If we are trying to set mirror mode and one of the modesets fails,
+      // then the two monitors will be mis-matched.  In this case, return
+      // false to let the observers be aware.
+      if (output_state == STATE_DUAL_MIRROR &&
+          output_power[i] &&
+          output.current_mode != output.mirror_mode)
+        all_succeeded = false;
+
     }
   }
 
-  output_state_ = output_state;
-  power_state_ = power_state;
-  return true;
+  if (all_succeeded)  {
+    output_state_ = output_state;
+    power_state_ = power_state;
+  }
+  return all_succeeded;
 }
 
 OutputState OutputConfigurator::ChooseOutputState(
@@ -1038,6 +1090,45 @@ OutputConfigurator::GetMirrorModeCTM(
   }
 
   return ctm;  // Same aspect ratio - return identity
+}
+
+OutputConfigurator::CoordinateTransformation
+OutputConfigurator::GetExtendedModeCTM(
+    const OutputConfigurator::OutputSnapshot& output,
+    int framebuffer_width,
+    int framebuffer_height) {
+  CoordinateTransformation ctm;  // Default to identity
+  const ModeInfo* mode_info = GetModeInfo(output, output.selected_mode);
+  DCHECK(mode_info);
+  if (!mode_info)
+    return ctm;
+  // An example of how to calculate the CTM.
+  // Suppose we have 2 monitors, the first one has size 1366 x 768.
+  // The second one has size 2560 x 1600
+  // The total size of framebuffer is 2560 x 2428
+  // where 2428 = 768 + 60 (hidden gap) + 1600
+  // and the sceond monitor is translated to Point (0, 828) in the
+  // framebuffer.
+  // X will first map input event location to [0, 2560) x [0, 2428),
+  // then apply CTM on it.
+  // So to compute CTM, for monitor1, we have
+  // x_scale = (1366 - 1) / (2560 - 1)
+  // x_offset = 0 / (2560 - 1)
+  // y_scale = (768 - 1) / (2428 - 1)
+  // y_offset = 0 / (2428 -1)
+  // For Monitor 2, we have
+  // x_scale = (2560 - 1) / (2560 - 1)
+  // x_offset = 0 / (2560 - 1)
+  // y_scale = (1600 - 1) / (2428 - 1)
+  // y_offset = 828 / (2428 -1)
+  // See the unittest OutputConfiguratorTest.CTMForMultiScreens.
+  ctm.x_scale =
+      static_cast<float>(mode_info->width - 1) / (framebuffer_width - 1);
+  ctm.x_offset = static_cast<float>(output.x) / (framebuffer_width - 1);
+  ctm.y_scale =
+      static_cast<float>(mode_info->height - 1) / (framebuffer_height - 1);
+  ctm.y_offset = static_cast<float>(output.y) / (framebuffer_height - 1);
+  return ctm;
 }
 
 float OutputConfigurator::GetMirroredDisplayAreaRatio(

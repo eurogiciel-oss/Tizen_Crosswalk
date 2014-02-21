@@ -33,7 +33,6 @@
 
 namespace WebCore {
 
-class HTMLIdentifier;
 class SegmentedString;
 
 class CSSPreloadScanner {
@@ -45,7 +44,7 @@ public:
     void reset();
 
     void scan(const HTMLToken::DataVector&, const SegmentedString&, PreloadRequestStream&);
-    void scan(const HTMLIdentifier&, const SegmentedString&, PreloadRequestStream&);
+    void scan(const String&, const SegmentedString&, PreloadRequestStream&);
 
 private:
     enum State {

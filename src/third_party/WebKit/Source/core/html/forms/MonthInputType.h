@@ -42,7 +42,7 @@ typedef BaseMultipleFieldsDateAndTimeInputType BaseMonthInputType;
 typedef BaseChooserOnlyDateAndTimeInputType BaseMonthInputType;
 #endif
 
-class MonthInputType : public BaseMonthInputType {
+class MonthInputType FINAL : public BaseMonthInputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -50,7 +50,6 @@ private:
     MonthInputType(HTMLInputElement& element) : BaseMonthInputType(element) { }
     virtual void countUsage() OVERRIDE;
     virtual const AtomicString& formControlType() const OVERRIDE;
-    virtual DateComponents::Type dateType() const OVERRIDE;
     virtual double valueAsDate() const OVERRIDE;
     virtual String serializeWithMilliseconds(double) const OVERRIDE;
     virtual Decimal parseToNumber(const String&, const Decimal&) const OVERRIDE;
@@ -62,9 +61,9 @@ private:
 
 #if ENABLE(INPUT_MULTIPLE_FIELDS_UI)
     // BaseMultipleFieldsDateAndTimeInputType functions
-    virtual String formatDateTimeFieldsState(const DateTimeFieldsState&) const OVERRIDE FINAL;
-    virtual void setupLayoutParameters(DateTimeEditElement::LayoutParameters&, const DateComponents&) const OVERRIDE FINAL;
-    virtual bool isValidFormat(bool hasYear, bool hasMonth, bool hasWeek, bool hasDay, bool hasAMPM, bool hasHour, bool hasMinute, bool hasSecond) const;
+    virtual String formatDateTimeFieldsState(const DateTimeFieldsState&) const OVERRIDE;
+    virtual void setupLayoutParameters(DateTimeEditElement::LayoutParameters&, const DateComponents&) const OVERRIDE;
+    virtual bool isValidFormat(bool hasYear, bool hasMonth, bool hasWeek, bool hasDay, bool hasAMPM, bool hasHour, bool hasMinute, bool hasSecond) const OVERRIDE;
 #endif
 };
 

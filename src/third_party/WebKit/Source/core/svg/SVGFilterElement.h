@@ -29,51 +29,53 @@
 #include "core/svg/SVGAnimatedInteger.h"
 #include "core/svg/SVGAnimatedLength.h"
 #include "core/svg/SVGElement.h"
-#include "core/svg/SVGExternalResourcesRequired.h"
 #include "core/svg/SVGURIReference.h"
 #include "core/svg/SVGUnitTypes.h"
 
 namespace WebCore {
 
 class SVGFilterElement FINAL : public SVGElement,
-                               public SVGURIReference,
-                               public SVGExternalResourcesRequired {
+                               public SVGURIReference {
 public:
-    static PassRefPtr<SVGFilterElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFilterElement> create(Document&);
 
     void setFilterRes(unsigned filterResX, unsigned filterResY);
     void addClient(Node*);
     void removeClient(Node*);
 
-private:
-    SVGFilterElement(const QualifiedName&, Document&);
+    SVGAnimatedLength* x() const { return m_x.get(); }
+    SVGAnimatedLength* y() const { return m_y.get(); }
+    SVGAnimatedLength* width() const { return m_width.get(); }
+    SVGAnimatedLength* height() const { return m_height.get(); }
 
-    virtual bool needsPendingResourceHandling() const { return false; }
+private:
+    explicit SVGFilterElement(Document&);
+
+    virtual bool needsPendingResourceHandling() const OVERRIDE { return false; }
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual void svgAttributeChanged(const QualifiedName&);
-    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0);
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
+    virtual void childrenChanged(bool changedByParser = false, Node* beforeChange = 0, Node* afterChange = 0, int childCountDelta = 0) OVERRIDE;
 
     virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
-    virtual bool childShouldCreateRenderer(const Node& child) const OVERRIDE;
+    virtual bool childShouldCreateRenderer(const Node& child) const OVERRIDE { return true; }
 
-    virtual bool selfHasRelativeLengths() const;
+    virtual bool selfHasRelativeLengths() const OVERRIDE;
 
     static const AtomicString& filterResXIdentifier();
     static const AtomicString& filterResYIdentifier();
 
+    RefPtr<SVGAnimatedLength> m_x;
+    RefPtr<SVGAnimatedLength> m_y;
+    RefPtr<SVGAnimatedLength> m_width;
+    RefPtr<SVGAnimatedLength> m_height;
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFilterElement)
         DECLARE_ANIMATED_ENUMERATION(FilterUnits, filterUnits, SVGUnitTypes::SVGUnitType)
         DECLARE_ANIMATED_ENUMERATION(PrimitiveUnits, primitiveUnits, SVGUnitTypes::SVGUnitType)
-        DECLARE_ANIMATED_LENGTH(X, x)
-        DECLARE_ANIMATED_LENGTH(Y, y)
-        DECLARE_ANIMATED_LENGTH(Width, width)
-        DECLARE_ANIMATED_LENGTH(Height, height)
         DECLARE_ANIMATED_INTEGER(FilterResX, filterResX)
         DECLARE_ANIMATED_INTEGER(FilterResY, filterResY)
         DECLARE_ANIMATED_STRING(Href, href)
-        DECLARE_ANIMATED_BOOLEAN(ExternalResourcesRequired, externalResourcesRequired)
     END_DECLARE_ANIMATED_PROPERTIES
 
     HashSet<RefPtr<Node> > m_clientsToAdd;

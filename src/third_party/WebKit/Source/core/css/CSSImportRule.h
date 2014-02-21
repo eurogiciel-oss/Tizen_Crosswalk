@@ -31,7 +31,7 @@ class MediaList;
 class MediaQuerySet;
 class StyleRuleImport;
 
-class CSSImportRule : public CSSRule {
+class CSSImportRule FINAL : public CSSRule {
 public:
     static PassRefPtr<CSSImportRule> create(StyleRuleImport* rule, CSSStyleSheet* sheet) { return adoptRef(new CSSImportRule(rule, sheet)); }
 
@@ -53,11 +53,7 @@ private:
     mutable RefPtr<CSSStyleSheet> m_styleSheetCSSOMWrapper;
 };
 
-inline CSSImportRule* toCSSImportRule(CSSRule* rule)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(rule->type() == CSSRule::IMPORT_RULE);
-    return static_cast<CSSImportRule*>(rule);
-}
+DEFINE_CSS_RULE_TYPE_CASTS(CSSImportRule, IMPORT_RULE);
 
 } // namespace WebCore
 

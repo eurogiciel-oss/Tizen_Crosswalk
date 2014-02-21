@@ -27,14 +27,14 @@
 
 #include "core/rendering/animation/WebAnimationProvider.h"
 
-#include "core/platform/animation/AnimationTranslationUtil.h"
-#include "core/platform/animation/CSSAnimationData.h"
+#include "core/animation/AnimationTranslationUtil.h"
+#include "core/animation/css/CSSAnimationData.h"
 #include "core/rendering/style/KeyframeList.h"
 #include "core/rendering/style/RenderStyle.h"
 #include "public/platform/WebAnimation.h"
 #include "wtf/text/StringBuilder.h"
 
-using WebKit::WebAnimation;
+using blink::WebAnimation;
 
 namespace WebCore {
 
@@ -139,7 +139,7 @@ WebAnimations WebAnimationProvider::startAnimation(double timeOffset, const CSSA
             continue;
 
         // Get timing function.
-        RefPtr<TimingFunction> tf = KeyframeValue::timingFunction(keyframeStyle, keyframes.animationName());
+        RefPtr<TimingFunction> tf = KeyframeValue::timingFunction(*keyframeStyle);
 
         bool isFirstOrLastKeyframe = !key || key == 1;
         if ((hasTransform && isFirstOrLastKeyframe) || currentKeyframe.containsProperty(CSSPropertyWebkitTransform))

@@ -103,6 +103,8 @@ function write_special_flags {
   local sse3_sources=$(echo "$file_list" | grep '_sse3\.c$')
   local ssse3_sources=$(echo "$file_list" | grep '_ssse3\.c$')
   local sse4_1_sources=$(echo "$file_list" | grep '_sse4\.c$')
+  local avx_sources=$(echo "$file_list" | grep '_avx\.c$')
+  local avx2_sources=$(echo "$file_list" | grep '_avx2\.c$')
 
   # Intrinsic functions and files are in flux. We can selectively generate them
   # but we can not selectively include them in libvpx.gyp. Throw some warnings
@@ -110,25 +112,33 @@ function write_special_flags {
 
   # Expect output for these:
   if [ 0 -eq ${#mmx_sources} ]; then
-    echo "WARNING: Comment mmx sections in libvpx.gyp"
+    echo "ERROR: Comment mmx sections in libvpx.gyp"
     exit 1
   fi
   if [ 0 -eq ${#sse2_sources} ]; then
-    echo "WARNING: Comment sse2 sections in libvpx.gyp"
+    echo "ERROR: Comment sse2 sections in libvpx.gyp"
     exit 1
   fi
   if [ 0 -eq ${#ssse3_sources} ]; then
-    echo "WARNING: Comment ssse3 sections in libvpx.gyp"
+    echo "ERROR: Comment ssse3 sections in libvpx.gyp"
     exit 1
   fi
 
   # Do not expect output for these:
   if [ 0 -ne ${#sse3_sources} ]; then
-    echo "WARNING: Uncomment sse3 sections in libvpx.gyp"
+    echo "ERROR: Uncomment sse3 sections in libvpx.gyp"
     exit 1
   fi
   if [ 0 -ne ${#sse4_1_sources} ]; then
-    echo "WARNING: Uncomment sse4_1 sections in libvpx.gyp"
+    echo "ERROR: Uncomment sse4_1 sections in libvpx.gyp"
+    exit 1
+  fi
+  if [ 0 -ne ${#avx_sources} ]; then
+    echo "ERROR: Uncomment avx sections in libvpx.gyp"
+    exit 1
+  fi
+  if [ 0 -ne ${#avx2_sources} ]; then
+    echo "ERROR: Uncomment avx2 sections in libvpx.gyp"
     exit 1
   fi
 
@@ -141,6 +151,8 @@ function write_special_flags {
   #write_target_definition sse3_sources[@] $2 libvpx_intrinsics_sse3 sse3
   write_target_definition ssse3_sources[@] $2 libvpx_intrinsics_ssse3 ssse3
   #write_target_definition sse4_1_sources[@] $2 libvpx_intrinsics_sse4_1 sse4.1
+  #write_target_definition avx_sources[@] $2 libvpx_intrinsics_avx avx
+  #write_target_definition avx2_sources[@] $2 libvpx_intrinsics_avx2 avx2
 
   echo "  ]," >> $2
 
@@ -173,7 +185,7 @@ function convert_srcs_to_gypi {
   # Select all x86 files ending with .c
   local x86_intrinsic_list=$(echo "$source_list" | \
     egrep 'vp[89]/(encoder|decoder|common)/x86/'  | \
-    egrep '(mmx|sse2|sse3|ssse3|sse4).c$')
+    egrep '(mmx|sse2|sse3|ssse3|sse4|avx|avx2).c$')
 
   # Remove these files from the main list.
   source_list=$(comm -23 <(echo "$source_list") <(echo "$x86_intrinsic_list"))
@@ -304,6 +316,7 @@ gen_config_files win/ia32 "--target=x86-win32-vs7 --enable-realtime-only ${all_p
 gen_config_files win/x64 "--target=x86_64-win64-vs9 --enable-realtime-only ${all_platforms}"
 gen_config_files mac/ia32 "--target=x86-darwin9-gcc --enable-pic --enable-realtime-only ${all_platforms}"
 gen_config_files mac/x64 "--target=x86_64-darwin9-gcc --enable-pic --enable-realtime-only ${all_platforms}"
+gen_config_files nacl "--target=generic-gnu --enable-pic --enable-realtime-only ${all_platforms}"
 
 echo "Remove temporary directory."
 cd $BASE_DIR
@@ -319,6 +332,7 @@ lint_config win/ia32
 lint_config win/x64
 lint_config mac/ia32
 lint_config mac/x64
+lint_config nacl
 
 echo "Create temporary directory."
 TEMP_DIR="$LIBVPX_SRC_DIR.temp"
@@ -336,6 +350,7 @@ gen_rtcd_header win/ia32 x86
 gen_rtcd_header win/x64 x86_64
 gen_rtcd_header mac/ia32 x86
 gen_rtcd_header mac/x64 x86_64
+gen_rtcd_header nacl nacl
 
 echo "Prepare Makefile."
 ./configure --target=generic-gnu > /dev/null
@@ -379,6 +394,12 @@ config=$(print_config_basic linux/mipsel)
 make_clean
 make libvpx_srcs.txt target=libs $config > /dev/null
 convert_srcs_to_gypi libvpx_srcs.txt libvpx_srcs_mips
+
+echo "Generate NaCl source list."
+config=$(print_config_basic nacl)
+make_clean
+make libvpx_srcs.txt target=libs $config > /dev/null
+convert_srcs_to_gypi libvpx_srcs.txt libvpx_srcs_nacl
 
 echo "Remove temporary directory."
 cd $BASE_DIR

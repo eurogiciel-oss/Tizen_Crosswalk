@@ -53,6 +53,7 @@ SkMergeImageFilter::SkMergeImageFilter(SkImageFilter* first, SkImageFilter* seco
 SkMergeImageFilter::SkMergeImageFilter(SkImageFilter* filters[], int count,
                                        const SkXfermode::Mode modes[],
                                        const CropRect* cropRect) : INHERITED(count, filters, cropRect) {
+    SkASSERT(count >= 0);
     this->initModes(modes);
 }
 
@@ -97,7 +98,7 @@ bool SkMergeImageFilter::onFilterBounds(const SkIRect& src, const SkMatrix& ctm,
 
 bool SkMergeImageFilter::onFilterImage(Proxy* proxy, const SkBitmap& src,
                                        const SkMatrix& ctm,
-                                       SkBitmap* result, SkIPoint* loc) {
+                                       SkBitmap* result, SkIPoint* offset) {
     if (countInputs() < 1) {
         return false;
     }
@@ -141,8 +142,8 @@ bool SkMergeImageFilter::onFilterImage(Proxy* proxy, const SkBitmap& src,
         canvas.drawSprite(*srcPtr, pos.x() - x0, pos.y() - y0, &paint);
     }
 
-    loc->fX += bounds.left();
-    loc->fY += bounds.top();
+    offset->fX = bounds.left();
+    offset->fY = bounds.top();
     *result = dst->accessBitmap(false);
     return true;
 }
@@ -156,16 +157,19 @@ void SkMergeImageFilter::flatten(SkFlattenableWriteBuffer& buffer) const {
     }
 }
 
-SkMergeImageFilter::SkMergeImageFilter(SkFlattenableReadBuffer& buffer) : INHERITED(buffer) {
+SkMergeImageFilter::SkMergeImageFilter(SkFlattenableReadBuffer& buffer)
+  : INHERITED(-1, buffer) {
     bool hasModes = buffer.readBool();
     if (hasModes) {
         this->initAllocModes();
         int nbInputs = countInputs();
         size_t size = nbInputs * sizeof(fModes[0]);
         SkASSERT(buffer.getArrayCount() == size);
-        buffer.readByteArray(fModes, size);
-        for (int i = 0; i < nbInputs; ++i) {
-            buffer.validate(SkIsValidMode((SkXfermode::Mode)fModes[i]));
+        if (buffer.validate(buffer.getArrayCount() == size) &&
+            buffer.readByteArray(fModes, size)) {
+            for (int i = 0; i < nbInputs; ++i) {
+                buffer.validate(SkIsValidMode((SkXfermode::Mode)fModes[i]));
+            }
         }
     } else {
         fModes = 0;

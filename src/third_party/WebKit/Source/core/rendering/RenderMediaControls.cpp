@@ -31,9 +31,9 @@
 #include "bindings/v8/ExceptionStatePlaceholder.h"
 #include "core/html/HTMLMediaElement.h"
 #include "core/html/TimeRanges.h"
-#include "core/platform/graphics/Gradient.h"
-#include "core/platform/graphics/GraphicsContext.h"
 #include "core/rendering/PaintInfo.h"
+#include "platform/graphics/Gradient.h"
+#include "platform/graphics/GraphicsContext.h"
 
 namespace WebCore {
 
@@ -156,10 +156,8 @@ static void paintSliderRangeHighlight(const IntRect& rect, const RenderStyle* st
     // Make sure the range width is bigger than border radius at the edges to retain rounded corners.
     if (startOffset < borderRadius && rangeWidth < borderRadius)
         rangeWidth = borderRadius;
-    if (endOffset < borderRadius && rangeWidth < borderRadius) {
-        startPosition -= borderRadius - rangeWidth;
+    if (endOffset < borderRadius && rangeWidth < borderRadius)
         rangeWidth = borderRadius;
-    }
 
     // Set rectangle to highlight range.
     IntRect highlightRect = rect;
@@ -365,16 +363,11 @@ bool RenderMediaControls::paintMediaControlsPart(MediaControlElementType part, R
         return paintMediaFullscreenButton(object, paintInfo, rect);
     case MediaOverlayPlayButton:
         return paintMediaOverlayPlayButton(object, paintInfo, rect);
-    case MediaVolumeSliderMuteButton:
-    case MediaSeekBackButton:
-    case MediaSeekForwardButton:
     case MediaVolumeSliderContainer:
     case MediaTimelineContainer:
     case MediaCurrentTimeDisplay:
     case MediaTimeRemainingDisplay:
     case MediaControlsPanel:
-    case MediaRewindButton:
-    case MediaReturnToRealtimeButton:
     case MediaStatusDisplay:
     case MediaHideClosedCaptionsButton:
     case MediaTextTrackDisplayContainer:

@@ -15,29 +15,41 @@
 #include <map>
 
 #include "base/basictypes.h"
+#include "ozone/ui/events/window_state_change_handler.h"
 
 namespace ozonewayland {
 
+class WaylandDisplayPollThread;
 class WaylandInputDevice;
 class WaylandScreen;
 class WaylandWindow;
-class OzoneDisplay;
 
 typedef std::map<unsigned, WaylandWindow*> WindowMap;
 
 // WaylandDisplay is a wrapper around wl_display. Once we get a valid
 // wl_display, the Wayland server will send different events to register
 // the Wayland compositor, shell, screens, input devices, ...
-class WaylandDisplay {
+class WaylandDisplay : public WindowStateChangeHandler {
  public:
+  enum RegistrationType {
+    RegisterAsNeeded,  // Handles all the required registrations.
+    RegisterOutputOnly  // Only screen registration.
+  };
+
+  explicit WaylandDisplay(RegistrationType type);
+  virtual ~WaylandDisplay();
+
+  // Ownership is not passed to the caller.
   static WaylandDisplay* GetInstance() { return instance_; }
   // Returns a pointer to wl_display.
   wl_display* display() const { return display_; }
 
   wl_registry* registry() const { return registry_; }
 
+  WaylandInputDevice* PrimaryInput() const { return primary_input_; }
+
   // Returns a list of the registered screens.
-  std::list<WaylandScreen*> GetScreenList() const { return screen_list_; }
+  const std::list<WaylandScreen*>& GetScreenList() const;
   WaylandScreen* PrimaryScreen() const { return primary_screen_ ; }
 
   wl_shell* shell() const { return shell_; }
@@ -45,6 +57,8 @@ class WaylandDisplay {
   wl_shm* shm() const { return shm_; }
   wl_compositor* GetCompositor() const { return compositor_; }
   int GetDisplayFd() const { return wl_display_get_fd(display_); }
+  unsigned GetSerial() const { return serial_; }
+  void SetSerial(unsigned serial) { serial_ = serial; }
 
   const WindowMap& GetWindowList() const { return widget_map_; }
 
@@ -58,19 +72,34 @@ class WaylandDisplay {
   // Destroys WaylandWindow whose handle is w.
   void DestroyWindow(unsigned w);
 
+  // Starts polling on display fd. This should be used when one needs to
+  // continuously read pending events coming from Wayland compositor and
+  // dispatch them. The polling is done completely on a separate thread and
+  // doesn't block the thread from which this is called.
+  void StartProcessingEvents();
+  // Stops polling on display fd.
+  void StopProcessingEvents();
   // Flush Display.
   void FlushDisplay();
+  // Does a round trip to Wayland server. This call blocks the current thread
+  // until all pending request are processed by the server.
+  void SyncDisplay();
+  // WindowStateChangeHandler implementation:
+  virtual void SetWidgetState(unsigned widget,
+                              WidgetState state,
+                              unsigned width = 0,
+                              unsigned height = 0) OVERRIDE;
+  virtual void SetWidgetTitle(unsigned w,
+                              const base::string16& title) OVERRIDE;
+  virtual void SetWidgetAttributes(unsigned widget,
+                                   unsigned parent,
+                                   unsigned x,
+                                   unsigned y,
+                                   WidgetType type) OVERRIDE;
 
  private:
-  enum RegistrationType {
-    RegisterAsNeeded,  // Handles all the required registrations.
-    RegisterOutputOnly  // Only screen registration.
-  };
-
-  explicit WaylandDisplay(RegistrationType type);
-  virtual ~WaylandDisplay();
   void terminate();
-  void SyncDisplay();
+  WaylandWindow* GetWidget(unsigned w);
   // This handler resolves all server events used in initialization. It also
   // handles input device registration, screen registration.
   static void DisplayHandleGlobal(
@@ -95,13 +124,14 @@ class WaylandDisplay {
   wl_shell* shell_;
   wl_shm* shm_;
   WaylandScreen* primary_screen_;
+  WaylandInputDevice* primary_input_;
+  WaylandDisplayPollThread* display_poll_thread_;
 
   std::list<WaylandScreen*> screen_list_;
   std::list<WaylandInputDevice*> input_list_;
   WindowMap widget_map_;
+  unsigned serial_;
   static WaylandDisplay* instance_;
-
-  friend class OzoneDisplay;
   DISALLOW_COPY_AND_ASSIGN(WaylandDisplay);
 };
 

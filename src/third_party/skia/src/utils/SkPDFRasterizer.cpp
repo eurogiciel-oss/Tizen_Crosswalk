@@ -11,14 +11,21 @@
 #pragma warning(disable : 4530)
 #endif
 
+#include "SkPDFRasterizer.h"
+#include "SkColorPriv.h"
+
+#ifdef SK_BUILD_NATIVE_PDF_RENDERER
+#include "SkPdfRenderer.h"
+#endif  // SK_BUILD_NATIVE_PDF_RENDERER
+
+#ifdef SK_BUILD_POPPLER
 #include <poppler-document.h>
 #include <poppler-image.h>
 #include <poppler-page.h>
 #include <poppler-page-renderer.h>
+#endif  // SK_BUILD_POPPLER
 
-#include "SkPDFRasterizer.h"
-#include "SkColorPriv.h"
-
+#ifdef SK_BUILD_POPPLER
 bool SkPopplerRasterizePDF(SkStream* pdf, SkBitmap* output) {
   size_t size = pdf->getLength();
   SkAutoFree buffer(sk_malloc_throw(size));
@@ -43,8 +50,7 @@ bool SkPopplerRasterizePDF(SkStream* pdf, SkBitmap* output) {
   char *imgData = image.data();
 
   SkBitmap bitmap;
-  bitmap.setConfig(SkBitmap::kARGB_8888_Config, width, height);
-  if (!bitmap.allocPixels()) {
+  if (!bitmap.allocPixels(SkImageInfo::MakeN32Premul(width, height))) {
     return false;
   }
   bitmap.eraseColor(SK_ColorWHITE);
@@ -71,3 +77,10 @@ bool SkPopplerRasterizePDF(SkStream* pdf, SkBitmap* output) {
 
   return true;
 }
+#endif  // SK_BUILD_POPPLER
+
+#ifdef SK_BUILD_NATIVE_PDF_RENDERER
+bool SkNativeRasterizePDF(SkStream* pdf, SkBitmap* output) {
+    return SkPDFNativeRenderToBitmap(pdf, output);
+}
+#endif  // SK_BUILD_NATIVE_PDF_RENDERER

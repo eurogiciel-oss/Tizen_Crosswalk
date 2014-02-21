@@ -12,7 +12,7 @@
 #include "content/child/child_thread.h"
 #include "content/common/gpu/gpu_channel.h"
 #include "content/common/gpu/media/vaapi_video_decode_accelerator.h"
-#include "media/base/bind_to_loop.h"
+#include "media/base/bind_to_current_loop.h"
 #include "media/video/picture.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/scoped_binders.h"
@@ -82,10 +82,6 @@ class VaapiVideoDecodeAccelerator::TFPPicture {
 
   int32 picture_buffer_id() {
     return picture_buffer_id_;
-  }
-
-  uint32 texture_id() {
-    return texture_id_;
   }
 
   gfx::Size size() {
@@ -240,17 +236,18 @@ VaapiVideoDecodeAccelerator::TFPPicture*
 }
 
 VaapiVideoDecodeAccelerator::VaapiVideoDecodeAccelerator(
-    Display* x_display, GLXContext glx_context,
+    Display* x_display,
     Client* client,
     const base::Callback<bool(void)>& make_context_current)
     : x_display_(x_display),
-      glx_context_(glx_context),
       make_context_current_(make_context_current),
       state_(kUninitialized),
       input_ready_(&lock_),
       surfaces_available_(&lock_),
       message_loop_(base::MessageLoop::current()),
       weak_this_(base::AsWeakPtr(this)),
+      va_surface_release_cb_(media::BindToCurrentLoop(base::Bind(
+          &VaapiVideoDecodeAccelerator::RecycleVASurfaceID, weak_this_))),
       client_ptr_factory_(client),
       client_(client_ptr_factory_.GetWeakPtr()),
       decoder_thread_("VaapiDecoderThread"),
@@ -323,7 +320,7 @@ bool VaapiVideoDecodeAccelerator::Initialize(
   decoder_.reset(
       new VaapiH264Decoder(
           vaapi_wrapper_.get(),
-          media::BindToLoop(message_loop_->message_loop_proxy(), base::Bind(
+          media::BindToCurrentLoop(base::Bind(
               &VaapiVideoDecodeAccelerator::SurfaceReady, weak_this_)),
           base::Bind(&ReportToUMA)));
 
@@ -383,7 +380,8 @@ void VaapiVideoDecodeAccelerator::OutputPicture(
   TRACE_COUNTER1("Video Decoder", "Textures at client", num_frames_at_client_);
   DVLOG(4) << "Notifying output picture id " << output_id
            << " for input "<< input_id << " is ready";
-  client_->PictureReady(media::Picture(output_id, input_id));
+  if (client_)
+    client_->PictureReady(media::Picture(output_id, input_id));
 }
 
 void VaapiVideoDecodeAccelerator::TryOutputSurface() {
@@ -512,13 +510,9 @@ bool VaapiVideoDecodeAccelerator::FeedDecoderWithOutputSurfaces_Locked() {
   if (state_ != kDecoding && state_ != kFlushing && state_ != kIdle)
     return false;
 
-  VASurface::ReleaseCB va_surface_release_cb =
-      media::BindToLoop(message_loop_->message_loop_proxy(), base::Bind(
-          &VaapiVideoDecodeAccelerator::RecycleVASurfaceID, weak_this_));
-
   while (!available_va_surfaces_.empty()) {
     scoped_refptr<VASurface> va_surface(
-        new VASurface(available_va_surfaces_.front(), va_surface_release_cb));
+        new VASurface(available_va_surfaces_.front(), va_surface_release_cb_));
     available_va_surfaces_.pop_front();
     decoder_->ReuseSurface(va_surface);
   }
@@ -631,7 +625,8 @@ void VaapiVideoDecodeAccelerator::TryFinishSurfaceSetChange() {
   for (TFPPictures::iterator iter = tfp_pictures_.begin();
        iter != tfp_pictures_.end(); ++iter) {
     DVLOG(2) << "Dismissing picture id: " << iter->first;
-    client_->DismissPictureBuffer(iter->first);
+    if (client_)
+      client_->DismissPictureBuffer(iter->first);
   }
   tfp_pictures_.clear();
 

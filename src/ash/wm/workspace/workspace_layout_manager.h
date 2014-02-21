@@ -9,9 +9,9 @@
 
 #include "ash/shell_observer.h"
 #include "ash/wm/base_layout_manager.h"
+#include "ash/wm/wm_types.h"
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
-#include "ui/base/ui_base_types.h"
 #include "ui/aura/window_observer.h"
 #include "ui/gfx/rect.h"
 
@@ -55,10 +55,7 @@ class ASH_EXPORT WorkspaceLayoutManager : public BaseLayoutManager {
   virtual void OnWindowPropertyChanged(aura::Window* window,
                                        const void* key,
                                        intptr_t old) OVERRIDE;
-
-  // ash::WindowSettings::Observer overrides:
-  virtual void OnTrackedByWorkspaceChanged(wm::WindowState* window_state,
-                                           bool old) OVERRIDE;
+  virtual void OnWindowStackingChanged(aura::Window* window) OVERRIDE;
 
   // WindowStateObserver overrides:
   virtual void OnWindowShowTypeChanged(wm::WindowState* window_state,
@@ -66,8 +63,6 @@ class ASH_EXPORT WorkspaceLayoutManager : public BaseLayoutManager {
 
  private:
   // Overridden from BaseLayoutManager:
-  virtual void ShowStateChanged(wm::WindowState* window_state,
-                                ui::WindowShowState last_show_state) OVERRIDE;
   virtual void AdjustAllWindowsBoundsForWorkAreaChange(
       AdjustWindowReason reason) OVERRIDE;
   virtual void AdjustWindowBoundsForWorkAreaChange(
@@ -76,23 +71,37 @@ class ASH_EXPORT WorkspaceLayoutManager : public BaseLayoutManager {
 
   void AdjustWindowBoundsWhenAdded(wm::WindowState* window_state);
 
-  void UpdateDesktopVisibility();
+  // Updates the visibility state of the shelf.
+  void UpdateShelfVisibility();
 
-  // Updates the bounds of the window for a show state change from
-  // |last_show_state|.
-  void UpdateBoundsFromShowState(wm::WindowState* window_state,
-                                 ui::WindowShowState last_show_state);
+  // Updates the fullscreen state of the workspace and notifies Shell if it
+  // has changed.
+  void UpdateFullscreenState();
+
+  // Updates the bounds of the window for a show type change from
+  // |old_show_type|.
+  void UpdateBoundsFromShowType(wm::WindowState* window_state,
+                                wm::WindowShowType old_show_type);
 
   // If |window_state| is maximized or fullscreen the bounds of the
   // window are set and true is returned. Does nothing otherwise.
   bool SetMaximizedOrFullscreenBounds(wm::WindowState* window_state);
 
+  // Adjusts the |bounds| so that they are flush with the edge of the
+  // workspace if the window represented by |window_state| is side snapped.
+  void AdjustSnappedBounds(wm::WindowState* window_state, gfx::Rect* bounds);
+
+  // Animates the window bounds to |bounds|.
+  void SetChildBoundsAnimated(aura::Window* child, const gfx::Rect& bounds);
+
   internal::ShelfLayoutManager* shelf_;
   aura::Window* window_;
 
-  // The work area. Cached to avoid unnecessarily moving windows during a
-  // workspace switch.
+  // The work area in the coordinates of |window_|.
   gfx::Rect work_area_in_parent_;
+
+  // True if this workspace is currently in fullscreen mode.
+  bool is_fullscreen_;
 
   DISALLOW_COPY_AND_ASSIGN(WorkspaceLayoutManager);
 };

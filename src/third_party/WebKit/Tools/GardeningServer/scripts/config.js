@@ -41,6 +41,7 @@ config.kPlatforms = {
             'WebKit Win7': {version: 'win7'},
             'WebKit Win7 (dbg)': {version: 'win7', debug: true},
             'WebKit Linux': {version: 'lucid', is64bit: true},
+            'WebKit Linux ASAN': {version: 'lucid', is64bit: true},
             'WebKit Linux 32': {version: 'lucid'},
             'WebKit Linux (dbg)': {version: 'lucid', is64bit: true, debug: true},
             'WebKit Mac10.6': {version: 'snowleopard'},
@@ -49,6 +50,7 @@ config.kPlatforms = {
             'WebKit Mac10.7 (dbg)': {version: 'lion', debug: true},
             'WebKit Mac10.8': {version: 'mountainlion'},
             'WebKit Mac10.8 (retina)': {version: 'retina'},
+            'WebKit Mac10.9': {version: 'mavericks'},
             'WebKit Android (Nexus4)': {version: 'android'},
         },
         resultsDirectoryNameFromBuilderName: function(builderName) {

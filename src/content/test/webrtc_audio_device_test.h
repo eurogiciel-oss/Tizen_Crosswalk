@@ -10,7 +10,6 @@
 #include "base/files/file_path.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
-#include "base/message_loop/message_loop.h"
 #include "content/browser/renderer_host/media/mock_media_observer.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "ipc/ipc_listener.h"
@@ -115,11 +114,9 @@ class ReplaceContentClientRenderer;
 
 // Temporarily disabled in LeakSanitizer builds due to memory leaks.
 // http://crbug.com/148865
-#if defined(LEAK_SANITIZER)
+// Disabling all tests for now since they are flaky.
+// http://crbug.com/167298
 #define MAYBE_WebRTCAudioDeviceTest DISABLED_WebRTCAudioDeviceTest
-#else
-#define MAYBE_WebRTCAudioDeviceTest WebRTCAudioDeviceTest
-#endif
 
 class MAYBE_WebRTCAudioDeviceTest : public ::testing::Test,
                                     public IPC::Listener {
@@ -153,12 +150,8 @@ class MAYBE_WebRTCAudioDeviceTest : public ::testing::Test,
   // Posts a final task to the IO message loop and waits for completion.
   void WaitForIOThreadCompletion();
   void WaitForAudioManagerCompletion();
-  void WaitForMessageLoopCompletion(base::MessageLoopProxy* loop);
-
-  // Convenience getter for gmock.
-  MockMediaInternals& media_observer() const {
-    return *media_internals_.get();
-  }
+  void WaitForTaskRunnerCompletion(
+      const scoped_refptr<base::SingleThreadTaskRunner>& task_runner);
 
   std::string GetTestDataPath(const base::FilePath::StringType& file_name);
 
@@ -167,7 +160,6 @@ class MAYBE_WebRTCAudioDeviceTest : public ::testing::Test,
   ContentRendererClient content_renderer_client_;
   RenderThreadImpl* render_thread_;  // Owned by mock_process_.
   scoped_ptr<WebRTCMockRenderProcess> mock_process_;
-  scoped_ptr<MockMediaInternals> media_internals_;
   scoped_ptr<MediaStreamManager> media_stream_manager_;
   scoped_ptr<media::AudioManager> audio_manager_;
   scoped_ptr<AudioMirroringManager> mirroring_manager_;

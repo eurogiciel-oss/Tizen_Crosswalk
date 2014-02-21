@@ -1,11 +1,9 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
-# pylint: disable=W0212
-# pylint: disable=W0223
-# pylint: disable=W0231
+# pylint: disable=W0212,W0223,W0231,W0613
 
 import hashlib
 import json
@@ -20,13 +18,13 @@ import unittest
 import urllib
 import zlib
 
-BASE_PATH = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_PATH)
+TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(TEST_DIR)
 sys.path.insert(0, ROOT_DIR)
+sys.path.insert(0, os.path.join(ROOT_DIR, 'third_party'))
 
-import auto_stub
+from depot_tools import auto_stub
 import isolateserver
-
 from utils import threading_utils
 
 
@@ -34,18 +32,31 @@ ALGO = hashlib.sha1
 
 
 class TestCase(auto_stub.TestCase):
+  """Mocks out url_open() calls and sys.stdout/stderr."""
   def setUp(self):
     super(TestCase, self).setUp()
     self.mock(isolateserver.net, 'url_open', self._url_open)
     self.mock(isolateserver.net, 'sleep_before_retry', lambda *_: None)
     self._lock = threading.Lock()
     self._requests = []
+    self.mock(sys, 'stdout', StringIO.StringIO())
+    self.mock(sys, 'stderr', StringIO.StringIO())
 
   def tearDown(self):
     try:
       self.assertEqual([], self._requests)
+      self.checkOutput('', '')
     finally:
       super(TestCase, self).tearDown()
+
+  def checkOutput(self, expected_out, expected_err):
+    try:
+      self.assertEqual(expected_err, sys.stderr.getvalue())
+      self.assertEqual(expected_out, sys.stdout.getvalue())
+    finally:
+      # Prevent double-fail.
+      self.mock(sys, 'stdout', StringIO.StringIO())
+      self.mock(sys, 'stderr', StringIO.StringIO())
 
   def _url_open(self, url, **kwargs):
     logging.warn('url_open(%s, %s)', url[:500], str(kwargs)[:500])
@@ -56,10 +67,11 @@ class TestCase(auto_stub.TestCase):
       kwargs.pop('stream', None)
       for i, n in enumerate(self._requests):
         if n[0] == url:
-          _, expected_kwargs, result = self._requests.pop(i)
+          _, expected_kwargs, result, headers = self._requests.pop(i)
           self.assertEqual(expected_kwargs, kwargs)
           if result is not None:
-            return isolateserver.net.HttpResponse.get_fake_response(result, url)
+            return isolateserver.net.HttpResponse.get_fake_response(
+                result, url, headers)
           return None
     self.fail('Unknown request %s' % url)
 
@@ -257,7 +269,7 @@ class StorageTest(TestCase):
     # 'push' calls.
     push_calls = []
 
-    def mocked_file_read(filepath, _chunk_size=0):
+    def mocked_file_read(filepath, chunk_size=0, offset=0):
       self.assertEqual(root, os.path.dirname(filepath))
       filename = os.path.basename(filepath)
       self.assertIn(filename, files_data)
@@ -326,14 +338,21 @@ class IsolateServerStorageApiTest(TestCase):
         'data': json.dumps(handshake_request, separators=(',', ':')),
       },
       json.dumps(handshake_response),
+      None,
     )
 
   @staticmethod
-  def mock_fetch_request(server, namespace, item, data):
+  def mock_fetch_request(server, namespace, item, data,
+                         request_headers=None, response_headers=None):
     return (
       server + '/content-gs/retrieve/%s/%s' % (namespace, item),
-      {'retry_404': True, 'read_timeout': 60},
+      {
+        'retry_404': True,
+        'read_timeout': 60,
+        'headers': request_headers,
+      },
       data,
+      response_headers,
     )
 
   @staticmethod
@@ -348,6 +367,7 @@ class IsolateServerStorageApiTest(TestCase):
         'method': 'POST',
       },
       json.dumps(response),
+      None,
     )
 
   def test_server_capabilities_success(self):
@@ -372,7 +392,7 @@ class IsolateServerStorageApiTest(TestCase):
     namespace = 'default'
     handshake_req = self.mock_handshake_request(server)
     self._requests = [
-      (handshake_req[0], handshake_req[1], 'Im a bad response'),
+      (handshake_req[0], handshake_req[1], 'Im a bad response', None),
     ]
     storage = isolateserver.IsolateServer(server, namespace)
     with self.assertRaises(isolateserver.MappingError):
@@ -414,6 +434,63 @@ class IsolateServerStorageApiTest(TestCase):
     with self.assertRaises(IOError):
       _ = ''.join(storage.fetch(item))
 
+  def test_fetch_offset_success(self):
+    server = 'http://example.com'
+    namespace = 'default'
+    data = ''.join(str(x) for x in xrange(1000))
+    item = ALGO(data).hexdigest()
+    offset = 200
+    size = len(data)
+
+    good_content_range_headers = [
+      'bytes %d-%d/%d' % (offset, size - 1, size),
+      'bytes %d-%d/*' % (offset, size - 1),
+    ]
+
+    for content_range_header in good_content_range_headers:
+      self._requests = [
+        self.mock_fetch_request(
+            server, namespace, item, data[offset:],
+            request_headers={'Range': 'bytes=%d-' % offset},
+            response_headers={'Content-Range': content_range_header}),
+      ]
+      storage = isolateserver.IsolateServer(server, namespace)
+      fetched = ''.join(storage.fetch(item, offset))
+      self.assertEqual(data[offset:], fetched)
+
+  def test_fetch_offset_bad_header(self):
+    server = 'http://example.com'
+    namespace = 'default'
+    data = ''.join(str(x) for x in xrange(1000))
+    item = ALGO(data).hexdigest()
+    offset = 200
+    size = len(data)
+
+    bad_content_range_headers = [
+      # Missing header.
+      None,
+      '',
+      # Bad format.
+      'not bytes %d-%d/%d' % (offset, size - 1, size),
+      'bytes %d-%d' % (offset, size - 1),
+      # Bad offset.
+      'bytes %d-%d/%d' % (offset - 1, size - 1, size),
+      # Incomplete chunk.
+      'bytes %d-%d/%d' % (offset, offset + 10, size),
+    ]
+
+    for content_range_header in bad_content_range_headers:
+      self._requests = [
+        self.mock_fetch_request(
+            server, namespace, item, data[offset:],
+            request_headers={'Range': 'bytes=%d-' % offset},
+            response_headers={'Content-Range': content_range_header}),
+      ]
+      storage = isolateserver.IsolateServer(server, namespace)
+      with self.assertRaises(IOError):
+        _ = ''.join(storage.fetch(item, offset))
+
+
   def test_push_success(self):
     server = 'http://example.com'
     namespace = 'default'
@@ -434,7 +511,8 @@ class IsolateServerStorageApiTest(TestCase):
           'content_type': 'application/octet-stream',
           'method': 'PUT',
         },
-        ''
+        '',
+        None,
       ),
       (
         push_urls[1],
@@ -443,7 +521,8 @@ class IsolateServerStorageApiTest(TestCase):
           'content_type': 'application/json',
           'method': 'POST',
         },
-        ''
+        '',
+        None,
       ),
     ]
     storage = isolateserver.IsolateServer(server, namespace)
@@ -473,7 +552,8 @@ class IsolateServerStorageApiTest(TestCase):
           'content_type': 'application/octet-stream',
           'method': 'PUT',
         },
-        None
+        None,
+        None,
       ),
     ]
     storage = isolateserver.IsolateServer(server, namespace)
@@ -504,7 +584,8 @@ class IsolateServerStorageApiTest(TestCase):
           'content_type': 'application/octet-stream',
           'method': 'PUT',
         },
-        ''
+        '',
+        None,
       ),
       (
         push_urls[1],
@@ -513,7 +594,8 @@ class IsolateServerStorageApiTest(TestCase):
           'content_type': 'application/json',
           'method': 'POST',
         },
-        None
+        None,
+        None,
       ),
     ]
     storage = isolateserver.IsolateServer(server, namespace)
@@ -565,7 +647,7 @@ class IsolateServerStorageApiTest(TestCase):
     req = self.mock_contains_request(server, namespace, token, [], [])
     self._requests = [
       self.mock_handshake_request(server, token),
-      (req[0], req[1], None),
+      (req[0], req[1], None, None),
     ]
     storage = isolateserver.IsolateServer(server, namespace)
     with self.assertRaises(isolateserver.MappingError):
@@ -604,13 +686,15 @@ class IsolateServerDownloadTest(TestCase):
     self._requests = [
       (
         server + '/content-gs/retrieve/default-gzip/sha-1',
-        {'read_timeout': 60, 'retry_404': True},
+        {'read_timeout': 60, 'retry_404': True, 'headers': None},
         zlib.compress('Coucou'),
+        None,
       ),
       (
         server + '/content-gs/retrieve/default-gzip/sha-2',
-        {'read_timeout': 60, 'retry_404': True},
+        {'read_timeout': 60, 'retry_404': True, 'headers': None},
         zlib.compress('Bye Bye'),
+        None,
       ),
     ]
     cmd = [
@@ -635,12 +719,10 @@ class IsolateServerDownloadTest(TestCase):
       actual[key] = ''.join(generator)
     self.mock(isolateserver, 'file_write', file_write_mock)
     self.mock(os, 'makedirs', lambda _: None)
-    stdout = StringIO.StringIO()
-    self.mock(sys, 'stdout', stdout)
     server = 'http://example.com'
 
     files = {
-      'a/foo': 'Content',
+      os.path.join('a', 'foo'): 'Content',
       'b': 'More content',
       }
     isolated = {
@@ -660,8 +742,10 @@ class IsolateServerDownloadTest(TestCase):
         {
           'read_timeout': isolateserver.DOWNLOAD_READ_TIMEOUT,
           'retry_404': True,
+          'headers': None,
         },
         zlib.compress(v),
+        None,
       ) for h, v in requests
     ]
     cmd = [
@@ -677,10 +761,10 @@ class IsolateServerDownloadTest(TestCase):
     expected_stdout = (
         'To run this test please run from the directory %s:\n  Absurb command\n'
         % os.path.join(self.tempdir, 'a'))
-    self.assertEqual(expected_stdout, stdout.getvalue())
+    self.checkOutput(expected_stdout, '')
 
 
-class TestIsolated(unittest.TestCase):
+class TestIsolated(auto_stub.TestCase):
   def test_load_isolated_empty(self):
     m = isolateserver.load_isolated('{}', None, ALGO)
     self.assertEqual({}, m)
@@ -700,7 +784,7 @@ class TestIsolated(unittest.TestCase):
       },
       u'includes': [u'0123456789abcdef0123456789abcdef01234567'],
       u'os': 'oPhone',
-      u'read_only': False,
+      u'read_only': 1,
       u'relative_cwd': u'somewhere_else'
     }
     m = isolateserver.load_isolated(json.dumps(data), None, ALGO)
@@ -757,6 +841,215 @@ class TestIsolated(unittest.TestCase):
     actual = isolateserver.load_isolated(json.dumps(data), None, ALGO)
     expected = gen_data(os.path.sep)
     self.assertEqual(expected, actual)
+
+  def test_save_isolated_good_long_size(self):
+    calls = []
+    self.mock(isolateserver.tools, 'write_json', lambda *x: calls.append(x))
+    data = {
+      u'algo': 'sha-1',
+      u'files': {
+        u'b': {
+          u'm': 123,
+          u'h': u'0123456789abcdef0123456789abcdef01234567',
+          u's': 2181582786L,
+        }
+      },
+    }
+    m = isolateserver.save_isolated('foo', data)
+    self.assertEqual([], m)
+    self.assertEqual([('foo', data, True)], calls)
+
+
+class SymlinkTest(unittest.TestCase):
+  def setUp(self):
+    super(SymlinkTest, self).setUp()
+    self.old_cwd = os.getcwd()
+    self.cwd = tempfile.mkdtemp(prefix='isolate_')
+    # Everything should work even from another directory.
+    os.chdir(self.cwd)
+
+  def tearDown(self):
+    try:
+      os.chdir(self.old_cwd)
+      shutil.rmtree(self.cwd)
+    finally:
+      super(SymlinkTest, self).tearDown()
+
+  if sys.platform == 'darwin':
+    def test_expand_symlinks_path_case(self):
+      # Ensures that the resulting path case is fixed on case insensitive file
+      # system.
+      os.symlink('dest', os.path.join(self.cwd, 'link'))
+      os.mkdir(os.path.join(self.cwd, 'Dest'))
+      open(os.path.join(self.cwd, 'Dest', 'file.txt'), 'w').close()
+
+      result = isolateserver.expand_symlinks(unicode(self.cwd), 'link')
+      self.assertEqual((u'Dest', [u'link']), result)
+      result = isolateserver.expand_symlinks(unicode(self.cwd), 'link/File.txt')
+      self.assertEqual((u'Dest/file.txt', [u'link']), result)
+
+    def test_expand_directories_and_symlinks_path_case(self):
+      # Ensures that the resulting path case is fixed on case insensitive file
+      # system. A superset of test_expand_symlinks_path_case.
+      # Create *all* the paths with the wrong path case.
+      basedir = os.path.join(self.cwd, 'baseDir')
+      os.mkdir(basedir.lower())
+      subdir = os.path.join(basedir, 'subDir')
+      os.mkdir(subdir.lower())
+      open(os.path.join(subdir, 'Foo.txt'), 'w').close()
+      os.symlink('subDir', os.path.join(basedir, 'linkdir'))
+      actual = isolateserver.expand_directories_and_symlinks(
+          unicode(self.cwd), [u'baseDir/'], lambda _: None, True, False)
+      expected = [
+        u'basedir/linkdir',
+        u'basedir/subdir/Foo.txt',
+        u'basedir/subdir/Foo.txt',
+      ]
+      self.assertEqual(expected, actual)
+
+    def test_process_input_path_case_simple(self):
+      # Ensure the symlink dest is saved in the right path case.
+      subdir = os.path.join(self.cwd, 'subdir')
+      os.mkdir(subdir)
+      linkdir = os.path.join(self.cwd, 'linkdir')
+      os.symlink('subDir', linkdir)
+      actual = isolateserver.process_input(
+          unicode(linkdir.upper()), {}, True, 'mac', ALGO)
+      expected = {'l': u'subdir', 'm': 360, 't': int(os.stat(linkdir).st_mtime)}
+      self.assertEqual(expected, actual)
+
+    def test_process_input_path_case_complex(self):
+      # Ensure the symlink dest is saved in the right path case. This includes 2
+      # layers of symlinks.
+      basedir = os.path.join(self.cwd, 'basebir')
+      os.mkdir(basedir)
+
+      linkeddir2 = os.path.join(self.cwd, 'linkeddir2')
+      os.mkdir(linkeddir2)
+
+      linkeddir1 = os.path.join(basedir, 'linkeddir1')
+      os.symlink('../linkedDir2', linkeddir1)
+
+      subsymlinkdir = os.path.join(basedir, 'symlinkdir')
+      os.symlink('linkedDir1', subsymlinkdir)
+
+      actual = isolateserver.process_input(
+          unicode(subsymlinkdir.upper()), {}, True, 'mac', ALGO)
+      expected = {
+        'l': u'linkeddir1', 'm': 360, 't': int(os.stat(subsymlinkdir).st_mtime),
+      }
+      self.assertEqual(expected, actual)
+
+      actual = isolateserver.process_input(
+          unicode(linkeddir1.upper()), {}, True, 'mac', ALGO)
+      expected = {
+        'l': u'../linkeddir2', 'm': 360, 't': int(os.stat(linkeddir1).st_mtime),
+      }
+      self.assertEqual(expected, actual)
+
+  if sys.platform != 'win32':
+    def test_symlink_input_absolute_path(self):
+      # A symlink is outside of the checkout, it should be treated as a normal
+      # directory.
+      # .../src
+      # .../src/out -> .../tmp/foo
+      # .../tmp
+      # .../tmp/foo
+      src = os.path.join(self.cwd, u'src')
+      src_out = os.path.join(src, 'out')
+      tmp = os.path.join(self.cwd, 'tmp')
+      tmp_foo = os.path.join(tmp, 'foo')
+      os.mkdir(src)
+      os.mkdir(tmp)
+      os.mkdir(tmp_foo)
+      # The problem was that it's an absolute path, so it must be considered a
+      # normal directory.
+      os.symlink(tmp, src_out)
+      open(os.path.join(tmp_foo, 'bar.txt'), 'w').close()
+      actual = isolateserver.expand_symlinks(src, u'out/foo/bar.txt')
+      self.assertEqual((u'out/foo/bar.txt', []), actual)
+
+
+def get_storage(_isolate_server, _namespace):
+  class StorageFake(object):
+    def __enter__(self, *_):
+      return self
+
+    def __exit__(self, *_):
+      pass
+
+    @staticmethod
+    def upload_items(items):
+      # Always returns the second item as not present.
+      return [items[1]]
+  return StorageFake()
+
+
+class TestArchive(TestCase):
+  @staticmethod
+  def get_isolateserver_prog():
+    """Returns 'isolateserver.py' or 'isolateserver.pyc'."""
+    return os.path.basename(sys.modules[isolateserver.__name__].__file__)
+
+  def test_archive_no_server(self):
+    with self.assertRaises(SystemExit):
+      isolateserver.main(['archive', '.'])
+    prog = self.get_isolateserver_prog()
+    self.checkOutput(
+        '',
+        'Usage: %(prog)s archive [options] <file1..fileN> or - to read '
+        'from stdin\n\n'
+        '%(prog)s: error: --isolate-server is required.\n' % {'prog': prog})
+
+  def test_archive_duplicates(self):
+    with self.assertRaises(SystemExit):
+      isolateserver.main(
+          [
+            'archive', '--isolate-server', 'https://localhost:1',
+            # Effective dupes.
+            '.', os.getcwd(),
+          ])
+    prog = self.get_isolateserver_prog()
+    self.checkOutput(
+        '',
+        'Usage: %(prog)s archive [options] <file1..fileN> or - to read '
+        'from stdin\n\n'
+        '%(prog)s: error: Duplicate entries found.\n' % {'prog': prog})
+
+  def test_archive_files(self):
+    old_cwd = os.getcwd()
+    try:
+      os.chdir(os.path.join(TEST_DIR, 'isolateserver'))
+      self.mock(isolateserver, 'get_storage', get_storage)
+      f = ['empty_file.txt', 'small_file.txt']
+      isolateserver.main(
+          ['archive', '--isolate-server', 'https://localhost:1'] + f)
+      self.checkOutput(
+          'da39a3ee5e6b4b0d3255bfef95601890afd80709 empty_file.txt\n'
+          '0491bd1da8087ad10fcdd7c9634e308804b72158 small_file.txt\n',
+          '')
+    finally:
+      os.chdir(old_cwd)
+
+  def test_archive_directory(self):
+    old_cwd = os.getcwd()
+    try:
+      os.chdir(ROOT_DIR)
+      self.mock(isolateserver, 'get_storage', get_storage)
+      p = os.path.join(TEST_DIR, 'isolateserver')
+      isolateserver.main(
+          ['archive', '--isolate-server', 'https://localhost:1', p])
+      # TODO(maruel): The problem here is that the test depends on the file mode
+      # of the files in this directory.
+      # Fix is to copy the files in a temporary directory with known file modes.
+      #
+      # If you modify isolateserver.ISOLATED_FILE_VERSION, you'll have to update
+      # the hash below. Sorry about that.
+      self.checkOutput(
+          '189dbab83102b8ebcff92c1332a25fe26c1a5d7d %s\n' % p,
+          '')
+    finally:
+      os.chdir(old_cwd)
 
 
 if __name__ == '__main__':

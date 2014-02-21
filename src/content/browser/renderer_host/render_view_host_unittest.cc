@@ -5,7 +5,7 @@
 #include "base/path_service.h"
 #include "base/strings/utf_string_conversions.h"
 #include "content/browser/child_process_security_policy_impl.h"
-#include "content/browser/renderer_host/test_render_view_host.h"
+#include "content/browser/frame_host/render_frame_host_impl.h"
 #include "content/common/input_messages.h"
 #include "content/common/view_messages.h"
 #include "content/port/browser/render_view_host_delegate_view.h"
@@ -16,6 +16,7 @@
 #include "content/public/common/url_constants.h"
 #include "content/public/test/mock_render_process_host.h"
 #include "content/test/test_content_browser_client.h"
+#include "content/test/test_render_view_host.h"
 #include "content/test/test_web_contents.h"
 #include "net/base/net_util.h"
 #include "third_party/WebKit/public/web/WebDragOperation.h"
@@ -28,7 +29,7 @@ class RenderViewHostTestBrowserClient : public TestContentBrowserClient {
   virtual ~RenderViewHostTestBrowserClient() {}
 
   virtual bool IsHandledURL(const GURL& url) OVERRIDE {
-    return url.scheme() == chrome::kFileScheme;
+    return url.scheme() == kFileScheme;
   }
 
  private:
@@ -125,14 +126,14 @@ class MockDraggingRenderViewHostDelegateView
                              bool right_aligned,
                              bool allow_multiple_selection) OVERRIDE {}
   virtual void StartDragging(const DropData& drop_data,
-                             WebKit::WebDragOperationsMask allowed_ops,
+                             blink::WebDragOperationsMask allowed_ops,
                              const gfx::ImageSkia& image,
                              const gfx::Vector2d& image_offset,
                              const DragEventSourceInfo& event_info) OVERRIDE {
     drag_url_ = drop_data.url;
     html_base_url_ = drop_data.html_base_url;
   }
-  virtual void UpdateDragCursor(WebKit::WebDragOperation operation) OVERRIDE {}
+  virtual void UpdateDragCursor(blink::WebDragOperation operation) OVERRIDE {}
   virtual void GotFocus() OVERRIDE {}
   virtual void TakeFocus(bool reverse) OVERRIDE {}
   virtual void UpdatePreferredSize(const gfx::Size& pref_size) {}
@@ -199,10 +200,10 @@ TEST_F(RenderViewHostTest, DragEnteredFileURLsStillBlocked) {
   GURL sensitive_file_url = net::FilePathToFileURL(sensitive_file_path);
   dropped_data.url = highlighted_file_url;
   dropped_data.filenames.push_back(DropData::FileInfo(
-      UTF8ToUTF16(dragged_file_path.AsUTF8Unsafe()), string16()));
+      base::UTF8ToUTF16(dragged_file_path.AsUTF8Unsafe()), base::string16()));
 
   rvh()->DragTargetDragEnter(dropped_data, client_point, screen_point,
-                              WebKit::WebDragOperationNone, 0);
+                              blink::WebDragOperationNone, 0);
 
   int id = process()->GetID();
   ChildProcessSecurityPolicyImpl* policy =
@@ -288,10 +289,10 @@ TEST_F(RenderViewHostTest, NavigationWithBadHistoryItemFiles) {
 }
 
 TEST_F(RenderViewHostTest, RoutingIdSane) {
-  EXPECT_EQ(test_rvh()->GetProcess(),
-            test_rvh()->main_render_frame_host()->GetProcess());
-  EXPECT_NE(test_rvh()->GetRoutingID(),
-            test_rvh()->main_render_frame_host()->routing_id());
+  RenderFrameHostImpl* root_rfh =
+      contents()->GetFrameTree()->root()->current_frame_host();
+  EXPECT_EQ(test_rvh()->GetProcess(), root_rfh->GetProcess());
+  EXPECT_NE(test_rvh()->GetRoutingID(), root_rfh->routing_id());
 }
 
 }  // namespace content

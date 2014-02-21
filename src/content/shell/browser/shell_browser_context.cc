@@ -107,7 +107,7 @@ void ShellBrowserContext::InitWhileIOAllowed() {
 #endif
 
   if (!base::PathExists(path_))
-    file_util::CreateDirectory(path_);
+    base::CreateDirectory(path_);
 }
 
 base::FilePath ShellBrowserContext::GetPath() const {
@@ -122,7 +122,7 @@ DownloadManagerDelegate* ShellBrowserContext::GetDownloadManagerDelegate()  {
   DownloadManager* manager = BrowserContext::GetDownloadManager(this);
 
   if (!download_manager_delegate_.get()) {
-    download_manager_delegate_ = new ShellDownloadManagerDelegate();
+    download_manager_delegate_.reset(new ShellDownloadManagerDelegate());
     download_manager_delegate_->SetDownloadManager(manager);
     CommandLine* cmd_line = CommandLine::ForCurrentProcess();
     if (cmd_line->HasSwitch(switches::kDumpRenderTree)) {
@@ -188,8 +188,7 @@ void ShellBrowserContext::RequestMIDISysExPermission(
     callback.Run(false);
     return;
   }
-  // TODO(toyoshim): Implement. http://crbug.com/257618 .
-  callback.Run(false);
+  callback.Run(true);
 }
 
 void ShellBrowserContext::CancelMIDISysExPermissionRequest(
@@ -197,6 +196,20 @@ void ShellBrowserContext::CancelMIDISysExPermissionRequest(
     int render_view_id,
     int bridge_id,
     const GURL& requesting_frame) {
+}
+
+void ShellBrowserContext::RequestProtectedMediaIdentifierPermission(
+    int render_process_id,
+    int render_view_id,
+    int bridge_id,
+    int group_id,
+    const GURL& requesting_frame,
+    const ProtectedMediaIdentifierPermissionCallback& callback) {
+  callback.Run(true);
+}
+
+void ShellBrowserContext::CancelProtectedMediaIdentifierPermissionRequests(
+    int group_id) {
 }
 
 net::URLRequestContextGetter*

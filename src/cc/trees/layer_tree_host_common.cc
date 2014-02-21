@@ -64,9 +64,9 @@ static gfx::Vector2dF GetEffectiveTotalScrollOffset(LayerType* layer) {
 }
 
 inline gfx::Rect CalculateVisibleRectWithCachedLayerRect(
-    gfx::Rect target_surface_rect,
-    gfx::Rect layer_bound_rect,
-    gfx::Rect layer_rect_in_target_space,
+    const gfx::Rect& target_surface_rect,
+    const gfx::Rect& layer_bound_rect,
+    const gfx::Rect& layer_rect_in_target_space,
     const gfx::Transform& transform) {
   if (layer_rect_in_target_space.IsEmpty())
     return gfx::Rect();
@@ -104,8 +104,8 @@ inline gfx::Rect CalculateVisibleRectWithCachedLayerRect(
 }
 
 gfx::Rect LayerTreeHostCommon::CalculateVisibleRect(
-    gfx::Rect target_surface_rect,
-    gfx::Rect layer_bound_rect,
+    const gfx::Rect& target_surface_rect,
+    const gfx::Rect& layer_bound_rect,
     const gfx::Transform& transform) {
   gfx::Rect layer_in_surface_space =
       MathUtil::MapClippedRect(transform, layer_bound_rect);
@@ -154,7 +154,7 @@ enum TranslateRectDirection {
 template <typename LayerType>
 static gfx::Rect TranslateRectToTargetSpace(const LayerType& ancestor_layer,
                                             const LayerType& descendant_layer,
-                                            gfx::Rect rect,
+                                            const gfx::Rect& rect,
                                             TranslateRectDirection direction) {
   gfx::Vector2dF translation = ComputeChangeOfBasisTranslation<LayerType>(
       ancestor_layer, descendant_layer);
@@ -240,7 +240,7 @@ struct AccumulatedSurfaceState {
 template <typename LayerType>
 void UpdateAccumulatedSurfaceState(
     LayerType* layer,
-    gfx::Rect drawable_content_rect,
+    const gfx::Rect& drawable_content_rect,
     std::vector<AccumulatedSurfaceState<LayerType> >*
         accumulated_surface_state) {
   if (IsRootLayer(layer))
@@ -383,8 +383,8 @@ static inline bool LayerClipsSubtree(LayerType* layer) {
 template <typename LayerType>
 static gfx::Rect CalculateVisibleContentRect(
     LayerType* layer,
-    gfx::Rect clip_rect_of_target_surface_in_target_space,
-    gfx::Rect layer_rect_in_target_space) {
+    const gfx::Rect& clip_rect_of_target_surface_in_target_space,
+    const gfx::Rect& layer_rect_in_target_space) {
   DCHECK(layer->render_target());
 
   // Nothing is visible if the layer bounds are empty.
@@ -587,6 +587,19 @@ static bool SubtreeShouldRenderToSeparateSurface(
     return true;
   }
 
+  // If the layer has blending.
+  // TODO(rosca): this is temporary, until blending is implemented for other
+  // types of quads than RenderPassDrawQuad. Layers having descendants that draw
+  // content will still create a separate rendering surface.
+  if (!layer->uses_default_blend_mode()) {
+    TRACE_EVENT_INSTANT0(
+        "cc",
+        "LayerTreeHostCommon::SubtreeShouldRenderToSeparateSurface blending",
+        TRACE_EVENT_SCOPE_THREAD);
+    DCHECK(!is_root);
+    return true;
+  }
+
   // If the layer clips its descendants but it is not axis-aligned with respect
   // to its parent.
   bool layer_clips_external_content =
@@ -629,6 +642,19 @@ static bool SubtreeShouldRenderToSeparateSurface(
   // be used as a contributing surface in order to apply correctly.
   //
 
+  // If the layer has isolation.
+  // TODO(rosca): to be optimized - create separate rendering surface only when
+  // the blending descendants might have access to the content behind this layer
+  // (layer has transparent background or descendants overflow).
+  // https://code.google.com/p/chromium/issues/detail?id=301738
+  if (layer->is_root_for_isolated_group()) {
+    TRACE_EVENT_INSTANT0(
+        "cc",
+        "LayerTreeHostCommon::SubtreeShouldRenderToSeparateSurface isolation",
+        TRACE_EVENT_SCOPE_THREAD);
+    return true;
+  }
+
   // If we force it.
   if (layer->force_render_surface())
     return true;
@@ -646,7 +672,7 @@ static bool SubtreeShouldRenderToSeparateSurface(
 gfx::Transform ComputeSizeDeltaCompensation(
     LayerImpl* layer,
     LayerImpl* container,
-    gfx::Vector2dF position_offset) {
+    const gfx::Vector2dF& position_offset) {
   gfx::Transform result_transform;
 
   // To apply a translate in the container's layer space,
@@ -749,7 +775,7 @@ void ApplyPositionAdjustment(
 gfx::Transform ComputeScrollCompensationForThisLayer(
     LayerImpl* scrolling_layer,
     const gfx::Transform& parent_matrix,
-    gfx::Vector2dF scroll_delta) {
+    const gfx::Vector2dF& scroll_delta) {
   // For every layer that has non-zero scroll_delta, we have to compute a
   // transform that can undo the scroll_delta translation. In particular, we
   // want this matrix to premultiply a fixed-position layer's parent_matrix, so
@@ -789,7 +815,7 @@ gfx::Transform ComputeScrollCompensationMatrixForChildren(
     Layer* current_layer,
     const gfx::Transform& current_parent_matrix,
     const gfx::Transform& current_scroll_compensation,
-    gfx::Vector2dF scroll_delta) {
+    const gfx::Vector2dF& scroll_delta) {
   // The main thread (i.e. Layer) does not need to worry about scroll
   // compensation.  So we can just return an identity matrix here.
   return gfx::Transform();
@@ -799,7 +825,7 @@ gfx::Transform ComputeScrollCompensationMatrixForChildren(
     LayerImpl* layer,
     const gfx::Transform& parent_matrix,
     const gfx::Transform& current_scroll_compensation_matrix,
-    gfx::Vector2dF scroll_delta) {
+    const gfx::Vector2dF& scroll_delta) {
   // "Total scroll compensation" is the transform needed to cancel out all
   // scroll_delta translations that occurred since the nearest container layer,
   // even if there are render_surfaces in-between.
@@ -1138,7 +1164,7 @@ struct DataForRecursion {
 
   bool ancestor_clips_subtree;
   typename LayerType::RenderSurfaceType*
-      nearest_ancestor_surface_that_moves_pixels;
+      nearest_occlusion_immune_ancestor_surface;
   bool in_subtree_of_page_scale_application_layer;
   bool subtree_can_use_lcd_text;
   bool subtree_is_visible_from_ancestor;
@@ -1402,8 +1428,8 @@ static void CalculateDrawPropertiesInternal(
 
   DataForRecursion<LayerType> data_for_children;
   typename LayerType::RenderSurfaceType*
-      nearest_ancestor_surface_that_moves_pixels =
-          data_from_ancestor.nearest_ancestor_surface_that_moves_pixels;
+      nearest_occlusion_immune_ancestor_surface =
+          data_from_ancestor.nearest_occlusion_immune_ancestor_surface;
   data_for_children.in_subtree_of_page_scale_application_layer =
       data_from_ancestor.in_subtree_of_page_scale_application_layer;
   data_for_children.subtree_can_use_lcd_text =
@@ -1687,14 +1713,21 @@ static void CalculateDrawPropertiesInternal(
           gfx::Rect(layer->content_bounds());
     }
 
+    // Ignore occlusion from outside the surface when surface contents need to
+    // be fully drawn. Layers with copy-request need to be complete.
+    // We could be smarter about layers with replica and exclude regions
+    // where both layer and the replica are occluded, but this seems like an
+    // overkill. The same is true for layers with filters that move pixels.
     // TODO(senorblanco): make this smarter for the SkImageFilter case (check
     // for pixel-moving filters)
-    if (layer->filters().HasReferenceFilter() ||
-        layer->filters().HasFilterThatMovesPixels())
-      nearest_ancestor_surface_that_moves_pixels = render_surface;
-
-    render_surface->SetNearestAncestorThatMovesPixels(
-        nearest_ancestor_surface_that_moves_pixels);
+    if (layer->HasCopyRequest() ||
+        layer->has_replica() ||
+        layer->filters().HasReferenceFilter() ||
+        layer->filters().HasFilterThatMovesPixels()) {
+      nearest_occlusion_immune_ancestor_surface = render_surface;
+    }
+    render_surface->SetNearestOcclusionImmuneAncestor(
+        nearest_occlusion_immune_ancestor_surface);
 
     layer_or_ancestor_clips_descendants = false;
     bool subtree_is_clipped_by_surface_bounds = false;
@@ -1792,21 +1825,6 @@ static void CalculateDrawPropertiesInternal(
     layer_draw_properties.render_target = layer->parent()->render_target();
   }
 
-  // Mark whether a layer could be drawn directly to the back buffer, for
-  // example when it could use LCD text even though it's in a non-contents
-  // opaque layer.  This means that it can't be drawn to an intermediate
-  // render target and also that no blending is applied to the layer as a whole
-  // (meaning that its contents don't have to be pre-composited into a bitmap or
-  // a render target).
-  //
-  // Ignoring animations is an optimization,
-  // as it means that we're going to need some retained resources for this
-  // layer in the near future even if its opacity is 1 now.
-  layer_draw_properties.can_draw_directly_to_backbuffer =
-      IsRootLayer(layer_draw_properties.render_target) &&
-      layer->draw_properties().opacity == 1.f &&
-      !animating_opacity_to_screen;
-
   if (adjust_text_aa)
     layer_draw_properties.can_use_lcd_text = layer_can_use_lcd_text;
 
@@ -1895,8 +1913,8 @@ static void CalculateDrawPropertiesInternal(
         clip_rect_of_target_surface_in_target_space;
     data_for_children.ancestor_clips_subtree =
         layer_or_ancestor_clips_descendants;
-    data_for_children.nearest_ancestor_surface_that_moves_pixels =
-        nearest_ancestor_surface_that_moves_pixels;
+    data_for_children.nearest_occlusion_immune_ancestor_surface =
+        nearest_occlusion_immune_ancestor_surface;
     data_for_children.subtree_is_visible_from_ancestor = layer_is_visible;
   }
 
@@ -1970,19 +1988,16 @@ static void CalculateDrawPropertiesInternal(
     return;
   }
 
-  if (layer->DrawsContent()) {
-    gfx::Rect local_drawable_content_rect = rect_in_target_space;
-    if (layer_or_ancestor_clips_descendants)
-      local_drawable_content_rect.Intersect(clip_rect_in_target_space);
-    local_drawable_content_rect_of_subtree.Union(local_drawable_content_rect);
-  }
-
   // Compute the layer's drawable content rect (the rect is in target surface
   // space).
   layer_draw_properties.drawable_content_rect = rect_in_target_space;
   if (layer_or_ancestor_clips_descendants) {
-    layer_draw_properties.drawable_content_rect.
-        Intersect(clip_rect_in_target_space);
+    layer_draw_properties.drawable_content_rect.Intersect(
+        clip_rect_in_target_space);
+  }
+  if (layer->DrawsContent()) {
+    local_drawable_content_rect_of_subtree.Union(
+        layer_draw_properties.drawable_content_rect);
   }
 
   // Compute the layer's visible content rect (the rect is in content space).
@@ -2029,6 +2044,16 @@ static void CalculateDrawPropertiesInternal(
       RemoveSurfaceForEarlyExit(layer, render_surface_layer_list);
       return;
     }
+
+    // Layers having a non-default blend mode will blend with the content
+    // inside its parent's render target. This render target should be
+    // either root_for_isolated_group, or the root of the layer tree.
+    // Otherwise, this layer will use an incomplete backdrop, limited to its
+    // render target and the blending result will be incorrect.
+    DCHECK(layer->uses_default_blend_mode() || IsRootLayer(layer) ||
+           !layer->parent()->render_target() ||
+           IsRootLayer(layer->parent()->render_target()) ||
+           layer->parent()->render_target()->is_root_for_isolated_group());
 
     render_surface->SetContentRect(clipped_content_rect);
 
@@ -2138,7 +2163,7 @@ void LayerTreeHostCommon::CalculateDrawProperties(
   data_for_recursion.clip_rect_of_target_surface_in_target_space =
       device_viewport_rect;
   data_for_recursion.ancestor_clips_subtree = true;
-  data_for_recursion.nearest_ancestor_surface_that_moves_pixels = NULL;
+  data_for_recursion.nearest_occlusion_immune_ancestor_surface = NULL;
   data_for_recursion.in_subtree_of_page_scale_application_layer = false;
   data_for_recursion.subtree_can_use_lcd_text = inputs->can_use_lcd_text;
   data_for_recursion.subtree_is_visible_from_ancestor = true;
@@ -2196,7 +2221,7 @@ void LayerTreeHostCommon::CalculateDrawProperties(
   data_for_recursion.clip_rect_of_target_surface_in_target_space =
       device_viewport_rect;
   data_for_recursion.ancestor_clips_subtree = true;
-  data_for_recursion.nearest_ancestor_surface_that_moves_pixels = NULL;
+  data_for_recursion.nearest_occlusion_immune_ancestor_surface = NULL;
   data_for_recursion.in_subtree_of_page_scale_application_layer = false;
   data_for_recursion.subtree_can_use_lcd_text = inputs->can_use_lcd_text;
   data_for_recursion.subtree_is_visible_from_ancestor = true;
@@ -2220,9 +2245,9 @@ void LayerTreeHostCommon::CalculateDrawProperties(
 }
 
 static bool PointHitsRect(
-    gfx::PointF screen_space_point,
+    const gfx::PointF& screen_space_point,
     const gfx::Transform& local_space_to_screen_space_transform,
-    gfx::RectF local_space_rect) {
+    const gfx::RectF& local_space_rect) {
   // If the transform is not invertible, then assume that this point doesn't hit
   // this rect.
   gfx::Transform inverse_local_space_to_screen_space(
@@ -2245,7 +2270,7 @@ static bool PointHitsRect(
   return local_space_rect.Contains(hit_test_point_in_local_space);
 }
 
-static bool PointHitsRegion(gfx::PointF screen_space_point,
+static bool PointHitsRegion(const gfx::PointF& screen_space_point,
                             const gfx::Transform& screen_space_transform,
                             const Region& layer_space_region,
                             float layer_content_scale_x,
@@ -2276,8 +2301,9 @@ static bool PointHitsRegion(gfx::PointF screen_space_point,
       gfx::ToRoundedPoint(hit_test_point_in_layer_space));
 }
 
-static bool PointIsClippedBySurfaceOrClipRect(gfx::PointF screen_space_point,
-                                              LayerImpl* layer) {
+static bool PointIsClippedBySurfaceOrClipRect(
+    const gfx::PointF& screen_space_point,
+    LayerImpl* layer) {
   LayerImpl* current_layer = layer;
 
   // Walk up the layer tree and hit-test any render_surfaces and any layer
@@ -2310,7 +2336,7 @@ static bool PointIsClippedBySurfaceOrClipRect(gfx::PointF screen_space_point,
 }
 
 LayerImpl* LayerTreeHostCommon::FindLayerThatIsHitByPoint(
-    gfx::PointF screen_space_point,
+    const gfx::PointF& screen_space_point,
     const LayerImplList& render_surface_layer_list) {
   LayerImpl* found_layer = NULL;
 
@@ -2356,7 +2382,7 @@ LayerImpl* LayerTreeHostCommon::FindLayerThatIsHitByPoint(
 }
 
 LayerImpl* LayerTreeHostCommon::FindLayerThatIsHitByPointInTouchHandlerRegion(
-    gfx::PointF screen_space_point,
+    const gfx::PointF& screen_space_point,
     const LayerImplList& render_surface_layer_list) {
   // First find out which layer was hit from the saved list of visible layers
   // in the most recent frame.
@@ -2376,7 +2402,7 @@ LayerImpl* LayerTreeHostCommon::FindLayerThatIsHitByPointInTouchHandlerRegion(
 }
 
 bool LayerTreeHostCommon::LayerHasTouchEventHandlersAt(
-    gfx::PointF screen_space_point,
+    const gfx::PointF& screen_space_point,
     LayerImpl* layer_impl) {
   if (layer_impl->touch_event_handler_region().IsEmpty())
     return false;

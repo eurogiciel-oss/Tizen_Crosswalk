@@ -31,62 +31,154 @@
 #ifndef HTMLImport_h
 #define HTMLImport_h
 
+#include "wtf/TreeNode.h"
 #include "wtf/Vector.h"
 
 namespace WebCore {
 
-class Frame;
+class CustomElementMicrotaskImportStep;
 class Document;
 class Frame;
+class HTMLImportChild;
 class HTMLImportRoot;
 class HTMLImportsController;
+class KURL;
 
-class HTMLImport {
+//
+// # Basic Data Structure and Algorithms of HTML Imports implemenation.
+//
+// ## The Import Tree
+//
+// HTML Imports form a tree:
+//
+// * The root of the tree is HTMLImportsController, which is owned by the master
+//   document as a DocumentSupplement. HTMLImportsController has an abstract class called
+//   HTMLImportRoot to deal with cycler dependency.
+//
+// * The non-root nodes are HTMLImportChild, which is owned by LinkStyle, that is owned by HTMLLinkElement.
+//   LinkStyle is wired into HTMLImportChild by implementing HTMLImportChildClient interface
+//
+// * Both HTMLImportsController and HTMLImportChild are derived from HTMLImport superclass
+//   that models the tree data structure using WTF::TreeNode and provides a set of
+//   virtual functions.
+//
+// HTMLImportsController also owns all loaders in the tree and manages their lifetime through it.
+// One assumption is that the tree is append-only and nodes are never inserted in the middle of the tree nor removed.
+//
+//
+//    HTMLImport <|- HTMLImportRoot <|- HTMLImportsController <- Document
+//                                      *
+//                                      |
+//               <|-                    HTMLImportChild <- LinkStyle <- HTMLLinkElement
+//
+//
+// # Import Sharing and HTMLImportLoader
+//
+// The HTML Imports spec calls for de-dup mechanism to share already loaded imports.
+// To implement this, the actual loading machinery is split out from HTMLImportChild to
+// HTMLImportLoader, and each loader shares HTMLImportLoader with other loader if the URL is same.
+// Check around HTMLImportsController::findLink() for more detail.
+//
+// Note that HTMLImportLoader provides HTMLImportLoaderClient to hook it up.
+// As it can be shared, HTMLImportLoader supports multiple clients.
+//
+//    HTMLImportChild (1)-->(*) HTMLImportLoader
+//
+//
+// # Script Blocking
+//
+// - An import blocks the HTML parser of its own imported document from running <script>
+//   until all of its children are loaded.
+//   Note that dynamically added import won't block the parser.
+//
+// - An import under loading also blocks imported documents that follow from being created.
+//   This is because an import can include another import that has same URLs of following ones.
+//   In such case, the preceding import should be loaded and following ones should be de-duped.
+//
+
+// The superclass of HTMLImportsController and HTMLImportChild
+// This represents the import tree data structure.
+class HTMLImport : public TreeNode<HTMLImport> {
 public:
-    static bool unblock(HTMLImport*);
+    static bool isMaster(Document*);
 
     virtual ~HTMLImport() { }
 
     Frame* frame();
     Document* master();
     HTMLImportsController* controller();
+    bool isRoot() const { return !isChild(); }
 
-    bool isLoaded() const { return !isBlocked() && !isProcessing(); }
-    bool isBlocked() const { return m_blocked; }
+    bool isCreatedByParser() const { return m_createdByParser; }
+
+    bool isStateBlockedFromRunningScript() const { return state() <= BlockedFromRunningScript; }
+    bool isStateBlockedFromCreatingDocument() const { return state() <= BlockedFromCreatingDocument; }
+    bool isStateReady() const { return state() == Ready; }
+
     void appendChild(HTMLImport*);
 
+    virtual bool isChild() const { return false; }
     virtual HTMLImportRoot* root() = 0;
-    virtual HTMLImport* parent() const = 0;
     virtual Document* document() const = 0;
     virtual void wasDetachedFromDocument() = 0;
-    virtual void didFinishParsing() = 0;
-    virtual bool isProcessing() const = 0;
+    virtual void didFinishParsing() { };
+    virtual bool isDone() const = 0; // FIXME: Should be renamed to haveFinishedLoading()
+    virtual bool hasLoader() const = 0;
+    virtual bool ownsLoader() const { return false; }
+    virtual CustomElementMicrotaskImportStep* customElementMicrotaskStep() const { return 0; }
+    virtual void stateDidChange();
+
+    enum State {
+        BlockedFromCreatingDocument = 0,
+        BlockedFromRunningScript,
+        Active,
+        Ready,
+        Invalid
+    };
 
 protected:
-    HTMLImport()
-        : m_blocked(false)
+    // Stating from most conservative state.
+    // It will be corrected through state update flow.
+    explicit HTMLImport(bool createdByParser = false)
+        : m_cachedState(BlockedFromCreatingDocument)
+        , m_createdByParser(createdByParser)
     { }
 
+    void stateWillChange();
+    State state() const;
+    static void recalcTreeState(HTMLImport* root);
+
+#if !defined(NDEBUG)
+    void show();
+    void showTree(HTMLImport* highlight, unsigned depth);
+    virtual void showThis();
+#endif
+
 private:
-    static void block(HTMLImport*);
+    void recalcState();
+    void forceBlock();
+    void invalidateCachedState() { m_cachedState = Invalid; }
+    bool isStateCacheValid() const { return m_cachedState != Invalid; }
 
-    void blockAfter(HTMLImport* child);
-    void block();
-    void unblock();
-    void didUnblock();
-
-    bool arePredecessorsLoaded() const;
-    bool areChilrenLoaded() const;
-    bool hasChildren() const { return !m_children.isEmpty(); }
-
-    Vector<HTMLImport*> m_children;
-    bool m_blocked; // If any of decendants or predecessors is in processing, it is blocked.
+    State m_cachedState;
+    bool m_createdByParser : 1;
 };
 
+inline HTMLImport::State HTMLImport::state() const
+{
+    ASSERT(isStateCacheValid());
+    return m_cachedState;
+}
+
+
+// An abstract class to decouple its sublcass HTMLImportsController.
 class HTMLImportRoot : public HTMLImport {
 public:
-    virtual void importWasDisposed() = 0;
+    HTMLImportRoot() { }
+
+    virtual void scheduleRecalcState() = 0;
     virtual HTMLImportsController* toController() = 0;
+    virtual HTMLImportChild* findLinkFor(const KURL&, HTMLImport* excluding = 0) const = 0;
 };
 
 } // namespace WebCore

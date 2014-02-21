@@ -29,16 +29,14 @@ base.exportTo('tracing', function() {
   /**
    * View
    * @constructor
-   * @extends {HTMLDivElement}
+   * @extends {HTMLUnknownElement}
    */
-  var TimelineView = ui.define('div');
+  var TimelineView = ui.define('x-timeline-view');
 
   TimelineView.prototype = {
-    __proto__: HTMLDivElement.prototype,
+    __proto__: HTMLUnknownElement.prototype,
 
     decorate: function() {
-      this.classList.add('timeline-view');
-
       var node = base.instantiateTemplate('#timeline-view-template');
       this.appendChild(node);
 
@@ -64,10 +62,9 @@ base.exportTo('tracing', function() {
       this.appendChild(this.dragEl_);
 
       this.analysisEl_ = new tracing.analysis.AnalysisView();
-      this.analysisEl_.addEventListener(
-          'requestSelectionChange',
-          this.onRequestSelectionChange_.bind(this));
       this.appendChild(this.analysisEl_);
+      this.addEventListener('requestSelectionChange',
+                            this.onRequestSelectionChange_.bind(this));
 
       // Bookkeeping.
       this.onSelectionChanged_ = this.onSelectionChanged_.bind(this);

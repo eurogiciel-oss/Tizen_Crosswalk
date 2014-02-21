@@ -1,13 +1,17 @@
 function initialize_LayerTreeTests()
 {
     // FIXME: remove once out of experimental.
-    WebInspector.inspectorView.addPanel(new WebInspector.LayersPanelDescriptor());
+    WebInspector.moduleManager.registerModule("layers");
+    var extensions = WebInspector.moduleManager.extensions(WebInspector.Panel).forEach(function(extension) {
+        if (extension.module().name() === "layers")
+            WebInspector.inspectorView.addPanel(new WebInspector.ModuleManagerExtensionPanelDescriptor(extension));
+    });
     InspectorTest._layerTreeModel = WebInspector.panel("layers")._model;
 
     InspectorTest.labelForLayer = function(layer)
     {
         var node = WebInspector.domAgent.nodeForId(layer.nodeIdForSelfOrAncestor());
-        var label = node.appropriateSelectorFor(false);
+        var label = WebInspector.DOMPresentationUtils.appropriateSelectorFor(node, false);
         var height = layer.height();
         var width = layer.width();
         if (height <= 200 && width <= 200)

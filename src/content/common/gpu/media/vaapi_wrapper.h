@@ -78,8 +78,8 @@ class CONTENT_EXPORT VaapiWrapper {
                             Pixmap x_pixmap,
                             gfx::Size dest_size);
 
-  // Do any necessary initialization before the sandbox is enabled.
-  static void PreSandboxInitialization();
+  // Returns true if the VAAPI version is less than the specified version.
+  bool VAAPIVersionLessThan(int major, int minor);
 
  private:
   VaapiWrapper();
@@ -94,6 +94,9 @@ class CONTENT_EXPORT VaapiWrapper {
   // by client or if decode fails in hardware.
   bool SubmitDecode(VASurfaceID va_surface_id);
 
+  // Attempt to set render mode to "render to texture.". Failure is non-fatal.
+  void TryToSetVADisplayAttributeToLocalGPU();
+
   // Lazily initialize static data after sandbox is enabled.  Return false on
   // init failure.
   static bool PostSandboxInitialization();
@@ -105,6 +108,9 @@ class CONTENT_EXPORT VaapiWrapper {
 
   // Allocated ids for VASurfaces.
   std::vector<VASurfaceID> va_surface_ids_;
+
+  // The VAAPI version.
+  int major_version_, minor_version_;
 
   // VA handles.
   // Both valid after successful Initialize() and until Deinitialize().
@@ -121,9 +127,6 @@ class CONTENT_EXPORT VaapiWrapper {
   // Called to report decoding errors to UMA. Errors to clients are reported via
   // return values from public methods.
   base::Closure report_error_to_uma_cb_;
-
-  // Has static initialization of pre-sandbox components completed successfully?
-  static bool pre_sandbox_init_done_;
 
   DISALLOW_COPY_AND_ASSIGN(VaapiWrapper);
 };

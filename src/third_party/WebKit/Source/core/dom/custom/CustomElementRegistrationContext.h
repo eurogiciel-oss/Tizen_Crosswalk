@@ -36,6 +36,7 @@
 #include "core/dom/custom/CustomElementRegistry.h"
 #include "core/dom/custom/CustomElementUpgradeCandidateMap.h"
 #include "wtf/HashMap.h"
+#include "wtf/PassOwnPtr.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/text/AtomicString.h"
 
@@ -56,15 +57,11 @@ public:
     // Definitions
     void registerElement(Document*, CustomElementConstructorBuilder*, const AtomicString& type, CustomElement::NameSet validNames, ExceptionState&);
 
-    // Instance creation
-    enum CreationMode {
-        CreatedByParser,
-        NotCreatedByParser
-    };
-
-    PassRefPtr<Element> createCustomTagElement(Document&, const QualifiedName&, CreationMode = NotCreatedByParser);
+    PassRefPtr<Element> createCustomTagElement(Document&, const QualifiedName&);
     static void setIsAttributeAndTypeExtension(Element*, const AtomicString& type);
-    static void setTypeExtension(Element*, const AtomicString& type, CreationMode = NotCreatedByParser);
+    static void setTypeExtension(Element*, const AtomicString& type);
+
+    void resolve(Element*, const CustomElementDescriptor&);
 
 protected:
     CustomElementRegistrationContext() { }
@@ -73,9 +70,7 @@ protected:
     void didGiveTypeExtension(Element*, const AtomicString& type);
 
 private:
-    void resolve(Element*, const AtomicString& typeExtension);
-    void didResolveElement(CustomElementDefinition*, Element*);
-    void didCreateUnresolvedElement(const CustomElementDescriptor&, Element*);
+    void scheduleResolution(Element*, const AtomicString& typeExtension);
 
     CustomElementRegistry m_registry;
 

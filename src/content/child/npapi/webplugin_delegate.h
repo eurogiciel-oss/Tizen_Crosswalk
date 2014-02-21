@@ -18,7 +18,7 @@ class GURL;
 class SkCanvas;
 struct NPObject;
 
-namespace WebKit {
+namespace blink {
 class WebInputEvent;
 }
 
@@ -73,7 +73,7 @@ class WebPluginDelegate {
   // For windowless plugins, gives them a user event like mouse/keyboard.
   // Returns whether the event was handled. This is only called in windowsless
   // mode. See NPAPI NPP_HandleEvent for more information.
-  virtual bool HandleInputEvent(const WebKit::WebInputEvent& event,
+  virtual bool HandleInputEvent(const blink::WebInputEvent& event,
                                 WebCursor::CursorInfo* cursor) = 0;
 
   // Gets the NPObject associated with the plugin for scripting.
@@ -142,6 +142,7 @@ class WebPluginDelegate {
                         bool notify_redirects,
                         bool is_plugin_src_load,
                         int origin_pid,
+                        int render_frame_id,
                         int render_view_id) = 0;
 
 };

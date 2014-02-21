@@ -32,13 +32,12 @@
 #include "FrameTestHelpers.h"
 #include "URLTestHelpers.h"
 #include "WebFrame.h"
-#include "WebFrameClient.h"
 #include "WebPageSerializer.h"
 #include "WebPageSerializerClient.h"
 #include "WebScriptSource.h"
 #include "WebSettings.h"
 #include "WebView.h"
-#include <gtest/gtest.h>
+#include "core/dom/Document.h"
 #include "public/platform/Platform.h"
 #include "public/platform/WebString.h"
 #include "public/platform/WebThread.h"
@@ -46,11 +45,14 @@
 #include "public/platform/WebURLRequest.h"
 #include "public/platform/WebURLResponse.h"
 #include "public/platform/WebUnitTestSupport.h"
+#include "public/web/WebDocument.h"
+#include <gtest/gtest.h>
 
-using namespace WebKit;
-using WebKit::FrameTestHelpers::runPendingTasks;
-using WebKit::URLTestHelpers::toKURL;
-using WebKit::URLTestHelpers::registerMockedURLLoad;
+using namespace blink;
+using WebCore::Document;
+using blink::FrameTestHelpers::runPendingTasks;
+using blink::URLTestHelpers::toKURL;
+using blink::URLTestHelpers::registerMockedURLLoad;
 
 namespace {
 
@@ -77,11 +79,6 @@ public:
 private:
     std::string m_text;
     size_t m_index;
-};
-
-class TestWebFrameClient : public WebFrameClient {
-public:
-    virtual ~TestWebFrameClient() { }
 };
 
 class LengthCountingWebPageSerializerClient : public WebPageSerializerClient {
@@ -113,24 +110,13 @@ public:
 protected:
     virtual void SetUp()
     {
-        // Create and initialize the WebView.
-        m_webView = WebView::create(0);
-        m_mainFrame = WebFrame::create(&m_webFrameClient);
-
         // We want the images to load and JavaScript to be on.
-        WebSettings* settings = m_webView->settings();
-        settings->setImagesEnabled(true);
-        settings->setLoadsImagesAutomatically(true);
-        settings->setJavaScriptEnabled(true);
-
-        m_webView->setMainFrame(m_mainFrame);
+        m_helper.initialize(true, 0, 0, &configureSettings);
     }
 
     virtual void TearDown()
     {
         Platform::current()->unitTestSupport()->unregisterAllMockedURLs();
-        m_webView->close();
-        m_mainFrame->close();
     }
 
     WebURL setUpCSSTestPage()
@@ -156,7 +142,7 @@ protected:
         WebURLRequest urlRequest;
         urlRequest.initialize();
         urlRequest.setURL(url);
-        m_webView->mainFrame()->loadRequest(urlRequest);
+        m_helper.webView()->mainFrame()->loadRequest(urlRequest);
         // Make sure any pending request get served.
         Platform::current()->unitTestSupport()->serveAsynchronousMockedRequests();
         // Some requests get delayed, run the timer.
@@ -182,16 +168,22 @@ protected:
         return false;
     }
 
-    WebView* m_webView;
+    WebView* webView() const { return m_helper.webView(); }
 
 private:
+    static void configureSettings(WebSettings* settings)
+    {
+        settings->setImagesEnabled(true);
+        settings->setLoadsImagesAutomatically(true);
+        settings->setJavaScriptEnabled(true);
+    }
+
+    FrameTestHelpers::WebViewHelper m_helper;
     WebString m_htmlMimeType;
     WebString m_xhtmlMimeType;
     WebString m_cssMimeType;
     WebString m_pngMimeType;
     WebString m_svgMimeType;
-    TestWebFrameClient m_webFrameClient;
-    WebFrame* m_mainFrame;
 };
 
 // Tests that a page with resources and sub-frame is reported with all its resources.
@@ -207,9 +199,15 @@ TEST_F(WebPageNewSerializeTest, PageWithFrames)
     registerMockedURLLoad(toKURL("http://www.test.com/blue_background.png"), WebString::fromUTF8("blue_background.png"), WebString::fromUTF8("pageserializer/"), pngMimeType());
 
     loadURLInTopFrame(topFrameURL);
+    // OBJECT/EMBED have some delay to start to load their content. The first
+    // serveAsynchronousMockedRequests call in loadURLInTopFrame() finishes
+    // before the start.
+    RefPtr<Document> document = static_cast<PassRefPtr<Document> >(webView()->mainFrame()->document());
+    document->updateLayoutIgnorePendingStylesheets(Document::RunPostLayoutTasksSynchronously);
+    Platform::current()->unitTestSupport()->serveAsynchronousMockedRequests();
 
     WebVector<WebPageSerializer::Resource> resources;
-    WebPageSerializer::serialize(m_webView, &resources);
+    WebPageSerializer::serialize(webView(), &resources);
     ASSERT_FALSE(resources.isEmpty());
 
     // The first resource should be the main-frame.
@@ -236,7 +234,7 @@ TEST_F(WebPageNewSerializeTest, FAILS_CSSResources)
     loadURLInTopFrame(topFrameURL);
 
     WebVector<WebPageSerializer::Resource> resources;
-    WebPageSerializer::serialize(m_webView, &resources);
+    WebPageSerializer::serialize(webView(), &resources);
     ASSERT_FALSE(resources.isEmpty());
 
     // The first resource should be the main-frame.
@@ -272,7 +270,7 @@ TEST_F(WebPageNewSerializeTest, BlankFrames)
     loadURLInTopFrame(topFrameURL);
 
     WebVector<WebPageSerializer::Resource> resources;
-    WebPageSerializer::serialize(m_webView, &resources);
+    WebPageSerializer::serialize(webView(), &resources);
     ASSERT_FALSE(resources.isEmpty());
 
     // The first resource should be the main-frame.
@@ -299,7 +297,7 @@ TEST_F(WebPageNewSerializeTest, SerializeXMLHasRightDeclaration)
     loadURLInTopFrame(topFrameURL);
 
     WebVector<WebPageSerializer::Resource> resources;
-    WebPageSerializer::serialize(m_webView, &resources);
+    WebPageSerializer::serialize(webView(), &resources);
     ASSERT_FALSE(resources.isEmpty());
 
     // We expect only one resource, the XML.
@@ -320,7 +318,7 @@ TEST_F(WebPageNewSerializeTest, FAILS_TestMHTMLEncoding)
     WebURL topFrameURL = setUpCSSTestPage();
     loadURLInTopFrame(topFrameURL);
 
-    WebCString mhtmlData = WebPageSerializer::serializeToMHTML(m_webView);
+    WebCString mhtmlData = WebPageSerializer::serializeToMHTML(webView());
     ASSERT_FALSE(mhtmlData.isEmpty());
 
     // Read the MHTML data line per line and do some pseudo-parsing to make sure the right encoding is used for the different sections.
@@ -364,7 +362,7 @@ TEST_F(WebPageNewSerializeTest, SVGImageDontCrash)
 
     loadURLInTopFrame(pageUrl);
 
-    WebCString mhtml = WebPageSerializer::serializeToMHTML(m_webView);
+    WebCString mhtml = WebPageSerializer::serializeToMHTML(webView());
     // We expect some data to be generated.
     EXPECT_GT(mhtml.length(), 50U);
 }
@@ -387,7 +385,7 @@ TEST_F(WebPageNewSerializeTest, NamespaceElementsDontCrash)
     // We just want to make sure nothing crazy happens, namely that no
     // assertions are hit. As a sanity check, we also make sure that some data
     // was returned.
-    WebPageSerializer::serialize(m_webView->mainFrame(), true, &client, localLinks, localPaths, WebString(""));
+    WebPageSerializer::serialize(webView()->mainFrame(), true, &client, localLinks, localPaths, WebString(""));
 
     EXPECT_GT(counter, 0U);
 }
@@ -401,7 +399,7 @@ TEST_F(WebPageNewSerializeTest, TestMHTMLEncodingWithDataURL)
     registerMockedURLLoad(topFrameURL, WebString::fromUTF8("page_with_data.html"), WebString::fromUTF8("pageserializer/"), htmlMimeType());
     loadURLInTopFrame(topFrameURL);
 
-    WebCString mhtmlData = WebPageSerializer::serializeToMHTML(m_webView);
+    WebCString mhtmlData = WebPageSerializer::serializeToMHTML(webView());
     ASSERT_FALSE(mhtmlData.isEmpty());
 
     // Read the MHTML data line and check that the string data:image is found
@@ -424,7 +422,7 @@ TEST_F(WebPageNewSerializeTest, TestMHTMLEncodingWithMorphingDataURL)
     registerMockedURLLoad(topFrameURL, WebString::fromUTF8("page_with_morphing_data.html"), WebString::fromUTF8("pageserializer/"), htmlMimeType());
     loadURLInTopFrame(topFrameURL);
 
-    WebCString mhtmlData = WebPageSerializer::serializeToMHTML(m_webView);
+    WebCString mhtmlData = WebPageSerializer::serializeToMHTML(webView());
     ASSERT_FALSE(mhtmlData.isEmpty());
 
     // Read the MHTML data line and check that the string data:image is found

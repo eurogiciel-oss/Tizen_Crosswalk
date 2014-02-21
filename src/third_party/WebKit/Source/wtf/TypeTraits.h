@@ -26,8 +26,6 @@ namespace WTF {
 
     // The following are provided in this file:
     //
-    //   Conditional<Predicate, If, Then>::Type
-    //
     //   IsInteger<T>::value
     //   IsPod<T>::value, see the definition for a note about its limitations
     //   IsConvertibleToInteger<T>::value
@@ -44,9 +42,6 @@ namespace WTF {
     //   RemoveExtent<T>::Type
     //
     //   COMPILE_ASSERT's in TypeTraits.cpp illustrate their usage and what they do.
-
-    template <bool Predicate, class If, class Then> struct Conditional  { typedef If Type; };
-    template <class If, class Then> struct Conditional<false, If, Then> { typedef Then Type; };
 
     template<bool Predicate, class T = void> struct EnableIf;
     template<class T> struct EnableIf<true, T> { typedef T Type; };
@@ -73,12 +68,15 @@ namespace WTF {
     template<> struct IsFloatingPoint<double>       { static const bool value = true; };
     template<> struct IsFloatingPoint<long double>  { static const bool value = true; };
 
-    template<typename T> struct IsArithmetic     { static const bool value = IsInteger<T>::value || IsFloatingPoint<T>::value; };
+    template<typename T> struct IsArithmetic        { static const bool value = IsInteger<T>::value || IsFloatingPoint<T>::value; };
+
+    template<typename T> struct NeedsTracing        { static const bool value = false; };
+    template<typename T> struct IsWeak              { static const bool value = false; };
 
     // IsPod is misnamed as it doesn't cover all plain old data (pod) types.
     // Specifically, it doesn't allow for enums or for structs.
-    template <typename T> struct IsPod           { static const bool value = IsArithmetic<T>::value; };
-    template <typename P> struct IsPod<P*>       { static const bool value = true; };
+    template <typename T> struct IsPod              { static const bool value = IsArithmetic<T>::value; };
+    template <typename P> struct IsPod<P*>          { static const bool value = true; };
 
     template<typename T> class IsConvertibleToInteger {
         // Avoid "possible loss of data" warning when using Microsoft's C++ compiler

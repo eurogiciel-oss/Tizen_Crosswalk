@@ -26,15 +26,13 @@
 
 #include "core/accessibility/AXObjectCache.h"
 #include "core/frame/Frame.h"
-#include "core/platform/graphics/GraphicsContext.h"
 #include "core/rendering/CompositedLayerMapping.h"
 #include "core/rendering/GraphicsContextAnnotator.h"
 #include "core/rendering/HitTestResult.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/RenderLayer.h"
 #include "core/rendering/RenderView.h"
 #include "wtf/HashMap.h"
-
-using namespace std;
 
 namespace WebCore {
 
@@ -89,19 +87,18 @@ static void moveWidgetToParentSoon(Widget* child, FrameView* parent)
 RenderWidget::RenderWidget(Element* element)
     : RenderReplaced(element)
     , m_widget(0)
-    , m_frameView(element->document().view())
     // Reference counting is used to prevent the widget from being
     // destroyed while inside the Widget code, which might not be
     // able to handle that.
     , m_refCount(1)
 {
-    view()->addWidget(this);
+    ASSERT(element);
+    frameView()->addWidget(this);
 }
 
 void RenderWidget::willBeDestroyed()
 {
-    if (RenderView* v = view())
-        v->removeWidget(this);
+    frameView()->removeWidget(this);
 
     if (AXObjectCache* cache = document().existingAXObjectCache()) {
         cache->childrenChanged(this->parent());
@@ -139,7 +136,7 @@ bool RenderWidget::setWidgetGeometry(const LayoutRect& frame)
     if (!node())
         return false;
 
-    IntRect clipRect = roundedIntRect(enclosingLayer()->childrenClipRect());
+    IntRect clipRect = roundedIntRect(enclosingLayer()->clipper().childrenClipRect());
     IntRect newFrame = roundedIntRect(frame);
     bool clipChanged = m_clipRect != clipRect;
     bool frameRectChanged = m_widget->frameRect() != newFrame;
@@ -200,7 +197,7 @@ void RenderWidget::setWidget(PassRefPtr<Widget> widget)
                 repaint();
             }
         }
-        moveWidgetToParentSoon(m_widget.get(), m_frameView);
+        moveWidgetToParentSoon(m_widget.get(), frameView());
     }
 
     if (AXObjectCache* cache = document().existingAXObjectCache())
@@ -211,6 +208,7 @@ void RenderWidget::layout()
 {
     ASSERT(needsLayout());
 
+    LayoutRectRecorder recorder(*this);
     clearNeedsLayout();
 }
 
@@ -278,7 +276,7 @@ void RenderWidget::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
     if ((paintInfo.phase == PaintPhaseOutline || paintInfo.phase == PaintPhaseSelfOutline) && hasOutline())
         paintOutline(paintInfo, LayoutRect(adjustedPaintOffset, size()));
 
-    if (!m_frameView || paintInfo.phase != PaintPhaseForeground)
+    if (paintInfo.phase != PaintPhaseForeground)
         return;
 
     if (style()->hasBorderRadius()) {
@@ -345,14 +343,6 @@ void RenderWidget::widgetPositionsUpdated()
     if (!m_widget)
         return;
     m_widget->widgetPositionsUpdated();
-}
-
-IntRect RenderWidget::windowClipRect() const
-{
-    if (!m_frameView)
-        return IntRect();
-
-    return intersection(m_frameView->contentsToWindow(m_clipRect), m_frameView->windowClipRect());
 }
 
 void RenderWidget::clearWidget()

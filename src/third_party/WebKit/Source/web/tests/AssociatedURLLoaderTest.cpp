@@ -30,9 +30,9 @@
 
 #include "config.h"
 
+#include "FrameTestHelpers.h"
 #include "URLTestHelpers.h"
 #include "WebFrame.h"
-#include "WebFrameClient.h"
 #include "WebURLLoaderOptions.h"
 #include "WebView.h"
 #include "public/platform/Platform.h"
@@ -44,17 +44,15 @@
 #include "public/platform/WebURLRequest.h"
 #include "public/platform/WebURLResponse.h"
 #include "public/platform/WebUnitTestSupport.h"
+#include "wtf/text/CString.h"
 #include "wtf/text/WTFString.h"
 
 #include <gtest/gtest.h>
 
-using namespace WebKit;
-using WebKit::URLTestHelpers::toKURL;
+using namespace blink;
+using blink::URLTestHelpers::toKURL;
 
 namespace {
-
-class TestWebFrameClient : public WebFrameClient {
-};
 
 class AssociatedURLLoaderTest : public testing::Test,
                                 public WebURLLoaderClient {
@@ -90,9 +88,7 @@ public:
 
     void SetUp()
     {
-        m_webView = WebView::create(0);
-        m_mainFrame = WebFrame::create(&m_webFrameClient);
-        m_webView->setMainFrame(m_mainFrame);
+        m_helper.initialize();
 
         std::string urlRoot = "http://www.test.com/";
         WebCore::KURL url = RegisterMockedUrl(urlRoot, "iframes_test.html");
@@ -108,7 +104,7 @@ public:
         WebURLRequest request;
         request.initialize();
         request.setURL(url);
-        m_webView->mainFrame()->loadRequest(request);
+        mainFrame()->loadRequest(request);
         serveRequests();
 
         Platform::current()->unitTestSupport()->unregisterMockedURL(url);
@@ -117,8 +113,6 @@ public:
     void TearDown()
     {
         Platform::current()->unitTestSupport()->unregisterAllMockedURLs();
-        m_webView->close();
-        m_mainFrame->close();
     }
 
     void serveRequests()
@@ -128,7 +122,7 @@ public:
 
     WebURLLoader* createAssociatedURLLoader(const WebURLLoaderOptions options = WebURLLoaderOptions())
     {
-        return m_webView->mainFrame()->createAssociatedURLLoader(options);
+        return mainFrame()->createAssociatedURLLoader(options);
     }
 
     // WebURLLoaderClient implementation.
@@ -252,6 +246,7 @@ public:
         m_expectedResponse = WebURLResponse();
         m_expectedResponse.initialize();
         m_expectedResponse.setMIMEType("text/html");
+        m_expectedResponse.setHTTPStatusCode(200);
         m_expectedResponse.addHTTPHeaderField("Access-Control-Allow-Origin", "*");
         if (exposed)
             m_expectedResponse.addHTTPHeaderField("access-control-expose-headers", headerNameString);
@@ -271,12 +266,12 @@ public:
         return !m_actualResponse.httpHeaderField(headerNameString).isEmpty();
     }
 
+    WebFrame* mainFrame() const { return m_helper.webView()->mainFrame(); }
+
 protected:
     WTF::String m_baseFilePath;
     WTF::String m_frameFilePath;
-    TestWebFrameClient m_webFrameClient;
-    WebView* m_webView;
-    WebFrame* m_mainFrame;
+    FrameTestHelpers::WebViewHelper m_helper;
 
     WebURLLoader* m_expectedLoader;
     WebURLResponse m_actualResponse;
@@ -305,6 +300,7 @@ TEST_F(AssociatedURLLoaderTest, SameOriginSuccess)
     m_expectedResponse = WebURLResponse();
     m_expectedResponse.initialize();
     m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(200);
     Platform::current()->unitTestSupport()->registerMockedURL(url, m_expectedResponse, m_frameFilePath);
 
     m_expectedLoader = createAssociatedURLLoader();
@@ -339,6 +335,7 @@ TEST_F(AssociatedURLLoaderTest, CrossOriginSuccess)
     m_expectedResponse = WebURLResponse();
     m_expectedResponse.initialize();
     m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(200);
     Platform::current()->unitTestSupport()->registerMockedURL(url, m_expectedResponse, m_frameFilePath);
 
     WebURLLoaderOptions options;
@@ -364,6 +361,7 @@ TEST_F(AssociatedURLLoaderTest, CrossOriginWithAccessControlSuccess)
     m_expectedResponse = WebURLResponse();
     m_expectedResponse.initialize();
     m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(200);
     m_expectedResponse.addHTTPHeaderField("access-control-allow-origin", "*");
     Platform::current()->unitTestSupport()->registerMockedURL(url, m_expectedResponse, m_frameFilePath);
 
@@ -390,6 +388,7 @@ TEST_F(AssociatedURLLoaderTest, CrossOriginWithAccessControlFailure)
     m_expectedResponse = WebURLResponse();
     m_expectedResponse.initialize();
     m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(200);
     m_expectedResponse.addHTTPHeaderField("access-control-allow-origin", "*");
     Platform::current()->unitTestSupport()->registerMockedURL(url, m_expectedResponse, m_frameFilePath);
 
@@ -397,6 +396,36 @@ TEST_F(AssociatedURLLoaderTest, CrossOriginWithAccessControlFailure)
     // Send credentials. This will cause the CORS checks to fail, because credentials can't be
     // sent to a server which returns the header "access-control-allow-origin" with "*" as its value.
     options.allowCredentials = true;
+    options.crossOriginRequestPolicy = WebURLLoaderOptions::CrossOriginRequestPolicyUseAccessControl;
+    m_expectedLoader = createAssociatedURLLoader(options);
+    EXPECT_TRUE(m_expectedLoader);
+    m_expectedLoader->loadAsynchronously(request, this);
+
+    // Failure should not be reported synchronously.
+    EXPECT_FALSE(m_didFail);
+    // The loader needs to receive the response, before doing the CORS check.
+    serveRequests();
+    EXPECT_TRUE(m_didFail);
+    EXPECT_FALSE(m_didReceiveResponse);
+}
+
+// Test an unsuccessful cross-origin load using CORS.
+TEST_F(AssociatedURLLoaderTest, CrossOriginWithAccessControlFailureBadStatusCode)
+{
+    // This is cross-origin since the frame was loaded from www.test.com.
+    WebCore::KURL url = toKURL("http://www.other.com/CrossOriginWithAccessControlFailure.html");
+    WebURLRequest request;
+    request.initialize();
+    request.setURL(url);
+
+    m_expectedResponse = WebURLResponse();
+    m_expectedResponse.initialize();
+    m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(0);
+    m_expectedResponse.addHTTPHeaderField("access-control-allow-origin", "*");
+    Platform::current()->unitTestSupport()->registerMockedURL(url, m_expectedResponse, m_frameFilePath);
+
+    WebURLLoaderOptions options;
     options.crossOriginRequestPolicy = WebURLLoaderOptions::CrossOriginRequestPolicyUseAccessControl;
     m_expectedLoader = createAssociatedURLLoader(options);
     EXPECT_TRUE(m_expectedLoader);
@@ -435,6 +464,7 @@ TEST_F(AssociatedURLLoaderTest, RedirectSuccess)
     m_expectedResponse = WebURLResponse();
     m_expectedResponse.initialize();
     m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(200);
     Platform::current()->unitTestSupport()->registerMockedURL(redirectURL, m_expectedResponse, m_frameFilePath);
 
     m_expectedLoader = createAssociatedURLLoader();
@@ -507,6 +537,7 @@ TEST_F(AssociatedURLLoaderTest, RedirectCrossOriginWithAccessControlSuccess)
     m_expectedResponse = WebURLResponse();
     m_expectedResponse.initialize();
     m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(200);
     m_expectedResponse.addHTTPHeaderField("access-control-allow-origin", "*");
     Platform::current()->unitTestSupport()->registerMockedURL(redirectURL, m_expectedResponse, m_frameFilePath);
 
@@ -613,6 +644,7 @@ TEST_F(AssociatedURLLoaderTest, CrossOriginHeaderAllowResponseHeaders)
     m_expectedResponse = WebURLResponse();
     m_expectedResponse.initialize();
     m_expectedResponse.setMIMEType("text/html");
+    m_expectedResponse.setHTTPStatusCode(200);
     m_expectedResponse.addHTTPHeaderField("Access-Control-Allow-Origin", "*");
     m_expectedResponse.addHTTPHeaderField(headerNameString, "foo");
     Platform::current()->unitTestSupport()->registerMockedURL(url, m_expectedResponse, m_frameFilePath);

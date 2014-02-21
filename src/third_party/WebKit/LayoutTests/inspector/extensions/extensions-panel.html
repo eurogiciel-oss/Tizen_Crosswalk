@@ -61,6 +61,7 @@ function initialize_extensionsPanelTest()
             var url = anchor.href.replace(/^.*(([/][^/]*){3}[^/)]*)$/, "...$1");
             InspectorTest.addResult("Showing resource " + url + " in panel " + this.name + " (" + WebInspector.inspectorView.currentPanel().name + "), line: " + anchor.lineNumber);
         }
+        InspectorTest.recordNetwork();
         var panels = ["sources", "resources", "network"];
         for (var i = 0; i < panels.length; ++i)
             InspectorTest.addSniffer(WebInspector.panel(panels[i]), "showAnchorLocation", showAnchorLocationHook, true);
@@ -173,10 +174,11 @@ function extension_testSearch(nextTest)
         
         function performSearch(query)
         {
-            WebInspector.searchController.showSearchField();
-            WebInspector.searchController._searchInputElement.value = query;
-            WebInspector.searchController._performSearch(true, true);
-            WebInspector.searchController.cancelSearch();
+            var panel = WebInspector.inspectorView.currentPanel();
+            panel.searchableView().showSearchField();
+            panel.searchableView()._searchInputElement.value = query;
+            panel.searchableView()._performSearch(true, true);
+            panel.searchableView().cancelSearch();
         }
 
         evaluateOnFrontend(performSearch.toString() + " performSearch(\"hello\");");

@@ -19,16 +19,15 @@
 #include "SkPicture.h"
 #include "SkRasterClip.h"
 #include "SkRRect.h"
-#include "SkScalarCompare.h"
 #include "SkSurface_Base.h"
 #include "SkTemplates.h"
 #include "SkTextFormatParams.h"
 #include "SkTLazy.h"
 #include "SkUtils.h"
 
-SK_DEFINE_INST_COUNT(SkBounder)
-SK_DEFINE_INST_COUNT(SkCanvas)
-SK_DEFINE_INST_COUNT(SkDrawFilter)
+#if SK_SUPPORT_GPU
+#include "GrRenderTarget.h"
+#endif
 
 // experimental for faster tiled drawing...
 //#define SK_ENABLE_CLIP_QUICKREJECT
@@ -459,6 +458,7 @@ public:
 private:
     SkBounder*  fBounder;
 };
+#define SkAutoBounderCommit(...) SK_REQUIRE_LOCAL_VAR(SkAutoBounderCommit)
 
 #include "SkColorPriv.h"
 
@@ -484,8 +484,8 @@ private:
 
 SkBaseDevice* SkCanvas::init(SkBaseDevice* device) {
     fBounder = NULL;
-    fLocalBoundsCompareType.setEmpty();
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBounds.setEmpty();
+    fCachedLocalClipBoundsDirty = true;
     fAllowSoftClip = true;
     fAllowSimplifyClip = false;
     fDeviceCMDirty = false;
@@ -896,7 +896,7 @@ void SkCanvas::internalRestore() {
     SkASSERT(fMCStack.count() != 0);
 
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
 
     if (SkCanvas::kClip_SaveFlag & fMCRec->fFlags) {
         fClipStack.restore();
@@ -998,13 +998,15 @@ void SkCanvas::internalDrawDevice(SkBaseDevice* srcDev, int x, int y,
         if (filter && !dstDev->canHandleImageFilter(filter)) {
             SkDeviceImageFilterProxy proxy(dstDev);
             SkBitmap dst;
+            SkIPoint offset = SkIPoint::Make(0, 0);
             const SkBitmap& src = srcDev->accessBitmap(false);
             SkMatrix matrix = *iter.fMatrix;
             matrix.postTranslate(SkIntToScalar(-x), SkIntToScalar(-y));
-            if (filter->filterImage(&proxy, src, matrix, &dst, &pos)) {
+            if (filter->filterImage(&proxy, src, matrix, &dst, &offset)) {
                 SkPaint tmpUnfiltered(*paint);
                 tmpUnfiltered.setImageFilter(NULL);
-                dstDev->drawSprite(iter, dst, pos.x(), pos.y(), tmpUnfiltered);
+                dstDev->drawSprite(iter, dst, pos.x() + offset.x(), pos.y() + offset.y(),
+                                   tmpUnfiltered);
             }
         } else {
             dstDev->drawDevice(iter, srcDev, pos.x(), pos.y(), *paint);
@@ -1036,12 +1038,13 @@ void SkCanvas::drawSprite(const SkBitmap& bitmap, int x, int y,
         if (filter && !iter.fDevice->canHandleImageFilter(filter)) {
             SkDeviceImageFilterProxy proxy(iter.fDevice);
             SkBitmap dst;
+            SkIPoint offset = SkIPoint::Make(0, 0);
             SkMatrix matrix = *iter.fMatrix;
             matrix.postTranslate(SkIntToScalar(-x), SkIntToScalar(-y));
-            if (filter->filterImage(&proxy, bitmap, matrix, &dst, &pos)) {
+            if (filter->filterImage(&proxy, bitmap, matrix, &dst, &offset)) {
                 SkPaint tmpUnfiltered(*paint);
                 tmpUnfiltered.setImageFilter(NULL);
-                iter.fDevice->drawSprite(iter, dst, pos.x(), pos.y(),
+                iter.fDevice->drawSprite(iter, dst, pos.x() + offset.x(), pos.y() + offset.y(),
                                          tmpUnfiltered);
             }
         } else {
@@ -1055,37 +1058,37 @@ void SkCanvas::drawSprite(const SkBitmap& bitmap, int x, int y,
 
 bool SkCanvas::translate(SkScalar dx, SkScalar dy) {
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     return fMCRec->fMatrix->preTranslate(dx, dy);
 }
 
 bool SkCanvas::scale(SkScalar sx, SkScalar sy) {
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     return fMCRec->fMatrix->preScale(sx, sy);
 }
 
 bool SkCanvas::rotate(SkScalar degrees) {
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     return fMCRec->fMatrix->preRotate(degrees);
 }
 
 bool SkCanvas::skew(SkScalar sx, SkScalar sy) {
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     return fMCRec->fMatrix->preSkew(sx, sy);
 }
 
 bool SkCanvas::concat(const SkMatrix& matrix) {
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     return fMCRec->fMatrix->preConcat(matrix);
 }
 
 void SkCanvas::setMatrix(const SkMatrix& matrix) {
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     *fMCRec->fMatrix = matrix;
 }
 
@@ -1109,7 +1112,7 @@ bool SkCanvas::clipRect(const SkRect& rect, SkRegion::Op op, bool doAA) {
 
         if (this->quickReject(rect)) {
             fDeviceCMDirty = true;
-            fLocalBoundsCompareTypeDirty = true;
+            fCachedLocalClipBoundsDirty = true;
 
             fClipStack.clipEmpty();
             return fMCRec->fRasterClip->setEmpty();
@@ -1120,7 +1123,7 @@ bool SkCanvas::clipRect(const SkRect& rect, SkRegion::Op op, bool doAA) {
     AutoValidateClip avc(this);
 
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     doAA &= fAllowSoftClip;
 
     if (fMCRec->fMatrix->rectStaysRect()) {
@@ -1205,7 +1208,7 @@ bool SkCanvas::clipPath(const SkPath& path, SkRegion::Op op, bool doAA) {
 
         if (this->quickReject(path.getBounds())) {
             fDeviceCMDirty = true;
-            fLocalBoundsCompareTypeDirty = true;
+            fCachedLocalClipBoundsDirty = true;
 
             fClipStack.clipEmpty();
             return fMCRec->fRasterClip->setEmpty();
@@ -1216,7 +1219,7 @@ bool SkCanvas::clipPath(const SkPath& path, SkRegion::Op op, bool doAA) {
     AutoValidateClip avc(this);
 
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
     doAA &= fAllowSoftClip;
 
     SkPath devPath;
@@ -1349,7 +1352,7 @@ bool SkCanvas::clipRegion(const SkRegion& rgn, SkRegion::Op op) {
     AutoValidateClip avc(this);
 
     fDeviceCMDirty = true;
-    fLocalBoundsCompareTypeDirty = true;
+    fCachedLocalClipBoundsDirty = true;
 
     // todo: signal fClipStack that we have a region, and therefore (I guess)
     // we have to ignore it, and use the region directly?
@@ -1422,19 +1425,6 @@ void SkCanvas::replayClips(ClipVisitor* visitor) const {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void SkCanvas::computeLocalClipBoundsCompareType() const {
-    SkRect r;
-
-    if (!this->getClipBounds(&r)) {
-        fLocalBoundsCompareType.setEmpty();
-    } else {
-        fLocalBoundsCompareType.set(SkScalarToCompareType(r.fLeft),
-                                    SkScalarToCompareType(r.fTop),
-                                    SkScalarToCompareType(r.fRight),
-                                    SkScalarToCompareType(r.fBottom));
-    }
-}
-
 bool SkCanvas::quickReject(const SkRect& rect) const {
 
     if (!rect.isFinite())
@@ -1451,17 +1441,14 @@ bool SkCanvas::quickReject(const SkRect& rect) const {
         dst.roundOut(&idst);
         return !SkIRect::Intersects(idst, fMCRec->fRasterClip->getBounds());
     } else {
-        const SkRectCompareType& clipR = this->getLocalClipBoundsCompareType();
+        const SkRect& clipR = this->getLocalClipBounds();
 
         // for speed, do the most likely reject compares first
-        SkScalarCompareType userT = SkScalarToCompareType(rect.fTop);
-        SkScalarCompareType userB = SkScalarToCompareType(rect.fBottom);
-        if (userT >= clipR.fBottom || userB <= clipR.fTop) {
+        // TODO: should we use | instead, or compare all 4 at once?
+        if (rect.fTop >= clipR.fBottom || rect.fBottom <= clipR.fTop) {
             return true;
         }
-        SkScalarCompareType userL = SkScalarToCompareType(rect.fLeft);
-        SkScalarCompareType userR = SkScalarToCompareType(rect.fRight);
-        if (userL >= clipR.fRight || userR <= clipR.fLeft) {
+        if (rect.fLeft >= clipR.fRight || rect.fRight <= clipR.fLeft) {
             return true;
         }
         return false;
@@ -1470,17 +1457,6 @@ bool SkCanvas::quickReject(const SkRect& rect) const {
 
 bool SkCanvas::quickReject(const SkPath& path) const {
     return path.isEmpty() || this->quickReject(path.getBounds());
-}
-
-static inline int pinIntForScalar(int x) {
-#ifdef SK_SCALAR_IS_FIXED
-    if (x < SK_MinS16) {
-        x = SK_MinS16;
-    } else if (x > SK_MaxS16) {
-        x = SK_MaxS16;
-    }
-#endif
-    return x;
 }
 
 bool SkCanvas::getClipBounds(SkRect* bounds) const {
@@ -1503,15 +1479,8 @@ bool SkCanvas::getClipBounds(SkRect* bounds) const {
         // adjust it outwards in case we are antialiasing
         const int inset = 1;
 
-        // SkRect::iset() will correctly assert if we pass a value out of range
-        // (when SkScalar==fixed), so we pin to legal values. This does not
-        // really returnt the correct answer, but its the best we can do given
-        // that we've promised to return SkRect (even though we support devices
-        // that can be larger than 32K in width or height).
-        r.iset(pinIntForScalar(ibounds.fLeft - inset),
-               pinIntForScalar(ibounds.fTop - inset),
-               pinIntForScalar(ibounds.fRight + inset),
-               pinIntForScalar(ibounds.fBottom + inset));
+        r.iset(ibounds.fLeft - inset, ibounds.fTop - inset,
+               ibounds.fRight + inset, ibounds.fBottom + inset);
         inverse.mapRect(bounds, r);
     }
     return true;
@@ -1569,6 +1538,20 @@ SkBaseDevice* SkCanvas::createCompatibleDevice(SkBitmap::Config config,
     }
 }
 
+GrContext* SkCanvas::getGrContext() {
+#if SK_SUPPORT_GPU
+    SkBaseDevice* device = this->getTopDevice();
+    if (NULL != device) {
+        GrRenderTarget* renderTarget = device->accessRenderTarget();
+        if (NULL != renderTarget) {
+            return renderTarget->getContext();
+        }
+    }
+#endif
+
+    return NULL;
+
+}
 
 //////////////////////////////////////////////////////////////////////////////
 //  These are the virtual drawing methods
@@ -1612,7 +1595,7 @@ void SkCanvas::drawPoints(PointMode mode, size_t count, const SkPoint pts[],
         if (2 == count) {
             r.set(pts[0], pts[1]);
         } else {
-            r.set(pts, count);
+            r.set(pts, SkToInt(count));
         }
         SkRect storage;
         if (this->quickReject(paint.computeFastStrokeBounds(r, &storage))) {
@@ -2029,23 +2012,6 @@ void SkCanvas::drawTextOnPath(const void* text, size_t byteLength,
 
     LOOPER_END
 }
-
-#ifdef SK_BUILD_FOR_ANDROID
-void SkCanvas::drawPosTextOnPath(const void* text, size_t byteLength,
-                                 const SkPoint pos[], const SkPaint& paint,
-                                 const SkPath& path, const SkMatrix* matrix) {
-    CHECK_SHADER_NOSETCONTEXT(paint);
-
-    LOOPER_BEGIN(paint, SkDrawFilter::kText_Type)
-
-    while (iter.next()) {
-        iter.fDevice->drawPosTextOnPath(iter, text, byteLength, pos,
-                                        looper.paint(), path, matrix);
-    }
-
-    LOOPER_END
-}
-#endif
 
 void SkCanvas::drawVertices(VertexMode vmode, int vertexCount,
                             const SkPoint verts[], const SkPoint texs[],

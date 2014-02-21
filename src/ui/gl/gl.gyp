@@ -19,6 +19,7 @@
         '<(DEPTH)/skia/skia.gyp:skia',
         '<(DEPTH)/third_party/mesa/mesa.gyp:mesa_headers',
         '<(DEPTH)/ui/gfx/gfx.gyp:gfx',
+        '<(DEPTH)/ui/gfx/gfx.gyp:gfx_geometry',
       ],
       'variables': {
         'gl_binding_output_dir': '<(SHARED_INTERMEDIATE_DIR)/ui/gl',
@@ -39,7 +40,7 @@
       'export_dependent_settings': [
         '<(DEPTH)/third_party/mesa/mesa.gyp:mesa_headers',
       ],
-     'sources': [
+      'sources': [
         'android/gl_jni_registrar.cc',
         'android/gl_jni_registrar.h',
         'android/scoped_java_surface.cc',
@@ -60,6 +61,8 @@
         'gl_context_osmesa.h',
         'gl_context_stub.cc',
         'gl_context_stub.h',
+        'gl_context_stub_with_extensions.cc',
+        'gl_context_stub_with_extensions.h',
         'gl_context_win.cc',
         'gl_context_x11.cc',
         'gl_export.h',
@@ -87,8 +90,6 @@
         'gl_implementation_mac.cc',
         'gl_implementation_win.cc',
         'gl_implementation_x11.cc',
-        'gl_interface.cc',
-        'gl_interface.h',
         'gl_osmesa_api_implementation.cc',
         'gl_osmesa_api_implementation.h',
         'gl_share_group.cc',
@@ -106,6 +107,8 @@
         'gl_surface_osmesa.h',
         'gl_switches.cc',
         'gl_switches.h',
+        'gl_version_info.cc',
+        'gl_version_info.h',
         'gpu_switching_manager.cc',
         'gpu_switching_manager.h',
         'io_surface_support_mac.cc',
@@ -114,14 +117,12 @@
         'scoped_binders.h',
         'scoped_make_current.cc',
         'scoped_make_current.h',
-        'vsync_provider.cc',
-        'vsync_provider.h',
+        'sync_control_vsync_provider.cc',
+        'sync_control_vsync_provider.h',
         '<(gl_binding_output_dir)/gl_bindings_autogen_gl.cc',
         '<(gl_binding_output_dir)/gl_bindings_autogen_gl.h',
-        '<(gl_binding_output_dir)/gl_bindings_autogen_mock.cc',
         '<(gl_binding_output_dir)/gl_bindings_autogen_osmesa.cc',
         '<(gl_binding_output_dir)/gl_bindings_autogen_osmesa.h',
-        '<(gl_binding_output_dir)/gl_interface_autogen_gl.h',
       ],
       # hard_dependency is necessary for this target because it has actions
       # that generate header files included by dependent targets. The header
@@ -151,22 +152,14 @@
             '<(gl_binding_output_dir)/gl_bindings_autogen_glx.h',
             '<(gl_binding_output_dir)/gl_bindings_api_autogen_glx.h',
             '<(gl_binding_output_dir)/gl_bindings_autogen_mock.cc',
+            '<(gl_binding_output_dir)/gl_bindings_autogen_mock.h',
             '<(gl_binding_output_dir)/gl_bindings_autogen_osmesa.cc',
             '<(gl_binding_output_dir)/gl_bindings_autogen_osmesa.h',
             '<(gl_binding_output_dir)/gl_bindings_api_autogen_osmesa.h',
             '<(gl_binding_output_dir)/gl_bindings_autogen_wgl.cc',
             '<(gl_binding_output_dir)/gl_bindings_autogen_wgl.h',
             '<(gl_binding_output_dir)/gl_bindings_api_autogen_wgl.h',
-            '<(gl_binding_output_dir)/gl_interface_autogen_egl.h',
-            '<(gl_binding_output_dir)/gl_interface_autogen_gl.h',
-            '<(gl_binding_output_dir)/gl_interface_autogen_glx.h',
-            '<(gl_binding_output_dir)/gl_interface_autogen_osmesa.h',
-            '<(gl_binding_output_dir)/gl_interface_autogen_wgl.h',
-            '<(gl_binding_output_dir)/gl_mock_autogen_egl.h',
             '<(gl_binding_output_dir)/gl_mock_autogen_gl.h',
-            '<(gl_binding_output_dir)/gl_mock_autogen_glx.h',
-            '<(gl_binding_output_dir)/gl_mock_autogen_osmesa.h',
-            '<(gl_binding_output_dir)/gl_mock_autogen_wgl.h',
           ],
           'action': [
             'python',
@@ -254,22 +247,20 @@
           'sources': [
             'gl_context_cgl.cc',
             'gl_context_cgl.h',
+            'gl_image_io_surface.cc',
+            'gl_image_io_surface.h',
             'gl_surface_cgl.cc',
             'gl_surface_cgl.h',
+            'gl_context_nsview.mm',
+            'gl_context_nsview.h',
+            'gl_surface_nsview.mm',
+            'gl_surface_nsview.h',
           ],
           'link_settings': {
             'libraries': [
               '$(SDKROOT)/System/Library/Frameworks/OpenGL.framework',
             ],
           },
-        }],
-        ['OS=="mac" and use_aura == 1', {
-          'sources': [
-            'gl_context_nsview.mm',
-            'gl_context_nsview.h',
-            'gl_surface_nsview.mm',
-            'gl_surface_nsview.h',
-          ],
         }],
         ['OS=="android"', {
           'dependencies': [
@@ -326,6 +317,8 @@
       'sources': [
         'gl_mock.h',
         'gl_mock.cc',
+        '<(gl_binding_output_dir)/gl_bindings_autogen_mock.cc',
+        '<(gl_binding_output_dir)/gl_bindings_autogen_mock.h',
         '<(gl_binding_output_dir)/gl_mock_autogen_gl.h',
       ],
     },
@@ -339,6 +332,7 @@
           'variables': {
             'jni_gen_package': 'ui/gl',
             'input_java_class': 'android/view/Surface.class',
+            'jni_generator_ptr_type': 'long',
           },
           'includes': [ '../../build/jar_file_jni_generator.gypi' ],
         },
@@ -349,11 +343,12 @@
             'surface_jni_headers',
           ],
           'sources': [
-            '../android/java/src/org/chromium/ui/gfx/SurfaceTexturePlatformWrapper.java',
-            '../android/java/src/org/chromium/ui/gfx/SurfaceTextureListener.java',
+            '../android/java/src/org/chromium/ui/gl/SurfaceTexturePlatformWrapper.java',
+            '../android/java/src/org/chromium/ui/gl/SurfaceTextureListener.java',
           ],
           'variables': {
             'jni_gen_package': 'ui/gl',
+            'jni_generator_ptr_type': 'long',
           },
           'includes': [ '../../build/jni_generator.gypi' ],
         },

@@ -20,8 +20,9 @@
         '../compositor/compositor.gyp:compositor',
         '../events/events.gyp:events',
         '../gfx/gfx.gyp:gfx',
+        '../gfx/gfx.gyp:gfx_geometry',
+        '../resources/ui_resources.gyp:ui_resources',
         '../ui.gyp:ui',
-        '../ui.gyp:ui_resources',
         '../views/views.gyp:views',
       ],
       'defines': [

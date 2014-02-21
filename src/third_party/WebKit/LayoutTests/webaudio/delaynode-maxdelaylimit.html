@@ -2,7 +2,7 @@
 
 <html>
 <head>
-<script src="../fast/js/resources/js-test-pre.js"></script>
+<script src="../resources/js-test.js"></script>
 <script src="resources/audio-testing.js"></script>
 <script src="resources/delay-testing.js"></script>
 </head>
@@ -34,6 +34,7 @@ function runTest() {
     shouldThrow("context.createDelay(180)");
     shouldThrow("context.createDelay(0)");
     shouldThrow("context.createDelay(-1)");
+    shouldThrow("context.createDelay(NaN)");
 
     var delay = context.createDelay(179);
     delay.delayTime.value = delayTimeSeconds;

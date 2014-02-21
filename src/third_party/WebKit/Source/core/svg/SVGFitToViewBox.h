@@ -23,6 +23,8 @@
 
 #include "SVGNames.h"
 #include "core/dom/QualifiedName.h"
+#include "core/svg/SVGDocumentExtensions.h"
+#include "core/svg/SVGParsingError.h"
 #include "core/svg/SVGPreserveAspectRatio.h"
 #include "core/svg/SVGRect.h"
 #include "wtf/HashSet.h"
@@ -34,7 +36,7 @@ class Document;
 
 class SVGFitToViewBox {
 public:
-    static AffineTransform viewBoxToViewTransform(const FloatRect& viewBoxRect, const SVGPreserveAspectRatio&, float viewWidth, float viewHeight);
+    static AffineTransform viewBoxToViewTransform(const FloatRect& viewBoxRect, PassRefPtr<SVGPreserveAspectRatio>, float viewWidth, float viewHeight);
 
     static bool isKnownAttribute(const QualifiedName&);
     static void addSupportedAttributes(HashSet<QualifiedName>&);
@@ -43,31 +45,28 @@ public:
     static bool parseAttribute(SVGElementTarget* target, const QualifiedName& name, const AtomicString& value)
     {
         ASSERT(target);
+
+        SVGParsingError parseError = NoError;
+
         if (name == SVGNames::viewBoxAttr) {
-            FloatRect viewBox;
-            bool valueIsValid = !value.isNull() && parseViewBox(&target->document(), value, viewBox);
-            if (valueIsValid)
-                target->setViewBoxBaseValue(viewBox);
-            else
-                target->setViewBoxBaseValue(SVGRect(SVGRect::InvalidSVGRectTag()));
-            return true;
+            target->viewBox()->setBaseValueAsString(value, parseError);
+            if (target->viewBox()->baseValue()->width() < 0.0f) {
+                target->document().accessSVGExtensions()->reportError("A negative value for ViewBox width is not allowed");
+                target->viewBox()->baseValue()->setInvalid();
+            }
+            if (target->viewBox()->baseValue()->height() < 0.0f) {
+                target->document().accessSVGExtensions()->reportError("A negative value for ViewBox height is not allowed");
+                target->viewBox()->baseValue()->setInvalid();
+            }
+        } else if (name == SVGNames::preserveAspectRatioAttr) {
+            target->preserveAspectRatio()->setBaseValueAsString(value, parseError);
+        } else {
+            return false;
         }
 
-        if (name == SVGNames::preserveAspectRatioAttr) {
-            SVGPreserveAspectRatio preserveAspectRatio;
-            preserveAspectRatio.parse(value);
-            target->setPreserveAspectRatioBaseValue(preserveAspectRatio);
-            return true;
-        }
-
-        return false;
+        target->reportAttributeParsingError(parseError, name, value);
+        return true;
     }
-
-    static bool parseViewBox(Document*, const LChar*& start, const LChar* end, FloatRect& viewBox, bool validate = true);
-    static bool parseViewBox(Document*, const UChar*& start, const UChar* end, FloatRect& viewBox, bool validate = true);
-
-private:
-    static bool parseViewBox(Document*, const String&, FloatRect&);
 };
 
 } // namespace WebCore

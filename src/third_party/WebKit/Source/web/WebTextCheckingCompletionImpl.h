@@ -35,11 +35,11 @@
 #include "platform/text/TextChecking.h"
 #include "wtf/RefPtr.h"
 
-namespace WebKit {
+namespace blink {
 
 class EditorClientImpl;
 
-class WebTextCheckingCompletionImpl : public WebTextCheckingCompletion {
+class WebTextCheckingCompletionImpl FINAL : public WebTextCheckingCompletion {
 public:
     explicit WebTextCheckingCompletionImpl(WTF::PassRefPtr<WebCore::TextCheckingRequest> request)
         : m_request(request)
@@ -55,6 +55,6 @@ private:
     WTF::RefPtr<WebCore::TextCheckingRequest> m_request;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

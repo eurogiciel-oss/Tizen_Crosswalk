@@ -23,42 +23,37 @@
 
 #include "core/svg/SVGFEImageElement.h"
 
-#include "SVGNames.h"
 #include "XLinkNames.h"
 #include "core/dom/Document.h"
 #include "core/fetch/FetchRequest.h"
-#include "core/fetch/ImageResource.h"
 #include "core/fetch/ResourceFetcher.h"
-#include "core/platform/graphics/Image.h"
 #include "core/rendering/svg/RenderSVGResource.h"
 #include "core/svg/SVGElementInstance.h"
 #include "core/svg/SVGPreserveAspectRatio.h"
+#include "platform/graphics/Image.h"
 
 namespace WebCore {
 
 // Animated property definitions
-DEFINE_ANIMATED_PRESERVEASPECTRATIO(SVGFEImageElement, SVGNames::preserveAspectRatioAttr, PreserveAspectRatio, preserveAspectRatio)
 DEFINE_ANIMATED_STRING(SVGFEImageElement, XLinkNames::hrefAttr, Href, href)
-DEFINE_ANIMATED_BOOLEAN(SVGFEImageElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGFEImageElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(preserveAspectRatio)
     REGISTER_LOCAL_ANIMATED_PROPERTY(href)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGFilterPrimitiveStandardAttributes)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGFEImageElement::SVGFEImageElement(const QualifiedName& tagName, Document& document)
-    : SVGFilterPrimitiveStandardAttributes(tagName, document)
+inline SVGFEImageElement::SVGFEImageElement(Document& document)
+    : SVGFilterPrimitiveStandardAttributes(SVGNames::feImageTag, document)
+    , m_preserveAspectRatio(SVGAnimatedPreserveAspectRatio::create(this, SVGNames::preserveAspectRatioAttr, SVGPreserveAspectRatio::create()))
 {
-    ASSERT(hasTagName(SVGNames::feImageTag));
     ScriptWrappable::init(this);
+    addToPropertyMap(m_preserveAspectRatio);
     registerAnimatedPropertiesForSVGFEImageElement();
 }
 
-PassRefPtr<SVGFEImageElement> SVGFEImageElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGFEImageElement> SVGFEImageElement::create(Document& document)
 {
-    return adoptRef(new SVGFEImageElement(tagName, document));
+    return adoptRef(new SVGFEImageElement(document));
 }
 
 SVGFEImageElement::~SVGFEImageElement()
@@ -99,7 +94,7 @@ void SVGFEImageElement::buildPendingResource()
     if (!inDocument())
         return;
 
-    String id;
+    AtomicString id;
     Element* target = SVGURIReference::targetElementFromIRIString(hrefCurrentValue(), document(), &id);
     if (!target) {
         if (id.isEmpty())
@@ -122,7 +117,6 @@ bool SVGFEImageElement::isSupportedAttribute(const QualifiedName& attrName)
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
     if (supportedAttributes.isEmpty()) {
         SVGURIReference::addSupportedAttributes(supportedAttributes);
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
         supportedAttributes.add(SVGNames::preserveAspectRatioAttr);
     }
     return supportedAttributes.contains<SVGAttributeHashTranslator>(attrName);
@@ -135,19 +129,16 @@ void SVGFEImageElement::parseAttribute(const QualifiedName& name, const AtomicSt
         return;
     }
 
+    SVGParsingError parseError = NoError;
+
     if (name == SVGNames::preserveAspectRatioAttr) {
-        SVGPreserveAspectRatio preserveAspectRatio;
-        preserveAspectRatio.parse(value);
-        setPreserveAspectRatioBaseValue(preserveAspectRatio);
-        return;
+        m_preserveAspectRatio->setBaseValueAsString(value, parseError);
+    } else if (SVGURIReference::parseAttribute(name, value)) {
+    } else {
+        ASSERT_NOT_REACHED();
     }
 
-    if (SVGURIReference::parseAttribute(name, value))
-        return;
-    if (SVGExternalResourcesRequired::parseAttribute(name, value))
-        return;
-
-    ASSERT_NOT_REACHED();
+    reportAttributeParsingError(parseError, name, value);
 }
 
 void SVGFEImageElement::svgAttributeChanged(const QualifiedName& attrName)
@@ -168,9 +159,6 @@ void SVGFEImageElement::svgAttributeChanged(const QualifiedName& attrName)
         buildPendingResource();
         return;
     }
-
-    if (SVGExternalResourcesRequired::isKnownAttribute(attrName))
-        return;
 
     ASSERT_NOT_REACHED();
 }
@@ -207,15 +195,8 @@ void SVGFEImageElement::notifyFinished(Resource*)
 PassRefPtr<FilterEffect> SVGFEImageElement::build(SVGFilterBuilder*, Filter* filter)
 {
     if (m_cachedImage)
-        return FEImage::createWithImage(filter, m_cachedImage->imageForRenderer(renderer()), preserveAspectRatioCurrentValue());
-    return FEImage::createWithIRIReference(filter, document(), hrefCurrentValue(), preserveAspectRatioCurrentValue());
-}
-
-void SVGFEImageElement::addSubresourceAttributeURLs(ListHashSet<KURL>& urls) const
-{
-    SVGFilterPrimitiveStandardAttributes::addSubresourceAttributeURLs(urls);
-
-    addSubresourceURL(urls, document().completeURL(hrefCurrentValue()));
+        return FEImage::createWithImage(filter, m_cachedImage->imageForRenderer(renderer()), m_preserveAspectRatio->currentValue());
+    return FEImage::createWithIRIReference(filter, document(), hrefCurrentValue(), m_preserveAspectRatio->currentValue());
 }
 
 }

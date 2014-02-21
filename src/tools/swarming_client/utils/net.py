@@ -1,6 +1,6 @@
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Classes and functions for generic network communication over HTTP."""
 
@@ -8,6 +8,7 @@ import cookielib
 import cStringIO as StringIO
 import httplib
 import itertools
+import json
 import logging
 import math
 import os
@@ -23,8 +24,10 @@ import urlparse
 
 from third_party import requests
 from third_party.requests import adapters
+from third_party.requests import structures
 from third_party.rietveld import upload
 
+from utils import oauth
 from utils import zip_package
 
 # Hack out upload logging.info()
@@ -47,10 +50,6 @@ def monkey_patch_httplib():
 monkey_patch_httplib()
 
 
-# Big switch that controls what API to use to make HTTP requests.
-# It's temporary here to simplify benchmarking of old vs new implementation.
-USE_REQUESTS_LIB = True
-
 # The name of the key to store the count of url attempts.
 COUNT_KEY = 'UrlOpenAttempt'
 
@@ -62,13 +61,17 @@ URL_OPEN_TIMEOUT = 6*60.
 
 # Content type for url encoded POST body.
 URL_ENCODED_FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded'
-
+# Content type for JSON body.
+JSON_CONTENT_TYPE = 'application/json; charset=UTF-8'
 # Default content type for POST body.
 DEFAULT_CONTENT_TYPE = URL_ENCODED_FORM_CONTENT_TYPE
 
 # Content type -> function that encodes a request body.
 CONTENT_ENCODERS = {
-  URL_ENCODED_FORM_CONTENT_TYPE: urllib.urlencode,
+  URL_ENCODED_FORM_CONTENT_TYPE:
+    urllib.urlencode,
+  JSON_CONTENT_TYPE:
+    lambda x: json.dumps(x, sort_keys=True, separators=(',', ':')),
 }
 
 # File to use to store all auth cookies.
@@ -90,6 +93,13 @@ _cookie_jar_lock = threading.Lock()
 # Path to cacert.pem bundle file reused by all services.
 _ca_certs = None
 _ca_certs_lock = threading.Lock()
+
+# This lock ensures that user won't be confused with multiple concurrent
+# login prompts.
+_auth_lock = threading.Lock()
+_auth_method_default = 'cookie'
+_auth_methods_per_host = {}
+_auth_oauth_options = None
 
 
 class NetError(IOError):
@@ -187,43 +197,20 @@ def get_http_service(urlhost):
   """Returns existing or creates new instance of HttpService that can send
   requests to given base urlhost.
   """
-  # Ensure consistency.
+  # Ensure consistency in url naming.
   urlhost = str(urlhost).lower().rstrip('/')
+  # Do not use COUNT_KEY with Google Storage (since it breaks a signature).
+  use_count_key = not GS_STORAGE_HOST_URL_RE.match(urlhost)
   with _http_services_lock:
     service = _http_services.get(urlhost)
     if not service:
-      if GS_STORAGE_HOST_URL_RE.match(urlhost):
-        # For Google Storage URL create a dumber HttpService that doesn't modify
-        # requests with COUNT_KEY (since it breaks a signature) and doesn't try
-        # to 'login' into Google Storage (since it's impossible).
-        service = HttpService(
-            urlhost,
-            engine=create_request_engine(None),
-            authenticator=None,
-            use_count_key=False)
-      else:
-        # For other URLs (presumably App Engine), create a fancier HttpService
-        # with cookies, authentication and COUNT_KEY query parameter in retries.
-        cookie_jar = get_cookie_jar()
-        service = HttpService(
-            urlhost,
-            engine=create_request_engine(cookie_jar),
-            authenticator=AppEngineAuthenticator(urlhost, cookie_jar),
-            use_count_key=True)
+      service = HttpService(
+          urlhost,
+          engine=RequestsLibEngine(get_cacerts_bundle()),
+          authenticator=create_authenticator(urlhost),
+          use_count_key=use_count_key)
       _http_services[urlhost] = service
     return service
-
-
-def create_request_engine(cookie_jar):
-  """Returns a new instance of RequestEngine subclass.
-
-  |cookie_jar| is an instance of ThreadSafeCookieJar class that holds all
-  cookies. It is optional and may be None (in that case cookies are not saved
-  on disk).
-  """
-  if USE_REQUESTS_LIB:
-    return RequestsLibEngine(cookie_jar, get_cacerts_bundle())
-  return Urllib2Engine(cookie_jar)
 
 
 def get_cookie_jar():
@@ -248,13 +235,69 @@ def get_cacerts_bundle():
     return _ca_certs
 
 
+def configure_auth(default=None, urlhosts=None, oauth_options=None):
+  """Defines what authentication methods to use for given hosts.
+
+  Possible authentication methods are:
+    'cookie' - use cookie-based authentication.
+    'oauth' - user oauth-based authentication.
+    'none' - do not use authentication.
+
+  Arguments:
+    default: what method to use if host-specific method isn't set in |urlhosts|.
+    urlhosts: dict host url -> method to use for that host.
+    oauth_options: OptionsParser with options added by oauth.add_oauth_options.
+  """
+  global _auth_method_default
+  global _auth_oauth_options
+
+  all_kinds = ('cookie', 'oauth', 'none')
+  assert not default or default in all_kinds
+  assert all(v in all_kinds for v in (urlhosts or {}).values()), str(urlhosts)
+
+  with _auth_lock:
+    if default:
+      _auth_method_default = default
+    _auth_methods_per_host.update(urlhosts or {})
+    if oauth_options:
+      _auth_oauth_options = oauth_options
+
+
+def create_authenticator(urlhost):
+  """Makes Authenticator instance used by HttpService to access |urlhost|."""
+  # We use signed URL for Google Storage, no need for special authentication.
+  if GS_STORAGE_HOST_URL_RE.match(urlhost):
+    return None
+  # For everything else use configuration set with 'configure_auth'.
+  with _auth_lock:
+    method = _auth_methods_per_host.get(urlhost, _auth_method_default)
+    if method == 'cookie':
+      return CookieBasedAuthenticator(urlhost, get_cookie_jar())
+    elif method == 'oauth':
+      return OAuthAuthenticator(urlhost, _auth_oauth_options)
+    elif method == 'none':
+      return None
+  raise AssertionError('Invalid auth method: %s' % method)
+
+
+def get_case_insensitive_dict(original):
+  """Given a dict with string keys returns new CaseInsensitiveDict.
+
+  Raises ValueError if there are duplicate keys.
+  """
+  normalized = structures.CaseInsensitiveDict(original or {})
+  if len(normalized) != len(original):
+    raise ValueError('Duplicate keys in: %s' % repr(original))
+  return normalized
+
+
 class HttpService(object):
   """Base class for a class that provides an API to HTTP based service:
     - Provides 'request' method.
     - Supports automatic request retries.
-    - Supports persistent cookies.
     - Thread safe.
   """
+
   def __init__(self, urlhost, engine, authenticator=None, use_count_key=True):
     self.urlhost = urlhost
     self.engine = engine
@@ -288,6 +331,17 @@ class HttpService(object):
     assert encoder, ('Unknown content type %s' % content_type)
     return encoder(body)
 
+  def login(self):
+    """Runs authentication flow to refresh short lived access token."""
+    # Use global lock to ensure two authentication flows never run in parallel.
+    with _auth_lock:
+      return self.authenticator.login() if self.authenticator else False
+
+  def logout(self):
+    """Purges access credentials from local cache."""
+    if self.authenticator:
+      self.authenticator.logout()
+
   def request(
       self,
       urlpath,
@@ -299,7 +353,8 @@ class HttpService(object):
       timeout=URL_OPEN_TIMEOUT,
       read_timeout=None,
       stream=True,
-      method=None):
+      method=None,
+      headers=None):
     """Attempts to open the given url multiple times.
 
     |urlpath| is relative to the server root, i.e. '/some/request?param=1'.
@@ -321,6 +376,9 @@ class HttpService(object):
     If |method| is given it can be 'GET', 'POST' or 'PUT' and it will be used
     when performing the request. By default it's GET if |data| is None and POST
     if |data| is not None.
+
+    If |headers| is given, it should be a dict with HTTP headers to append
+    to request. Caller is responsible for providing headers that make sense.
 
     If |read_timeout| is not None will configure underlying socket to
     raise TimeoutError exception whenever there's no response from the server
@@ -352,7 +410,7 @@ class HttpService(object):
     query_params = urlparse.parse_qsl(parsed.query)
 
     # Prepare headers.
-    headers = {}
+    headers = get_case_insensitive_dict(headers or {})
     if body is not None:
       headers['Content-Length'] = len(body)
       if content_type:
@@ -373,6 +431,8 @@ class HttpService(object):
         request = HttpRequest(method, resource_url, query_params, body,
             headers, read_timeout, stream)
         self.prepare_request(request, attempt.attempt)
+        if self.authenticator:
+          self.authenticator.authorize(request)
         response = self.engine.perform_request(request)
         logging.debug('Request %s succeeded', request.get_full_url())
         return response
@@ -393,14 +453,12 @@ class HttpService(object):
               'Authentication is required for %s on attempt %d.\n%s',
               request.get_full_url(), attempt.attempt, e.format())
           # Try to authenticate only once. If it doesn't help, then server does
-          # not support app engine authentication.
+          # not support authentication or user doesn't have required access.
           if not auth_attempted:
             auth_attempted = True
-            if self.authenticator and self.authenticator.authenticate():
+            if self.login():
               # Success! Run request again immediately.
               attempt.skip_sleep = True
-              # Also refresh cookies used by request engine.
-              self.engine.reload_cookies()
               continue
           # Authentication attempt was unsuccessful.
           logging.error(
@@ -427,6 +485,53 @@ class HttpService(object):
         'Unable to open given url, %s, after %d attempts.\n%s',
         request.get_full_url(), max_attempts, last_error.format(verbose=True))
     return None
+
+  def json_request(
+      self,
+      method,
+      urlpath,
+      body=None,
+      max_attempts=URL_OPEN_MAX_ATTEMPTS,
+      timeout=URL_OPEN_TIMEOUT,
+      headers=None):
+    """Sends JSON request to the server and parses JSON response it get back.
+
+    Arguments:
+      method: HTTP method to use ('GET', 'POST', ...).
+      urlpath: relative request path (e.g. '/auth/v1/...').
+      body: object to serialize to JSON and sent in the request.
+      max_attempts: how many times to retry 50x errors.
+      timeout: how long to wait for a response (including all retries).
+      headers: dict with additional request headers.
+
+    Returns:
+      Deserialized JSON response on success, None on error or timeout.
+    """
+    response = self.request(
+        urlpath,
+        content_type=JSON_CONTENT_TYPE if body is not None else None,
+        data=body,
+        headers=headers,
+        max_attempts=max_attempts,
+        method=method,
+        read_timeout=timeout,
+        retry_404=False,
+        retry_50x=True,
+        stream=False,
+        timeout=timeout)
+    if not response:
+      return None
+    try:
+      text = response.read()
+      if not text:
+        return None
+    except TimeoutError:
+      return None
+    try:
+      return json.loads(text)
+    except ValueError:
+      logging.error('Not a JSON response when calling %s: %s', urlpath, text)
+      return None
 
   def prepare_request(self, request, attempt):  # pylint: disable=R0201
     """Modify HttpRequest before sending it by adding COUNT_KEY parameter."""
@@ -455,6 +560,14 @@ class HttpRequest(object):
     self.headers = headers.copy()
     self.timeout = timeout
     self.stream = stream
+    self._cookies = None
+
+  @property
+  def cookies(self):
+    """CookieJar object that will be used for cookies in this request."""
+    if self._cookies is None:
+      self._cookies = cookielib.CookieJar()
+    return self._cookies
 
   def get_full_url(self):
     """Resource URL with url-encoded GET parameters."""
@@ -463,9 +576,9 @@ class HttpRequest(object):
     else:
       return '%s?%s' % (self.url, urllib.urlencode(self.params))
 
-  def make_fake_response(self, content=''):
+  def make_fake_response(self, content='', headers=None):
     """Makes new fake HttpResponse to this request, useful in tests."""
-    return HttpResponse.get_fake_response(content, self.get_full_url())
+    return HttpResponse.get_fake_response(content, self.get_full_url(), headers)
 
 
 class HttpResponse(object):
@@ -474,14 +587,18 @@ class HttpResponse(object):
   def __init__(self, stream, url, headers):
     self._stream = stream
     self._url = url
-    self._headers = headers
+    self._headers = get_case_insensitive_dict(headers)
     self._read = 0
 
   @property
   def content_length(self):
     """Total length to the response or None if not known in advance."""
-    length = self._headers.get('Content-Length')
+    length = self.get_header('Content-Length')
     return int(length) if length is not None else None
+
+  def get_header(self, header):
+    """Returns response header (as str) or None if no such header."""
+    return self._headers.get(header)
 
   def read(self, size=None):
     """Reads up to |size| bytes from the stream and returns them.
@@ -501,14 +618,50 @@ class HttpResponse(object):
       raise TimeoutError(e)
 
   @classmethod
-  def get_fake_response(cls, content, url):
+  def get_fake_response(cls, content, url, headers=None):
     """Returns HttpResponse with predefined content, useful in tests."""
-    return cls(StringIO.StringIO(content),
-        url, {'content-length': len(content)})
+    headers = dict(headers or {})
+    headers['Content-Length'] = len(content)
+    return cls(StringIO.StringIO(content), url, headers)
 
 
-class RequestEngine(object):
-  """Base class for objects that know how to execute HttpRequests."""
+class Authenticator(object):
+  """Base class for objects that know how to authenticate into http services."""
+
+  def authorize(self, request):
+    """Add authentication information to the request."""
+
+  def login(self):
+    """Run interactive authentication flow."""
+    raise NotImplementedError()
+
+  def logout(self):
+    """Purges access credentials from local cache."""
+
+
+class RequestsLibEngine(object):
+  """Class that knows how to execute HttpRequests via requests library."""
+
+  # Preferred number of connections in a connection pool.
+  CONNECTION_POOL_SIZE = 64
+  # If True will not open more than CONNECTION_POOL_SIZE connections.
+  CONNECTION_POOL_BLOCK = False
+  # Maximum number of internal connection retries in a connection pool.
+  CONNECTION_RETRIES = 0
+
+  def __init__(self, ca_certs):
+    super(RequestsLibEngine, self).__init__()
+    self.session = requests.Session()
+    # Configure session.
+    self.session.trust_env = False
+    self.session.verify = ca_certs
+    # Configure connection pools.
+    for protocol in ('https://', 'http://'):
+      self.session.mount(protocol, adapters.HTTPAdapter(
+          pool_connections=self.CONNECTION_POOL_SIZE,
+          pool_maxsize=self.CONNECTION_POOL_SIZE,
+          max_retries=self.CONNECTION_RETRIES,
+          pool_block=self.CONNECTION_POOL_BLOCK))
 
   def perform_request(self, request):
     """Sends a HttpRequest to the server and reads back the response.
@@ -520,80 +673,6 @@ class RequestEngine(object):
       TimeoutError - timeout while connecting or reading response.
       HttpError - server responded with >= 400 error code.
     """
-    raise NotImplementedError()
-
-  def reload_cookies(self):
-    """Reloads cookies from original cookie jar."""
-    # This method is optional.
-    pass
-
-
-class Authenticator(object):
-  """Base class for objects that know how to authenticate into http services."""
-
-  def authenticate(self):
-    """Authenticates in the app engine service."""
-    raise NotImplementedError()
-
-
-class Urllib2Engine(RequestEngine):
-  """Class that knows how to execute HttpRequests via urllib2."""
-
-  def __init__(self, cookie_jar):
-    super(Urllib2Engine, self).__init__()
-    self.opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookie_jar))
-
-  def perform_request(self, request):
-    try:
-      req = self.make_urllib2_request(request)
-      if request.timeout:
-        resp = self.opener.open(req, timeout=request.timeout)
-      else:
-        resp = self.opener.open(req)
-      return HttpResponse(resp, req.get_full_url(), resp.headers)
-    except urllib2.HTTPError as e:
-      raise HttpError(e.code, e)
-    except (urllib2.URLError, httplib.HTTPException,
-            socket.timeout, ssl.SSLError) as e:
-      raise ConnectionError(e)
-
-  @staticmethod
-  def make_urllib2_request(request):
-    """Converts HttpRequest to urllib2.Request."""
-    result = urllib2.Request(request.get_full_url(), data=request.body)
-    for header, value in request.headers.iteritems():
-      result.add_header(header, value)
-    return result
-
-
-class RequestsLibEngine(RequestEngine):
-  """Class that knows how to execute HttpRequests via requests library."""
-
-  # Preferred number of connections in a connection pool.
-  CONNECTION_POOL_SIZE = 64
-  # If True will not open more than CONNECTION_POOL_SIZE connections.
-  CONNECTION_POOL_BLOCK = False
-  # Maximum number of internal connection retries in a connection pool.
-  CONNECTION_RETRIES = 0
-
-  def __init__(self, cookie_jar, ca_certs):
-    super(RequestsLibEngine, self).__init__()
-    self.session = requests.Session()
-    self.cookie_jar = cookie_jar
-    # Configure session.
-    self.session.trust_env = False
-    if cookie_jar:
-      self.session.cookies = cookie_jar
-    self.session.verify = ca_certs
-    # Configure connection pools.
-    for protocol in ('https://', 'http://'):
-      self.session.mount(protocol, adapters.HTTPAdapter(
-          pool_connections=self.CONNECTION_POOL_SIZE,
-          pool_maxsize=self.CONNECTION_POOL_SIZE,
-          max_retries=self.CONNECTION_RETRIES,
-          pool_block=self.CONNECTION_POOL_BLOCK))
-
-  def perform_request(self, request):
     try:
       response = self.session.request(
           method=request.method,
@@ -601,6 +680,7 @@ class RequestsLibEngine(RequestEngine):
           params=request.params,
           data=request.body,
           headers=request.headers,
+          cookies=request.cookies,
           timeout=request.timeout,
           stream=request.stream)
       response.raise_for_status()
@@ -616,33 +696,28 @@ class RequestsLibEngine(RequestEngine):
     except (requests.ConnectionError, socket.timeout, ssl.SSLError) as e:
       raise ConnectionError(e)
 
-  def reload_cookies(self):
-    if self.cookie_jar:
-      self.session.cookies = self.cookie_jar
 
+# TODO(vadimsh): Remove once everything is using OAuth or HMAC-based auth.
+class CookieBasedAuthenticator(Authenticator):
+  """Uses cookies (that AppEngine recognizes) to authenticate to |urlhost|."""
 
-class AppEngineAuthenticator(Authenticator):
-  """Helper class to perform AppEngine authentication dance via upload.py."""
-
-  # This lock ensures that user won't be confused with multiple concurrent
-  # login prompts.
-  _auth_lock = threading.Lock()
-
-  def __init__(self, urlhost, cookie_jar, email=None, password=None):
-    super(AppEngineAuthenticator, self).__init__()
+  def __init__(self, urlhost, cookie_jar):
+    super(CookieBasedAuthenticator, self).__init__()
     self.urlhost = urlhost
     self.cookie_jar = cookie_jar
-    self.email = email
-    self.password = password
+    self.email = None
+    self.password = None
     self._keyring = None
+    self._lock = threading.Lock()
 
-  def authenticate(self):
-    """Authenticates in the app engine application.
+  def authorize(self, request):
+    # Copy all cookies from authenticator cookie jar to request cookie jar.
+    with self._lock:
+      with self.cookie_jar:
+        for cookie in self.cookie_jar:
+          request.cookies.set_cookie(cookie)
 
-    Mutates |self.cookie_jar| in place by adding all required cookies.
-
-    Returns True on success.
-    """
+  def login(self):
     # To be used from inside AuthServer.
     cookie_jar = self.cookie_jar
     # RPC server that uses AuthenticationSupport's cookie jar.
@@ -662,14 +737,24 @@ class AppEngineAuthenticator(Authenticator):
       def PerformAuthentication(self):
         self._Authenticate()
         return self.authenticated
-    with cookie_jar:
-      with self._auth_lock:
+    with self._lock:
+      with cookie_jar:
         rpc_server = AuthServer(self.urlhost, self.get_credentials)
         return rpc_server.PerformAuthentication()
 
+  def logout(self):
+    domain = urlparse.urlparse(self.urlhost).netloc
+    try:
+      with self.cookie_jar:
+        self.cookie_jar.clear(domain)
+    except KeyError:
+      pass
+
   def get_credentials(self):
     """Called during authentication process to get the credentials.
+
     May be called multiple times if authentication fails.
+
     Returns tuple (email, password).
     """
     if self.email and self.password:
@@ -679,6 +764,7 @@ class AppEngineAuthenticator(Authenticator):
     return self._keyring.GetUserCredentials()
 
 
+# TODO(vadimsh): Remove once everything is using OAuth or HMAC-based auth.
 class ThreadSafeCookieJar(cookielib.MozillaCookieJar):
   """MozillaCookieJar with thread safe load and save."""
 
@@ -722,6 +808,32 @@ class ThreadSafeCookieJar(cookielib.MozillaCookieJar):
             self, filename, ignore_discard, ignore_expires)
       except OSError:
         logging.error('Failed to save %s', filename)
+
+
+class OAuthAuthenticator(Authenticator):
+  """Uses OAuth Authorization header to authenticate requests."""
+
+  def __init__(self, urlhost, options):
+    super(OAuthAuthenticator, self).__init__()
+    self.urlhost = urlhost
+    self.options = options
+    self._lock = threading.Lock()
+    self._access_token = oauth.load_access_token(self.urlhost, self.options)
+
+  def authorize(self, request):
+    with self._lock:
+      if self._access_token:
+        request.headers['Authorization'] = 'Bearer %s' % self._access_token
+
+  def login(self):
+    with self._lock:
+      self._access_token = oauth.create_access_token(self.urlhost, self.options)
+      return self._access_token is not None
+
+  def logout(self):
+    with self._lock:
+      self._access_token = None
+      oauth.purge_access_token(self.urlhost)
 
 
 class RetryAttempt(object):

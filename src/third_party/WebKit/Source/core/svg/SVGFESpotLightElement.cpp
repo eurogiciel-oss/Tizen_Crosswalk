@@ -18,32 +18,30 @@
  */
 
 #include "config.h"
-
-#include "SVGNames.h"
 #include "core/svg/SVGFESpotLightElement.h"
 
-#include "core/platform/graphics/filters/SpotLightSource.h"
+#include "SVGNames.h"
+#include "platform/graphics/filters/SpotLightSource.h"
 
 namespace WebCore {
 
-inline SVGFESpotLightElement::SVGFESpotLightElement(const QualifiedName& tagName, Document& document)
-    : SVGFELightElement(tagName, document)
+inline SVGFESpotLightElement::SVGFESpotLightElement(Document& document)
+    : SVGFELightElement(SVGNames::feSpotLightTag, document)
 {
-    ASSERT(hasTagName(SVGNames::feSpotLightTag));
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<SVGFESpotLightElement> SVGFESpotLightElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGFESpotLightElement> SVGFESpotLightElement::create(Document& document)
 {
-    return adoptRef(new SVGFESpotLightElement(tagName, document));
+    return adoptRef(new SVGFESpotLightElement(document));
 }
 
 PassRefPtr<LightSource> SVGFESpotLightElement::lightSource() const
 {
-    FloatPoint3D pos(xCurrentValue(), yCurrentValue(), zCurrentValue());
-    FloatPoint3D direction(pointsAtXCurrentValue(), pointsAtYCurrentValue(), pointsAtZCurrentValue());
+    FloatPoint3D pos(x()->currentValue()->value(), y()->currentValue()->value(), z()->currentValue()->value());
+    FloatPoint3D direction(pointsAtX()->currentValue()->value(), pointsAtY()->currentValue()->value(), pointsAtZ()->currentValue()->value());
 
-    return SpotLightSource::create(pos, direction, specularExponentCurrentValue(), limitingConeAngleCurrentValue());
+    return SpotLightSource::create(pos, direction, specularExponent()->currentValue()->value(), limitingConeAngle()->currentValue()->value());
 }
 
 }

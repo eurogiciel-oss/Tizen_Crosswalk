@@ -40,8 +40,6 @@
         'test/engine/fake_sync_scheduler.h',
         'test/engine/mock_connection_manager.cc',
         'test/engine/mock_connection_manager.h',
-        'test/engine/syncer_command_test.cc',
-        'test/engine/syncer_command_test.h',
         'test/engine/test_directory_setter_upper.cc',
         'test/engine/test_directory_setter_upper.h',
         'test/engine/test_id_factory.h',
@@ -56,6 +54,8 @@
         'test/null_transaction_observer.cc',
         'test/null_transaction_observer.h',
         'test/sessions/test_scoped_session_event_listener.h',
+        'test/sessions/mock_debug_info_getter.h',
+        'test/sessions/mock_debug_info_getter.cc',
         'test/test_directory_backing_store.cc',
         'test/test_directory_backing_store.h',
         'test/test_transaction_observer.cc',
@@ -90,6 +90,32 @@
       ],
     },
 
+    # Test support files for the fake sync server.
+    {
+      'target_name': 'test_support_sync_fake_server',
+      'type': 'static_library',
+      'variables': { 'enable_wexit_time_destructors': 1, },
+      'include_dirs': [
+        '..',
+      ],
+      'dependencies': [
+        '../base/base.gyp:base',
+        '../net/net.gyp:net',
+        'sync',
+      ],
+      'export_dependent_settings': [
+        'sync',
+      ],
+      'sources': [
+        'test/fake_server/fake_server.h',
+        'test/fake_server/fake_server.cc',
+        'test/fake_server/fake_server_http_post_provider.h',
+        'test/fake_server/fake_server_http_post_provider.cc',
+        'test/fake_server/fake_server_network_resources.h',
+        'test/fake_server/fake_server_network_resources.cc',
+      ],
+    },
+
     # Test support files for the 'sync_notifier' target.
     {
       'target_name': 'test_support_sync_notifier',
@@ -119,8 +145,10 @@
         'notifier/fake_invalidator.h',
         'notifier/invalidator_test_template.cc',
         'notifier/invalidator_test_template.h',
-        'notifier/mock_ack_handler.cc',
-        'notifier/mock_ack_handler.h',
+        'notifier/unacked_invalidation_set_test_util.cc',
+        'notifier/unacked_invalidation_set_test_util.h',
+        'internal_api/public/base/object_id_invalidation_map_test_util.h',
+        'internal_api/public/base/object_id_invalidation_map_test_util.cc',
       ],
     },
 
@@ -149,8 +177,6 @@
       'sources': [
         'internal_api/public/base/invalidation_test_util.cc',
         'internal_api/public/base/invalidation_test_util.h',
-        'internal_api/public/base/object_id_invalidation_map_test_util.cc',
-        'internal_api/public/base/object_id_invalidation_map_test_util.h',
         'internal_api/public/test/fake_sync_manager.h',
         'internal_api/public/test/sync_manager_factory_for_profile_sync_test.h',
         'internal_api/public/test/test_entry_factory.h',
@@ -187,6 +213,8 @@
       'sources': [
         'api/fake_syncable_service.cc',
         'api/fake_syncable_service.h',
+        'api/fake_sync_change_processor.cc',
+        'api/fake_sync_change_processor.h',
         'api/sync_error_factory_mock.cc',
         'api/sync_error_factory_mock.h',
       ],
@@ -241,24 +269,22 @@
           'internal_api/public/util/immutable_unittest.cc',
           'internal_api/public/util/weak_handle_unittest.cc',
           'engine/apply_control_data_updates_unittest.cc',
-          'engine/apply_updates_and_resolve_conflicts_command_unittest.cc',
           'engine/backoff_delay_provider_unittest.cc',
           'engine/download_unittest.cc',
-          'engine/model_changing_syncer_command_unittest.cc',
+          'engine/sync_directory_commit_contribution_unittest.cc',
+          'engine/sync_directory_update_handler_unittest.cc',
           'engine/sync_scheduler_unittest.cc',
           'engine/syncer_proto_util_unittest.cc',
           'engine/syncer_unittest.cc',
-          'engine/sync_directory_commit_contribution_unittest.cc',
-          'engine/sync_directory_update_handler_unittest.cc',
           'engine/traffic_recorder_unittest.cc',
           'js/js_arg_list_unittest.cc',
           'js/js_event_details_unittest.cc',
           'js/sync_js_controller_unittest.cc',
           'protocol/proto_enum_conversions_unittest.cc',
           'protocol/proto_value_conversions_unittest.cc',
+          'sessions/model_type_registry_unittest.cc',
           'sessions/nudge_tracker_unittest.cc',
           'sessions/status_controller_unittest.cc',
-          'sessions/sync_session_unittest.cc',
           'syncable/directory_backing_store_unittest.cc',
           'syncable/model_type_unittest.cc',
           'syncable/nigori_util_unittest.cc',
@@ -272,20 +298,6 @@
           'util/get_session_name_unittest.cc',
           'util/nigori_unittest.cc',
           'util/protobuf_unittest.cc',
-        ],
-        'conditions': [
-          ['OS == "ios" and coverage != 0', {
-            'sources!': [
-              # These sources can't be built with coverage due to a toolchain
-              # bug: http://openradar.appspot.com/radar?id=1499403
-              'engine/syncer_unittest.cc',
-
-              # These tests crash when run with coverage turned on due to an
-              # issue with llvm_gcda_increment_indirect_counter:
-              # http://crbug.com/156058
-              'syncable/directory_backing_store_unittest.cc',
-            ],
-          }],
         ],
       },
     },
@@ -301,6 +313,7 @@
       'suppress_wildcard': 1,
       'dependencies': [
         '../base/base.gyp:base',
+        '../google_apis/google_apis.gyp:google_apis',
         '../jingle/jingle.gyp:notifier_test_util',
         '../net/net.gyp:net_test_support',
         '../testing/gmock.gyp:gmock',
@@ -314,6 +327,7 @@
       # happens in the dependents.
       'export_dependent_settings': [
         '../base/base.gyp:base',
+        '../google_apis/google_apis.gyp:google_apis',
         '../jingle/jingle.gyp:notifier_test_util',
         '../net/net.gyp:net_test_support',
         '../testing/gmock.gyp:gmock',
@@ -330,8 +344,8 @@
         'conditions': [
           ['OS != "android"', {
             'sources': [
-              'notifier/ack_tracker_unittest.cc',
               'notifier/fake_invalidator_unittest.cc',
+              'notifier/gcm_network_channel_unittest.cc',
               'notifier/invalidation_notifier_unittest.cc',
               'notifier/invalidator_registrar_unittest.cc',
               'notifier/non_blocking_invalidator_unittest.cc',
@@ -432,6 +446,7 @@
           '..',
         ],
         'sources': [
+          'api/sync_attachment_unittest.cc',
           'api/sync_change_unittest.cc',
           'api/sync_error_unittest.cc',
           'api/sync_merge_result_unittest.cc',

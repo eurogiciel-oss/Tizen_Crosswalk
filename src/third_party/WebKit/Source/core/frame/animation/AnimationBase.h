@@ -30,7 +30,7 @@
 #define AnimationBase_h
 
 #include "CSSPropertyNames.h"
-#include "core/platform/animation/CSSAnimationData.h"
+#include "core/animation/css/CSSAnimationData.h"
 #include "core/rendering/style/RenderStyleConstants.h"
 #include "wtf/RefCounted.h"
 
@@ -50,7 +50,7 @@ class AnimationBase : public RefCounted<AnimationBase> {
     friend class CSSPropertyAnimation;
 
 public:
-    AnimationBase(const CSSAnimationData* transition, RenderObject* renderer, CompositeAnimation* compAnim);
+    AnimationBase(const CSSAnimationData* transition, RenderObject& renderer, CompositeAnimation* compAnim);
     virtual ~AnimationBase() { }
 
     RenderObject* renderer() const { return m_object; }

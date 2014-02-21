@@ -56,7 +56,6 @@ public:
     PassRefPtr<SQLResultSet> executeSQL(const String& sqlStatement, const Vector<SQLValue>& arguments, ExceptionState&);
 
     DatabaseSync* database() { return m_database.get(); }
-    bool isReadOnly() const { return m_readOnly; }
 
     void begin(ExceptionState&);
     void execute(ExceptionState&);
@@ -64,10 +63,10 @@ public:
     void rollback();
 
 private:
-    SQLTransactionBackendSync(DatabaseSync*, PassRefPtr<SQLTransactionSyncCallback>, bool readOnly);
+    SQLTransactionBackendSync(DatabaseSync*, PassOwnPtr<SQLTransactionSyncCallback>, bool readOnly);
 
     RefPtr<DatabaseSync> m_database;
-    RefPtr<SQLTransactionSyncCallback> m_callback;
+    OwnPtr<SQLTransactionSyncCallback> m_callback;
     bool m_readOnly;
     bool m_hasVersionMismatch;
 

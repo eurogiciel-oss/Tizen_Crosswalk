@@ -21,7 +21,6 @@
 
 #include "core/svg/SVGMPathElement.h"
 
-#include "SVGNames.h"
 #include "XLinkNames.h"
 #include "core/dom/Document.h"
 #include "core/svg/SVGAnimateMotionElement.h"
@@ -32,24 +31,21 @@ namespace WebCore {
 
 // Animated property definitions
 DEFINE_ANIMATED_STRING(SVGMPathElement, XLinkNames::hrefAttr, Href, href)
-DEFINE_ANIMATED_BOOLEAN(SVGMPathElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGMPathElement)
     REGISTER_LOCAL_ANIMATED_PROPERTY(href)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGMPathElement::SVGMPathElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+inline SVGMPathElement::SVGMPathElement(Document& document)
+    : SVGElement(SVGNames::mpathTag, document)
 {
-    ASSERT(hasTagName(SVGNames::mpathTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGMPathElement();
 }
 
-PassRefPtr<SVGMPathElement> SVGMPathElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGMPathElement> SVGMPathElement::create(Document& document)
 {
-    return adoptRef(new SVGMPathElement(tagName, document));
+    return adoptRef(new SVGMPathElement(document));
 }
 
 SVGMPathElement::~SVGMPathElement()
@@ -63,7 +59,7 @@ void SVGMPathElement::buildPendingResource()
     if (!inDocument())
         return;
 
-    String id;
+    AtomicString id;
     Element* target = SVGURIReference::targetElementFromIRIString(hrefCurrentValue(), document(), &id);
     if (!target) {
         // Do not register as pending if we are already pending this resource.
@@ -109,7 +105,6 @@ bool SVGMPathElement::isSupportedAttribute(const QualifiedName& attrName)
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
     if (supportedAttributes.isEmpty()) {
         SVGURIReference::addSupportedAttributes(supportedAttributes);
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
     }
     return supportedAttributes.contains<SVGAttributeHashTranslator>(attrName);
 }
@@ -122,8 +117,6 @@ void SVGMPathElement::parseAttribute(const QualifiedName& name, const AtomicStri
     }
 
     if (SVGURIReference::parseAttribute(name, value))
-        return;
-    if (SVGExternalResourcesRequired::parseAttribute(name, value))
         return;
 
     ASSERT_NOT_REACHED();
@@ -142,9 +135,6 @@ void SVGMPathElement::svgAttributeChanged(const QualifiedName& attrName)
         buildPendingResource();
         return;
     }
-
-    if (SVGExternalResourcesRequired::isKnownAttribute(attrName))
-        return;
 
     ASSERT_NOT_REACHED();
 }
@@ -165,7 +155,7 @@ void SVGMPathElement::targetPathChanged()
 void SVGMPathElement::notifyParentOfPathChange(ContainerNode* parent)
 {
     if (parent && parent->hasTagName(SVGNames::animateMotionTag))
-        static_cast<SVGAnimateMotionElement*>(parent)->updateAnimationPath();
+        toSVGAnimateMotionElement(parent)->updateAnimationPath();
 }
 
 } // namespace WebCore

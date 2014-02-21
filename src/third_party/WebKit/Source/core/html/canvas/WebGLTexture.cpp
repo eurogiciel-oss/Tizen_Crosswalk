@@ -39,10 +39,10 @@ PassRefPtr<WebGLTexture> WebGLTexture::create(WebGLRenderingContext* ctx)
 WebGLTexture::WebGLTexture(WebGLRenderingContext* ctx)
     : WebGLSharedObject(ctx)
     , m_target(0)
-    , m_minFilter(GraphicsContext3D::NEAREST_MIPMAP_LINEAR)
-    , m_magFilter(GraphicsContext3D::LINEAR)
-    , m_wrapS(GraphicsContext3D::REPEAT)
-    , m_wrapT(GraphicsContext3D::REPEAT)
+    , m_minFilter(GL_NEAREST_MIPMAP_LINEAR)
+    , m_magFilter(GL_LINEAR)
+    , m_wrapS(GL_REPEAT)
+    , m_wrapT(GL_REPEAT)
     , m_isNPOT(false)
     , m_isCubeComplete(false)
     , m_isComplete(false)
@@ -51,7 +51,7 @@ WebGLTexture::WebGLTexture(WebGLRenderingContext* ctx)
     , m_isHalfFloatType(false)
 {
     ScriptWrappable::init(this);
-    setObject(ctx->graphicsContext3D()->createTexture());
+    setObject(ctx->webGraphicsContext3D()->createTexture());
 }
 
 WebGLTexture::~WebGLTexture()
@@ -59,7 +59,7 @@ WebGLTexture::~WebGLTexture()
     deleteObject(0);
 }
 
-void WebGLTexture::setTarget(GC3Denum target, GC3Dint maxLevel)
+void WebGLTexture::setTarget(GLenum target, GLint maxLevel)
 {
     if (!object())
         return;
@@ -67,12 +67,12 @@ void WebGLTexture::setTarget(GC3Denum target, GC3Dint maxLevel)
     if (m_target)
         return;
     switch (target) {
-    case GraphicsContext3D::TEXTURE_2D:
+    case GL_TEXTURE_2D:
         m_target = target;
         m_info.resize(1);
         m_info[0].resize(maxLevel);
         break;
-    case GraphicsContext3D::TEXTURE_CUBE_MAP:
+    case GL_TEXTURE_CUBE_MAP:
         m_target = target;
         m_info.resize(6);
         for (int ii = 0; ii < 6; ++ii)
@@ -81,45 +81,45 @@ void WebGLTexture::setTarget(GC3Denum target, GC3Dint maxLevel)
     }
 }
 
-void WebGLTexture::setParameteri(GC3Denum pname, GC3Dint param)
+void WebGLTexture::setParameteri(GLenum pname, GLint param)
 {
     if (!object() || !m_target)
         return;
     switch (pname) {
-    case GraphicsContext3D::TEXTURE_MIN_FILTER:
+    case GL_TEXTURE_MIN_FILTER:
         switch (param) {
-        case GraphicsContext3D::NEAREST:
-        case GraphicsContext3D::LINEAR:
-        case GraphicsContext3D::NEAREST_MIPMAP_NEAREST:
-        case GraphicsContext3D::LINEAR_MIPMAP_NEAREST:
-        case GraphicsContext3D::NEAREST_MIPMAP_LINEAR:
-        case GraphicsContext3D::LINEAR_MIPMAP_LINEAR:
+        case GL_NEAREST:
+        case GL_LINEAR:
+        case GL_NEAREST_MIPMAP_NEAREST:
+        case GL_LINEAR_MIPMAP_NEAREST:
+        case GL_NEAREST_MIPMAP_LINEAR:
+        case GL_LINEAR_MIPMAP_LINEAR:
             m_minFilter = param;
             break;
         }
         break;
-    case GraphicsContext3D::TEXTURE_MAG_FILTER:
+    case GL_TEXTURE_MAG_FILTER:
         switch (param) {
-        case GraphicsContext3D::NEAREST:
-        case GraphicsContext3D::LINEAR:
+        case GL_NEAREST:
+        case GL_LINEAR:
             m_magFilter = param;
             break;
         }
         break;
-    case GraphicsContext3D::TEXTURE_WRAP_S:
+    case GL_TEXTURE_WRAP_S:
         switch (param) {
-        case GraphicsContext3D::CLAMP_TO_EDGE:
-        case GraphicsContext3D::MIRRORED_REPEAT:
-        case GraphicsContext3D::REPEAT:
+        case GL_CLAMP_TO_EDGE:
+        case GL_MIRRORED_REPEAT:
+        case GL_REPEAT:
             m_wrapS = param;
             break;
         }
         break;
-    case GraphicsContext3D::TEXTURE_WRAP_T:
+    case GL_TEXTURE_WRAP_T:
         switch (param) {
-        case GraphicsContext3D::CLAMP_TO_EDGE:
-        case GraphicsContext3D::MIRRORED_REPEAT:
-        case GraphicsContext3D::REPEAT:
+        case GL_CLAMP_TO_EDGE:
+        case GL_MIRRORED_REPEAT:
+        case GL_REPEAT:
             m_wrapT = param;
             break;
         }
@@ -130,15 +130,15 @@ void WebGLTexture::setParameteri(GC3Denum pname, GC3Dint param)
     update();
 }
 
-void WebGLTexture::setParameterf(GC3Denum pname, GC3Dfloat param)
+void WebGLTexture::setParameterf(GLenum pname, GLfloat param)
 {
     if (!object() || !m_target)
         return;
-    GC3Dint iparam = static_cast<GC3Dint>(param);
+    GLint iparam = static_cast<GLint>(param);
     setParameteri(pname, iparam);
 }
 
-void WebGLTexture::setLevelInfo(GC3Denum target, GC3Dint level, GC3Denum internalFormat, GC3Dsizei width, GC3Dsizei height, GC3Denum type)
+void WebGLTexture::setLevelInfo(GLenum target, GLint level, GLenum internalFormat, GLsizei width, GLsizei height, GLenum type)
 {
     if (!object() || !m_target)
         return;
@@ -160,10 +160,10 @@ void WebGLTexture::generateMipmapLevelInfo()
     if (!m_isComplete) {
         for (size_t ii = 0; ii < m_info.size(); ++ii) {
             const LevelInfo& info0 = m_info[ii][0];
-            GC3Dsizei width = info0.width;
-            GC3Dsizei height = info0.height;
-            GC3Dint levelCount = computeLevelCount(width, height);
-            for (GC3Dint level = 1; level < levelCount; ++level) {
+            GLsizei width = info0.width;
+            GLsizei height = info0.height;
+            GLint levelCount = computeLevelCount(width, height);
+            for (GLint level = 1; level < levelCount; ++level) {
                 width = std::max(1, width >> 1);
                 height = std::max(1, height >> 1);
                 LevelInfo& info = m_info[ii][level];
@@ -175,7 +175,7 @@ void WebGLTexture::generateMipmapLevelInfo()
     m_needToUseBlackTexture = false;
 }
 
-GC3Denum WebGLTexture::getInternalFormat(GC3Denum target, GC3Dint level) const
+GLenum WebGLTexture::getInternalFormat(GLenum target, GLint level) const
 {
     const LevelInfo* info = getLevelInfo(target, level);
     if (!info)
@@ -183,7 +183,7 @@ GC3Denum WebGLTexture::getInternalFormat(GC3Denum target, GC3Dint level) const
     return info->internalFormat;
 }
 
-GC3Denum WebGLTexture::getType(GC3Denum target, GC3Dint level) const
+GLenum WebGLTexture::getType(GLenum target, GLint level) const
 {
     const LevelInfo* info = getLevelInfo(target, level);
     if (!info)
@@ -191,7 +191,7 @@ GC3Denum WebGLTexture::getType(GC3Denum target, GC3Dint level) const
     return info->type;
 }
 
-GC3Dsizei WebGLTexture::getWidth(GC3Denum target, GC3Dint level) const
+GLsizei WebGLTexture::getWidth(GLenum target, GLint level) const
 {
     const LevelInfo* info = getLevelInfo(target, level);
     if (!info)
@@ -199,7 +199,7 @@ GC3Dsizei WebGLTexture::getWidth(GC3Denum target, GC3Dint level) const
     return info->width;
 }
 
-GC3Dsizei WebGLTexture::getHeight(GC3Denum target, GC3Dint level) const
+GLsizei WebGLTexture::getHeight(GLenum target, GLint level) const
 {
     const LevelInfo* info = getLevelInfo(target, level);
     if (!info)
@@ -207,7 +207,7 @@ GC3Dsizei WebGLTexture::getHeight(GC3Denum target, GC3Dint level) const
     return info->height;
 }
 
-bool WebGLTexture::isValid(GC3Denum target, GC3Dint level) const
+bool WebGLTexture::isValid(GLenum target, GLint level) const
 {
     const LevelInfo* info = getLevelInfo(target, level);
     if (!info)
@@ -215,7 +215,7 @@ bool WebGLTexture::isValid(GC3Denum target, GC3Dint level) const
     return info->valid;
 }
 
-bool WebGLTexture::isNPOT(GC3Dsizei width, GC3Dsizei height)
+bool WebGLTexture::isNPOT(GLsizei width, GLsizei height)
 {
     ASSERT(width >= 0 && height >= 0);
     if (!width || !height)
@@ -239,35 +239,35 @@ bool WebGLTexture::needToUseBlackTexture(TextureExtensionFlag flag) const
     if (m_needToUseBlackTexture)
         return true;
     if ((m_isFloatType && !(flag & TextureFloatLinearExtensionEnabled)) || (m_isHalfFloatType && !(flag && TextureHalfFloatLinearExtensionEnabled))) {
-        if (m_magFilter != GraphicsContext3D::NEAREST || (m_minFilter != GraphicsContext3D::NEAREST && m_minFilter != GraphicsContext3D::NEAREST_MIPMAP_NEAREST))
+        if (m_magFilter != GL_NEAREST || (m_minFilter != GL_NEAREST && m_minFilter != GL_NEAREST_MIPMAP_NEAREST))
             return true;
     }
     return false;
 }
 
-void WebGLTexture::deleteObjectImpl(GraphicsContext3D* context3d, Platform3DObject object)
+void WebGLTexture::deleteObjectImpl(blink::WebGraphicsContext3D* context3d, Platform3DObject object)
 {
     context3d->deleteTexture(object);
 }
 
-int WebGLTexture::mapTargetToIndex(GC3Denum target) const
+int WebGLTexture::mapTargetToIndex(GLenum target) const
 {
-    if (m_target == GraphicsContext3D::TEXTURE_2D) {
-        if (target == GraphicsContext3D::TEXTURE_2D)
+    if (m_target == GL_TEXTURE_2D) {
+        if (target == GL_TEXTURE_2D)
             return 0;
-    } else if (m_target == GraphicsContext3D::TEXTURE_CUBE_MAP) {
+    } else if (m_target == GL_TEXTURE_CUBE_MAP) {
         switch (target) {
-        case GraphicsContext3D::TEXTURE_CUBE_MAP_POSITIVE_X:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
             return 0;
-        case GraphicsContext3D::TEXTURE_CUBE_MAP_NEGATIVE_X:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
             return 1;
-        case GraphicsContext3D::TEXTURE_CUBE_MAP_POSITIVE_Y:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
             return 2;
-        case GraphicsContext3D::TEXTURE_CUBE_MAP_NEGATIVE_Y:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
             return 3;
-        case GraphicsContext3D::TEXTURE_CUBE_MAP_POSITIVE_Z:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
             return 4;
-        case GraphicsContext3D::TEXTURE_CUBE_MAP_NEGATIVE_Z:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
             return 5;
         }
     }
@@ -290,17 +290,17 @@ bool WebGLTexture::canGenerateMipmaps()
     return true;
 }
 
-GC3Dint WebGLTexture::computeLevelCount(GC3Dsizei width, GC3Dsizei height)
+GLint WebGLTexture::computeLevelCount(GLsizei width, GLsizei height)
 {
     // return 1 + log2Floor(std::max(width, height));
-    GC3Dsizei n = std::max(width, height);
+    GLsizei n = std::max(width, height);
     if (n <= 0)
         return 0;
-    GC3Dint log = 0;
-    GC3Dsizei value = n;
+    GLint log = 0;
+    GLsizei value = n;
     for (int ii = 4; ii >= 0; --ii) {
         int shift = (1 << ii);
-        GC3Dsizei x = (value >> shift);
+        GLsizei x = (value >> shift);
         if (x) {
             value = x;
             log += shift;
@@ -322,7 +322,7 @@ void WebGLTexture::update()
     m_isComplete = true;
     m_isCubeComplete = true;
     const LevelInfo& first = m_info[0][0];
-    GC3Dint levelCount = computeLevelCount(first.width, first.height);
+    GLint levelCount = computeLevelCount(first.width, first.height);
     if (levelCount < 1)
         m_isComplete = false;
     else {
@@ -337,9 +337,9 @@ void WebGLTexture::update()
                 m_isComplete = false;
                 break;
             }
-            GC3Dsizei width = info0.width;
-            GC3Dsizei height = info0.height;
-            for (GC3Dint level = 1; level < levelCount; ++level) {
+            GLsizei width = info0.width;
+            GLsizei height = info0.height;
+            for (GLint level = 1; level < levelCount; ++level) {
                 width = std::max(1, width >> 1);
                 height = std::max(1, height >> 1);
                 const LevelInfo& info = m_info[ii][level];
@@ -353,30 +353,30 @@ void WebGLTexture::update()
             }
         }
     }
-    m_isFloatType = m_info[0][0].type == GraphicsContext3D::FLOAT;
-    m_isHalfFloatType = m_info[0][0].type == GraphicsContext3D::HALF_FLOAT_OES;
+    m_isFloatType = m_info[0][0].type == GL_FLOAT;
+    m_isHalfFloatType = m_info[0][0].type == GL_HALF_FLOAT_OES;
 
     m_needToUseBlackTexture = false;
     // NPOT
-    if (m_isNPOT && ((m_minFilter != GraphicsContext3D::NEAREST && m_minFilter != GraphicsContext3D::LINEAR)
-                     || m_wrapS != GraphicsContext3D::CLAMP_TO_EDGE || m_wrapT != GraphicsContext3D::CLAMP_TO_EDGE))
+    if (m_isNPOT && ((m_minFilter != GL_NEAREST && m_minFilter != GL_LINEAR)
+        || m_wrapS != GL_CLAMP_TO_EDGE || m_wrapT != GL_CLAMP_TO_EDGE))
         m_needToUseBlackTexture = true;
     // If it is a Cube texture, check Cube Completeness first
     if (m_info.size() > 1 && !m_isCubeComplete)
         m_needToUseBlackTexture = true;
     // Completeness
-    if (!m_isComplete && m_minFilter != GraphicsContext3D::NEAREST && m_minFilter != GraphicsContext3D::LINEAR)
+    if (!m_isComplete && m_minFilter != GL_NEAREST && m_minFilter != GL_LINEAR)
         m_needToUseBlackTexture = true;
 }
 
-const WebGLTexture::LevelInfo* WebGLTexture::getLevelInfo(GC3Denum target, GC3Dint level) const
+const WebGLTexture::LevelInfo* WebGLTexture::getLevelInfo(GLenum target, GLint level) const
 {
     if (!object() || !m_target)
         return 0;
     int targetIndex = mapTargetToIndex(target);
     if (targetIndex < 0 || targetIndex >= static_cast<int>(m_info.size()))
         return 0;
-    if (level < 0 || level >= static_cast<GC3Dint>(m_info[targetIndex].size()))
+    if (level < 0 || level >= static_cast<GLint>(m_info[targetIndex].size()))
         return 0;
     return &(m_info[targetIndex][level]);
 }

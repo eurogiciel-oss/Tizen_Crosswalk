@@ -543,7 +543,6 @@ public abstract class InvalidationClientCore extends InternalBase
     resources.getNetwork().setListener(new NetworkChannel.NetworkListener() {
       @Override
       public void onMessageReceived(byte[] incomingMessage) {
-        final String name = "handleIncomingMessage";
         InvalidationClientCore.this.handleIncomingMessage(incomingMessage);
       }
       @Override
@@ -1390,8 +1389,6 @@ public abstract class InvalidationClientCore extends InternalBase
     Preconditions.checkState(internalScheduler.isRunningOnThread(), "Not on internal thread");
 
     List<SimplePair<String, Integer>> performanceCounters =
-        new ArrayList<SimplePair<String, Integer>>();
-    List<SimplePair<String, Integer>> configParams =
         new ArrayList<SimplePair<String, Integer>>();
     ClientConfigP configToSend = null;
     if (mustSendPerformanceCounters) {

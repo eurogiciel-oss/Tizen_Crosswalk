@@ -40,8 +40,9 @@ url_parse::Component UTF8ComponentToUTF16Component(
       text_utf8.substr(0, component_utf8.begin);
   std::string component_string = text_utf8.substr(component_utf8.begin,
                                                   component_utf8.len);
-  string16 before_component_string_16 = UTF8ToUTF16(before_component_string);
-  string16 component_string_16 = UTF8ToUTF16(component_string);
+  base::string16 before_component_string_16 =
+      base::UTF8ToUTF16(before_component_string);
+  base::string16 component_string_16 = base::UTF8ToUTF16(component_string);
   url_parse::Component component_16(before_component_string_16.length(),
                                     component_string_16.length());
   return component_16;
@@ -80,10 +81,10 @@ TrimPositions TrimWhitespaceUTF8(const std::string& input,
   // twice. Please feel free to file a bug if this function hurts the
   // performance of Chrome.
   DCHECK(IsStringUTF8(input));
-  string16 input16 = UTF8ToUTF16(input);
-  string16 output16;
+  base::string16 input16 = base::UTF8ToUTF16(input);
+  base::string16 output16;
   TrimPositions result = TrimWhitespace(input16, positions, &output16);
-  *output = UTF16ToUTF8(output16);
+  *output = base::UTF16ToUTF8(output16);
   return result;
 }
 
@@ -154,7 +155,7 @@ std::string FixupPath(const std::string& text) {
 
   base::FilePath::StringType filename;
 #if defined(OS_WIN)
-  base::FilePath input_path(UTF8ToWide(text));
+  base::FilePath input_path(base::UTF8ToWide(text));
   PrepareStringForFileOps(input_path, &filename);
 
   // Fixup Windows-style drive letters, where "C:" gets rewritten to "C|".
@@ -170,7 +171,7 @@ std::string FixupPath(const std::string& text) {
   // Here, we know the input looks like a file.
   GURL file_url = net::FilePathToFileURL(base::FilePath(filename));
   if (file_url.is_valid()) {
-    return UTF16ToUTF8(net::FormatUrl(file_url, std::string(),
+    return base::UTF16ToUTF8(net::FormatUrl(file_url, std::string(),
         net::kFormatUrlOmitUsernamePassword, net::UnescapeRule::NORMAL, NULL,
         NULL, NULL));
   }
@@ -419,17 +420,17 @@ std::string SegmentURLInternal(std::string* text, url_parse::Parsed* parts) {
       // Couldn't determine the scheme, so just pick one.
       parts->scheme.reset();
       scheme.assign(StartsWithASCII(*text, "ftp.", false) ?
-                    chrome::kFtpScheme : content::kHttpScheme);
+                    content::kFtpScheme : content::kHttpScheme);
     }
   }
 
   // Proceed with about and chrome schemes, but not file or nonstandard schemes.
   if ((scheme != chrome::kAboutScheme) && (scheme != chrome::kChromeUIScheme) &&
-      ((scheme == chrome::kFileScheme) || !url_util::IsStandard(scheme.c_str(),
+      ((scheme == content::kFileScheme) || !url_util::IsStandard(scheme.c_str(),
            url_parse::Component(0, static_cast<int>(scheme.length())))))
     return scheme;
 
-  if (scheme == chrome::kFileSystemScheme) {
+  if (scheme == content::kFileSystemScheme) {
     // Have the GURL parser do the heavy lifting for us.
     url_parse::ParseFileSystemURL(text->data(),
         static_cast<int>(text->length()), parts);
@@ -483,13 +484,13 @@ std::string URLFixerUpper::SegmentURL(const std::string& text,
   return SegmentURLInternal(&mutable_text, parts);
 }
 
-string16 URLFixerUpper::SegmentURL(const string16& text,
-                                   url_parse::Parsed* parts) {
-  std::string text_utf8 = UTF16ToUTF8(text);
+base::string16 URLFixerUpper::SegmentURL(const base::string16& text,
+                                         url_parse::Parsed* parts) {
+  std::string text_utf8 = base::UTF16ToUTF8(text);
   url_parse::Parsed parts_utf8;
   std::string scheme_utf8 = SegmentURL(text_utf8, &parts_utf8);
   UTF8PartsToUTF16Parts(text_utf8, parts_utf8, parts);
-  return UTF8ToUTF16(scheme_utf8);
+  return base::UTF8ToUTF16(scheme_utf8);
 }
 
 GURL URLFixerUpper::FixupURL(const std::string& text,
@@ -516,11 +517,11 @@ GURL URLFixerUpper::FixupURL(const std::string& text,
   }
 
   // We handle the file scheme separately.
-  if (scheme == chrome::kFileScheme)
+  if (scheme == content::kFileScheme)
     return GURL(parts.scheme.is_valid() ? text : FixupPath(text));
 
   // We handle the filesystem scheme separately.
-  if (scheme == chrome::kFileSystemScheme) {
+  if (scheme == content::kFileSystemScheme) {
     if (parts.inner_parsed() && parts.inner_parsed()->scheme.is_valid())
       return GURL(text);
     return GURL();
@@ -596,8 +597,8 @@ GURL URLFixerUpper::FixupRelativeFile(const base::FilePath& base_dir,
     // escaped things. We need to go through 8-bit since the escaped values
     // only represent 8-bit values.
 #if defined(OS_WIN)
-    std::wstring unescaped = UTF8ToWide(net::UnescapeURLComponent(
-        WideToUTF8(trimmed),
+    std::wstring unescaped = base::UTF8ToWide(net::UnescapeURLComponent(
+        base::WideToUTF8(trimmed),
         net::UnescapeRule::SPACES | net::UnescapeRule::URL_SPECIAL_CHARS));
 #elif defined(OS_POSIX)
     std::string unescaped = net::UnescapeURLComponent(
@@ -616,7 +617,7 @@ GURL URLFixerUpper::FixupRelativeFile(const base::FilePath& base_dir,
   if (is_file) {
     GURL file_url = net::FilePathToFileURL(full_path);
     if (file_url.is_valid())
-      return GURL(UTF16ToUTF8(net::FormatUrl(file_url, std::string(),
+      return GURL(base::UTF16ToUTF8(net::FormatUrl(file_url, std::string(),
           net::kFormatUrlOmitUsernamePassword, net::UnescapeRule::NORMAL, NULL,
           NULL, NULL)));
     // Invalid files fall through to regular processing.
@@ -624,7 +625,7 @@ GURL URLFixerUpper::FixupRelativeFile(const base::FilePath& base_dir,
 
   // Fall back on regular fixup for this input.
 #if defined(OS_WIN)
-  std::string text_utf8 = WideToUTF8(text.value());
+  std::string text_utf8 = base::WideToUTF8(text.value());
 #elif defined(OS_POSIX)
   std::string text_utf8 = text.value();
 #endif

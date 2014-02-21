@@ -77,7 +77,9 @@ void reference_32x32_dct_2d(const int16_t input[kNumCoeffs],
 typedef void (*fwd_txfm_t)(const int16_t *in, int16_t *out, int stride);
 typedef void (*inv_txfm_t)(const int16_t *in, uint8_t *out, int stride);
 
-class Trans32x32Test : public PARAMS(fwd_txfm_t, inv_txfm_t, int) {
+typedef std::tr1::tuple<fwd_txfm_t, inv_txfm_t, int> trans_32x32_param_t;
+
+class Trans32x32Test : public ::testing::TestWithParam<trans_32x32_param_t> {
  public:
   virtual ~Trans32x32Test() {}
   virtual void SetUp() {
@@ -256,6 +258,16 @@ INSTANTIATE_TEST_CASE_P(
         make_tuple(&vp9_fdct32x32_sse2,
                    &vp9_idct32x32_1024_add_sse2, 0),
         make_tuple(&vp9_fdct32x32_rd_sse2,
+                   &vp9_idct32x32_1024_add_sse2, 1)));
+#endif
+
+#if HAVE_AVX2
+INSTANTIATE_TEST_CASE_P(
+    AVX2, Trans32x32Test,
+    ::testing::Values(
+        make_tuple(&vp9_fdct32x32_avx2,
+                   &vp9_idct32x32_1024_add_sse2, 0),
+        make_tuple(&vp9_fdct32x32_rd_avx2,
                    &vp9_idct32x32_1024_add_sse2, 1)));
 #endif
 }  // namespace

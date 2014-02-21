@@ -34,10 +34,10 @@ namespace WebCore {
 
 class NotificationClient;
 
-class NotificationController : public Supplement<Page> {
+class NotificationController FINAL : public Supplement<Page> {
     WTF_MAKE_NONCOPYABLE(NotificationController);
 public:
-    ~NotificationController();
+    virtual ~NotificationController();
 
     static PassOwnPtr<NotificationController> create(NotificationClient*);
     static const char* supplementName();
@@ -51,6 +51,8 @@ private:
 
     NotificationClient* m_client;
 };
+
+void provideNotification(Page*, NotificationClient*);
 
 } // namespace WebCore
 

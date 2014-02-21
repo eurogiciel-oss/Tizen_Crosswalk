@@ -69,7 +69,7 @@ void ShellNetworkDelegate::OnURLRequestDestroyed(net::URLRequest* request) {
 }
 
 void ShellNetworkDelegate::OnPACScriptError(int line_number,
-                                            const string16& error) {
+                                            const base::string16& error) {
 }
 
 ShellNetworkDelegate::AuthRequiredResponse ShellNetworkDelegate::OnAuthRequired(
@@ -117,11 +117,6 @@ int ShellNetworkDelegate::OnBeforeSocketStreamConnect(
     net::SocketStream* socket,
     const net::CompletionCallback& callback) {
   return net::OK;
-}
-
-void ShellNetworkDelegate::OnRequestWaitStateChange(
-    const net::URLRequest& request,
-    RequestWaitState waiting) {
 }
 
 }  // namespace content

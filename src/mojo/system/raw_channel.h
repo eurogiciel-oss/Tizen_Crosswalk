@@ -8,8 +8,9 @@
 #include <vector>
 
 #include "base/basictypes.h"
-#include "mojo/public/system/system_export.h"
-#include "mojo/system/limits.h"
+#include "mojo/system/constants.h"
+#include "mojo/system/embedder/scoped_platform_handle.h"
+#include "mojo/system/system_impl_export.h"
 
 namespace base {
 class MessageLoop;
@@ -19,11 +20,6 @@ namespace mojo {
 namespace system {
 
 class MessageInTransit;
-
-// This simply wraps an |int| file descriptor on POSIX and a |HANDLE| on
-// Windows, but we don't want to impose, e.g., the inclusion of windows.h on
-// everyone.
-struct PlatformChannelHandle;
 
 // |RawChannel| is an interface to objects that wrap an OS "pipe". It presents
 // the following interface to users:
@@ -40,13 +36,13 @@ struct PlatformChannelHandle;
 //
 // With the exception of |WriteMessage()|, this class is thread-unsafe (and in
 // general its methods should only be used on the I/O thread).
-class MOJO_SYSTEM_EXPORT RawChannel {
+class MOJO_SYSTEM_IMPL_EXPORT RawChannel {
  public:
   virtual ~RawChannel() {}
 
   // The |Delegate| is only accessed on the same thread as the message loop
   // (passed in on creation).
-  class Delegate {
+  class MOJO_SYSTEM_IMPL_EXPORT Delegate {
    public:
     enum FatalError {
       FATAL_ERROR_UNKNOWN = 0,
@@ -66,15 +62,17 @@ class MOJO_SYSTEM_EXPORT RawChannel {
     virtual ~Delegate() {}
   };
 
-  // Static factory method. Takes ownership of |handle| (i.e., will close it).
-  // Does *not* take ownership of |delegate| and |message_loop|, which must
-  // remain alive while this object does.
-  static RawChannel* Create(const PlatformChannelHandle& handle,
+  // Static factory method. |handle| should be a handle to a
+  // (platform-appropriate) bidirectional communication channel (e.g., a socket
+  // on POSIX, a named pipe on Windows). Does *not* take ownership of |delegate|
+  // and |message_loop|, which must remain alive while this object does.
+  static RawChannel* Create(embedder::ScopedPlatformHandle handle,
                             Delegate* delegate,
                             base::MessageLoop* message_loop);
 
-  // This must be called (on the I/O thread) before this object is used.
-  virtual void Init() = 0;
+  // This must be called (on the I/O thread) before this object is used. Returns
+  // true on success. On failure, |Shutdown()| should *not* be called.
+  virtual bool Init() = 0;
 
   // This must be called (on the I/O thread) before this object is destroyed.
   virtual void Shutdown() = 0;

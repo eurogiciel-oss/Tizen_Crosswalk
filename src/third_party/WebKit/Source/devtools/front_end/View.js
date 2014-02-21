@@ -31,6 +31,7 @@
 WebInspector.View = function()
 {
     this.element = document.createElement("div");
+    this.element.className = "view";
     this.element.__view = this;
     this._visible = true;
     this._isRoot = false;
@@ -60,6 +61,9 @@ WebInspector.View.prototype = {
         return this._parentView;
     },
 
+    /**
+     * @return {boolean}
+     */
     isShowing: function()
     {
         return this._isShowing;
@@ -167,8 +171,8 @@ WebInspector.View.prototype = {
     },
 
     /**
-     * @param {Element} parentElement
-     * @param {Element=} insertBefore
+     * @param {?Element} parentElement
+     * @param {!Element=} insertBefore
      */
     show: function(parentElement, insertBefore)
     {
@@ -189,15 +193,16 @@ WebInspector.View.prototype = {
                 this._isRoot = false;
             } else
                 WebInspector.View._assert(this._isRoot, "Attempt to attach view to orphan node");
-        } else if (this._visible)
+        } else if (this._visible) {
             return;
+        }
 
         this._visible = true;
 
         if (this._parentIsShowing())
             this._processWillShow();
 
-        this.element.addStyleClass("visible");
+        this.element.classList.add("visible");
 
         // Reparent
         if (this.element.parentElement !== parentElement) {
@@ -225,7 +230,7 @@ WebInspector.View.prototype = {
             this._processWillHide();
 
         if (this._hideOnDetach && !overrideHideOnDetach) {
-            this.element.removeStyleClass("visible");
+            this.element.classList.remove("visible");
             this._visible = false;
             if (this._parentIsShowing())
                 this._processWasHidden();
@@ -257,6 +262,9 @@ WebInspector.View.prototype = {
             children[i].detach();
     },
 
+    /**
+     * @return {!Array.<!Element>}
+     */
     elementsToRestoreScrollPositionsFor: function()
     {
         return [this.element];
@@ -284,6 +292,9 @@ WebInspector.View.prototype = {
         }
     },
 
+    /**
+     * @return {boolean}
+     */
     canHighlightPosition: function()
     {
         return false;
@@ -402,7 +413,7 @@ WebInspector.View.prototype = {
     },
 
     /**
-     * @return {Element}
+     * @return {!Element}
      */
     defaultFocusedElement: function()
     {
@@ -410,7 +421,7 @@ WebInspector.View.prototype = {
     },
 
     /**
-     * @param {Element} element
+     * @param {!Element} element
      */
     setDefaultFocusedElement: function(element)
     {
@@ -427,7 +438,7 @@ WebInspector.View.prototype = {
     },
 
     /**
-     * @return {Size}
+     * @return {!Size}
      */
     measurePreferredSize: function()
     {
@@ -482,18 +493,23 @@ WebInspector.View._assert = function(condition, message)
 }
 
 /**
- * @interface
+ * @constructor
+ * @extends {WebInspector.View}
+ * @param {function()} resizeCallback
  */
-WebInspector.ViewFactory = function()
+WebInspector.ViewWithResizeCallback = function(resizeCallback)
 {
+    WebInspector.View.call(this);
+    this._resizeCallback = resizeCallback;
 }
 
-WebInspector.ViewFactory.prototype = {
-    /**
-     * @param {string=} id
-     * @return {WebInspector.View}
-     */
-    createView: function(id) {}
+WebInspector.ViewWithResizeCallback.prototype = {
+    onResize: function()
+    {
+        this._resizeCallback();
+    },
+
+    __proto__: WebInspector.View.prototype
 }
 
 Element.prototype.appendChild = function(child)

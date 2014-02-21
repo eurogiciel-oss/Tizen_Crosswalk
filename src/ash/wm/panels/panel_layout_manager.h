@@ -25,6 +25,7 @@
 
 namespace aura {
 class Window;
+class WindowTracker;
 }
 
 namespace gfx {
@@ -36,7 +37,7 @@ class Widget;
 }
 
 namespace ash {
-class Launcher;
+class Shelf;
 
 namespace internal {
 class PanelCalloutWidget;
@@ -76,8 +77,8 @@ class ASH_EXPORT PanelLayoutManager
   // Returns the callout widget (arrow) for |panel|.
   views::Widget* GetCalloutWidgetForPanel(aura::Window* panel);
 
-  ash::Launcher* launcher() { return launcher_; }
-  void SetLauncher(ash::Launcher* launcher);
+  Shelf* shelf() { return shelf_; }
+  void SetShelf(Shelf* shelf);
 
   // Overridden from aura::LayoutManager:
   virtual void OnWindowResized() OVERRIDE;
@@ -119,6 +120,7 @@ class ASH_EXPORT PanelLayoutManager
   friend class PanelWindowResizerTest;
   friend class DockedWindowResizerTest;
   friend class DockedWindowLayoutManagerTest;
+  friend class WorkspaceControllerTest;
 
   views::Widget* CreateCalloutWidget();
 
@@ -171,13 +173,16 @@ class ASH_EXPORT PanelLayoutManager
   PanelList panel_windows_;
   // The panel being dragged.
   aura::Window* dragged_panel_;
-  // The launcher we are observing for launcher icon changes.
-  Launcher* launcher_;
+  // The shelf we are observing for shelf icon changes.
+  Shelf* shelf_;
   // The shelf layout manager being observed for visibility changes.
   ShelfLayoutManager* shelf_layout_manager_;
-  // Tracks the visibility of the shelf. Defaults to false when there is no
-  // shelf.
-  bool shelf_hidden_;
+
+  // When not NULL, the shelf is hidden (i.e. full screen) and this tracks the
+  // set of panel windows which have been temporarily hidden and need to be
+  // restored when the shelf becomes visible again.
+  scoped_ptr<aura::WindowTracker> restore_windows_on_shelf_visible_;
+
   // The last active panel. Used to maintain stacking order even if no panels
   // are currently focused.
   aura::Window* last_active_panel_;

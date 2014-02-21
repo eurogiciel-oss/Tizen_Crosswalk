@@ -8,16 +8,9 @@
 #include "base/prefs/pref_service.h"
 #include "chrome/browser/extensions/blacklist.h"
 #include "chrome/browser/extensions/error_console/error_console.h"
-#include "chrome/browser/extensions/event_router.h"
-#include "chrome/browser/extensions/extension_info_map.h"
-#include "chrome/browser/extensions/extension_pref_value_map.h"
-#include "chrome/browser/extensions/extension_pref_value_map_factory.h"
-#include "chrome/browser/extensions/extension_prefs.h"
-#include "chrome/browser/extensions/extension_prefs_factory.h"
-#include "chrome/browser/extensions/extension_process_manager.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system.h"
-#include "chrome/browser/extensions/management_policy.h"
+#include "chrome/browser/extensions/install_verifier.h"
 #include "chrome/browser/extensions/standard_management_policy_provider.h"
 #include "chrome/browser/extensions/state_store.h"
 #include "chrome/browser/extensions/user_script_master.h"
@@ -25,6 +18,17 @@
 #include "chrome/browser/value_store/testing_value_store.h"
 #include "chrome/common/chrome_switches.h"
 #include "content/public/browser/browser_thread.h"
+#include "extensions/browser/event_router.h"
+#include "extensions/browser/extension_pref_value_map.h"
+#include "extensions/browser/extension_pref_value_map_factory.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/extension_prefs_factory.h"
+#include "extensions/browser/extension_registry.h"
+#include "extensions/browser/extensions_browser_client.h"
+#include "extensions/browser/info_map.h"
+#include "extensions/browser/management_policy.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/browser/runtime_data.h"
 
 using content::BrowserThread;
 
@@ -33,24 +37,22 @@ namespace extensions {
 TestExtensionSystem::TestExtensionSystem(Profile* profile)
     : profile_(profile),
       value_store_(NULL),
-      info_map_(new ExtensionInfoMap()),
-      error_console_(new ErrorConsole(profile, NULL)) {
-}
+      info_map_(new InfoMap()),
+      error_console_(new ErrorConsole(profile, NULL)) {}
 
 TestExtensionSystem::~TestExtensionSystem() {
 }
 
 void TestExtensionSystem::Shutdown() {
-  extension_process_manager_.reset();
+  process_manager_.reset();
 }
 
-void TestExtensionSystem::CreateExtensionProcessManager() {
-  extension_process_manager_.reset(ExtensionProcessManager::Create(profile_));
+void TestExtensionSystem::CreateProcessManager() {
+  process_manager_.reset(ProcessManager::Create(profile_));
 }
 
-void TestExtensionSystem::SetExtensionProcessManager(
-    ExtensionProcessManager* manager) {
-  extension_process_manager_.reset(manager);
+void TestExtensionSystem::SetProcessManager(ProcessManager* manager) {
+  process_manager_.reset(manager);
 }
 
 ExtensionPrefs* TestExtensionSystem::CreateExtensionPrefs(
@@ -68,6 +70,7 @@ ExtensionPrefs* TestExtensionSystem::CreateExtensionPrefs(
       profile_->GetPrefs(),
       install_directory,
       ExtensionPrefValueMapFactory::GetForBrowserContext(profile_),
+      ExtensionsBrowserClient::Get()->CreateAppSorting().Pass(),
       extensions_disabled);
     ExtensionPrefsFactory::GetInstance()->SetInstanceForTesting(
         profile_,
@@ -81,6 +84,8 @@ ExtensionService* TestExtensionSystem::CreateExtensionService(
     bool autoupdate_enabled) {
   if (!ExtensionPrefs::Get(profile_))
     CreateExtensionPrefs(command_line, install_directory);
+  install_verifier_.reset(new InstallVerifier(ExtensionPrefs::Get(profile_),
+                                              NULL));
   // The ownership of |value_store_| is immediately transferred to state_store_,
   // but we keep a naked pointer to the TestingValueStore.
   scoped_ptr<TestingValueStore> value_store(new TestingValueStore());
@@ -93,6 +98,7 @@ ExtensionService* TestExtensionSystem::CreateExtensionService(
   management_policy_.reset(new ManagementPolicy());
   management_policy_->RegisterProvider(
       standard_management_policy_provider_.get());
+  runtime_data_.reset(new RuntimeData(ExtensionRegistry::Get(profile_)));
   extension_service_.reset(new ExtensionService(profile_,
                                                 command_line,
                                                 install_directory,
@@ -109,6 +115,10 @@ ExtensionService* TestExtensionSystem::extension_service() {
   return extension_service_.get();
 }
 
+RuntimeData* TestExtensionSystem::runtime_data() {
+  return runtime_data_.get();
+}
+
 ManagementPolicy* TestExtensionSystem::management_policy() {
   return management_policy_.get();
 }
@@ -121,8 +131,8 @@ UserScriptMaster* TestExtensionSystem::user_script_master() {
   return NULL;
 }
 
-ExtensionProcessManager* TestExtensionSystem::process_manager() {
-  return extension_process_manager_.get();
+ProcessManager* TestExtensionSystem::process_manager() {
+  return process_manager_.get();
 }
 
 StateStore* TestExtensionSystem::state_store() {
@@ -133,9 +143,7 @@ StateStore* TestExtensionSystem::rules_store() {
   return state_store_.get();
 }
 
-ExtensionInfoMap* TestExtensionSystem::info_map() {
-  return info_map_.get();
-}
+InfoMap* TestExtensionSystem::info_map() { return info_map_.get(); }
 
 LazyBackgroundTaskQueue*
 TestExtensionSystem::lazy_background_task_queue() {
@@ -160,6 +168,10 @@ const OneShotEvent& TestExtensionSystem::ready() const {
 
 ErrorConsole* TestExtensionSystem::error_console() {
   return error_console_.get();
+}
+
+InstallVerifier* TestExtensionSystem::install_verifier() {
+  return install_verifier_.get();
 }
 
 // static

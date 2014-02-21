@@ -17,10 +17,10 @@
 namespace autofill {
 namespace {
 
-const char16 kPhoneNumberSeparators[] = { ' ', '.', '(', ')', '-', 0 };
+const base::char16 kPhoneNumberSeparators[] = { ' ', '.', '(', ')', '-', 0 };
 
 void StripPunctuation(base::string16* number) {
-  RemoveChars(*number, kPhoneNumberSeparators, number);
+  base::RemoveChars(*number, kPhoneNumberSeparators, number);
 }
 
 // Returns the region code for this phone number, which is an ISO 3166 2-letter

@@ -113,12 +113,12 @@ class NativeAppWindowCocoa : public apps::NativeAppWindow,
 
  protected:
   // NativeAppWindow implementation.
-  virtual void SetFullscreen(bool fullscreen) OVERRIDE;
+  virtual void SetFullscreen(int fullscreen_types) OVERRIDE;
   virtual bool IsFullscreenOrPending() const OVERRIDE;
   virtual bool IsDetached() const OVERRIDE;
   virtual void UpdateWindowIcon() OVERRIDE;
   virtual void UpdateWindowTitle() OVERRIDE;
-  virtual void UpdateInputRegion(scoped_ptr<SkRegion> region) OVERRIDE;
+  virtual void UpdateShape(scoped_ptr<SkRegion> region) OVERRIDE;
   virtual void UpdateDraggableRegions(
       const std::vector<extensions::DraggableRegion>& regions) OVERRIDE;
   virtual SkRegion* GetDraggableRegion() OVERRIDE;
@@ -136,9 +136,7 @@ class NativeAppWindowCocoa : public apps::NativeAppWindow,
   virtual void UpdateWindowMinMaxSize() OVERRIDE;
 
   // WebContentsObserver implementation.
-  virtual void RenderViewHostChanged(
-      content::RenderViewHost* old_host,
-      content::RenderViewHost* new_host) OVERRIDE;
+  virtual void RenderViewCreated(content::RenderViewHost* rvh) OVERRIDE;
 
   virtual void SetAlwaysOnTop(bool always_on_top) OVERRIDE;
 

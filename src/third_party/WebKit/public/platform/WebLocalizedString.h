@@ -31,7 +31,7 @@
 #ifndef WebLocalizedString_h
 #define WebLocalizedString_h
 
-namespace WebKit {
+namespace blink {
 
 struct WebLocalizedString {
     enum Name {
@@ -63,14 +63,6 @@ struct WebLocalizedString {
         AXMediaPauseButtonHelp,
         AXMediaPlayButton,
         AXMediaPlayButtonHelp,
-        AXMediaReturnToRealTime,
-        AXMediaReturnToRealTimeHelp,
-        AXMediaRewindButton,
-        AXMediaRewindButtonHelp,
-        AXMediaSeekBackButton,
-        AXMediaSeekBackButtonHelp,
-        AXMediaSeekForwardButton,
-        AXMediaSeekForwardButtonHelp,
         AXMediaShowClosedCaptionsButton,
         AXMediaShowClosedCaptionsButtonHelp,
         AXMediaSlider, // Deprecated.
@@ -167,6 +159,6 @@ struct WebLocalizedString {
     };
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

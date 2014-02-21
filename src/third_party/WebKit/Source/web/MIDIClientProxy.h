@@ -38,23 +38,22 @@ namespace WebCore {
 class MIDIAccess;
 }
 
-namespace WebKit {
+namespace blink {
 
 class WebMIDIClient;
-class WebViewImpl;
 
-class MIDIClientProxy : public WebCore::MIDIClient {
+class MIDIClientProxy FINAL : public WebCore::MIDIClient {
 public:
     explicit MIDIClientProxy(WebMIDIClient*);
 
     // WebCore::MIDIClient
-    virtual void requestSysExPermission(PassRefPtr<WebCore::MIDIAccess>);
-    virtual void cancelSysExPermissionRequest(WebCore::MIDIAccess*);
+    virtual void requestSysExPermission(PassRefPtr<WebCore::MIDIAccess>) OVERRIDE;
+    virtual void cancelSysExPermissionRequest(WebCore::MIDIAccess*) OVERRIDE;
 
 private:
     WebMIDIClient* m_client;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // MIDIClientProxy_h

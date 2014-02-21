@@ -155,7 +155,8 @@ bool CommandBufferProxyImpl::Initialize() {
     return false;
 
   bool result;
-  if (!Send(new GpuCommandBufferMsg_Initialize(route_id_, handle, &result))) {
+  if (!Send(new GpuCommandBufferMsg_Initialize(
+      route_id_, handle, &result, &capabilities_))) {
     LOG(ERROR) << "Could not send GpuCommandBufferMsg_Initialize.";
     return false;
   }
@@ -164,6 +165,8 @@ bool CommandBufferProxyImpl::Initialize() {
     LOG(ERROR) << "Failed to initialize command buffer service.";
     return false;
   }
+
+  capabilities_.map_image = true;
 
   return true;
 }
@@ -193,7 +196,7 @@ void CommandBufferProxyImpl::Flush(int32 put_offset) {
   if (last_state_.error != gpu::error::kNoError)
     return;
 
-  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("gpu.debug"),
+  TRACE_EVENT1("gpu",
                "CommandBufferProxyImpl::Flush",
                "put_offset",
                put_offset);
@@ -209,7 +212,7 @@ void CommandBufferProxyImpl::Flush(int32 put_offset) {
 }
 
 void CommandBufferProxyImpl::SetLatencyInfo(
-    const ui::LatencyInfo& latency_info) {
+    const std::vector<ui::LatencyInfo>& latency_info) {
   if (last_state_.error != gpu::error::kNoError)
     return;
   Send(new GpuCommandBufferMsg_SetLatencyInfo(route_id_, latency_info));
@@ -365,8 +368,8 @@ void CommandBufferProxyImpl::SetContextLostReason(
   NOTREACHED();
 }
 
-bool CommandBufferProxyImpl::SupportsGpuMemoryBuffer() {
-  return true;
+gpu::Capabilities CommandBufferProxyImpl::GetCapabilities() {
+  return capabilities_;
 }
 
 gfx::GpuMemoryBuffer* CommandBufferProxyImpl::CreateGpuMemoryBuffer(
@@ -432,40 +435,27 @@ int CommandBufferProxyImpl::GetRouteID() const {
   return route_id_;
 }
 
-bool CommandBufferProxyImpl::Echo(const base::Closure& callback) {
+void CommandBufferProxyImpl::Echo(const base::Closure& callback) {
   if (last_state_.error != gpu::error::kNoError) {
-    return false;
+    return;
   }
 
-  if (!Send(new GpuCommandBufferMsg_Echo(route_id_,
-                    GpuCommandBufferMsg_EchoAck(route_id_)))) {
-    return false;
+  if (!Send(new GpuCommandBufferMsg_Echo(
+           route_id_, GpuCommandBufferMsg_EchoAck(route_id_)))) {
+    return;
   }
 
   echo_tasks_.push(callback);
-
-  return true;
 }
 
-bool CommandBufferProxyImpl::SetSurfaceVisible(bool visible) {
+uint32 CommandBufferProxyImpl::CreateStreamTexture(uint32 texture_id) {
   if (last_state_.error != gpu::error::kNoError)
-    return false;
+    return 0;
 
-  return Send(new GpuCommandBufferMsg_SetSurfaceVisible(route_id_, visible));
-}
-
-bool CommandBufferProxyImpl::DiscardBackbuffer() {
-  if (last_state_.error != gpu::error::kNoError)
-    return false;
-
-  return Send(new GpuCommandBufferMsg_DiscardBackbuffer(route_id_));
-}
-
-bool CommandBufferProxyImpl::EnsureBackbuffer() {
-  if (last_state_.error != gpu::error::kNoError)
-    return false;
-
-  return Send(new GpuCommandBufferMsg_EnsureBackbuffer(route_id_));
+  int32 stream_id = 0;
+  Send(new GpuCommandBufferMsg_CreateStreamTexture(
+      route_id_, texture_id, &stream_id));
+  return stream_id;
 }
 
 uint32 CommandBufferProxyImpl::InsertSyncPoint() {
@@ -513,6 +503,13 @@ void CommandBufferProxyImpl::SignalQuery(uint32 query,
   }
 
   signal_tasks_.insert(std::make_pair(signal_id, callback));
+}
+
+void CommandBufferProxyImpl::SetSurfaceVisible(bool visible) {
+  if (last_state_.error != gpu::error::kNoError)
+    return;
+
+  Send(new GpuCommandBufferMsg_SetSurfaceVisible(route_id_, visible));
 }
 
 void CommandBufferProxyImpl::SendManagedMemoryStats(

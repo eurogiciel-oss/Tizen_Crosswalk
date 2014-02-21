@@ -93,7 +93,7 @@ class WebFileWriterImpl::WriterBridge
     PostTaskToWorker(base::Bind(write_callback_, written_bytes_, complete));
   }
 
-  void DidFinish(base::PlatformFileError status) {
+  void DidFinish(base::File::Error status) {
     PostTaskToWorker(base::Bind(status_callback_, status));
   }
 
@@ -122,7 +122,7 @@ class WebFileWriterImpl::WriterBridge
 };
 
 WebFileWriterImpl::WebFileWriterImpl(
-     const GURL& path, WebKit::WebFileWriterClient* client,
+     const GURL& path, blink::WebFileWriterClient* client,
      Type type,
      base::MessageLoopProxy* main_thread_loop)
   : WebFileWriterBase(path, client),

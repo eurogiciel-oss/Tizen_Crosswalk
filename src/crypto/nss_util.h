@@ -7,6 +7,9 @@
 
 #include <string>
 #include "base/basictypes.h"
+#include "base/callback_forward.h"
+#include "base/compiler_specific.h"
+#include "base/files/scoped_temp_dir.h"
 #include "crypto/crypto_export.h"
 
 namespace base {
@@ -102,22 +105,41 @@ CRYPTO_EXPORT void OpenPersistentNSSDB();
 // GetPrivateNSSKeySlot() will return the TPM slot if one was found.
 CRYPTO_EXPORT void EnableTPMTokenForNSS();
 
-// Get name and user PIN for the built-in TPM token on ChromeOS.
-// Either one can safely be NULL.  Should only be called after
-// EnableTPMTokenForNSS has been called with a non-null delegate.
-CRYPTO_EXPORT void GetTPMTokenInfo(std::string* token_name,
-                                   std::string* user_pin);
+// Returns true if EnableTPMTokenForNSS has been called.
+CRYPTO_EXPORT bool IsTPMTokenEnabledForNSS();
 
 // Returns true if the TPM is owned and PKCS#11 initialized with the
 // user and security officer PINs, and has been enabled in NSS by
 // calling EnableTPMForNSS, and Chaps has been successfully
 // loaded into NSS.
-CRYPTO_EXPORT bool IsTPMTokenReady();
+// If |callback| is non-null and the function returns false, the |callback| will
+// be run once the TPM is ready. |callback| will never be run if the function
+// returns true.
+CRYPTO_EXPORT bool IsTPMTokenReady(const base::Closure& callback)
+    WARN_UNUSED_RESULT;
 
 // Initialize the TPM token.  Does nothing if it is already initialized.
-CRYPTO_EXPORT bool InitializeTPMToken(const std::string& token_name,
-                                      int token_slot_id,
-                                      const std::string& user_pin);
+CRYPTO_EXPORT bool InitializeTPMToken(int token_slot_id);
+
+// Exposed for unittests only.
+class CRYPTO_EXPORT_PRIVATE ScopedTestNSSChromeOSUser {
+ public:
+  explicit ScopedTestNSSChromeOSUser(const std::string& username_hash);
+  ~ScopedTestNSSChromeOSUser();
+
+  std::string username_hash() const { return username_hash_; }
+  bool constructed_successfully() const { return constructed_successfully_; }
+
+  // Completes initialization of user. Causes any waiting private slot callbacks
+  // to run.
+  void FinishInit();
+
+ private:
+  const std::string username_hash_;
+  base::ScopedTempDir temp_dir_;
+  bool constructed_successfully_;
+  DISALLOW_COPY_AND_ASSIGN(ScopedTestNSSChromeOSUser);
+};
 #endif
 
 // Convert a NSS PRTime value into a base::Time object.

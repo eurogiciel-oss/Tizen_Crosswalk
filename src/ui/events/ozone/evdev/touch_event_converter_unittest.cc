@@ -11,7 +11,7 @@
 
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/scoped_vector.h"
-#include "base/message_loop/message_loop.h"
+#include "base/message_loop/message_pump_dispatcher.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/run_loop.h"
 #include "base/time/time.h"
@@ -28,14 +28,17 @@ static int SetNonBlocking(int fd) {
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+const int kInvalidFileDescriptor = -1;
+const char kTestDevicePath[] = "/dev/input/test-device";
+
 }  // namespace
 
 namespace ui {
 
 class MockTouchEventConverterEvdev : public TouchEventConverterEvdev,
-                                     public base::MessageLoop::Dispatcher {
+                                     public base::MessagePumpDispatcher {
  public:
-  MockTouchEventConverterEvdev(int a, int b);
+  MockTouchEventConverterEvdev(int fd, base::FilePath path);
   virtual ~MockTouchEventConverterEvdev() {};
 
   void ConfigureReadMock(struct input_event* queue,
@@ -62,14 +65,17 @@ class MockTouchEventConverterEvdev : public TouchEventConverterEvdev,
   DISALLOW_COPY_AND_ASSIGN(MockTouchEventConverterEvdev);
 };
 
-MockTouchEventConverterEvdev::MockTouchEventConverterEvdev(int a, int b)
-    : TouchEventConverterEvdev(a, b) {
+MockTouchEventConverterEvdev::MockTouchEventConverterEvdev(int fd,
+                                                           base::FilePath path)
+    : TouchEventConverterEvdev(fd, path) {
   pressure_min_ = 30;
   pressure_max_ = 60;
 
   int fds[2];
 
-  DCHECK(pipe(fds) >= 0) << "pipe() failed, errno: " << errno;
+  if (pipe(fds))
+    NOTREACHED() << "failed pipe(): " << strerror(errno);
+
   DCHECK(SetNonBlocking(fds[0]) == 0)
       << "SetNonBlocking for pipe fd[0] failed, errno: " << errno;
   DCHECK(SetNonBlocking(fds[1]) == 0)
@@ -104,8 +110,9 @@ class TouchEventConverterEvdevTest : public testing::Test {
 
   // Overridden from testing::Test:
   virtual void SetUp() OVERRIDE {
-    loop_ = new base::MessageLoop(base::MessageLoop::TYPE_UI);
-    device_ = new ui::MockTouchEventConverterEvdev(-1, 2);
+    loop_ = new base::MessageLoopForUI;
+    device_ = new ui::MockTouchEventConverterEvdev(
+        kInvalidFileDescriptor, base::FilePath(kTestDevicePath));
     base::MessagePumpOzone::Current()->AddDispatcherForRootWindow(device_);
   }
   virtual void TearDown() OVERRIDE {

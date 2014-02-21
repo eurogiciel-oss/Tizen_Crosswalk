@@ -11,12 +11,14 @@
 #include "base/prefs/testing_pref_service.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/policy/cloud/mock_device_management_service.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/test/base/scoped_testing_local_state.h"
 #include "chrome/test/base/testing_browser_process.h"
+#include "components/policy/core/common/cloud/mock_device_management_service.h"
 #include "content/public/test/test_browser_thread_bundle.h"
 #include "crypto/sha2.h"
+#include "net/url_request/url_request_context_getter.h"
+#include "net/url_request/url_request_test_util.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -58,12 +60,15 @@ class AutoEnrollmentClientTest : public testing::Test {
     base::Closure callback =
         base::Bind(&AutoEnrollmentClientTest::CompletionCallback,
                    base::Unretained(this));
-    client_.reset(new AutoEnrollmentClient(callback,
-                                           service_.get(),
-                                           local_state_,
-                                           serial,
-                                           power_initial,
-                                           power_limit));
+    client_.reset(new AutoEnrollmentClient(
+        callback,
+        service_.get(),
+        local_state_,
+        new net::TestURLRequestContextGetter(
+            base::MessageLoop::current()->message_loop_proxy()),
+        serial,
+        power_initial,
+        power_limit));
   }
 
   void CompletionCallback() {
@@ -73,7 +78,7 @@ class AutoEnrollmentClientTest : public testing::Test {
   void ServerWillFail(DeviceManagementStatus error) {
     em::DeviceManagementResponse dummy_response;
     EXPECT_CALL(*service_,
-                CreateJob(DeviceManagementRequestJob::TYPE_AUTO_ENROLLMENT))
+                CreateJob(DeviceManagementRequestJob::TYPE_AUTO_ENROLLMENT, _))
         .WillOnce(service_->FailJob(error));
   }
 
@@ -96,13 +101,13 @@ class AutoEnrollmentClientTest : public testing::Test {
                                                crypto::kSHA256Length);
     }
     EXPECT_CALL(*service_,
-                CreateJob(DeviceManagementRequestJob::TYPE_AUTO_ENROLLMENT))
+                CreateJob(DeviceManagementRequestJob::TYPE_AUTO_ENROLLMENT, _))
         .WillOnce(service_->SucceedJob(response));
   }
 
   void ServerWillReplyAsync(MockDeviceManagementJob** job) {
     EXPECT_CALL(*service_,
-                CreateJob(DeviceManagementRequestJob::TYPE_AUTO_ENROLLMENT))
+                CreateJob(DeviceManagementRequestJob::TYPE_AUTO_ENROLLMENT, _))
         .WillOnce(service_->CreateAsyncJob(job));
   }
 
@@ -113,10 +118,10 @@ class AutoEnrollmentClientTest : public testing::Test {
   void VerifyCachedResult(bool should_enroll, int power_limit) {
     base::FundamentalValue value_should_enroll(should_enroll);
     base::FundamentalValue value_power_limit(power_limit);
-    EXPECT_TRUE(Value::Equals(
+    EXPECT_TRUE(base::Value::Equals(
         &value_should_enroll,
         local_state_->GetUserPref(prefs::kShouldAutoEnroll)));
-    EXPECT_TRUE(Value::Equals(
+    EXPECT_TRUE(base::Value::Equals(
         &value_power_limit,
         local_state_->GetUserPref(prefs::kAutoEnrollmentPowerLimit)));
   }
@@ -315,11 +320,11 @@ TEST_F(AutoEnrollmentClientTest, MoreThan32BitsUploaded) {
 }
 
 TEST_F(AutoEnrollmentClientTest, ReuseCachedDecision) {
-  EXPECT_CALL(*service_, CreateJob(_)).Times(0);
+  EXPECT_CALL(*service_, CreateJob(_, _)).Times(0);
   local_state_->SetUserPref(prefs::kShouldAutoEnroll,
-                            Value::CreateBooleanValue(true));
+                            base::Value::CreateBooleanValue(true));
   local_state_->SetUserPref(prefs::kAutoEnrollmentPowerLimit,
-                            Value::CreateIntegerValue(8));
+                            base::Value::CreateIntegerValue(8));
   client_->Start();
   EXPECT_TRUE(client_->should_auto_enroll());
   EXPECT_EQ(1, completion_callback_count_);
@@ -331,9 +336,9 @@ TEST_F(AutoEnrollmentClientTest, ReuseCachedDecision) {
 
 TEST_F(AutoEnrollmentClientTest, RetryIfPowerLargerThanCached) {
   local_state_->SetUserPref(prefs::kShouldAutoEnroll,
-                            Value::CreateBooleanValue(false));
+                            base::Value::CreateBooleanValue(false));
   local_state_->SetUserPref(prefs::kAutoEnrollmentPowerLimit,
-                            Value::CreateIntegerValue(8));
+                            base::Value::CreateIntegerValue(8));
   CreateClient(kSerial, 5, 10);
   ServerWillReply(-1, true, true);
   client_->Start();

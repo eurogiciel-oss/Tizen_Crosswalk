@@ -31,6 +31,9 @@
 #include "config.h"
 #include "bindings/v8/ExceptionMessages.h"
 
+#include "platform/Decimal.h"
+#include "wtf/MathExtras.h"
+
 namespace WebCore {
 
 String ExceptionMessages::failedToConstruct(const String& type, const String& detail)
@@ -58,6 +61,16 @@ String ExceptionMessages::failedToDelete(const String& property, const String& t
     return "Failed to delete the '" + property + "' property from '" + type + "': " + detail;
 }
 
+String ExceptionMessages::incorrectPropertyType(const String& property, const String& detail)
+{
+    return "The '" + property + "' property " + detail;
+}
+
+String ExceptionMessages::incorrectArgumentType(int argumentIndex, const String& detail)
+{
+    return "The " + ordinalNumber(argumentIndex) + " argument " + detail;
+}
+
 String ExceptionMessages::notAnArrayTypeArgumentOrValue(int argumentIndex)
 {
     String kind;
@@ -78,6 +91,18 @@ String ExceptionMessages::notEnoughArguments(unsigned expected, unsigned provide
     return String::number(expected) + " argument" + (expected > 1 ? "s" : "") + " required, but only " + String::number(provided) + " present.";
 }
 
+String ExceptionMessages::notAFiniteNumber(double value, const char* name)
+{
+    ASSERT(!std::isfinite(value));
+    return String::format("The %s is %s.", name, std::isinf(value) ? "infinite" : "not a number");
+}
+
+String ExceptionMessages::notAFiniteNumber(const Decimal& value, const char* name)
+{
+    ASSERT(!value.isFinite());
+    return String::format("The %s is %s.", name, value.isInfinity() ? "infinite" : "not a number");
+}
+
 String ExceptionMessages::ordinalNumber(int number)
 {
     String suffix("th");
@@ -96,6 +121,18 @@ String ExceptionMessages::ordinalNumber(int number)
         break;
     }
     return String::number(number) + suffix;
+}
+
+String ExceptionMessages::readOnly(const char* detail)
+{
+    DEFINE_STATIC_LOCAL(String, readOnly, ("This object is read-only."));
+    return detail ? String::format("This object is read-only, because %s.", detail) : readOnly;
+}
+
+String ExceptionMessages::indexExceedsMaximumBound(const char* name, unsigned given, unsigned bound)
+{
+    bool eq = given == bound;
+    return String::format("The %s provided (%u) is greater than %sthe maximum bound (%u).", name, given, eq ? "or equal to " : "", bound);
 }
 
 } // namespace WebCore

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,21 +7,19 @@ package org.chromium.android_webview.test;
 import android.content.Context;
 import android.graphics.Point;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.SystemClock;
-import android.test.suitebuilder.annotation.LargeTest;
 import android.test.suitebuilder.annotation.MediumTest;
 import android.test.suitebuilder.annotation.SmallTest;
-import android.util.Pair;
-import android.view.MotionEvent;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 
 import org.apache.http.Header;
 import org.apache.http.HttpRequest;
-import org.chromium.android_webview.AndroidProtocolHandler;
 import org.chromium.android_webview.AwContents;
-import org.chromium.android_webview.AwSettings.LayoutAlgorithm;
 import org.chromium.android_webview.AwSettings;
+import org.chromium.android_webview.AwSettings.LayoutAlgorithm;
 import org.chromium.android_webview.InterceptedRequestData;
 import org.chromium.android_webview.test.util.CommonResources;
 import org.chromium.android_webview.test.util.ImagePageGenerator;
@@ -33,8 +31,6 @@ import org.chromium.base.test.util.TestFileUtil;
 import org.chromium.base.test.util.UrlUtils;
 import org.chromium.content.browser.ContentViewCore;
 import org.chromium.content.browser.test.util.CallbackHelper;
-import org.chromium.content.browser.test.util.Criteria;
-import org.chromium.content.browser.test.util.CriteriaHelper;
 import org.chromium.content.browser.test.util.HistoryUtils;
 import org.chromium.net.test.util.TestWebServer;
 import org.chromium.ui.gfx.DeviceDisplayInfo;
@@ -44,8 +40,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * A test suite for AwSettings class. The key objective is to verify that each
@@ -53,9 +47,6 @@ import java.util.List;
  * application
  */
 public class AwSettingsTest extends AwTestBase {
-    private static final long TEST_TIMEOUT = 20000L;
-    private static final int CHECK_INTERVAL = 100;
-
     private static final boolean ENABLED = true;
     private static final boolean DISABLED = false;
 
@@ -107,7 +98,7 @@ public class AwSettingsTest extends AwTestBase {
 
         protected abstract void doEnsureSettingHasValue(T value) throws Throwable;
 
-        protected String getTitleOnUiThread() throws Throwable {
+        protected String getTitleOnUiThread() throws Exception {
             return AwSettingsTest.this.getTitleOnUiThread(mAwContents);
         }
 
@@ -135,7 +126,7 @@ public class AwSettingsTest extends AwTestBase {
                 url);
         }
 
-        protected String executeJavaScriptAndWaitForResult(String script) throws Throwable {
+        protected String executeJavaScriptAndWaitForResult(String script) throws Exception {
             return AwSettingsTest.this.executeJavaScriptAndWaitForResult(
                     mAwContents, mContentViewClient, script);
         }
@@ -934,20 +925,14 @@ public class AwSettingsTest extends AwTestBase {
                 executeJavaScriptAndWaitForResult("setTitleToActualFontSize()");
             } else {
                 final float oldFontSize = mOldFontSize;
-                assertTrue(CriteriaHelper.pollForCriteria(new Criteria() {
-                        @Override
-                        public boolean isSatisfied() {
-                            try {
-                                executeJavaScriptAndWaitForResult("setTitleToActualFontSize()");
-                                float newFontSize = Float.parseFloat(getTitleOnUiThread());
-                                return newFontSize != oldFontSize;
-                            } catch (Throwable t) {
-                                t.printStackTrace();
-                                fail("Failed to getTitleOnUiThread: " + t.toString());
-                                return false;
-                            }
-                        }
-                    }, TEST_TIMEOUT, CHECK_INTERVAL));
+                poll(new Callable<Boolean>() {
+                    @Override
+                    public Boolean call() throws Exception {
+                        executeJavaScriptAndWaitForResult("setTitleToActualFontSize()");
+                        float newFontSize = Float.parseFloat(getTitleOnUiThread());
+                        return newFontSize != oldFontSize;
+                    }
+                });
                 mNeedToWaitForFontSizeChange = false;
             }
             return Float.parseFloat(getTitleOnUiThread());
@@ -1062,7 +1047,7 @@ public class AwSettingsTest extends AwTestBase {
             // text zoom values ratio.
             final float ratiosDelta = Math.abs(
                 (actualFontSize / mInitialActualFontSize) -
-                (value / (float)INITIAL_TEXT_ZOOM));
+                (value / (float) INITIAL_TEXT_ZOOM));
             assertTrue(
                 "|(" + actualFontSize + " / " + mInitialActualFontSize + ") - (" +
                 value + " / " + INITIAL_TEXT_ZOOM + ")| = " + ratiosDelta,
@@ -1113,7 +1098,7 @@ public class AwSettingsTest extends AwTestBase {
             // text zoom values ratio.
             final float ratiosDelta = Math.abs(
                 (actualFontSize / mInitialActualFontSize) -
-                (value / (float)INITIAL_TEXT_ZOOM));
+                (value / (float) INITIAL_TEXT_ZOOM));
             assertTrue(
                 "|(" + actualFontSize + " / " + mInitialActualFontSize + ") - (" +
                 value + " / " + INITIAL_TEXT_ZOOM + ")| = " + ratiosDelta,
@@ -1122,8 +1107,8 @@ public class AwSettingsTest extends AwTestBase {
     }
 
     class AwSettingsJavaScriptPopupsTestHelper extends AwSettingsTestHelper<Boolean> {
-        static private final String POPUP_ENABLED = "Popup enabled";
-        static private final String POPUP_BLOCKED = "Popup blocked";
+        private static final String POPUP_ENABLED = "Popup enabled";
+        private static final String POPUP_BLOCKED = "Popup blocked";
 
         AwSettingsJavaScriptPopupsTestHelper(
                 AwContents awContents,
@@ -1155,20 +1140,14 @@ public class AwSettingsTest extends AwTestBase {
         protected void doEnsureSettingHasValue(Boolean value) throws Throwable {
             loadDataSync(getData());
             final boolean expectPopupEnabled = value;
-            assertTrue(CriteriaHelper.pollForCriteria(new Criteria() {
+            poll(new Callable<Boolean>() {
                 @Override
-                public boolean isSatisfied() {
-                    try {
-                        String title = getTitleOnUiThread();
-                        return expectPopupEnabled ? POPUP_ENABLED.equals(title) :
-                                POPUP_BLOCKED.equals(title);
-                    } catch (Throwable t) {
-                        t.printStackTrace();
-                        fail("Failed to getTitleOnUiThread: " + t.toString());
-                        return false;
-                    }
+                public Boolean call() throws Exception {
+                    String title = getTitleOnUiThread();
+                    return expectPopupEnabled ? POPUP_ENABLED.equals(title) :
+                            POPUP_BLOCKED.equals(title);
                 }
-            }, TEST_TIMEOUT, CHECK_INTERVAL));
+            });
             assertEquals(value ? POPUP_ENABLED : POPUP_BLOCKED, getTitleOnUiThread());
         }
 
@@ -1244,7 +1223,7 @@ public class AwSettingsTest extends AwTestBase {
     // We specify a very high width value to make sure that it doesn't intersect with
     // device screen widths (in DIP pixels).
     class AwSettingsUseWideViewportTestHelper extends AwSettingsTestHelper<Boolean> {
-        static private final String VIEWPORT_TAG_LAYOUT_WIDTH = "3000";
+        private static final String VIEWPORT_TAG_LAYOUT_WIDTH = "3000";
 
         AwSettingsUseWideViewportTestHelper(
                 AwContents awContents,
@@ -1451,19 +1430,13 @@ public class AwSettingsTest extends AwTestBase {
         assertEquals(ImagePageGenerator.IMAGE_NOT_LOADED_STRING,
                 getTitleOnUiThread(awContents));
         settings.setLoadsImagesAutomatically(true);
-        assertTrue(CriteriaHelper.pollForCriteria(new Criteria() {
+        poll(new Callable<Boolean>() {
             @Override
-            public boolean isSatisfied() {
-                try {
-                    return !ImagePageGenerator.IMAGE_NOT_LOADED_STRING.equals(
-                            getTitleOnUiThread(awContents));
-                } catch (Throwable t) {
-                    t.printStackTrace();
-                    fail("Failed to getTitleOnUiThread: " + t.toString());
-                    return false;
-                }
+            public Boolean call() throws Exception {
+                return !ImagePageGenerator.IMAGE_NOT_LOADED_STRING.equals(
+                        getTitleOnUiThread(awContents));
             }
-        }, TEST_TIMEOUT, CHECK_INTERVAL));
+        });
         assertEquals(ImagePageGenerator.IMAGE_LOADED_STRING, getTitleOnUiThread(awContents));
     }
 
@@ -1503,10 +1476,12 @@ public class AwSettingsTest extends AwTestBase {
         final AwContents awContents = testContainerView.getAwContents();
         AwSettings settings = getAwSettingsOnUiThread(awContents);
         final String actualUserAgentString = settings.getUserAgentString();
+        assertEquals(actualUserAgentString, AwSettings.getDefaultUserAgent());
         final String patternString =
                 "Mozilla/5\\.0 \\(Linux;( U;)? Android ([^;]+);( (\\w+)-(\\w+);)?" +
                 "\\s?(.*)\\sBuild/(.+)\\) AppleWebKit/(\\d+)\\.(\\d+) \\(KHTML, like Gecko\\) " +
-                "Version/\\d+\\.\\d+( Mobile)? Safari/(\\d+)\\.(\\d+)";
+                "Version/\\d+\\.\\d Chrome/\\d+\\.\\d+\\.\\d+\\.\\d+" +
+                "( Mobile)? Safari/(\\d+)\\.(\\d+)";
         final Pattern userAgentExpr = Pattern.compile(patternString);
         Matcher patternMatcher = userAgentExpr.matcher(actualUserAgentString);
         assertTrue(String.format("User agent string did not match expected pattern. %nExpected " +
@@ -1831,19 +1806,13 @@ public class AwSettingsTest extends AwTestBase {
                     getTitleOnUiThread(awContents));
 
             settings.setImagesEnabled(true);
-            assertTrue(CriteriaHelper.pollForCriteria(new Criteria() {
+            poll(new Callable<Boolean>() {
                 @Override
-                public boolean isSatisfied() {
-                    try {
-                        return ImagePageGenerator.IMAGE_LOADED_STRING.equals(
-                            getTitleOnUiThread(awContents));
-                    } catch (Throwable t) {
-                        t.printStackTrace();
-                        fail("Failed to getTitleOnUIThread: " + t.toString());
-                        return false;
-                    }
+                public Boolean call() throws Exception {
+                    return ImagePageGenerator.IMAGE_LOADED_STRING.equals(
+                        getTitleOnUiThread(awContents));
                 }
-            }, TEST_TIMEOUT, CHECK_INTERVAL));
+            });
         } finally {
             if (webServer != null) webServer.shutdown();
         }
@@ -1894,7 +1863,7 @@ public class AwSettingsTest extends AwTestBase {
                     CommonResources.getImagePngHeaders(true));
 
             // Set up file html that loads http iframe.
-            String pageHtml ="<img src='" + imageUrl + "' " +
+            String pageHtml = "<img src='" + imageUrl + "' " +
                       "onload=\"document.title='img_onload_fired';\" " +
                       "onerror=\"document.title='img_onerror_fired';\" />";
             Context context = getInstrumentation().getTargetContext();
@@ -1921,6 +1890,71 @@ public class AwSettingsTest extends AwTestBase {
             assertEquals("img_onload_fired", getTitleOnUiThread(awContents));
         } finally {
             if (fileName != null) TestFileUtil.deleteFile(fileName);
+            if (webServer != null) webServer.shutdown();
+        }
+    }
+
+    private static class AudioEvent {
+        private CallbackHelper mCallback;
+        public AudioEvent(CallbackHelper callback) {
+            mCallback = callback;
+        }
+
+        @JavascriptInterface
+        public void onCanPlay() {
+            mCallback.notifyCalled();
+        }
+
+        @JavascriptInterface
+        public void onError() {
+            mCallback.notifyCalled();
+        }
+    }
+
+    @SmallTest
+    @Feature({"AndroidWebView", "Preferences"})
+    public void testBlockNetworkLoadsWithAudio() throws Throwable {
+        final TestAwContentsClient contentClient = new TestAwContentsClient();
+        final AwTestContainerView testContainer =
+                createAwTestContainerViewOnMainSync(contentClient);
+        final AwContents awContents = testContainer.getAwContents();
+        final AwSettings awSettings = getAwSettingsOnUiThread(awContents);
+        CallbackHelper callback = new CallbackHelper();
+        awSettings.setJavaScriptEnabled(true);
+
+        TestWebServer webServer = null;
+        try {
+            webServer = new TestWebServer(false);
+            final String httpPath = "/audio.mp3";
+            // Don't care about the response is correct or not, just want
+            // to know whether Url is accessed.
+            final String audioUrl = webServer.setResponse(httpPath, "1", null);
+
+            String pageHtml = "<html><body><audio controls src='" + audioUrl + "' " +
+                    "oncanplay=\"AudioEvent.onCanPlay();\" " +
+                    "onerror=\"AudioEvent.onError();\" /> </body></html>";
+            // Actual test. Blocking should trigger onerror handler.
+            awSettings.setBlockNetworkLoads(true);
+            awContents.addPossiblyUnsafeJavascriptInterface(
+                    new AudioEvent(callback), "AudioEvent", null);
+            int count = callback.getCallCount();
+            loadDataSync(awContents, contentClient.getOnPageFinishedHelper(), pageHtml,
+                    "text/html", false);
+            callback.waitForCallback(count, 1);
+            assertEquals(0, webServer.getRequestCount(httpPath));
+
+            // The below test failed in Nexus Galaxy.
+            // See https://code.google.com/p/chromium/issues/detail?id=313463
+            // Unblock should load normally.
+            /*
+            awSettings.setBlockNetworkLoads(false);
+            count = callback.getCallCount();
+            loadDataSync(awContents, contentClient.getOnPageFinishedHelper(), pageHtml,
+                    "text/html", false);
+            callback.waitForCallback(count, 1);
+            assertTrue(0 != webServer.getRequestCount(httpPath));
+            */
+        } finally {
             if (webServer != null) webServer.shutdown();
         }
     }
@@ -2178,23 +2212,22 @@ public class AwSettingsTest extends AwTestBase {
             return mManifestPath;
         }
 
-        int waitUntilHtmlIsRequested(final int initialRequestCount) throws InterruptedException {
+        int waitUntilHtmlIsRequested(final int initialRequestCount) throws Exception {
             return waitUntilResourceIsRequested(mHtmlPath, initialRequestCount);
         }
 
-        int waitUntilManifestIsRequested(final int initialRequestCount)
-                throws InterruptedException {
+        int waitUntilManifestIsRequested(final int initialRequestCount) throws Exception {
             return waitUntilResourceIsRequested(mManifestPath, initialRequestCount);
         }
 
         private int waitUntilResourceIsRequested(
-                final String path, final int initialRequestCount) throws InterruptedException {
-            assertTrue(CriteriaHelper.pollForCriteria(new Criteria() {
+                final String path, final int initialRequestCount) throws Exception {
+            poll(new Callable<Boolean>() {
                 @Override
-                public boolean isSatisfied() {
+                public Boolean call() throws Exception {
                     return mWebServer.getRequestCount(path) > initialRequestCount;
                 }
-            }, TEST_TIMEOUT, CHECK_INTERVAL));
+            });
             return mWebServer.getRequestCount(path);
         }
     }
@@ -2236,12 +2269,8 @@ public class AwSettingsTest extends AwTestBase {
         }
     }
 
-    /*
-     * @SmallTest
-     * @Feature({"AndroidWebView", "Preferences", "AppCache"})
-     * This test is flaky but the root cause is not found yet. See crbug.com/171765.
-     */
-    @DisabledTest
+    @SmallTest
+    @Feature({"AndroidWebView", "Preferences", "AppCache"})
     public void testAppCacheWithTwoViews() throws Throwable {
         // We don't use the test helper here, because making sure that AppCache
         // is disabled takes a lot of time, so running through the usual drill
@@ -2391,19 +2420,16 @@ public class AwSettingsTest extends AwTestBase {
                 contentClient.getOnPageFinishedHelper());
     }
 
-    /*
     @MediumTest
     @Feature({"AndroidWebView", "Preferences"})
-    http://crbug.com/239144
-    */
-    @DisabledTest
     public void testUseWideViewportControlsDoubleTabToZoom() throws Throwable {
         final TestAwContentsClient contentClient = new TestAwContentsClient();
         final AwTestContainerView testContainerView =
                 createAwTestContainerViewOnMainSync(contentClient);
         final AwContents awContents = testContainerView.getAwContents();
-        AwSettings settings = getAwSettingsOnUiThread(awContents);
         CallbackHelper onPageFinishedHelper = contentClient.getOnPageFinishedHelper();
+        AwSettings settings = getAwSettingsOnUiThread(awContents);
+        settings.setBuiltInZoomControls(true);
 
         final String page = "<html><body>Page Text</body></html>";
         assertFalse(settings.getUseWideViewPort());
@@ -2423,12 +2449,8 @@ public class AwSettingsTest extends AwTestBase {
                 zoomedOutScale < initialScale);
     }
 
-    /*
     @SmallTest
     @Feature({"AndroidWebView", "Preferences"})
-    http://crbug.com/239144
-    */
-    @DisabledTest
     public void testLoadWithOverviewModeWithTwoViews() throws Throwable {
         ViewPair views = createViews();
         runPerViewSettingsTest(
@@ -2438,12 +2460,8 @@ public class AwSettingsTest extends AwTestBase {
                         views.getContents1(), views.getClient1(), false));
     }
 
-    /*
-     @SmallTest
-     @Feature({"AndroidWebView", "Preferences"})
-     http://crbug.com/239144
-     */
-    @DisabledTest
+    @SmallTest
+    @Feature({"AndroidWebView", "Preferences"})
     public void testLoadWithOverviewModeViewportTagWithTwoViews() throws Throwable {
         ViewPair views = createViews();
         runPerViewSettingsTest(
@@ -2453,12 +2471,8 @@ public class AwSettingsTest extends AwTestBase {
                         views.getContents1(), views.getClient1(), true));
     }
 
-    /*
     @SmallTest
     @Feature({"AndroidWebView", "Preferences"})
-    http://crbug.com/304548
-    */
-    @DisabledTest
     public void testSetInitialScale() throws Throwable {
         final TestAwContentsClient contentClient = new TestAwContentsClient();
         final AwTestContainerView testContainerView =
@@ -2475,7 +2489,7 @@ public class AwSettingsTest extends AwTestBase {
         int height = screenSize.y * 2 + 1;
         int width = screenSize.x * 2 + 1;
         final String page = "<html><body>" +
-                "<p style='height:"+ height + "px;width:" + width + "px'>" +
+                "<p style='height:" + height + "px;width:" + width + "px'>" +
                 "testSetInitialScale</p></body></html>";
         final float defaultScale =
             getInstrumentation().getTargetContext().getResources().getDisplayMetrics().density;
@@ -2539,8 +2553,7 @@ public class AwSettingsTest extends AwTestBase {
             if (waitTime == -1) {
                 observer.waitForEvent();
                 return true;
-            }
-            else {
+            } else {
                 return observer.waitForEvent(waitTime);
             }
         } finally {
@@ -2760,26 +2773,14 @@ public class AwSettingsTest extends AwTestBase {
 
     private void simulateDoubleTapCenterOfWebViewOnUiThread(final AwTestContainerView webView)
             throws Throwable {
+        final int x = (webView.getRight() - webView.getLeft()) / 2;
+        final int y = (webView.getBottom() - webView.getTop()) / 2;
         final AwContents awContents = webView.getAwContents();
         runTestOnUiThread(new Runnable() {
             @Override
             public void run() {
-                long firstTapTime = SystemClock.uptimeMillis();
-                float x = (float)(webView.getRight() - webView.getLeft()) / 2;
-                float y = (float)(webView.getBottom() - webView.getTop()) / 2;
-                awContents.onTouchEvent(MotionEvent.obtain(
-                        firstTapTime, firstTapTime, MotionEvent.ACTION_DOWN,
-                        x, y, 0));
-                awContents.onTouchEvent(MotionEvent.obtain(
-                        firstTapTime, firstTapTime, MotionEvent.ACTION_UP,
-                        x, y, 0));
-                long secondTapTime = firstTapTime + 200;
-                awContents.onTouchEvent(MotionEvent.obtain(
-                        secondTapTime, secondTapTime, MotionEvent.ACTION_DOWN,
-                        x, y, 0));
-                awContents.onTouchEvent(MotionEvent.obtain(
-                        secondTapTime, secondTapTime, MotionEvent.ACTION_UP,
-                        x, y, 0));
+                awContents.getContentViewCore().sendDoubleTapForTest(
+                        SystemClock.uptimeMillis(), x, y, new Bundle());
             }
         });
     }

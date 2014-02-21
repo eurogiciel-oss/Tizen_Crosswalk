@@ -10,8 +10,7 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/location_bar/location_icon_view.h"
-#include "chrome/browser/ui/views/toolbar_view.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "content/public/browser/resource_context.h"
 #include "content/public/browser/speech_recognition_manager.h"
 #include "content/public/browser/web_contents.h"
@@ -47,7 +46,7 @@ class SpeechRecognitionBubbleView : public views::BubbleDelegateView,
                               WebContents* web_contents);
 
   void UpdateLayout(SpeechRecognitionBubbleBase::DisplayMode mode,
-                    const string16& message_text,
+                    const base::string16& message_text,
                     const gfx::ImageSkia& image);
   void SetImage(const gfx::ImageSkia& image);
 
@@ -132,21 +131,18 @@ gfx::Rect SpeechRecognitionBubbleView::GetAnchorRect() {
 }
 
 void SpeechRecognitionBubbleView::Init() {
-  ResourceBundle& rb = ResourceBundle::GetSharedInstance();
-  const gfx::Font& font = rb.GetFont(ResourceBundle::MediumFont);
+  ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
+  const gfx::FontList& font_list =
+      rb.GetFontList(ui::ResourceBundle::MediumFont);
 
   heading_ = new views::Label(
-      l10n_util::GetStringUTF16(IDS_SPEECH_INPUT_BUBBLE_HEADING));
-  heading_->set_border(views::Border::CreateEmptyBorder(
+      l10n_util::GetStringUTF16(IDS_SPEECH_INPUT_BUBBLE_HEADING), font_list);
+  heading_->SetBorder(views::Border::CreateEmptyBorder(
       kBubbleHeadingVertMargin, 0, kBubbleHeadingVertMargin, 0));
-  heading_->SetFont(font);
   heading_->SetHorizontalAlignment(gfx::ALIGN_CENTER);
-  heading_->SetText(
-      l10n_util::GetStringUTF16(IDS_SPEECH_INPUT_BUBBLE_HEADING));
   AddChildView(heading_);
 
-  message_ = new views::Label();
-  message_->SetFont(font);
+  message_ = new views::Label(base::string16(), font_list);
   message_->SetMultiLine(true);
   AddChildView(message_);
 
@@ -155,12 +151,12 @@ void SpeechRecognitionBubbleView::Init() {
   AddChildView(icon_);
 
   cancel_ = new views::LabelButton(this, l10n_util::GetStringUTF16(IDS_CANCEL));
-  cancel_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+  cancel_->SetStyle(views::Button::STYLE_BUTTON);
   AddChildView(cancel_);
 
   try_again_ = new views::LabelButton(
       this, l10n_util::GetStringUTF16(IDS_SPEECH_INPUT_TRY_AGAIN));
-  try_again_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+  try_again_->SetStyle(views::Button::STYLE_BUTTON);
   AddChildView(try_again_);
 
   mic_settings_ = new views::Link(
@@ -171,7 +167,7 @@ void SpeechRecognitionBubbleView::Init() {
 
 void SpeechRecognitionBubbleView::UpdateLayout(
     SpeechRecognitionBubbleBase::DisplayMode mode,
-    const string16& message_text,
+    const base::string16& message_text,
     const gfx::ImageSkia& image) {
   display_mode_ = mode;
   bool is_message = (mode == SpeechRecognitionBubbleBase::DISPLAY_MODE_MESSAGE);
@@ -357,14 +353,14 @@ void SpeechRecognitionBubbleImpl::Show() {
   if (!bubble_) {
     views::View* icon = NULL;
 
-    // Anchor to the location icon view, in case |element_rect| is offscreen.
+    // Anchor to the location bar, in case |element_rect| is offscreen.
     WebContents* web_contents = GetWebContents();
     Browser* browser = chrome::FindBrowserWithWebContents(web_contents);
     if (browser) {
       BrowserView* browser_view =
           BrowserView::GetBrowserViewForBrowser(browser);
       icon = browser_view->GetLocationBarView() ?
-          browser_view->GetLocationBarView()->location_icon_view() : NULL;
+          browser_view->GetLocationBarView()->GetLocationBarAnchor() : NULL;
     }
 
     bubble_ = new SpeechRecognitionBubbleView(delegate_, icon, element_rect_,

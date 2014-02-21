@@ -87,7 +87,8 @@ FileError UpdateLocalStateForCreateFile(
   // Add the entry to the local resource metadata.
   ResourceEntry entry;
   std::string parent_resource_id;
-  if (!ConvertToResourceEntry(*resource_entry, &entry, &parent_resource_id))
+  if (!ConvertToResourceEntry(*resource_entry, &entry, &parent_resource_id) ||
+      parent_resource_id.empty())
     return FILE_ERROR_NOT_A_FILE;
 
   std::string parent_local_id;
@@ -114,7 +115,7 @@ FileError UpdateLocalStateForCreateFile(
     // Here, failure is not a fatal error, so ignore the returned code.
     FileError cache_store_error = FILE_ERROR_FAILED;
     base::FilePath empty_file;
-    if (file_util::CreateTemporaryFile(&empty_file)) {
+    if (base::CreateTemporaryFile(&empty_file)) {
       cache_store_error =  cache->Store(
           local_id,
           entry.file_specific_info().md5(),

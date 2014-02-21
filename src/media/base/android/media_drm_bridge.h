@@ -6,6 +6,8 @@
 #define MEDIA_BASE_ANDROID_MEDIA_DRM_BRIDGE_H_
 
 #include <jni.h>
+#include <map>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -36,36 +38,45 @@ class MEDIA_EXPORT MediaDrmBridge : public MediaKeys {
 
   virtual ~MediaDrmBridge();
 
+  // Checks whether MediaDRM is available.
+  static bool IsAvailable();
+
+  static bool IsSecurityLevelSupported(const std::vector<uint8>& scheme_uuid,
+                                       SecurityLevel security_level);
+
+  static bool IsCryptoSchemeSupported(const std::vector<uint8>& scheme_uuid,
+                                      const std::string& container_mime_type);
+
+  static bool IsSecureDecoderRequired(SecurityLevel security_level);
+
+  static bool RegisterMediaDrmBridge(JNIEnv* env);
+
   // Returns a MediaDrmBridge instance if |scheme_uuid| is supported, or a NULL
   // pointer otherwise.
   static scoped_ptr<MediaDrmBridge> Create(
       int media_keys_id,
       const std::vector<uint8>& scheme_uuid,
       const GURL& frame_url,
-      const std::string& security_level,
       MediaPlayerManager* manager);
 
-  // Checks whether MediaDRM is available.
-  static bool IsAvailable();
-
-  static bool IsSecurityLevelSupported(const std::vector<uint8>& scheme_uuid,
-                                       const std::string& security_level);
-
-  static bool IsCryptoSchemeSupported(const std::vector<uint8>& scheme_uuid,
-                                      const std::string& container_mime_type);
-
-  static bool IsSecureDecoderRequired(const std::string& security_level_str);
-
-  static bool RegisterMediaDrmBridge(JNIEnv* env);
+  // Returns true if |security_level| is successfully set, or false otherwise.
+  // Call this function right after Create() and before any other calls.
+  // Note:
+  // - If this function is not called, the default security level of the device
+  //   will be used.
+  // - It's recommended to call this function only once on a MediaDrmBridge
+  //   object. Calling this function multiples times may cause errors.
+  bool SetSecurityLevel(SecurityLevel security_level);
 
   // MediaKeys implementations.
-  virtual bool GenerateKeyRequest(const std::string& type,
-                                  const uint8* init_data,
-                                  int init_data_length) OVERRIDE;
-  virtual void AddKey(const uint8* key, int key_length,
-                      const uint8* init_data, int init_data_length,
-                      const std::string& session_id) OVERRIDE;
-  virtual void CancelKeyRequest(const std::string& session_id) OVERRIDE;
+  virtual bool CreateSession(uint32 session_id,
+                             const std::string& type,
+                             const uint8* init_data,
+                             int init_data_length) OVERRIDE;
+  virtual void UpdateSession(uint32 session_id,
+                             const uint8* response,
+                             int response_length) OVERRIDE;
+  virtual void ReleaseSession(uint32 session_id) OVERRIDE;
 
   // Returns a MediaCrypto object if it's already created. Returns a null object
   // otherwise.
@@ -76,17 +87,21 @@ class MEDIA_EXPORT MediaDrmBridge : public MediaKeys {
   void SetMediaCryptoReadyCB(const base::Closure& closure);
 
   // Called after a MediaCrypto object is created.
-  void OnMediaCryptoReady(JNIEnv* env, jobject);
+  void OnMediaCryptoReady(JNIEnv* env, jobject j_media_drm);
 
-  // Called after we got the response for GenerateKeyRequest().
-  void OnKeyMessage(JNIEnv* env, jobject, jstring j_session_id,
-                    jbyteArray message, jstring destination_url);
-
-  // Called when key is added.
-  void OnKeyAdded(JNIEnv* env, jobject, jstring j_session_id);
-
-  // Called when error happens.
-  void OnKeyError(JNIEnv* env, jobject, jstring j_session_id);
+  // Callbacks for firing session events.
+  void OnSessionCreated(JNIEnv* env,
+                        jobject j_media_drm,
+                        jint j_session_id,
+                        jstring j_web_session_id);
+  void OnSessionMessage(JNIEnv* env,
+                        jobject j_media_drm,
+                        jint j_session_id,
+                        jbyteArray j_message,
+                        jstring j_destination_url);
+  void OnSessionReady(JNIEnv* env, jobject j_media_drm, jint j_session_id);
+  void OnSessionClosed(JNIEnv* env, jobject j_media_drm, jint j_session_id);
+  void OnSessionError(JNIEnv* env, jobject j_media_drm, jint j_session_id);
 
   // Reset the device credentials.
   void ResetDeviceCredentials(const ResetCredentialsCB& callback);
@@ -103,12 +118,9 @@ class MEDIA_EXPORT MediaDrmBridge : public MediaKeys {
   GURL frame_url() const { return frame_url_; }
 
  private:
-  static bool IsSecureDecoderRequired(SecurityLevel security_level);
-
   MediaDrmBridge(int media_keys_id,
                  const std::vector<uint8>& scheme_uuid,
                  const GURL& frame_url,
-                 const std::string& security_level,
                  MediaPlayerManager* manager);
 
   // Get the security level of the media.

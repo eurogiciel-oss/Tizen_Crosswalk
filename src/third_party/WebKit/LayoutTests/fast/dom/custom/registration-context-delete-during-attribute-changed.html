@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="testutils.js"></script>
 <body>
 <x-a></x-a>
@@ -17,7 +17,7 @@ if (fork()) {
         destroyContext();
     };
 
-    var A = document.register('x-a', {prototype: proto});
+    var A = document.registerElement('x-a', {prototype: proto});
     var a = new A();
     a.id = 'boom';
     done();

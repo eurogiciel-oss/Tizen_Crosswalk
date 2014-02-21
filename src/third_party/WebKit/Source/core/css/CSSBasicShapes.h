@@ -41,16 +41,21 @@ namespace WebCore {
 class CSSBasicShape : public RefCounted<CSSBasicShape> {
 public:
     enum Type {
-        CSSBasicShapeRectangleType = 1,
-        CSSBasicShapeCircleType = 2,
-        CSSBasicShapeEllipseType = 3,
-        CSSBasicShapePolygonType = 4,
-        CSSBasicShapeInsetRectangleType = 5
+        CSSBasicShapeRectangleType,
+        CSSDeprecatedBasicShapeCircleType,
+        CSSDeprecatedBasicShapeEllipseType,
+        CSSBasicShapeEllipseType,
+        CSSBasicShapePolygonType,
+        CSSBasicShapeInsetRectangleType,
+        CSSBasicShapeCircleType
     };
 
     virtual Type type() const = 0;
     virtual String cssText() const = 0;
     virtual bool equals(const CSSBasicShape&) const = 0;
+
+    CSSPrimitiveValue* layoutBox() const { return m_layoutBox.get(); }
+    void setLayoutBox(PassRefPtr<CSSPrimitiveValue> layoutBox) { m_layoutBox = layoutBox; }
 
     virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const = 0;
     virtual bool hasVariableReference() const = 0;
@@ -60,9 +65,10 @@ public:
 
 protected:
     CSSBasicShape() { }
+    RefPtr<CSSPrimitiveValue> m_layoutBox;
 };
 
-class CSSBasicShapeRectangle : public CSSBasicShape {
+class CSSBasicShapeRectangle FINAL : public CSSBasicShape {
 public:
     static PassRefPtr<CSSBasicShapeRectangle> create() { return adoptRef(new CSSBasicShapeRectangle); }
 
@@ -80,12 +86,12 @@ public:
     void setRadiusX(PassRefPtr<CSSPrimitiveValue> radiusX) { m_radiusX = radiusX; }
     void setRadiusY(PassRefPtr<CSSPrimitiveValue> radiusY) { m_radiusY = radiusY; }
 
-    virtual Type type() const { return CSSBasicShapeRectangleType; }
-    virtual String cssText() const;
-    virtual bool equals(const CSSBasicShape&) const;
+    virtual Type type() const OVERRIDE { return CSSBasicShapeRectangleType; }
+    virtual String cssText() const OVERRIDE;
+    virtual bool equals(const CSSBasicShape&) const OVERRIDE;
 
-    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const;
-    virtual bool hasVariableReference() const;
+    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const OVERRIDE;
+    virtual bool hasVariableReference() const OVERRIDE;
 
 private:
     CSSBasicShapeRectangle() { }
@@ -98,7 +104,7 @@ private:
     RefPtr<CSSPrimitiveValue> m_radiusY;
 };
 
-class CSSBasicShapeInsetRectangle : public CSSBasicShape {
+class CSSBasicShapeInsetRectangle FINAL : public CSSBasicShape {
 public:
     static PassRefPtr<CSSBasicShapeInsetRectangle> create() { return adoptRef(new CSSBasicShapeInsetRectangle); }
 
@@ -116,12 +122,12 @@ public:
     void setRadiusX(PassRefPtr<CSSPrimitiveValue> radiusX) { m_radiusX = radiusX; }
     void setRadiusY(PassRefPtr<CSSPrimitiveValue> radiusY) { m_radiusY = radiusY; }
 
-    virtual Type type() const { return CSSBasicShapeInsetRectangleType; }
-    virtual String cssText() const;
-    virtual bool equals(const CSSBasicShape&) const;
+    virtual Type type() const OVERRIDE { return CSSBasicShapeInsetRectangleType; }
+    virtual String cssText() const OVERRIDE;
+    virtual bool equals(const CSSBasicShape&) const OVERRIDE;
 
-    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const;
-    virtual bool hasVariableReference() const;
+    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const OVERRIDE;
+    virtual bool hasVariableReference() const OVERRIDE;
 
 private:
     CSSBasicShapeInsetRectangle() { }
@@ -134,9 +140,13 @@ private:
     RefPtr<CSSPrimitiveValue> m_radiusY;
 };
 
-class CSSBasicShapeCircle : public CSSBasicShape {
+class CSSBasicShapeCircle FINAL : public CSSBasicShape {
 public:
     static PassRefPtr<CSSBasicShapeCircle> create() { return adoptRef(new CSSBasicShapeCircle); }
+
+    virtual Type type() const OVERRIDE { return CSSBasicShapeCircleType; }
+    virtual String cssText() const OVERRIDE;
+    virtual bool equals(const CSSBasicShape&) const OVERRIDE;
 
     CSSPrimitiveValue* centerX() const { return m_centerX.get(); }
     CSSPrimitiveValue* centerY() const { return m_centerY.get(); }
@@ -146,24 +156,52 @@ public:
     void setCenterY(PassRefPtr<CSSPrimitiveValue> centerY) { m_centerY = centerY; }
     void setRadius(PassRefPtr<CSSPrimitiveValue> radius) { m_radius = radius; }
 
-    virtual Type type() const { return CSSBasicShapeCircleType; }
-    virtual String cssText() const;
-    virtual bool equals(const CSSBasicShape&) const;
-
-    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const;
-    virtual bool hasVariableReference() const;
+    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const OVERRIDE;
+    virtual bool hasVariableReference() const OVERRIDE;
 
 private:
     CSSBasicShapeCircle() { }
+
+    RefPtr<CSSPrimitiveValue> m_centerX;
+    RefPtr<CSSPrimitiveValue> m_centerY;
+    RefPtr<CSSPrimitiveValue> m_radius;
+};
+
+class CSSDeprecatedBasicShapeCircle FINAL : public CSSBasicShape {
+public:
+    static PassRefPtr<CSSDeprecatedBasicShapeCircle> create() { return adoptRef(new CSSDeprecatedBasicShapeCircle); }
+
+    CSSPrimitiveValue* centerX() const { return m_centerX.get(); }
+    CSSPrimitiveValue* centerY() const { return m_centerY.get(); }
+    CSSPrimitiveValue* radius() const { return m_radius.get(); }
+
+    void setCenterX(PassRefPtr<CSSPrimitiveValue> centerX) { m_centerX = centerX; }
+    void setCenterY(PassRefPtr<CSSPrimitiveValue> centerY) { m_centerY = centerY; }
+    void setRadius(PassRefPtr<CSSPrimitiveValue> radius) { m_radius = radius; }
+
+    virtual Type type() const OVERRIDE { return CSSDeprecatedBasicShapeCircleType; }
+
+    virtual String cssText() const OVERRIDE;
+    virtual bool equals(const CSSBasicShape&) const OVERRIDE;
+
+    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const OVERRIDE;
+    virtual bool hasVariableReference() const OVERRIDE;
+
+private:
+    CSSDeprecatedBasicShapeCircle() { }
 
     RefPtr<CSSPrimitiveValue> m_centerY;
     RefPtr<CSSPrimitiveValue> m_centerX;
     RefPtr<CSSPrimitiveValue> m_radius;
 };
 
-class CSSBasicShapeEllipse : public CSSBasicShape {
+class CSSBasicShapeEllipse FINAL : public CSSBasicShape {
 public:
     static PassRefPtr<CSSBasicShapeEllipse> create() { return adoptRef(new CSSBasicShapeEllipse); }
+
+    virtual Type type() const OVERRIDE { return CSSBasicShapeEllipseType; }
+    virtual String cssText() const OVERRIDE;
+    virtual bool equals(const CSSBasicShape&) const OVERRIDE;
 
     CSSPrimitiveValue* centerX() const { return m_centerX.get(); }
     CSSPrimitiveValue* centerY() const { return m_centerY.get(); }
@@ -175,12 +213,8 @@ public:
     void setRadiusX(PassRefPtr<CSSPrimitiveValue> radiusX) { m_radiusX = radiusX; }
     void setRadiusY(PassRefPtr<CSSPrimitiveValue> radiusY) { m_radiusY = radiusY; }
 
-    virtual Type type() const { return CSSBasicShapeEllipseType; }
-    virtual String cssText() const;
-    virtual bool equals(const CSSBasicShape&) const;
-
-    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const;
-    virtual bool hasVariableReference() const;
+    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const OVERRIDE;
+    virtual bool hasVariableReference() const OVERRIDE;
 
 private:
     CSSBasicShapeEllipse() { }
@@ -191,7 +225,37 @@ private:
     RefPtr<CSSPrimitiveValue> m_radiusY;
 };
 
-class CSSBasicShapePolygon : public CSSBasicShape {
+class CSSDeprecatedBasicShapeEllipse FINAL : public CSSBasicShape {
+public:
+    static PassRefPtr<CSSDeprecatedBasicShapeEllipse> create() { return adoptRef(new CSSDeprecatedBasicShapeEllipse); }
+
+    CSSPrimitiveValue* centerX() const { return m_centerX.get(); }
+    CSSPrimitiveValue* centerY() const { return m_centerY.get(); }
+    CSSPrimitiveValue* radiusX() const { return m_radiusX.get(); }
+    CSSPrimitiveValue* radiusY() const { return m_radiusY.get(); }
+
+    void setCenterX(PassRefPtr<CSSPrimitiveValue> centerX) { m_centerX = centerX; }
+    void setCenterY(PassRefPtr<CSSPrimitiveValue> centerY) { m_centerY = centerY; }
+    void setRadiusX(PassRefPtr<CSSPrimitiveValue> radiusX) { m_radiusX = radiusX; }
+    void setRadiusY(PassRefPtr<CSSPrimitiveValue> radiusY) { m_radiusY = radiusY; }
+
+    virtual Type type() const OVERRIDE { return CSSDeprecatedBasicShapeEllipseType; }
+    virtual String cssText() const OVERRIDE;
+    virtual bool equals(const CSSBasicShape&) const OVERRIDE;
+
+    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const OVERRIDE;
+    virtual bool hasVariableReference() const OVERRIDE;
+
+private:
+    CSSDeprecatedBasicShapeEllipse() { }
+
+    RefPtr<CSSPrimitiveValue> m_centerX;
+    RefPtr<CSSPrimitiveValue> m_centerY;
+    RefPtr<CSSPrimitiveValue> m_radiusX;
+    RefPtr<CSSPrimitiveValue> m_radiusY;
+};
+
+class CSSBasicShapePolygon FINAL : public CSSBasicShape {
 public:
     static PassRefPtr<CSSBasicShapePolygon> create() { return adoptRef(new CSSBasicShapePolygon); }
 
@@ -208,11 +272,11 @@ public:
     void setWindRule(WindRule w) { m_windRule = w; }
     WindRule windRule() const { return m_windRule; }
 
-    virtual Type type() const { return CSSBasicShapePolygonType; }
-    virtual String cssText() const;
-    virtual bool equals(const CSSBasicShape&) const;
-    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const;
-    virtual bool hasVariableReference() const;
+    virtual Type type() const OVERRIDE { return CSSBasicShapePolygonType; }
+    virtual String cssText() const OVERRIDE;
+    virtual bool equals(const CSSBasicShape&) const OVERRIDE;
+    virtual String serializeResolvingVariables(const HashMap<AtomicString, String>&) const OVERRIDE;
+    virtual bool hasVariableReference() const OVERRIDE;
 
 private:
     CSSBasicShapePolygon()

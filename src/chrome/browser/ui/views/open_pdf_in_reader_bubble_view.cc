@@ -37,14 +37,14 @@ void OpenPDFInReaderBubbleView::Init() {
   column_set->AddColumn(GridLayout::LEADING, GridLayout::FILL, 1,
                         GridLayout::USE_PREF, 0, 0);
 
-  string16 title = model_->GetMessageText();
+  base::string16 title = model_->GetMessageText();
   views::Label* title_label = new views::Label(title);
   layout->StartRow(0, single_column_set_id);
   layout->AddView(title_label);
 
   layout->AddPaddingRow(0, views::kRelatedControlVerticalSpacing);
 
-  string16 accept_text = model_->GetAcceptButtonText();
+  base::string16 accept_text = model_->GetAcceptButtonText();
   open_in_reader_link_ = new views::Link(accept_text);
   open_in_reader_link_->SetEnabled(true);
   open_in_reader_link_->set_listener(this);
@@ -58,7 +58,7 @@ void OpenPDFInReaderBubbleView::Init() {
   layout->AddPaddingRow(0, views::kRelatedControlVerticalSpacing);
 
   close_button_ = new views::LabelButton(this, model_->GetCancelButtonText());
-  close_button_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+  close_button_->SetStyle(views::Button::STYLE_BUTTON);
   layout->StartRow(0, single_column_set_id);
   layout->AddView(close_button_);
 }

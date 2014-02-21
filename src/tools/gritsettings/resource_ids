@@ -60,9 +60,6 @@
   "chrome/app/theme/chrome_unscaled_resources.grd": {
     "includes": [7500],
   },
-  "chrome_frame/resources/chrome_frame_resources.grd": {
-    "includes": [8000],
-  },
   "ui/base/strings/app_locale_settings.grd": {
     "messages": [9000],
   },
@@ -106,13 +103,6 @@
     "structures": [12000],
     "messages": [12500],
   },
-  # The chrome frame dialogs are also in generated_resources.grd so they
-  # get included by the translation console.  We make sure that the ids
-  # for structures here are the same as for generated_resources.grd.
-  "chrome_frame/resources/chrome_frame_dialogs.grd": {
-    "structures": [12000],
-    "includes": [12250],
-  },
   "webkit/glue/inspector_strings.grd": {
     "messages": [17500],
   },
@@ -120,12 +110,7 @@
     "messages": [18500],
   },
 
-  "chrome_frame/resources/chrome_frame_resources.grd": {
-    "includes": [19000],
-    "structures": [19500],
-  },
-
-  "chrome/app/policy/policy_templates.grd": {
+  "components/policy/resources/policy_templates.grd": {
     "structures": [20500],
     "messages": [20510],
   },
@@ -158,8 +143,13 @@
   },
   "cloud_print/service/win/service_resources.grd": {
     "messages": [23600],
-    "includes": [23800],
-    "structures": [23900],
+    "includes": [23700],
+    "structures": [23750],
+  },
+  "cloud_print/gcp20/prototype/gcp20_device.grd": {
+    "messages": [23800],
+    "includes": [23830],
+    "structures": [23860],
   },
   "chrome/browser/resources/quota_internals_resources.grd": {
     "includes": [24000],
@@ -194,6 +184,9 @@
   },
   "chrome/browser/resources/sync_file_system_internals_resources.grd": {
     "includes": [29000],
+  },
+  "third_party/libaddressinput/chromium/cpp/res/messages.grd": {
+    "messages": [29050],
   },
   "components/component_strings.grd": {
     "messages": [30000],

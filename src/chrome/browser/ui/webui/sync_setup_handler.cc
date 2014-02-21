@@ -95,7 +95,7 @@ const char* kDataTypeNames[] = {
   "tabs"
 };
 
-COMPILE_ASSERT(29 == syncer::MODEL_TYPE_COUNT,
+COMPILE_ASSERT(31 == syncer::MODEL_TYPE_COUNT,
                update_kDataTypeNames_to_match_UserSelectableTypes);
 
 typedef std::map<syncer::ModelType, const char*> ModelTypeNameMap;
@@ -113,8 +113,8 @@ ModelTypeNameMap GetSelectableTypeNameMap() {
 }
 
 bool GetConfiguration(const std::string& json, SyncConfigInfo* config) {
-  scoped_ptr<Value> parsed_value(base::JSONReader::Read(json));
-  DictionaryValue* result;
+  scoped_ptr<base::Value> parsed_value(base::JSONReader::Read(json));
+  base::DictionaryValue* result;
   if (!parsed_value || !parsed_value->GetAsDictionary(&result)) {
     DLOG(ERROR) << "GetConfiguration() not passed a Dictionary";
     return false;
@@ -190,16 +190,17 @@ SyncSetupHandler::~SyncSetupHandler() {
   CloseSyncSetup();
 }
 
-void SyncSetupHandler::GetLocalizedValues(DictionaryValue* localized_strings) {
+void SyncSetupHandler::GetLocalizedValues(
+    base::DictionaryValue* localized_strings) {
   GetStaticLocalizedValues(localized_strings, web_ui());
 }
 
 void SyncSetupHandler::GetStaticLocalizedValues(
-    DictionaryValue* localized_strings,
+    base::DictionaryValue* localized_strings,
     content::WebUI* web_ui) {
   DCHECK(localized_strings);
 
-  string16 product_name(GetStringUTF16(IDS_PRODUCT_NAME));
+  base::string16 product_name(GetStringUTF16(IDS_PRODUCT_NAME));
   localized_strings->SetString(
       "chooseDataTypesInstructions",
       GetStringFUTF16(IDS_SYNC_CHOOSE_DATATYPES_INSTRUCTIONS, product_name));
@@ -214,13 +215,14 @@ void SyncSetupHandler::GetStaticLocalizedValues(
   localized_strings->SetString(
       "passphraseRecover",
       GetStringFUTF16(IDS_SYNC_PASSPHRASE_RECOVER,
-                      ASCIIToUTF16(google_util::StringAppendGoogleLocaleParam(
-                          chrome::kSyncGoogleDashboardURL))));
+                      base::ASCIIToUTF16(
+                          google_util::StringAppendGoogleLocaleParam(
+                              chrome::kSyncGoogleDashboardURL))));
   localized_strings->SetString("stopSyncingExplanation",
       l10n_util::GetStringFUTF16(
           IDS_SYNC_STOP_SYNCING_EXPLANATION_LABEL,
           l10n_util::GetStringUTF16(IDS_PRODUCT_NAME),
-          ASCIIToUTF16(google_util::StringAppendGoogleLocaleParam(
+          base::ASCIIToUTF16(google_util::StringAppendGoogleLocaleParam(
               chrome::kSyncGoogleDashboardURL))));
   localized_strings->SetString("stopSyncingTitle",
       l10n_util::GetStringUTF16(IDS_SYNC_STOP_SYNCING_DIALOG_TITLE));
@@ -253,7 +255,6 @@ void SyncSetupHandler::GetStaticLocalizedValues(
     { "typedURLs", IDS_SYNC_DATATYPE_TYPED_URLS },
     { "apps", IDS_SYNC_DATATYPE_APPS },
     { "openTabs", IDS_SYNC_DATATYPE_TABS },
-    { "syncZeroDataTypesError", IDS_SYNC_ZERO_DATA_TYPES_ERROR },
     { "serviceUnavailableError", IDS_SYNC_SETUP_ABORTED_BY_PENDING_CLEAR },
     { "confirmLabel", IDS_SYNC_CONFIRM_PASSPHRASE_LABEL },
     { "emptyErrorMessage", IDS_SYNC_EMPTY_PASSPHRASE_ERROR },
@@ -332,7 +333,7 @@ void SyncSetupHandler::DisplayConfigureSync(bool show_advanced,
   //       passwords)
   //   usePassphrase: true if the data is encrypted with a secondary passphrase
   //   show_passphrase: true if a passphrase is needed to decrypt the sync data
-  DictionaryValue args;
+  base::DictionaryValue args;
 
   // Tell the UI layer which data types are registered/enabled by the user.
   const syncer::ModelTypeSet registered_types =
@@ -367,7 +368,8 @@ void SyncSetupHandler::DisplayConfigureSync(bool show_advanced,
   base::Time passphrase_time = service->GetExplicitPassphraseTime();
   syncer::PassphraseType passphrase_type = service->GetPassphraseType();
   if (!passphrase_time.is_null()) {
-    string16 passphrase_time_str = base::TimeFormatShortDate(passphrase_time);
+    base::string16 passphrase_time_str =
+        base::TimeFormatShortDate(passphrase_time);
     args.SetString(
         "enterPassphraseBody",
         GetStringFUTF16(IDS_SYNC_ENTER_PASSPHRASE_BODY_WITH_DATE,
@@ -405,7 +407,7 @@ void SyncSetupHandler::DisplayConfigureSync(bool show_advanced,
         GetStringUTF16(IDS_SYNC_FULL_ENCRYPTION_DATA));
   }
 
-  StringValue page("configure");
+  base::StringValue page("configure");
   web_ui()->CallJavascriptFunction(
       "SyncSetupOverlay.showSyncSetupPage", page, args);
 
@@ -415,7 +417,7 @@ void SyncSetupHandler::DisplayConfigureSync(bool show_advanced,
 }
 
 void SyncSetupHandler::ConfigureSyncDone() {
-  StringValue page("done");
+  base::StringValue page("done");
   web_ui()->CallJavascriptFunction(
       "SyncSetupOverlay.showSyncSetupPage", page);
 
@@ -535,8 +537,8 @@ bool SyncSetupHandler::PrepareSyncSetup() {
 
 void SyncSetupHandler::DisplaySpinner() {
   configuring_sync_ = true;
-  StringValue page("spinner");
-  DictionaryValue args;
+  base::StringValue page("spinner");
+  base::DictionaryValue args;
 
   const int kTimeoutSec = 30;
   DCHECK(!backend_start_timer_);
@@ -558,13 +560,13 @@ void SyncSetupHandler::DisplayTimeout() {
   // Do not listen to sync startup events.
   sync_startup_tracker_.reset();
 
-  StringValue page("timeout");
-  DictionaryValue args;
+  base::StringValue page("timeout");
+  base::DictionaryValue args;
   web_ui()->CallJavascriptFunction(
       "SyncSetupOverlay.showSyncSetupPage", page, args);
 }
 
-void SyncSetupHandler::OnDidClosePage(const ListValue* args) {
+void SyncSetupHandler::OnDidClosePage(const base::ListValue* args) {
   CloseSyncSetup();
 }
 
@@ -597,7 +599,7 @@ ProfileSyncService* SyncSetupHandler::GetSyncService() const {
       ProfileSyncServiceFactory::GetForProfile(GetProfile()) : NULL;
 }
 
-void SyncSetupHandler::HandleConfigure(const ListValue* args) {
+void SyncSetupHandler::HandleConfigure(const base::ListValue* args) {
   DCHECK(!sync_startup_tracker_);
   std::string json;
   if (!args->GetString(0, &json)) {
@@ -715,7 +717,7 @@ void SyncSetupHandler::HandleConfigure(const ListValue* args) {
     ProfileMetrics::LogProfileSyncInfo(ProfileMetrics::SYNC_CHOOSE);
 }
 
-void SyncSetupHandler::HandleShowSetupUI(const ListValue* args) {
+void SyncSetupHandler::HandleShowSetupUI(const base::ListValue* args) {
   ProfileSyncService* service = GetSyncService();
   DCHECK(service);
 
@@ -750,30 +752,28 @@ void SyncSetupHandler::HandleShowSetupUI(const ListValue* args) {
 #if defined(OS_CHROMEOS)
 // On ChromeOS, we need to sign out the user session to fix an auth error, so
 // the user goes through the real signin flow to generate a new auth token.
-void SyncSetupHandler::HandleDoSignOutOnAuthError(const ListValue* args) {
-  DLOG(INFO) << "Signing out the user to fix a sync error.";
+void SyncSetupHandler::HandleDoSignOutOnAuthError(const base::ListValue* args) {
+  DVLOG(1) << "Signing out the user to fix a sync error.";
   chrome::AttemptUserExit();
 }
 #endif
 
 #if !defined(OS_CHROMEOS)
-void SyncSetupHandler::HandleStartSignin(const ListValue* args) {
+void SyncSetupHandler::HandleStartSignin(const base::ListValue* args) {
   // Should only be called if the user is not already signed in.
   DCHECK(SigninManagerFactory::GetForProfile(GetProfile())->
       GetAuthenticatedUsername().empty());
   OpenSyncSetup();
 }
 
-void SyncSetupHandler::HandleStopSyncing(const ListValue* args) {
+void SyncSetupHandler::HandleStopSyncing(const base::ListValue* args) {
   if (GetSyncService())
     ProfileSyncService::SyncEvent(ProfileSyncService::STOP_FROM_OPTIONS);
-#if !defined(OS_CHROMEOS)
   SigninManagerFactory::GetForProfile(GetProfile())->SignOut();
-#endif
 }
 #endif
 
-void SyncSetupHandler::HandleCloseTimeout(const ListValue* args) {
+void SyncSetupHandler::HandleCloseTimeout(const base::ListValue* args) {
   CloseSyncSetup();
 }
 
@@ -884,7 +884,7 @@ void SyncSetupHandler::FocusUI() {
 
 void SyncSetupHandler::CloseUI() {
   CloseSyncSetup();
-  StringValue page("done");
+  base::StringValue page("done");
   web_ui()->CallJavascriptFunction(
       "SyncSetupOverlay.showSyncSetupPage", page);
 }

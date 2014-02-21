@@ -31,7 +31,7 @@ class CSSStyleSheet;
 class StyleRulePage;
 class StyleRuleCSSStyleDeclaration;
 
-class CSSPageRule : public CSSRule {
+class CSSPageRule FINAL : public CSSRule {
 public:
     static PassRefPtr<CSSPageRule> create(StyleRulePage* rule, CSSStyleSheet* sheet) { return adoptRef(new CSSPageRule(rule, sheet)); }
 
@@ -52,6 +52,8 @@ private:
     RefPtr<StyleRulePage> m_pageRule;
     mutable RefPtr<StyleRuleCSSStyleDeclaration> m_propertiesCSSOMWrapper;
 };
+
+DEFINE_CSS_RULE_TYPE_CASTS(CSSPageRule, PAGE_RULE);
 
 } // namespace WebCore
 

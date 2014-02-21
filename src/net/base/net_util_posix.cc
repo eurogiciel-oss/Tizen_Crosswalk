@@ -8,7 +8,6 @@
 
 #include "base/files/file_path.h"
 #include "base/logging.h"
-#include "base/posix/eintr_wrapper.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/string_util.h"
@@ -64,7 +63,8 @@ bool FileURLToFilePath(const GURL& url, base::FilePath* path) {
   return !file_path_str.empty();
 }
 
-bool GetNetworkList(NetworkInterfaceList* networks) {
+bool GetNetworkList(NetworkInterfaceList* networks,
+                    HostScopeVirtualInterfacePolicy policy) {
 #if defined(OS_ANDROID)
   std::string network_list = android::GetNetworkList();
   base::StringTokenizer network_interfaces(network_list, "\n");
@@ -82,8 +82,12 @@ bool GetNetworkList(NetworkInterfaceList* networks) {
                          &address,
                          &network_prefix));
 
+    CHECK(network_tokenizer.GetNext());
+    uint32 index = 0;
+    CHECK(base::StringToUint(network_tokenizer.token(), &index));
+
     networks->push_back(
-        NetworkInterface(name, address, network_prefix));
+        NetworkInterface(name, index, address, network_prefix));
   }
   return true;
 #else
@@ -109,6 +113,7 @@ bool GetNetworkList(NetworkInterfaceList* networks) {
     struct sockaddr* addr = interface->ifa_addr;
     if (!addr)
       continue;
+
     // Skip unspecified addresses (i.e. made of zeroes) and loopback addresses
     // configured on non-loopback interfaces.
     int addr_size = 0;
@@ -134,18 +139,30 @@ bool GetNetworkList(NetworkInterfaceList* networks) {
       continue;
     }
 
+    const std::string& name = interface->ifa_name;
+    // Filter out VMware interfaces, typically named vmnet1 and vmnet8.
+    if (policy == EXCLUDE_HOST_SCOPE_VIRTUAL_INTERFACES &&
+        ((name.find("vmnet") != std::string::npos) ||
+         (name.find("vnic") != std::string::npos))) {
+      continue;
+    }
     IPEndPoint address;
-    std::string name = interface->ifa_name;
     if (address.FromSockAddr(addr, addr_size)) {
       uint8 net_mask = 0;
       if (interface->ifa_netmask) {
+        // If not otherwise set, assume the same sa_family as ifa_addr.
+        if (interface->ifa_netmask->sa_family == 0) {
+          interface->ifa_netmask->sa_family = addr->sa_family;
+        }
         IPEndPoint netmask;
         if (netmask.FromSockAddr(interface->ifa_netmask, addr_size)) {
           net_mask = MaskPrefixLength(netmask.address());
         }
       }
 
-      networks->push_back(NetworkInterface(name, address.address(), net_mask));
+      networks->push_back(
+          NetworkInterface(name, if_nametoindex(name.c_str()),
+                           address.address(), net_mask));
     }
   }
 

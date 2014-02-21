@@ -48,19 +48,19 @@
 #include "core/editing/MarkupAccumulator.h"
 #include "core/fetch/FontResource.h"
 #include "core/fetch/ImageResource.h"
+#include "core/frame/Frame.h"
 #include "core/html/HTMLFrameOwnerElement.h"
 #include "core/html/HTMLImageElement.h"
 #include "core/html/HTMLInputElement.h"
 #include "core/html/HTMLLinkElement.h"
 #include "core/html/HTMLStyleElement.h"
-#include "core/html/parser/HTMLMetaCharsetParser.h"
-#include "core/frame/Frame.h"
+#include "core/html/parser/HTMLParserIdioms.h"
 #include "core/page/Page.h"
-#include "core/platform/graphics/Image.h"
 #include "core/rendering/RenderImage.h"
 #include "core/rendering/style/StyleFetchedImage.h"
 #include "core/rendering/style/StyleImage.h"
 #include "platform/SerializedResource.h"
+#include "platform/graphics/Image.h"
 #include "wtf/text/CString.h"
 #include "wtf/text/StringBuilder.h"
 #include "wtf/text/TextEncoding.h"
@@ -76,15 +76,15 @@ static bool isCharsetSpecifyingNode(Node* node)
     HTMLElement* element = toHTMLElement(node);
     if (!element->hasTagName(HTMLNames::metaTag))
         return false;
-    HTMLMetaCharsetParser::AttributeList attributes;
+    HTMLAttributeList attributes;
     if (element->hasAttributes()) {
         for (unsigned i = 0; i < element->attributeCount(); ++i) {
             const Attribute* attribute = element->attributeItem(i);
             // FIXME: We should deal appropriately with the attribute if they have a namespace.
-            attributes.append(std::make_pair(attribute->name().toString(), attribute->value().string()));
+            attributes.append(std::make_pair(attribute->name().localName(), attribute->value().string()));
         }
     }
-    WTF::TextEncoding textEncoding = HTMLMetaCharsetParser::encodingFromMetaAttributes(attributes);
+    WTF::TextEncoding textEncoding = encodingFromMetaAttributes(attributes);
     return textEncoding.isValid();
 }
 
@@ -99,16 +99,16 @@ static const QualifiedName& frameOwnerURLAttributeName(const HTMLFrameOwnerEleme
     return frameOwner.hasTagName(HTMLNames::objectTag) ? HTMLNames::dataAttr : HTMLNames::srcAttr;
 }
 
-class SerializerMarkupAccumulator : public WebCore::MarkupAccumulator {
+class SerializerMarkupAccumulator FINAL : public MarkupAccumulator {
 public:
     SerializerMarkupAccumulator(PageSerializer*, Document*, Vector<Node*>*);
     virtual ~SerializerMarkupAccumulator();
 
 protected:
-    virtual void appendText(StringBuilder& out, Text*);
-    virtual void appendElement(StringBuilder& out, Element*, Namespaces*);
-    virtual void appendCustomAttributes(StringBuilder& out, Element*, Namespaces*);
-    virtual void appendEndTag(Node*);
+    virtual void appendText(StringBuilder& out, Text*) OVERRIDE;
+    virtual void appendElement(StringBuilder& out, Element*, Namespaces*) OVERRIDE;
+    virtual void appendCustomAttributes(StringBuilder& out, Element*, Namespaces*) OVERRIDE;
+    virtual void appendEndTag(Node*) OVERRIDE;
 
 private:
     PageSerializer* m_serializer;
@@ -163,7 +163,7 @@ void SerializerMarkupAccumulator::appendCustomAttributes(StringBuilder& out, Ele
 
     // We need to give a fake location to blank frames so they can be referenced by the serialized frame.
     url = m_serializer->urlForBlankFrame(frame);
-    appendAttribute(out, element, Attribute(frameOwnerURLAttributeName(*frameOwner), url.string()), namespaces);
+    appendAttribute(out, element, Attribute(frameOwnerURLAttributeName(*frameOwner), AtomicString(url.string())), namespaces);
 }
 
 void SerializerMarkupAccumulator::appendEndTag(Node* node)
@@ -199,20 +199,20 @@ void PageSerializer::serializeFrame(Frame* frame)
         return;
     }
 
-    Vector<Node*> nodes;
-    SerializerMarkupAccumulator accumulator(this, document, &nodes);
     WTF::TextEncoding textEncoding(document->charset());
-    CString data;
     if (!textEncoding.isValid()) {
         // FIXME: iframes used as images trigger this. We should deal with them correctly.
         return;
     }
+
+    Vector<Node*> serializedNodes;
+    SerializerMarkupAccumulator accumulator(this, document, &serializedNodes);
     String text = accumulator.serializeNodes(document, IncludeNode);
     CString frameHTML = textEncoding.normalizeAndEncode(text, WTF::EntitiesForUnencodables);
     m_resources->append(SerializedResource(url, document->suggestedMIMEType(), SharedBuffer::create(frameHTML.data(), frameHTML.length())));
     m_resourceURLs.add(url);
 
-    for (Vector<Node*>::iterator iter = nodes.begin(); iter != nodes.end(); ++iter) {
+    for (Vector<Node*>::iterator iter = serializedNodes.begin(); iter != serializedNodes.end(); ++iter) {
         Node* node = *iter;
         if (!node->isElementNode())
             continue;
@@ -297,7 +297,7 @@ bool PageSerializer::shouldAddURL(const KURL& url)
 void PageSerializer::addToResources(Resource* resource, PassRefPtr<SharedBuffer> data, const KURL& url)
 {
     if (!data) {
-        LOG_ERROR("No data for resource %s", url.string().utf8().data());
+        WTF_LOG_ERROR("No data for resource %s", url.string().utf8().data());
         return;
     }
 

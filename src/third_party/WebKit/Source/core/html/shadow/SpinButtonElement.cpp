@@ -36,15 +36,15 @@
 #include "core/page/EventHandler.h"
 #include "core/frame/Frame.h"
 #include "core/page/Page.h"
-#include "core/platform/ScrollbarTheme.h"
 #include "core/rendering/RenderBox.h"
+#include "platform/scroll/ScrollbarTheme.h"
 
 namespace WebCore {
 
 using namespace HTMLNames;
 
 inline SpinButtonElement::SpinButtonElement(Document& document, SpinButtonOwner& spinButtonOwner)
-    : HTMLDivElement(divTag, document)
+    : HTMLDivElement(document)
     , m_spinButtonOwner(&spinButtonOwner)
     , m_capturing(false)
     , m_upDownState(Indeterminate)
@@ -56,7 +56,7 @@ inline SpinButtonElement::SpinButtonElement(Document& document, SpinButtonOwner&
 PassRefPtr<SpinButtonElement> SpinButtonElement::create(Document& document, SpinButtonOwner& spinButtonOwner)
 {
     RefPtr<SpinButtonElement> element = adoptRef(new SpinButtonElement(document, spinButtonOwner));
-    element->setPart(AtomicString("-webkit-inner-spin-button", AtomicString::ConstructFromLiteral));
+    element->setShadowPseudoId(AtomicString("-webkit-inner-spin-button", AtomicString::ConstructFromLiteral));
     element->setAttribute(idAttr, ShadowElementNames::spinButton());
     return element.release();
 }
@@ -111,9 +111,9 @@ void SpinButtonElement::defaultEventHandler(Event* event)
             }
             event->setDefaultHandled();
         }
-    } else if (mouseEvent->type() == EventTypeNames::mouseup && mouseEvent->button() == LeftButton)
-        stopRepeatingTimer();
-    else if (event->type() == EventTypeNames::mousemove) {
+    } else if (mouseEvent->type() == EventTypeNames::mouseup && mouseEvent->button() == LeftButton) {
+        releaseCapture();
+    } else if (event->type() == EventTypeNames::mousemove) {
         if (box->pixelSnappedBorderBoxRect().contains(local)) {
             if (!m_capturing) {
                 if (Frame* frame = document().frame()) {
@@ -198,6 +198,8 @@ void SpinButtonElement::releaseCapture()
             if (Page* page = document().page())
                 page->chrome().unregisterPopupOpeningObserver(this);
         }
+        if (m_spinButtonOwner)
+            m_spinButtonOwner->spinButtonDidReleaseMouseCapture();
     }
 }
 

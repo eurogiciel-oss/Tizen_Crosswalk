@@ -49,7 +49,7 @@
 
 class GrContext;
 
-namespace WebKit {
+namespace blink {
 
 class WebAudioBus;
 class WebBlobRegistry;
@@ -58,6 +58,7 @@ class WebClipboard;
 class WebCompositorSupport;
 class WebCookieJar;
 class WebCrypto;
+class WebDatabaseObserver;
 class WebDeviceMotionListener;
 class WebDeviceOrientationListener;
 class WebDiscardableMemory;
@@ -77,6 +78,7 @@ class WebMessagePortChannel;
 class WebMimeRegistry;
 class WebPluginListBuilder;
 class WebPrescientNetworking;
+class WebPublicSuffixList;
 class WebRTCPeerConnectionHandler;
 class WebRTCPeerConnectionHandlerClient;
 class WebSandboxSupport;
@@ -86,13 +88,14 @@ class WebSpeechSynthesizer;
 class WebSpeechSynthesizerClient;
 class WebStorageNamespace;
 class WebStorageQuotaCallbacks;
-class WebUnitTestSupport;
+struct WebFloatPoint;
 class WebThemeEngine;
 class WebThread;
 class WebURL;
 class WebURLLoader;
+class WebUnitTestSupport;
+class WebWaitableEvent;
 class WebWorkerRunLoop;
-struct WebFloatPoint;
 struct WebLocalizedString;
 struct WebSize;
 
@@ -184,7 +187,7 @@ public:
     virtual long long databaseGetFileSize(const WebString& vfsFileName) { return 0; }
 
     // Returns the space available for the given origin
-    virtual long long databaseGetSpaceAvailableForOrigin(const WebKit::WebString& originIdentifier) { return 0; }
+    virtual long long databaseGetSpaceAvailableForOrigin(const blink::WebString& originIdentifier) { return 0; }
 
 
     // DOM Storage --------------------------------------------------
@@ -249,6 +252,9 @@ public:
 
     // Return the physical memory of the current machine, in MB.
     virtual size_t physicalMemoryMB() { return 0; }
+
+    // Return the number of of processors of the current machine.
+    virtual size_t numberOfProcessors() { return 0; }
 
     // Returns private and shared usage, in bytes. Private bytes is the amount of
     // memory currently allocated to this process that cannot be shared. Returns
@@ -334,6 +340,12 @@ public:
     virtual void getPluginList(bool refresh, WebPluginListBuilder*) { }
 
 
+    // Public Suffix List --------------------------------------------------
+
+    // May return null on some platforms.
+    virtual WebPublicSuffixList* publicSuffixList() { return 0; }
+
+
     // Resources -----------------------------------------------------------
 
     // Returns a localized string resource (with substitution parameters).
@@ -350,6 +362,18 @@ public:
     // Returns an interface to the current thread. This is owned by the
     // embedder.
     virtual WebThread* currentThread() { return 0; }
+
+
+    // WaitableEvent -------------------------------------------------------
+
+    // Creates an embedder-defined waitable event object.
+    virtual WebWaitableEvent* createWaitableEvent() { return 0; }
+
+    // Waits on multiple events and returns the event object that has been
+    // signaled. This may return 0 if it fails to wait events.
+    // Any event objects given to this method must not deleted while this
+    // wait is happening.
+    virtual WebWaitableEvent* waitMultipleEvents(const WebVector<WebWaitableEvent*>& events) { return 0; }
 
 
     // Profiling -----------------------------------------------------------
@@ -511,7 +535,7 @@ public:
     }
 
     // Set the duration field of a COMPLETE trace event.
-    virtual void updateTraceEventDuration(TraceEventHandle) { }
+    virtual void updateTraceEventDuration(const unsigned char* categoryEnabledFlag, const char* name, TraceEventHandle) { }
 
     // Callbacks for reporting histogram data.
     // CustomCounts histogram has exponential bucket sizes, so that min=1, max=1000000, bucketCount=50 would do.
@@ -575,11 +599,11 @@ public:
 
     // Sets a Listener to listen for device motion data updates.
     // If null, the platform stops providing device motion data to the current listener.
-    virtual void setDeviceMotionListener(WebKit::WebDeviceMotionListener*) { }
+    virtual void setDeviceMotionListener(blink::WebDeviceMotionListener*) { }
 
     // Sets a Listener to listen for device orientation data updates.
     // If null, the platform stops proving device orientation data to the current listener.
-    virtual void setDeviceOrientationListener(WebKit::WebDeviceOrientationListener*) { }
+    virtual void setDeviceOrientationListener(blink::WebDeviceOrientationListener*) { }
 
 
     // Quota -----------------------------------------------------------
@@ -596,10 +620,16 @@ public:
         WebStorageQuotaType,
         WebStorageQuotaCallbacks*) { }
 
+
+    // WebDatabase --------------------------------------------------------
+
+    virtual WebDatabaseObserver* databaseObserver() { return 0; }
+
+
 protected:
     virtual ~Platform() { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

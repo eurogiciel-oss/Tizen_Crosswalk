@@ -22,8 +22,8 @@
 #include "ui/base/dragdrop/gtk_dnd_util.h"
 #include "ui/base/gtk/gtk_screen_util.h"
 
-using WebKit::WebDragOperation;
-using WebKit::WebDragOperationNone;
+using blink::WebDragOperation;
+using blink::WebDragOperationNone;
 
 namespace content {
 
@@ -36,13 +36,13 @@ int GetModifierFlags(GtkWidget* widget) {
   gdk_window_get_pointer(gtk_widget_get_window(widget), NULL, NULL, &state);
 
   if (state & GDK_SHIFT_MASK)
-    modifier_state |= WebKit::WebInputEvent::ShiftKey;
+    modifier_state |= blink::WebInputEvent::ShiftKey;
   if (state & GDK_CONTROL_MASK)
-    modifier_state |= WebKit::WebInputEvent::ControlKey;
+    modifier_state |= blink::WebInputEvent::ControlKey;
   if (state & GDK_MOD1_MASK)
-    modifier_state |= WebKit::WebInputEvent::AltKey;
+    modifier_state |= blink::WebInputEvent::AltKey;
   if (state & GDK_META_MASK)
-    modifier_state |= WebKit::WebInputEvent::MetaKey;
+    modifier_state |= blink::WebInputEvent::MetaKey;
   return modifier_state;
 }
 
@@ -186,7 +186,7 @@ void WebDragDestGtk::OnDragDataReceived(
       guchar* text = gtk_selection_data_get_text(data);
       if (text) {
         drop_data_->text = base::NullableString16(
-            UTF8ToUTF16(std::string(reinterpret_cast<const char*>(text))),
+            base::UTF8ToUTF16(std::string(reinterpret_cast<const char*>(text))),
             false);
         g_free(text);
       }
@@ -201,10 +201,11 @@ void WebDragDestGtk::OnDragDataReceived(
           // TODO(estade): Can the filenames have a non-UTF8 encoding?
           GURL url(*uri_iter);
           base::FilePath file_path;
-          if (url.SchemeIs(chrome::kFileScheme) &&
+          if (url.SchemeIs(kFileScheme) &&
               net::FileURLToFilePath(url, &file_path)) {
             drop_data_->filenames.push_back(
-                DropData::FileInfo(UTF8ToUTF16(file_path.value()), string16()));
+                DropData::FileInfo(base::UTF8ToUTF16(file_path.value()),
+                                   base::string16()));
             // This is a hack. Some file managers also populate text/plain with
             // a file URL when dragging files, so we clear it to avoid exposing
             // it to the web content.
@@ -219,7 +220,7 @@ void WebDragDestGtk::OnDragDataReceived(
     } else if (target == ui::GetAtomForTarget(ui::TEXT_HTML)) {
       // TODO(estade): Can the html have a non-UTF8 encoding?
       drop_data_->html = base::NullableString16(
-          UTF8ToUTF16(std::string(reinterpret_cast<const char*>(raw_data),
+          base::UTF8ToUTF16(std::string(reinterpret_cast<const char*>(raw_data),
                                   data_length)),
           false);
       // We leave the base URL empty.
@@ -229,8 +230,10 @@ void WebDragDestGtk::OnDragDataReceived(
       size_t split = netscape_url.find_first_of('\n');
       if (split != std::string::npos) {
         drop_data_->url = GURL(netscape_url.substr(0, split));
-        if (split < netscape_url.size() - 1)
-          drop_data_->url_title = UTF8ToUTF16(netscape_url.substr(split + 1));
+        if (split < netscape_url.size() - 1) {
+          drop_data_->url_title =
+              base::UTF8ToUTF16(netscape_url.substr(split + 1));
+        }
       }
     } else if (target == ui::GetAtomForTarget(ui::CHROME_NAMED_URL)) {
       ui::ExtractNamedURL(data, &drop_data_->url, &drop_data_->url_title);

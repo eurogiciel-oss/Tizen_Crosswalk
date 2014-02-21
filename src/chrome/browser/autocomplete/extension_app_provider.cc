@@ -19,9 +19,10 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/extensions/application_launch.h"
 #include "chrome/browser/ui/webui/ntp/core_app_launcher_handler.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
 #include "content/public/browser/notification_source.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/extension_set.h"
 #include "ui/base/l10n/l10n_util.h"
 
 ExtensionAppProvider::ExtensionAppProvider(
@@ -93,7 +94,7 @@ AutocompleteMatch ExtensionAppProvider::CreateAutocompleteMatch(
   match.relevance = CalculateRelevance(
       input.type(),
       input.text().length(),
-      name_match_index != string16::npos ?
+      name_match_index != base::string16::npos ?
           app.name.length() : app.launch_url.length(),
       match.destination_url);
   return match;
@@ -113,25 +114,27 @@ void ExtensionAppProvider::Start(const AutocompleteInput& input,
   for (ExtensionApps::const_iterator app = extension_apps_.begin();
        app != extension_apps_.end(); ++app) {
     // See if the input matches this extension application.
-    const string16& name = app->name;
-    string16::const_iterator name_iter = std::search(name.begin(), name.end(),
-        input.text().begin(), input.text().end(),
-        base::CaseInsensitiveCompare<char16>());
+    const base::string16& name = app->name;
+    base::string16::const_iterator name_iter =
+        std::search(name.begin(), name.end(),
+                    input.text().begin(), input.text().end(),
+                    base::CaseInsensitiveCompare<base::char16>());
     bool matches_name = name_iter != name.end();
     size_t name_match_index = matches_name ?
-        static_cast<size_t>(name_iter - name.begin()) : string16::npos;
+        static_cast<size_t>(name_iter - name.begin()) : base::string16::npos;
 
     bool matches_url = false;
-    size_t url_match_index = string16::npos;
+    size_t url_match_index = base::string16::npos;
     if (app->should_match_against_launch_url) {
-      const string16& url = app->launch_url;
-      string16::const_iterator url_iter = std::search(url.begin(), url.end(),
-          input.text().begin(), input.text().end(),
-          base::CaseInsensitiveCompare<char16>());
+      const base::string16& url = app->launch_url;
+      base::string16::const_iterator url_iter =
+          std::search(url.begin(), url.end(),
+                      input.text().begin(), input.text().end(),
+                      base::CaseInsensitiveCompare<base::char16>());
       matches_url = url_iter != url.end() &&
           input.type() != AutocompleteInput::FORCED_QUERY;
       url_match_index = matches_url ?
-          static_cast<size_t>(url_iter - url.begin()) : string16::npos;
+          static_cast<size_t>(url_iter - url.begin()) : base::string16::npos;
     }
 
     if (matches_name || matches_url) {
@@ -151,9 +154,9 @@ void ExtensionAppProvider::RefreshAppList() {
       extension_service();
   if (!extension_service)
     return;  // During testing, there is no extension service.
-  const ExtensionSet* extensions = extension_service->extensions();
+  const extensions::ExtensionSet* extensions = extension_service->extensions();
   extension_apps_.clear();
-  for (ExtensionSet::const_iterator iter = extensions->begin();
+  for (extensions::ExtensionSet::const_iterator iter = extensions->begin();
        iter != extensions->end(); ++iter) {
     const extensions::Extension* app = iter->get();
     if (!app->ShouldDisplayInAppLauncher())
@@ -162,7 +165,7 @@ void ExtensionAppProvider::RefreshAppList() {
     // provider is currently only used in the app launcher.
 
     if (profile_->IsOffTheRecord() &&
-        !extension_util::CanLoadInIncognito(app, extension_service))
+        !extensions::util::CanLoadInIncognito(app, profile_))
       continue;
 
     GURL launch_url = app->is_platform_app() ?
@@ -170,8 +173,8 @@ void ExtensionAppProvider::RefreshAppList() {
     DCHECK(launch_url.is_valid());
 
     ExtensionApp extension_app = {
-        UTF8ToUTF16(app->name()),
-        UTF8ToUTF16(launch_url.spec()),
+        base::UTF8ToUTF16(app->name()),
+        base::UTF8ToUTF16(launch_url.spec()),
         // Only hosted apps have recognizable URLs that users might type in,
         // packaged apps and hosted apps use chrome-extension:// URLs that are
         // normally not shown to users.

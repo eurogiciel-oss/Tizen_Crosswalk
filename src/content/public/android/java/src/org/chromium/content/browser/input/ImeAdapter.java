@@ -39,6 +39,9 @@ import org.chromium.base.JNINamespace;
  */
 @JNINamespace("content")
 public class ImeAdapter {
+    /**
+     * Interface for the delegate that needs to be notified of IME changes.
+     */
     public interface ImeAdapterDelegate {
         /**
          * @param isFinish whether the event is occurring because input is finished.
@@ -51,9 +54,9 @@ public class ImeAdapter {
     }
 
     private class DelayedDismissInput implements Runnable {
-        private final int mNativeImeAdapter;
+        private final long mNativeImeAdapter;
 
-        DelayedDismissInput(int nativeImeAdapter) {
+        DelayedDismissInput(long nativeImeAdapter) {
             mNativeImeAdapter = nativeImeAdapter;
         }
 
@@ -95,7 +98,7 @@ public class ImeAdapter {
     static int sModifierCapsLockOn;
     static int sModifierNumLockOn;
 
-    private int mNativeImeAdapterAndroid;
+    private long mNativeImeAdapterAndroid;
     private InputMethodManagerWrapper mInputMethodManagerWrapper;
     private AdapterInputConnection mInputConnection;
     private final ImeAdapterDelegate mViewEmbedder;
@@ -119,6 +122,9 @@ public class ImeAdapter {
         mHandler = new Handler();
     }
 
+    /**
+     * Default factory for AdapterInputConnection classes.
+     */
     public static class AdapterInputConnectionFactory {
         public AdapterInputConnection get(View view, ImeAdapter imeAdapter, EditorInfo outAttrs) {
             return new AdapterInputConnection(view, imeAdapter, outAttrs);
@@ -178,19 +184,19 @@ public class ImeAdapter {
     private static int getModifiers(int metaState) {
         int modifiers = 0;
         if ((metaState & KeyEvent.META_SHIFT_ON) != 0) {
-          modifiers |= sModifierShift;
+            modifiers |= sModifierShift;
         }
         if ((metaState & KeyEvent.META_ALT_ON) != 0) {
-          modifiers |= sModifierAlt;
+            modifiers |= sModifierAlt;
         }
         if ((metaState & KeyEvent.META_CTRL_ON) != 0) {
-          modifiers |= sModifierCtrl;
+            modifiers |= sModifierCtrl;
         }
         if ((metaState & KeyEvent.META_CAPS_LOCK_ON) != 0) {
-          modifiers |= sModifierCapsLockOn;
+            modifiers |= sModifierCapsLockOn;
         }
         if ((metaState & KeyEvent.META_NUM_LOCK_ON) != 0) {
-          modifiers |= sModifierNumLockOn;
+            modifiers |= sModifierNumLockOn;
         }
         return modifiers;
     }
@@ -234,7 +240,7 @@ public class ImeAdapter {
         }
     }
 
-    public void attach(int nativeImeAdapter, int textInputType, int selectionStart,
+    public void attach(long nativeImeAdapter, int textInputType, int selectionStart,
             int selectionEnd) {
         if (mNativeImeAdapterAndroid != 0) {
             nativeResetImeAdapter(mNativeImeAdapterAndroid);
@@ -253,7 +259,7 @@ public class ImeAdapter {
      * keyboard events to WebKit.
      * @param nativeImeAdapter The pointer to the native ImeAdapter object.
      */
-    public void attach(int nativeImeAdapter) {
+    public void attach(long nativeImeAdapter) {
         if (mNativeImeAdapterAndroid != 0) {
             nativeResetImeAdapter(mNativeImeAdapterAndroid);
         }
@@ -491,10 +497,13 @@ public class ImeAdapter {
     }
 
     @CalledByNative
+    private void focusedNodeChanged(boolean isEditable) {
+        if (mInputConnection != null && isEditable) mInputConnection.restartInput();
+    }
+
+    @CalledByNative
     private void cancelComposition() {
-        if (mInputConnection != null) {
-            mInputConnection.restartInput();
-        }
+        if (mInputConnection != null) mInputConnection.restartInput();
     }
 
     @CalledByNative
@@ -504,34 +513,34 @@ public class ImeAdapter {
         mTextInputType = 0;
     }
 
-    private native boolean nativeSendSyntheticKeyEvent(int nativeImeAdapterAndroid,
+    private native boolean nativeSendSyntheticKeyEvent(long nativeImeAdapterAndroid,
             int eventType, long timestampMs, int keyCode, int unicodeChar);
 
-    private native boolean nativeSendKeyEvent(int nativeImeAdapterAndroid, KeyEvent event,
+    private native boolean nativeSendKeyEvent(long nativeImeAdapterAndroid, KeyEvent event,
             int action, int modifiers, long timestampMs, int keyCode, boolean isSystemKey,
             int unicodeChar);
 
-    private native void nativeSetComposingText(int nativeImeAdapterAndroid, String text,
+    private native void nativeSetComposingText(long nativeImeAdapterAndroid, String text,
             int newCursorPosition);
 
-    private native void nativeCommitText(int nativeImeAdapterAndroid, String text);
+    private native void nativeCommitText(long nativeImeAdapterAndroid, String text);
 
-    private native void nativeFinishComposingText(int nativeImeAdapterAndroid);
+    private native void nativeFinishComposingText(long nativeImeAdapterAndroid);
 
-    private native void nativeAttachImeAdapter(int nativeImeAdapterAndroid);
+    private native void nativeAttachImeAdapter(long nativeImeAdapterAndroid);
 
-    private native void nativeSetEditableSelectionOffsets(int nativeImeAdapterAndroid,
+    private native void nativeSetEditableSelectionOffsets(long nativeImeAdapterAndroid,
             int start, int end);
 
-    private native void nativeSetComposingRegion(int nativeImeAdapterAndroid, int start, int end);
+    private native void nativeSetComposingRegion(long nativeImeAdapterAndroid, int start, int end);
 
-    private native void nativeDeleteSurroundingText(int nativeImeAdapterAndroid,
+    private native void nativeDeleteSurroundingText(long nativeImeAdapterAndroid,
             int before, int after);
 
-    private native void nativeUnselect(int nativeImeAdapterAndroid);
-    private native void nativeSelectAll(int nativeImeAdapterAndroid);
-    private native void nativeCut(int nativeImeAdapterAndroid);
-    private native void nativeCopy(int nativeImeAdapterAndroid);
-    private native void nativePaste(int nativeImeAdapterAndroid);
-    private native void nativeResetImeAdapter(int nativeImeAdapterAndroid);
+    private native void nativeUnselect(long nativeImeAdapterAndroid);
+    private native void nativeSelectAll(long nativeImeAdapterAndroid);
+    private native void nativeCut(long nativeImeAdapterAndroid);
+    private native void nativeCopy(long nativeImeAdapterAndroid);
+    private native void nativePaste(long nativeImeAdapterAndroid);
+    private native void nativeResetImeAdapter(long nativeImeAdapterAndroid);
 }

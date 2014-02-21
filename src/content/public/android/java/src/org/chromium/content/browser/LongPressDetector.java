@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,14 +25,6 @@ class LongPressDetector {
     private final int mTouchSlopSquare;
     private boolean mInLongPress;
 
-    // The following are used when touch events are offered to native, and not for
-    // anything relating to the GestureDetector.
-    // True iff a touch_move has exceeded the touch slop distance.
-    private boolean mMoveConfirmed;
-    // Coordinates of the start of a touch event (i.e. the touch_down).
-    private int mTouchInitialX;
-    private int mTouchInitialY;
-
     private static final int LONG_PRESS = 2;
 
     private static final int LONGPRESS_TIMEOUT = ViewConfiguration.getLongPressTimeout();
@@ -54,11 +46,11 @@ class LongPressDetector {
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
-            case LONG_PRESS:
-                dispatchLongPress();
-                break;
-            default:
-                throw new RuntimeException("Unknown message " + msg); //never
+                case LONG_PRESS:
+                    dispatchLongPress();
+                    break;
+                default:
+                    throw new RuntimeException("Unknown message " + msg); // never
             }
         }
     }
@@ -161,25 +153,6 @@ class LongPressDetector {
 
     boolean hasPendingMessage() {
         return mCurrentDownEvent != null;
-    }
-
-    void onOfferTouchEventToJavaScript(MotionEvent event) {
-        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-            mMoveConfirmed = false;
-            mTouchInitialX = Math.round(event.getX());
-            mTouchInitialY = Math.round(event.getY());
-        }
-    }
-
-    boolean confirmOfferMoveEventToJavaScript(MotionEvent event) {
-        if (!mMoveConfirmed) {
-            int deltaX = Math.round(event.getX()) - mTouchInitialX;
-            int deltaY = Math.round(event.getY()) - mTouchInitialY;
-            if (deltaX * deltaX + deltaY * deltaY >= mTouchSlopSquare) {
-                mMoveConfirmed = true;
-            }
-        }
-        return mMoveConfirmed;
     }
 
     /**

@@ -14,10 +14,14 @@ namespace extensions {
 
 // Media Galleries permissions are as follows:
 //   <media-galleries-permission-pattern>
-//             := <access> | <access> 'allAutoDetected' | 'allAutoDetected'
+//             := <access> | <access> 'allAutoDetected' | 'allAutoDetected' |
+//                <access> 'scan' | 'scan'
 //   <access>  := 'read' | 'read' <access> | 'read' <secondary-access>
 //   <secondary-access>
-//             := 'copyTo' | 'copyTo' <secondary-access>
+//             := 'delete' | 'delete' <secondary-access> |
+//                'delete' <tertiary-access>
+//   <tertiary-access>
+//             := 'copyTo' | 'copyTo' <tertiary-access>
 class MediaGalleriesPermission
   : public SetDisjunctionPermission<MediaGalleriesPermissionData,
                                     MediaGalleriesPermission> {
@@ -43,6 +47,7 @@ class MediaGalleriesPermission
   static const char kAllAutoDetectedPermission[];
   static const char kReadPermission[];
   static const char kCopyToPermission[];
+  static const char kDeletePermission[];
 };
 
 }  // namespace extensions

@@ -26,7 +26,6 @@
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/direct_transport.h"
 #include "webrtc/test/frame_generator_capturer.h"
-#include "webrtc/test/generate_ssrcs.h"
 #include "webrtc/test/statistics.h"
 #include "webrtc/test/video_renderer.h"
 #include "webrtc/typedefs.h"
@@ -34,6 +33,8 @@
 DEFINE_int32(seconds, 10, "Seconds to run each clip.");
 
 namespace webrtc {
+
+static const uint32_t kSendSsrc = 0x654321;
 
 struct FullStackTestParams {
   const char* test_label;
@@ -122,8 +123,11 @@ class VideoAnalyzer : public PacketReceiver,
     return receiver_->DeliverPacket(packet, length);
   }
 
-  virtual void PutFrame(const I420VideoFrame& video_frame,
-                        uint32_t delta_capture_ms) OVERRIDE {
+  virtual void PutFrame(const I420VideoFrame& video_frame) OVERRIDE {
+    ADD_FAILURE() << "PutFrame() should not have been called in this test.";
+  }
+
+  virtual void SwapFrame(I420VideoFrame* video_frame) OVERRIDE {
     I420VideoFrame* copy = NULL;
     {
       CriticalSectionScoped cs(crit_.get());
@@ -135,7 +139,7 @@ class VideoAnalyzer : public PacketReceiver,
     if (copy == NULL)
       copy = new I420VideoFrame();
 
-    copy->CopyFrame(video_frame);
+    copy->CopyFrame(*video_frame);
     copy->set_timestamp(copy->render_time_ms() * 90);
 
     {
@@ -146,10 +150,10 @@ class VideoAnalyzer : public PacketReceiver,
       frames_.push_back(copy);
     }
 
-    input_->PutFrame(video_frame, delta_capture_ms);
+    input_->SwapFrame(video_frame);
   }
 
-  virtual bool SendRTP(const uint8_t* packet, size_t length) OVERRIDE {
+  virtual bool SendRtp(const uint8_t* packet, size_t length) OVERRIDE {
     scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
     RTPHeader header;
     parser->Parse(packet, static_cast<int>(length), &header);
@@ -165,11 +169,11 @@ class VideoAnalyzer : public PacketReceiver,
           Clock::GetRealTimeClock()->CurrentNtpInMilliseconds();
     }
 
-    return transport_->SendRTP(packet, length);
+    return transport_->SendRtp(packet, length);
   }
 
-  virtual bool SendRTCP(const uint8_t* packet, size_t length) OVERRIDE {
-    return transport_->SendRTCP(packet, length);
+  virtual bool SendRtcp(const uint8_t* packet, size_t length) OVERRIDE {
+    return transport_->SendRtcp(packet, length);
   }
 
   virtual void RenderFrame(const I420VideoFrame& video_frame,
@@ -375,6 +379,7 @@ class VideoAnalyzer : public PacketReceiver,
 };
 
 TEST_P(FullStackTest, NoPacketLoss) {
+  static const uint32_t kReceiverLocalSsrc = 0x123456;
   FullStackTestParams params = GetParam();
 
   test::DirectTransport transport;
@@ -392,7 +397,7 @@ TEST_P(FullStackTest, NoPacketLoss) {
   transport.SetReceiver(&analyzer);
 
   VideoSendStream::Config send_config = call->GetDefaultSendConfig();
-  test::GenerateRandomSsrcs(&send_config, &reserved_ssrcs_);
+  send_config.rtp.ssrcs.push_back(kSendSsrc);
 
   // TODO(pbos): static_cast shouldn't be required after mflodman refactors the
   //             VideoCodec struct.
@@ -402,7 +407,7 @@ TEST_P(FullStackTest, NoPacketLoss) {
   send_config.codec.startBitrate = params.bitrate;
   send_config.codec.maxBitrate = params.bitrate;
 
-  VideoSendStream* send_stream = call->CreateSendStream(send_config);
+  VideoSendStream* send_stream = call->CreateVideoSendStream(send_config);
   analyzer.input_ = send_stream->Input();
 
   scoped_ptr<test::FrameGeneratorCapturer> file_capturer(
@@ -418,25 +423,26 @@ TEST_P(FullStackTest, NoPacketLoss) {
       << ".yuv. Is this resource file present?";
 
   VideoReceiveStream::Config receive_config = call->GetDefaultReceiveConfig();
-  receive_config.rtp.ssrc = send_config.rtp.ssrcs[0];
+  receive_config.rtp.remote_ssrc = send_config.rtp.ssrcs[0];
+  receive_config.rtp.local_ssrc = kReceiverLocalSsrc;
   receive_config.renderer = &analyzer;
 
   VideoReceiveStream* receive_stream =
-      call->CreateReceiveStream(receive_config);
+      call->CreateVideoReceiveStream(receive_config);
 
-  receive_stream->StartReceive();
-  send_stream->StartSend();
+  receive_stream->StartReceiving();
+  send_stream->StartSending();
 
   file_capturer->Start();
 
   analyzer.Wait();
 
   file_capturer->Stop();
-  send_stream->StopSend();
-  receive_stream->StopReceive();
+  send_stream->StopSending();
+  receive_stream->StopReceiving();
 
-  call->DestroyReceiveStream(receive_stream);
-  call->DestroySendStream(send_stream);
+  call->DestroyVideoReceiveStream(receive_stream);
+  call->DestroyVideoSendStream(send_stream);
 
   transport.StopSending();
 }

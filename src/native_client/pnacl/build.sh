@@ -39,6 +39,8 @@ readonly SCONS_OUT="${NACL_ROOT}/scons-out"
 SetScriptPath "${PNACL_ROOT}/build.sh"
 SetLogDirectory "${PNACL_ROOT}/build/log"
 
+readonly TOOLCHAIN_BUILD="${NACL_ROOT}/toolchain_build/toolchain_build_pnacl.py"
+
 # For different levels of make parallelism change this in your env
 readonly PNACL_CONCURRENCY=${PNACL_CONCURRENCY:-8}
 # Concurrency for builds using the host's system compiler (which might be goma)
@@ -107,7 +109,7 @@ readonly TC_SRC_LIBCXX="${PNACL_GIT_ROOT}/libcxx"
 readonly SERVICE_RUNTIME_SRC="${NACL_ROOT}/src/trusted/service_runtime"
 readonly EXPORT_HEADER_SCRIPT="${SERVICE_RUNTIME_SRC}/export_header.py"
 readonly NACL_SYS_HEADERS="${SERVICE_RUNTIME_SRC}/include"
-readonly NEWLIB_INCLUDE_DIR="${TC_SRC_NEWLIB}/newlib/libc/include"
+readonly NEWLIB_INCLUDE_DIR="${TC_SRC_NEWLIB}/newlib/libc/sys/nacl"
 
 # The location of each project. These should be absolute paths.
 readonly TC_BUILD="${PNACL_ROOT}/build"
@@ -154,7 +156,6 @@ readonly BINUTILS_INSTALL_DIR="${INSTALL_HOST}"
 readonly BFD_PLUGIN_DIR="${BINUTILS_INSTALL_DIR}/lib/bfd-plugins"
 readonly FAKE_INSTALL_DIR="${INSTALL_HOST}/fake"
 NEWLIB_INSTALL_DIR="${INSTALL_ROOT}/usr"
-readonly SYSROOT_DIR="${INSTALL_ROOT}/sysroot"
 
 # Location of the PNaCl tools defined for configure invocations.
 readonly PNACL_CC="${INSTALL_BIN}/pnacl-clang"
@@ -335,10 +336,8 @@ ArgumentToAbsolutePath() {
 #@ sync-sources          - check out repos needed to build toolchain
 sync-sources() {
   StepBanner "SYNC SOURCES"
-  mkdir -p "${INSTALL_ROOT}"
-  llvm-unlink-clang # TODO(dschuff): check if this is still necessary
-  git-sync
-  llvm-link-clang
+  python ${TOOLCHAIN_BUILD} --legacy-repo-sync
+  newlib-nacl-headers
 }
 
 git-sync() {
@@ -365,24 +364,6 @@ git-sync() {
 
   # Copy nacl headers into newlib tree.
   newlib-nacl-headers
-}
-
-checkout-git-bundles-for-trybot() {
-  # For testing LLVM, Clang, etc. changes on the trybots, look for a
-  # Git bundle file created by llvm_change_try_helper.sh.
-  local patch_dir=${NACL_ROOT}/pnacl/not_for_commit
-  for component in llvm clang nacl-newlib binutils gcc compiler-rt; do
-    if [ -e ${patch_dir}/${component}_bundle.b64 ]; then
-      python -c "import base64, sys; base64.decode(sys.stdin, sys.stdout)" \
-          < ${patch_dir}/${component}_bundle.b64 \
-          > ${patch_dir}/${component}_bundle
-      spushd "${PNACL_GIT_ROOT}/${component}"
-      git fetch
-      git bundle unbundle ${patch_dir}/${component}_bundle
-      git checkout $(head -1 ${patch_dir}/${component}_commit_id)
-      spopd
-    fi
-  done
 }
 
 gerrit-upload() {
@@ -459,11 +440,7 @@ libs() {
   compiler-rt-all
   libgcc_eh-all
   lib-cpp ${LIB_CXX_NAME} portable
-  # Note: The libc++ build with biased bitcode is disabled because
-  # biased bitcode builds of the C++ standard library are only used to
-  # build the IRT, and the default is currently libstdc++ so the biased
-  # version of libc++ isn't used.
-  # lib-cpp ${LIB_CXX_NAME} x86-64
+  lib-cpp ${LIB_CXX_NAME} x86-64
   lib-cpp ${LIB_STDCPP_NAME} portable
   lib-cpp ${LIB_STDCPP_NAME} x86-64
 }
@@ -751,7 +728,7 @@ prune-host() {
   fi
 
   echo "removing unused clang shared lib"
-  rm -rf "${LLVM_INSTALL_DIR}/${SO_DIR}/${SO_PREFIX}clang${SO_EXT}"
+  rm -rf "${LLVM_INSTALL_DIR}"/${SO_DIR}/*clang${SO_EXT}
 
   echo "removing unused binutils binaries"
   rm -rf "${LLVM_INSTALL_DIR}"/bin/le32-nacl-elfedit
@@ -810,9 +787,6 @@ prune() {
   echo "removing .pyc files"
   rm -f "${INSTALL_BIN}"/pydir/*.pyc
 
-  echo "remove driver log"
-  rm -f "${INSTALL_ROOT}"/driver.log
-
   local dir_size_after=$(get_dir_size_in_mb "${INSTALL_ROOT}")
   SubBanner "Size after: ${INSTALL_ROOT} ${dir_size_after}MB"
 }
@@ -825,13 +799,6 @@ tarball() {
   fi
   local tarball="$(ArgumentToAbsolutePath "$1")"
   StepBanner "TARBALL" "Creating tar ball ${tarball}"
-  # TODO(robertm): remove this hack
-  # http://code.google.com/p/nativeclient/issues/detail?id=2918
-  if ! ${BUILD_PLATFORM_WIN} ; then
-    DumpAllRevisions > "${INSTALL_ROOT}/REV"
-  else
-    echo "No rev info for windows yet" > "${INSTALL_ROOT}/REV"
-  fi
   tar zcf "${tarball}" -C "${INSTALL_ROOT}" .
   ls -l ${tarball}
 }
@@ -1060,35 +1027,10 @@ llvm-install() {
   fi
   spopd
 
-  llvm-install-links
-
   # This is really part of libgcc_eh, but gets blown away by the ninja build.
   install-unwind-header
 }
 
-llvm-install-links() {
-  local makelink="ln -sf"
-   # On Windows, these can't be symlinks.
-  if ${BUILD_PLATFORM_WIN}; then
-    makelink="cp -a"
-  fi
-  mkdir -p "${BFD_PLUGIN_DIR}"
-
-  # TODO(dschuff): These are still necessary, but a change to gold
-  # could make them unnecessary
-  if [ -f "${BINUTILS_INSTALL_DIR}/${SO_DIR}/LLVMgold${SO_EXT}" ]; then
-    # this is to make sure whatever name LLVMgold.so is, it is always
-    # libLLVMgold.so as far as PNaCl is concerned
-
-    StepBanner "Symlinking LLVMgold.so to libLLVMgold.so in " \
-     "${BINUTILS_INSTALL_DIR}/${SO_DIR}"
-
-    (cd "${BINUTILS_INSTALL_DIR}/${SO_DIR}";
-      ${makelink} "LLVMgold${SO_EXT}" "${SO_PREFIX}LLVMgold${SO_EXT}";
-    )
-  fi
-
-}
 #########################################################################
 #########################################################################
 #     < LIBGCC_EH >
@@ -1183,19 +1125,6 @@ libgcc_eh() {
   cp ${subdir}/libgcc_eh.a "${installdir}"
 }
 
-#+ sysroot               - setup initial sysroot
-sysroot() {
-  StepBanner "SYSROOT" "Setting up initial sysroot"
-
-  local sys_include="${SYSROOT_DIR}/include"
-  local sys_include2="${SYSROOT_DIR}/sys-include"
-
-  rm -rf "${sys_include}" "${sys_include2}"
-  mkdir -p "${sys_include}"
-  ln -sf "${sys_include}" "${sys_include2}"
-  cp -r "${NEWLIB_INCLUDE_DIR}"/* "${sys_include}"
-}
-
 install-unwind-header() {
   # TODO(pdox):
   # We need to establish an unwind ABI, since this is part of the ABI
@@ -1238,7 +1167,7 @@ compiler-rt() {
         CC="${PNACL_CC}" \
         AR="${PNACL_AR}" \
         "SRC_DIR=${src}" \
-        "CFLAGS=-arch ${arch} -DPNACL_${arch} --pnacl-allow-translate -O3 -fPIC"
+        "CFLAGS=-arch ${arch} -DPNACL_${arch} --pnacl-allow-translate -O3"
 
   StepBanner "compiler rt" "install (${arch})"
   mkdir -p "${installdir}"
@@ -1328,16 +1257,21 @@ lib-cpp-configure() {
 
   if [ ${lib} == ${LIB_CXX_NAME} ]; then
     local srcdir="${TC_SRC_LIBCXX}"
-    local cflags="-g -O2 -mllvm -inline-threshold=5"
+    # HAS_THREAD_LOCAL is used by libc++abi's exception storage, the
+    # fallback is pthread otherwise.
+    local cflags="-g -O2 -mllvm -inline-threshold=5 ${BIASED_BC_CFLAGS} \
+      -DHAS_THREAD_LOCAL=1"
     # LLVM's lit is used to test libc++. run.py serves as a shell that
     # translates pexe->nexe and executes in sel_ldr. The libc++ test
     # suite needs to be told to use pnacl-clang++'s "system library",
     # which happens to be libc++ when the -stdlib parameter is used.
+    # The target architecture is set through the PNACL_RUN_ARCH
+    # environment variable (``-arch env``).
     local litargs="--verbose"
-    litargs+=" --param shell_prefix='${NACL_ROOT}/run.py -arch ${HOST_ARCH}'"
+    litargs+=" --param shell_prefix='${NACL_ROOT}/run.py -arch env --retries=1'"
     litargs+=" --param exe_suffix='.pexe'"
     litargs+=" --param use_system_lib=true"
-    litargs+=" --param link_flags='-std=gnu++11 -stdlib=libc++ -lpthread'"
+    litargs+=" --param link_flags='-std=gnu++11 --pnacl-exceptions=sjlj'"
     # TODO(jfb) CMAKE_???_COMPILER_WORKS can be removed once the PNaCl
     #           driver scripts stop confusing cmake for libc++. See:
     #           https://code.google.com/p/nativeclient/issues/detail?id=3661
@@ -1847,10 +1781,10 @@ llvm-sb-setup() {
   # not in the SDK. libsrpc should have already been built by the
   # build.sh sdk-private-libs step.
   # This is always statically linked.
-  # The LLVM sandboxed build uses the normally-disallowed
-  # llvm.nacl.target.arch intrinsic.  Allow that for now.
+  # The LLVM sandboxed build uses the normally-disallowed external
+  # function __nacl_get_arch().  Allow that for now.
   local flags="-static -I$(GetAbsolutePath ${NACL_ROOT}/..) \
-    --pnacl-allow-dev-intrinsics "
+    --pnacl-disable-abi-check "
 
   LLVM_SB_CONFIGURE_ENV=(
     AR="${PNACL_AR}" \
@@ -2121,12 +2055,12 @@ binutils-gold-sb-configure() {
   # The SRPC headers are included directly from the nacl tree, as they are
   # not in the SDK. libsrpc should have already been built by the
   # build.sh sdk-private-libs step
-  # The Gold sandboxed build uses the normally-disallowed
-  # llvm.nacl.target.arch intrinsic.  Allow that for now.
+  # The Gold sandboxed build uses the normally-disallowed external
+  # function __nacl_get_arch().  Allow that for now.
   #
   # TODO(jfb) Gold currently only builds with libstdc++.
   local flags="-static -I$(GetAbsolutePath ${NACL_ROOT}/..) \
-    -fno-exceptions -O3 --pnacl-allow-dev-intrinsics -stdlib=${LIB_STDCPP_NAME} "
+    -fno-exceptions -O3 --pnacl-disable-abi-check -stdlib=${LIB_STDCPP_NAME} "
   local configure_env=(
     AR="${PNACL_AR}" \
     AS="${PNACL_AS}" \
@@ -2279,9 +2213,6 @@ newlib() {
   setup-newlib-env ${arch}
   StepBanner "NEWLIB (${arch})"
 
-  # TODO(pdox): Why is this step needed?
-  sysroot
-
   if newlib-needs-configure; then
     newlib-clean
     newlib-configure ${arch}
@@ -2334,8 +2265,8 @@ newlib-configure() {
         --disable-texinfo \
         --disable-libgloss \
         --enable-newlib-iconv \
-        --enable-newlib-iconv-from-encodings=UTF-8,UTF-16,UCS-4 \
-        --enable-newlib-iconv-to-encodings=UTF-8,UTF-16,UCS-4 \
+        --enable-newlib-iconv-from-encodings=UTF-8,UTF-16LE,UCS-4LE,UTF-16,UCS-4 \
+        --enable-newlib-iconv-to-encodings=UTF-8,UTF-16LE,UCS-4LE,UTF-16,UCS-4 \
         --enable-newlib-io-long-long \
         --enable-newlib-io-long-double \
         --enable-newlib-io-c99-formats \
@@ -2395,7 +2326,7 @@ newlib-install() {
 
   # Newlib installs files into usr/${NEWLIB_TARGET}/*
   # Get rid of the ${NEWLIB_TARGET}/ prefix.
-  pushd "${NEWLIB_INSTALL_DIR}"
+  spushd "${NEWLIB_INSTALL_DIR}"
   mkdir -p lib include
   mv -f ${NEWLIB_TARGET}/lib/* lib
   rm -rf  include/sys include/machine
@@ -2404,33 +2335,15 @@ newlib-install() {
   rmdir ${NEWLIB_TARGET}/include
   rmdir ${NEWLIB_TARGET}
 
-  StepBanner "NEWLIB" "Extra-install"
-  local sys_include=${SYSROOT_DIR}/include
-  pushd "${NEWLIB_INSTALL_DIR}"
-  # NOTE: we provide a new pthread.h via extra-sdk
-  rm include/pthread.h
-  cp include/machine/endian.h ${sys_include}
-  cp include/sys/param.h ${sys_include}
-  cp include/newlib.h ${sys_include}
-  popd
-
-  # NOTE: we provide our own pthread.h via extra-sdk
-  StepBanner "NEWLIB" "Removing old pthreads headers"
-  rm -f "${sys_include}/pthread.h"
-
-  if [[ ${arch} != "portable" ]]; then
-    # Do not populate the sdk directory for flavored bitcode
-    return
-  fi
-
-  # Clang claims posix thread model, not single as llvm-gcc does.
-  # It means that libstdcpp needs pthread.h to be in place.
-  # This should go away when we properly import pthread.h with
-  # the other newlib headers. This hack is tracked by
-  # http://code.google.com/p/nativeclient/issues/detail?id=2333
-  StepBanner "NEWLIB" "Copying pthreads headers ahead of time "\
-  "(HACK. See http://code.google.com/p/nativeclient/issues/detail?id=2333)"
-  sdk-headers newlib
+  cp "${NACL_ROOT}/src/untrusted/pthread/pthread.h" \
+    "${NACL_ROOT}/src/untrusted/pthread/semaphore.h" \
+    include
+  # Copy the nacl_random.h header, which is needed by the libc++ build. It
+  # uses the IRT so should be safe to include in the toolchain tarball.
+  mkdir include/nacl
+  cp "${NACL_ROOT}/src/untrusted/nacl/nacl_random.h" \
+    include/nacl
+  spopd
 }
 
 libs-support() {
@@ -2467,7 +2380,7 @@ libs-support-bitcode() {
   local arch=$1
   setup-biased-bitcode-env ${arch}
   local build_dir="${TC_BUILD}/libs-support-bitcode-${arch}"
-  local cc_cmd="${PNACL_CC} -Wall -Werror ${BIASED_BC_CFLAGS}"
+  local cc_cmd="${PNACL_CC} -Wall -Werror -O2 ${BIASED_BC_CFLAGS}"
 
   mkdir -p "${build_dir}"
   spushd "${PNACL_SUPPORT}/bitcode"
@@ -2484,12 +2397,19 @@ libs-support-bitcode() {
   # is not included in the native link).
   StepBanner "LIBS-SUPPORT" "Install ${arch} unwind_stubs.bc"
   ${cc_cmd} -c unwind_stubs.c -o "${build_dir}"/unwind_stubs.bc
+  StepBanner "LIBS-SUPPORT" "Install ${arch} sjlj_eh_redirect.bc"
+  ${cc_cmd} -c sjlj_eh_redirect.c -o "${build_dir}"/sjlj_eh_redirect.bc
+
+  # Install libpnaclmm.a (__atomic_*).
+  StepBanner "LIBS-SUPPORT" "Install ${arch} libpnaclmm.a"
+  ${cc_cmd} -c pnaclmm.c -o "${build_dir}"/pnaclmm.bc
+  ${PNACL_AR} rc "${build_dir}"/libpnaclmm.a "${build_dir}"/pnaclmm.bc
 
   spopd
 
   # Install to actual lib directories.
   spushd "${build_dir}"
-  local files="crti.bc crtbegin.bc unwind_stubs.bc"
+  local files="crti.bc crtbegin.bc libpnaclmm.a unwind_stubs.bc sjlj_eh_redirect.bc"
   mkdir -p "${INSTALL_LIB}"
   cp -f ${files} "${INSTALL_LIB}"
   spopd
@@ -2502,7 +2422,8 @@ libs-support-native() {
   mkdir -p "${destdir}"
 
   local flags="--pnacl-allow-native --pnacl-allow-translate -Wall -Werror"
-  local cc_cmd="${PNACL_CC} -arch ${arch} ${flags} -I../../.."
+  local cc_cmd="${PNACL_CC} -arch ${arch} --pnacl-bias=${arch} ${flags} \
+      -I../../.. -O3"
 
   spushd "${PNACL_SUPPORT}"
 
@@ -2525,14 +2446,14 @@ libs-support-native() {
   local tmpdir="${TC_BUILD}/libs-support-native"
   rm -rf "${tmpdir}"
   mkdir -p "${tmpdir}"
-  ${cc_cmd} -c pnacl_irt.c -O2 -o "${tmpdir}"/pnacl_irt.o
+  ${cc_cmd} -c pnacl_irt.c -o "${tmpdir}"/pnacl_irt.o
   ${cc_cmd} -c setjmp_${arch/-/_}.S -o "${tmpdir}"/setjmp.o
 
   # Some of the support code lives in third_party/ because it's based on code
   # from other open-source projects.
   ${cc_cmd} \
     -c "${NACL_SRC_THIRD_PARTY_MOD}/pnacl_native_newlib_subset/string.c" \
-    -O3 -std=c99 -o "${tmpdir}"/string.o
+    -std=c99 -o "${tmpdir}"/string.o
 
   # For ARM, also compile aeabi_read_tp.S
   if  [ ${arch} == arm ] ; then
@@ -2819,6 +2740,18 @@ driver-install-python() {
   spopd
 }
 
+feature-version-file-install() {
+  # Scons tests can check this version number to decide whether to
+  # enable tests for toolchain bug fixes or new features.  This allows
+  # tests to be enabled on the toolchain buildbots/trybots before the
+  # new toolchain version is rolled into TOOL_REVISIONS (i.e. before
+  # the tests would pass on the main NaCl buildbots/trybots).
+  #
+  # If you are adding a test that depends on a toolchain change, you
+  # can increment this version number manually.
+  echo 4 > "${INSTALL_ROOT}/FEATURE_VERSION"
+}
+
 # The driver is a simple python script which changes its behavior
 # depending on the name it is invoked as.
 driver-install() {
@@ -2855,6 +2788,12 @@ HOST_ARCH=${HOST_ARCH}""" > "${destdir}"/driver.conf
       cp "/bin/cyg${name}.dll" "${destdir}"
     done
   fi
+
+  # Install a REV file so that "pnacl-clang --version" knows the version
+  # of the drivers themselves.
+  DumpAllRevisions > "${destdir}/REV"
+
+  feature-version-file-install
 }
 
 #@ driver-install-translator - Install driver scripts for translator component
@@ -3026,9 +2965,11 @@ verify-object-arm() {
     "${PNACL_READELF}" -A $1 | grep Tag_Advanced_SIMD_arch
   fi
 
-  if ! grep -q "Tag_ABI_HardFP_use: SP and DP" <<< ${arch_info} ; then
-    echo "FAIL bad $1 Tag_ABI_HardFP_use"
-    "${PNACL_READELF}" -A $1 | grep Tag_ABI_HardFP_use
+  # Check that the file uses the ARM hard-float ABI (where VFP
+  # registers D0-D7 (s0-s15) are used to pass arguments and results).
+  if ! grep -q "Tag_ABI_VFP_args: VFP registers" <<< ${arch_info} ; then
+    echo "FAIL bad $1 Tag_ABI_VFP_args"
+    "${PNACL_READELF}" -A $1 | grep Tag_ABI_VFP_args
   fi
 }
 
@@ -3208,6 +3149,8 @@ show-config() {
   env | grep PNACL
   Banner "uname info for builder:"
   uname -a
+  Banner "Revisions:"
+  DumpAllRevisions
 }
 
 #@ help                  - Usage information.

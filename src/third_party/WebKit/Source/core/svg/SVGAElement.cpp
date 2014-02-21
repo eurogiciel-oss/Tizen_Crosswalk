@@ -57,26 +57,23 @@ using namespace HTMLNames;
 // Animated property definitions
 DEFINE_ANIMATED_STRING(SVGAElement, SVGNames::targetAttr, SVGTarget, svgTarget)
 DEFINE_ANIMATED_STRING(SVGAElement, XLinkNames::hrefAttr, Href, href)
-DEFINE_ANIMATED_BOOLEAN(SVGAElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
 
 BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGAElement)
     REGISTER_LOCAL_ANIMATED_PROPERTY(svgTarget)
     REGISTER_LOCAL_ANIMATED_PROPERTY(href)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
     REGISTER_PARENT_ANIMATED_PROPERTIES(SVGGraphicsElement)
 END_REGISTER_ANIMATED_PROPERTIES
 
-inline SVGAElement::SVGAElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
+inline SVGAElement::SVGAElement(Document& document)
+    : SVGGraphicsElement(SVGNames::aTag, document)
 {
-    ASSERT(hasTagName(SVGNames::aTag));
     ScriptWrappable::init(this);
     registerAnimatedPropertiesForSVGAElement();
 }
 
-PassRefPtr<SVGAElement> SVGAElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGAElement> SVGAElement::create(Document& document)
 {
-    return adoptRef(new SVGAElement(tagName, document));
+    return adoptRef(new SVGAElement(document));
 }
 
 String SVGAElement::title() const
@@ -95,7 +92,6 @@ bool SVGAElement::isSupportedAttribute(const QualifiedName& attrName)
     DEFINE_STATIC_LOCAL(HashSet<QualifiedName>, supportedAttributes, ());
     if (supportedAttributes.isEmpty()) {
         SVGURIReference::addSupportedAttributes(supportedAttributes);
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
         supportedAttributes.add(SVGNames::targetAttr);
     }
     return supportedAttributes.contains<SVGAttributeHashTranslator>(attrName);
@@ -114,8 +110,6 @@ void SVGAElement::parseAttribute(const QualifiedName& name, const AtomicString& 
     }
 
     if (SVGURIReference::parseAttribute(name, value))
-        return;
-    if (SVGExternalResourcesRequired::parseAttribute(name, value))
         return;
 
     ASSERT_NOT_REACHED();
@@ -162,8 +156,8 @@ void SVGAElement::defaultEventHandler(Event* event)
             String url = stripLeadingAndTrailingHTMLSpaces(hrefCurrentValue());
 
             if (url[0] == '#') {
-                Element* targetElement = treeScope().getElementById(url.substring(1));
-                if (SVGSMILElement::isSMILElement(targetElement)) {
+                Element* targetElement = treeScope().getElementById(AtomicString(url.substring(1)));
+                if (targetElement && isSVGSMILElement(*targetElement)) {
                     toSVGSMILElement(targetElement)->beginByLinkActivation();
                     event->setDefaultHandled();
                     return;
@@ -173,15 +167,15 @@ void SVGAElement::defaultEventHandler(Event* event)
                     return;
             }
 
-            String target = this->target();
+            AtomicString target(svgTargetCurrentValue());
             if (target.isEmpty() && fastGetAttribute(XLinkNames::showAttr) == "new")
-                target = "_blank";
+                target = AtomicString("_blank", AtomicString::ConstructFromLiteral);
             event->setDefaultHandled();
 
             Frame* frame = document().frame();
             if (!frame)
                 return;
-            FrameLoadRequest frameRequest(document().securityOrigin(), ResourceRequest(document().completeURL(url)), target);
+            FrameLoadRequest frameRequest(&document(), ResourceRequest(document().completeURL(url)), target);
             frameRequest.setTriggeringEvent(event);
             frame->loader().load(frameRequest);
             return;
@@ -226,16 +220,9 @@ bool SVGAElement::isKeyboardFocusable() const
     return false;
 }
 
-bool SVGAElement::childShouldCreateRenderer(const Node& child) const
+bool SVGAElement::willRespondToMouseClickEvents()
 {
-    // http://www.w3.org/2003/01/REC-SVG11-20030114-errata#linking-text-environment
-    // The 'a' element may contain any element that its parent may contain, except itself.
-    if (child.hasTagName(SVGNames::aTag))
-        return false;
-    if (parentNode() && parentNode()->isSVGElement())
-        return parentNode()->childShouldCreateRenderer(child);
-
-    return SVGElement::childShouldCreateRenderer(child);
+    return isLink() || SVGGraphicsElement::willRespondToMouseClickEvents();
 }
 
 } // namespace WebCore

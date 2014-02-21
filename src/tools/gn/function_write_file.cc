@@ -42,7 +42,7 @@ Value RunWriteFile(Scope* scope,
                    const std::vector<Value>& args,
                    Err* err) {
   if (args.size() != 2) {
-    *err = Err(function->function(), "Wrong number of args to write_file",
+    *err = Err(function->function(), "Wrong number of arguments to write_file",
                "I expected two arguments.");
     return Value();
   }
@@ -71,7 +71,7 @@ Value RunWriteFile(Scope* scope,
   base::FilePath file_path =
       scope->settings()->build_settings()->GetFullPath(source_file);
   const std::string& contents_string = contents.str();
-  if (!file_util::CreateDirectory(file_path.DirName())) {
+  if (!base::CreateDirectory(file_path.DirName())) {
     *err = Err(function->function(), "Unable to create directory.",
                "I was using \"" + FilePathToUTF8(file_path.DirName()) + "\".");
     return Value();

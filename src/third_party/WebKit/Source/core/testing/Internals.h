@@ -28,6 +28,7 @@
 #define Internals_h
 
 #include "bindings/v8/ExceptionStatePlaceholder.h"
+#include "bindings/v8/ScriptPromise.h"
 #include "bindings/v8/ScriptValue.h"
 #include "core/css/CSSComputedStyleDeclaration.h"
 #include "core/dom/ContextLifecycleObserver.h"
@@ -66,7 +67,7 @@ class SerializedScriptValue;
 class ShadowRoot;
 class TypeConversions;
 
-class Internals : public RefCounted<Internals>
+class Internals FINAL : public RefCounted<Internals>
     , public ContextLifecycleObserver {
 public:
     static PassRefPtr<Internals> create(Document*);
@@ -85,6 +86,12 @@ public:
 
     void crash();
 
+    void setStyleResolverStatsEnabled(bool);
+    String styleResolverStatsReport(ExceptionState&) const;
+    String styleResolverStatsTotalsReport(ExceptionState&) const;
+
+    bool isSharingStyle(Element*, Element*, ExceptionState&) const;
+
     size_t numberOfScopedHTMLStyleChildren(const Node*, ExceptionState&) const;
     PassRefPtr<CSSComputedStyleDeclaration> computedStyleIncludingVisitedInfo(Node*, ExceptionState&) const;
 
@@ -98,8 +105,8 @@ public:
     bool hasShadowInsertionPoint(const Node*, ExceptionState&) const;
     bool hasContentElement(const Node*, ExceptionState&) const;
     size_t countElementShadow(const Node*, ExceptionState&) const;
-    String shadowPseudoId(Element*, ExceptionState&);
-    void setShadowPseudoId(Element*, const String&, ExceptionState&);
+    const AtomicString& shadowPseudoId(Element*, ExceptionState&);
+    void setShadowPseudoId(Element*, const AtomicString&, ExceptionState&);
 
     // CSS Animation / Transition testing.
     unsigned numberOfActiveAnimations() const;
@@ -109,13 +116,11 @@ public:
     bool isValidContentSelect(Element* insertionPoint, ExceptionState&);
     Node* treeScopeRootNode(Node*, ExceptionState&);
     Node* parentTreeScope(Node*, ExceptionState&);
-    bool hasSelectorForIdInShadow(Element* host, const String& idValue, ExceptionState&);
-    bool hasSelectorForClassInShadow(Element* host, const String& className, ExceptionState&);
-    bool hasSelectorForAttributeInShadow(Element* host, const String& attributeName, ExceptionState&);
+    bool hasSelectorForIdInShadow(Element* host, const AtomicString& idValue, ExceptionState&);
+    bool hasSelectorForClassInShadow(Element* host, const AtomicString& className, ExceptionState&);
+    bool hasSelectorForAttributeInShadow(Element* host, const AtomicString& attributeName, ExceptionState&);
     bool hasSelectorForPseudoClassInShadow(Element* host, const String& pseudoClass, ExceptionState&);
     unsigned short compareTreeScopePosition(const Node*, const Node*, ExceptionState&) const;
-
-    bool attached(Node*, ExceptionState&);
 
     // FIXME: Rename these functions if walker is prefered.
     Node* nextSiblingByWalker(Node*, ExceptionState&);
@@ -124,10 +129,15 @@ public:
     Node* nextNodeByWalker(Node*, ExceptionState&);
     Node* previousNodeByWalker(Node*, ExceptionState&);
 
+    unsigned updateStyleAndReturnAffectedElementCount(ExceptionState&) const;
+    unsigned needsLayoutCount(ExceptionState&) const;
+
     String visiblePlaceholder(Element*);
     void selectColorInColorChooser(Element*, const String& colorValue);
-    Vector<String> formControlStateOfPreviousHistoryItem(ExceptionState&);
-    void setFormControlStateOfPreviousHistoryItem(const Vector<String>&, ExceptionState&);
+    bool hasAutofocusRequest(Document*);
+    bool hasAutofocusRequest();
+    Vector<String> formControlStateOfHistoryItem(ExceptionState&);
+    void setFormControlStateOfHistoryItem(const Vector<String>&, ExceptionState&);
     void setEnableMockPagePopup(bool, ExceptionState&);
     PassRefPtr<PagePopupController> pagePopupController();
 
@@ -153,8 +163,8 @@ public:
 
     bool wasLastChangeUserEdit(Element* textField, ExceptionState&);
     bool elementShouldAutoComplete(Element* inputElement, ExceptionState&);
-    String suggestedValue(Element* inputElement, ExceptionState&);
-    void setSuggestedValue(Element* inputElement, const String&, ExceptionState&);
+    String suggestedValue(Element*, ExceptionState&);
+    void setSuggestedValue(Element*, const String&, ExceptionState&);
     void setEditingValue(Element* inputElement, const String&, ExceptionState&);
     void setAutofilled(Element*, bool enabled, ExceptionState&);
     void scrollElementToRect(Element*, long x, long y, long w, long h, ExceptionState&);
@@ -175,7 +185,7 @@ public:
     int lastSpellCheckRequestSequence(Document*, ExceptionState&);
     int lastSpellCheckProcessedSequence(Document*, ExceptionState&);
 
-    Vector<String> userPreferredLanguages() const;
+    Vector<AtomicString> userPreferredLanguages() const;
     void setUserPreferredLanguages(const Vector<String>&);
 
     unsigned wheelEventHandlerCount(Document*, ExceptionState&);
@@ -224,6 +234,8 @@ public:
     void setNeedsCompositedScrolling(Element*, unsigned value, ExceptionState&);
 
     String repaintRectsAsText(Document*, ExceptionState&) const;
+    PassRefPtr<ClientRectList> repaintRects(Element*, ExceptionState&) const;
+
     String scrollingStateTreeAsText(Document*, ExceptionState&) const;
     String mainThreadScrollingReasons(Document*, ExceptionState&) const;
     PassRefPtr<ClientRectList> nonFastScrollableRects(Document*, ExceptionState&) const;
@@ -233,11 +245,9 @@ public:
 
     void allowRoundingHacks() const;
 
-    void insertAuthorCSS(Document*, const String&) const;
-    void insertUserCSS(Document*, const String&) const;
-
     unsigned numberOfLiveNodes() const;
     unsigned numberOfLiveDocuments() const;
+    String dumpRefCountedInstanceCounts() const;
     Vector<String> consoleMessageArgumentCounts(Document*) const;
     PassRefPtr<DOMWindow> openDummyInspectorFrontend(const String& url);
     void closeDummyInspectorFrontend();
@@ -273,6 +283,8 @@ public:
 
     void startTrackingRepaints(Document*, ExceptionState&);
     void stopTrackingRepaints(Document*, ExceptionState&);
+    void updateLayoutIgnorePendingStylesheetsAndRunPostLayoutTasks(ExceptionState&);
+    void updateLayoutIgnorePendingStylesheetsAndRunPostLayoutTasks(Node*, ExceptionState&);
 
     PassRefPtr<ClientRectList> draggableRegions(Document*, ExceptionState&);
     PassRefPtr<ClientRectList> nonDraggableRegions(Document*, ExceptionState&);
@@ -296,6 +308,10 @@ public:
     bool loseSharedGraphicsContext3D();
 
     void forceCompositingUpdate(Document*, ExceptionState&);
+
+    void setZoomFactor(float);
+
+    ScriptPromise addOneToPromise(ExecutionContext*, ScriptPromise);
 
 private:
     explicit Internals(Document*);

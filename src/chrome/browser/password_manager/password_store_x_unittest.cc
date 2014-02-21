@@ -47,9 +47,6 @@ namespace {
 
 class MockPasswordStoreConsumer : public PasswordStoreConsumer {
  public:
-  MOCK_METHOD2(OnPasswordStoreRequestDone,
-               void(CancelableRequestProvider::Handle,
-                    const std::vector<PasswordForm*>&));
   MOCK_METHOD1(OnGetPasswordStoreResults,
                void(const std::vector<PasswordForm*>&));
 };
@@ -327,7 +324,7 @@ TEST_P(PasswordStoreXTest, Notifications) {
   base::RunLoop().RunUntilIdle();
 
   // Change the password.
-  form->password_value = WideToUTF16(L"a different password");
+  form->password_value = base::ASCIIToUTF16("a different password");
 
   const PasswordStoreChange expected_update_changes[] = {
     PasswordStoreChange(PasswordStoreChange::UPDATE, *form),
@@ -377,8 +374,8 @@ TEST_P(PasswordStoreXTest, NativeMigration) {
   // Get the initial size of the login DB file, before we populate it.
   // This will be used later to make sure it gets back to this size.
   const base::FilePath login_db_file = temp_dir_.path().Append("login_test");
-  base::PlatformFileInfo db_file_start_info;
-  ASSERT_TRUE(file_util::GetFileInfo(login_db_file, &db_file_start_info));
+  base::File::Info db_file_start_info;
+  ASSERT_TRUE(base::GetFileInfo(login_db_file, &db_file_start_info));
 
   LoginDatabase* login_db = login_db_.get();
 
@@ -393,8 +390,8 @@ TEST_P(PasswordStoreXTest, NativeMigration) {
   }
 
   // Get the new size of the login DB file. We expect it to be larger.
-  base::PlatformFileInfo db_file_full_info;
-  ASSERT_TRUE(file_util::GetFileInfo(login_db_file, &db_file_full_info));
+  base::File::Info db_file_full_info;
+  ASSERT_TRUE(base::GetFileInfo(login_db_file, &db_file_full_info));
   EXPECT_GT(db_file_full_info.size, db_file_start_info.size);
 
   // Initializing the PasswordStore shouldn't trigger a native migration (yet).
@@ -408,18 +405,17 @@ TEST_P(PasswordStoreXTest, NativeMigration) {
 
   // The autofillable forms should have been migrated to the native backend.
   EXPECT_CALL(consumer,
-      OnPasswordStoreRequestDone(_,
+      OnGetPasswordStoreResults(
           ContainsAllPasswordForms(expected_autofillable)))
-      .WillOnce(WithArg<1>(STLDeleteElements0()));
+      .WillOnce(WithArg<0>(STLDeleteElements0()));
 
   store->GetAutofillableLogins(&consumer);
   base::RunLoop().RunUntilIdle();
 
   // The blacklisted forms should have been migrated to the native backend.
   EXPECT_CALL(consumer,
-      OnPasswordStoreRequestDone(_,
-          ContainsAllPasswordForms(expected_blacklisted)))
-      .WillOnce(WithArg<1>(STLDeleteElements0()));
+      OnGetPasswordStoreResults(ContainsAllPasswordForms(expected_blacklisted)))
+      .WillOnce(WithArg<0>(STLDeleteElements0()));
 
   store->GetBlacklistLogins(&consumer);
   base::RunLoop().RunUntilIdle();
@@ -467,8 +463,8 @@ TEST_P(PasswordStoreXTest, NativeMigration) {
     // recreated. We approximate checking for this by checking that the file
     // size is equal to the size before we populated it, even though it was
     // larger after populating it.
-    base::PlatformFileInfo db_file_end_info;
-    ASSERT_TRUE(file_util::GetFileInfo(login_db_file, &db_file_end_info));
+    base::File::Info db_file_end_info;
+    ASSERT_TRUE(base::GetFileInfo(login_db_file, &db_file_end_info));
     EXPECT_EQ(db_file_start_info.size, db_file_end_info.size);
   }
 

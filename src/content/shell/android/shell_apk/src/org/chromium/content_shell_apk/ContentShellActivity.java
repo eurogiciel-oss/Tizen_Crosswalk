@@ -1,18 +1,20 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.content_shell_apk;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.View;
 import android.widget.Toast;
 
+import org.chromium.base.BaseSwitches;
+import org.chromium.base.CommandLine;
 import org.chromium.base.MemoryPressureListener;
 import org.chromium.content.app.LibraryLoader;
 import org.chromium.content.browser.ActivityContentVideoViewClient;
@@ -21,11 +23,12 @@ import org.chromium.content.browser.ContentVideoViewClient;
 import org.chromium.content.browser.ContentView;
 import org.chromium.content.browser.ContentViewClient;
 import org.chromium.content.browser.DeviceUtils;
-import org.chromium.content.common.CommandLine;
+import org.chromium.content.common.ContentSwitches;
 import org.chromium.content.common.ProcessInitException;
 import org.chromium.content_shell.Shell;
 import org.chromium.content_shell.ShellManager;
-import org.chromium.ui.WindowAndroid;
+import org.chromium.ui.base.ActivityWindowAndroid;
+import org.chromium.ui.base.WindowAndroid;
 
 /**
  * Activity for managing the Content Shell.
@@ -60,13 +63,15 @@ public class ContentShellActivity extends Activity {
             LibraryLoader.ensureInitialized();
         } catch (ProcessInitException e) {
             Log.e(TAG, "ContentView initialization failed.", e);
-            finish();
+            // Since the library failed to initialize nothing in the application
+            // can work, so kill the whole application not just the activity
+            System.exit(-1);
             return;
         }
 
         setContentView(R.layout.content_shell_activity);
         mShellManager = (ShellManager) findViewById(R.id.shell_container);
-        mWindowAndroid = new WindowAndroid(this);
+        mWindowAndroid = new ActivityWindowAndroid(this);
         mWindowAndroid.restoreInstanceState(savedInstanceState);
         mShellManager.setWindow(mWindowAndroid);
 
@@ -75,26 +80,32 @@ public class ContentShellActivity extends Activity {
             mShellManager.setStartupUrl(Shell.sanitizeUrl(startupUrl));
         }
 
-        if (CommandLine.getInstance().hasSwitch(CommandLine.DUMP_RENDER_TREE)) {
-            if(BrowserStartupController.get(this).startBrowserProcessesSync(
-                   BrowserStartupController.MAX_RENDERERS_LIMIT)) {
-                finishInitialization(savedInstanceState);
-            } else {
-                initializationFailed();
+        if (CommandLine.getInstance().hasSwitch(ContentSwitches.DUMP_RENDER_TREE)) {
+            try {
+                BrowserStartupController.get(this).startBrowserProcessesSync(
+                       BrowserStartupController.MAX_RENDERERS_LIMIT);
+            } catch (ProcessInitException e) {
+                Log.e(TAG, "Failed to load native library.", e);
+                System.exit(-1);
             }
         } else {
-            BrowserStartupController.get(this).startBrowserProcessesAsync(
-                    new BrowserStartupController.StartupCallback() {
-                @Override
-                public void onSuccess(boolean alreadyStarted) {
-                    finishInitialization(savedInstanceState);
-                }
+            try {
+                BrowserStartupController.get(this).startBrowserProcessesAsync(
+                        new BrowserStartupController.StartupCallback() {
+                            @Override
+                            public void onSuccess(boolean alreadyStarted) {
+                                finishInitialization(savedInstanceState);
+                            }
 
-                @Override
-                public void onFailure() {
-                    initializationFailed();
-                }
-            });
+                            @Override
+                            public void onFailure() {
+                                initializationFailed();
+                            }
+                        });
+            } catch (ProcessInitException e) {
+                Log.e(TAG, "Unable to load native library.", e);
+                System.exit(-1);
+            }
         }
     }
 
@@ -108,7 +119,25 @@ public class ContentShellActivity extends Activity {
         getActiveContentView().setContentViewClient(new ContentViewClient() {
             @Override
             public ContentVideoViewClient getContentVideoViewClient() {
-                return new ActivityContentVideoViewClient(ContentShellActivity.this);
+                return new ActivityContentVideoViewClient(ContentShellActivity.this) {
+                    @Override
+                    public void onShowCustomView(View view) {
+                        super.onShowCustomView(view);
+                        if (CommandLine.getInstance().hasSwitch(
+                                ContentSwitches.ENABLE_OVERLAY_FULLSCREEN_VIDEO_SUBTITLE)) {
+                            mShellManager.setOverlayVideoMode(true);
+                        }
+                    }
+
+                    @Override
+                    public void onDestroyContentVideoView() {
+                        super.onDestroyContentVideoView();
+                        if (CommandLine.getInstance().hasSwitch(
+                                ContentSwitches.ENABLE_OVERLAY_FULLSCREEN_VIDEO_SUBTITLE)) {
+                          mShellManager.setOverlayVideoMode(false);
+                        }
+                    }
+                };
             }
         });
     }
@@ -133,7 +162,7 @@ public class ContentShellActivity extends Activity {
     }
 
     private void waitForDebuggerIfNeeded() {
-        if (CommandLine.getInstance().hasSwitch(CommandLine.WAIT_FOR_JAVA_DEBUGGER)) {
+        if (CommandLine.getInstance().hasSwitch(BaseSwitches.WAIT_FOR_JAVA_DEBUGGER)) {
             Log.e(TAG, "Waiting for Java debugger to connect...");
             android.os.Debug.waitForDebugger();
             Log.e(TAG, "Java debugger connected. Resuming execution.");

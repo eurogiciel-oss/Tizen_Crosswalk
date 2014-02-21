@@ -6,6 +6,7 @@
 #include "base/json/json_writer.h"
 #include "base/memory/ref_counted.h"
 #include "base/run_loop.h"
+#include "base/values.h"
 #include "chrome/browser/extensions/api/storage/settings_frontend.h"
 #include "chrome/browser/extensions/api/storage/settings_namespace.h"
 #include "chrome/browser/extensions/api/storage/settings_sync_util.h"
@@ -16,8 +17,8 @@
 #include "chrome/browser/extensions/extension_test_message_listener.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
-#include "chrome/common/extensions/value_builder.h"
 #include "chrome/test/base/ui_test_utils.h"
+#include "extensions/common/value_builder.h"
 #include "sync/api/sync_change.h"
 #include "sync/api/sync_change_processor.h"
 #include "sync/api/sync_error_factory.h"
@@ -25,25 +26,26 @@
 #include "testing/gmock/include/gmock/gmock.h"
 
 #if defined(ENABLE_CONFIGURATION_POLICY)
-#include "chrome/browser/policy/browser_policy_connector.h"
-#include "chrome/browser/policy/mock_configuration_policy_provider.h"
-#include "chrome/browser/policy/policy_bundle.h"
-#include "chrome/browser/policy/policy_domain_descriptor.h"
-#include "chrome/browser/policy/policy_map.h"
-#include "chrome/browser/policy/policy_service.h"
-#include "chrome/browser/policy/profile_policy_connector.h"
-#include "chrome/browser/policy/profile_policy_connector_factory.h"
+#include "chrome/browser/policy/schema_registry_service.h"
+#include "chrome/browser/policy/schema_registry_service_factory.h"
+#include "components/policy/core/browser/browser_policy_connector.h"
+#include "components/policy/core/common/mock_configuration_policy_provider.h"
+#include "components/policy/core/common/policy_bundle.h"
+#include "components/policy/core/common/policy_map.h"
+#include "components/policy/core/common/policy_namespace.h"
+#include "components/policy/core/common/schema.h"
+#include "components/policy/core/common/schema_map.h"
+#include "components/policy/core/common/schema_registry.h"
 #endif
 
 namespace extensions {
 
-using settings_namespace::FromString;
 using settings_namespace::LOCAL;
 using settings_namespace::MANAGED;
 using settings_namespace::Namespace;
 using settings_namespace::SYNC;
 using settings_namespace::ToString;
-using testing::AnyNumber;
+using testing::Mock;
 using testing::Return;
 using testing::_;
 
@@ -100,6 +102,15 @@ class SyncChangeProcessorDelegate : public syncer::SyncChangeProcessor {
   DISALLOW_COPY_AND_ASSIGN(SyncChangeProcessorDelegate);
 };
 
+class MockSchemaRegistryObserver : public policy::SchemaRegistry::Observer {
+ public:
+  MockSchemaRegistryObserver() {}
+  virtual ~MockSchemaRegistryObserver() {}
+
+  MOCK_METHOD1(OnSchemaRegistryUpdated, void(bool));
+  MOCK_METHOD0(OnSchemaRegistryReady, void());
+};
+
 }  // namespace
 
 class ExtensionSettingsApiTest : public ExtensionApiTest {
@@ -110,7 +121,7 @@ class ExtensionSettingsApiTest : public ExtensionApiTest {
 #if defined(ENABLE_CONFIGURATION_POLICY)
     EXPECT_CALL(policy_provider_, IsInitializationComplete(_))
         .WillRepeatedly(Return(true));
-    EXPECT_CALL(policy_provider_, RegisterPolicyDomain(_)).Times(AnyNumber());
+    policy_provider_.SetAutoRefresh();
     policy::BrowserPolicyConnector::SetPolicyProviderForTesting(
         &policy_provider_);
 #endif
@@ -240,8 +251,7 @@ class ExtensionSettingsApiTest : public ExtensionApiTest {
 #endif
 };
 
-// Flaky. http://crbug.com/248032
-IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, DISABLED_SimpleTest) {
+IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, SimpleTest) {
   ASSERT_TRUE(RunExtensionTest("settings/simple_test")) << message_;
 }
 
@@ -365,7 +375,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest,
 
   // Set "foo" to "bar" via sync.
   syncer::SyncChangeList sync_changes;
-  StringValue bar("bar");
+  base::StringValue bar("bar");
   sync_changes.push_back(settings_sync_util::CreateAdd(
       extension_id, "foo", bar, kModelType));
   SendChanges(sync_changes);
@@ -410,7 +420,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest,
 
   // Set "foo" to "bar" via sync.
   syncer::SyncChangeList sync_changes;
-  StringValue bar("bar");
+  base::StringValue bar("bar");
   sync_changes.push_back(settings_sync_util::CreateAdd(
       extension_id, "foo", bar, kModelType));
   SendChanges(sync_changes);
@@ -445,9 +455,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, IsStorageEnabled) {
 
 #if defined(ENABLE_CONFIGURATION_POLICY)
 
-IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, PolicyDomainDescriptor) {
-  // Verifies that the PolicyDomainDescriptor for the extensions domain is
-  // created on startup.
+IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, ExtensionsSchemas) {
+  // Verifies that the Schemas for the extensions domain are created on startup.
   Profile* profile = browser()->profile();
   ExtensionSystem* extension_system =
       ExtensionSystemFactory::GetForProfile(profile);
@@ -459,12 +468,65 @@ IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, PolicyDomainDescriptor) {
     ASSERT_TRUE(extension_system->ready().is_signaled());
   }
 
-  policy::ProfilePolicyConnector* connector =
-      policy::ProfilePolicyConnectorFactory::GetForProfile(profile);
-  policy::PolicyService* service = connector->policy_service();
-  scoped_refptr<const policy::PolicyDomainDescriptor> descriptor =
-      service->GetPolicyDomainDescriptor(policy::POLICY_DOMAIN_EXTENSIONS);
-  EXPECT_TRUE(descriptor.get());
+  // This test starts without any test extensions installed.
+  EXPECT_FALSE(GetSingleLoadedExtension());
+  message_.clear();
+
+  policy::SchemaRegistry* registry =
+      policy::SchemaRegistryServiceFactory::GetForContext(profile);
+  ASSERT_TRUE(registry);
+  EXPECT_FALSE(registry->schema_map()->GetSchema(policy::PolicyNamespace(
+      policy::POLICY_DOMAIN_EXTENSIONS, kManagedStorageExtensionId)));
+
+  MockSchemaRegistryObserver observer;
+  registry->AddObserver(&observer);
+
+  // Install a managed extension.
+  EXPECT_CALL(observer, OnSchemaRegistryUpdated(true));
+  const Extension* extension =
+      LoadExtension(test_data_dir_.AppendASCII("settings/managed_storage"));
+  ASSERT_TRUE(extension);
+  Mock::VerifyAndClearExpectations(&observer);
+  registry->RemoveObserver(&observer);
+
+  // Verify that its schema has been published, and verify its contents.
+  const policy::Schema* schema =
+      registry->schema_map()->GetSchema(policy::PolicyNamespace(
+          policy::POLICY_DOMAIN_EXTENSIONS, kManagedStorageExtensionId));
+  ASSERT_TRUE(schema);
+
+  ASSERT_TRUE(schema->valid());
+  ASSERT_EQ(base::Value::TYPE_DICTIONARY, schema->type());
+  ASSERT_TRUE(schema->GetKnownProperty("string-policy").valid());
+  EXPECT_EQ(base::Value::TYPE_STRING,
+            schema->GetKnownProperty("string-policy").type());
+  ASSERT_TRUE(schema->GetKnownProperty("int-policy").valid());
+  EXPECT_EQ(base::Value::TYPE_INTEGER,
+            schema->GetKnownProperty("int-policy").type());
+  ASSERT_TRUE(schema->GetKnownProperty("double-policy").valid());
+  EXPECT_EQ(base::Value::TYPE_DOUBLE,
+            schema->GetKnownProperty("double-policy").type());
+  ASSERT_TRUE(schema->GetKnownProperty("boolean-policy").valid());
+  EXPECT_EQ(base::Value::TYPE_BOOLEAN,
+            schema->GetKnownProperty("boolean-policy").type());
+
+  policy::Schema list = schema->GetKnownProperty("list-policy");
+  ASSERT_TRUE(list.valid());
+  ASSERT_EQ(base::Value::TYPE_LIST, list.type());
+  ASSERT_TRUE(list.GetItems().valid());
+  EXPECT_EQ(base::Value::TYPE_STRING, list.GetItems().type());
+
+  policy::Schema dict = schema->GetKnownProperty("dict-policy");
+  ASSERT_TRUE(dict.valid());
+  ASSERT_EQ(base::Value::TYPE_DICTIONARY, dict.type());
+  list = dict.GetKnownProperty("list");
+  ASSERT_TRUE(list.valid());
+  ASSERT_EQ(base::Value::TYPE_LIST, list.type());
+  dict = list.GetItems();
+  ASSERT_TRUE(dict.valid());
+  ASSERT_EQ(base::Value::TYPE_DICTIONARY, dict.type());
+  ASSERT_TRUE(dict.GetProperty("anything").valid());
+  EXPECT_EQ(base::Value::TYPE_INTEGER, dict.GetProperty("anything").type());
 }
 
 IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, ManagedStorage) {
@@ -491,7 +553,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, ManagedStorage) {
   ASSERT_TRUE(RunExtensionTest("settings/managed_storage")) << message_;
 }
 
-IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, PRE_ManagedStorageEvents) {
+IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest,
+                       DISABLED_PRE_ManagedStorageEvents) {
   ResultCatcher catcher;
 
   // This test starts without any test extensions installed.
@@ -524,15 +587,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, PRE_ManagedStorageEvents) {
   EXPECT_TRUE(catcher.GetNextResult()) << catcher.message();
 }
 
-#if defined(OS_CHROMEOS) || defined(OS_WIN) || \
-    (defined(OS_LINUX) && defined(USE_AURA))
-// Flakily times out. http://crbug.com/171477
-#define MAYBE_ManagedStorageEvents DISABLED_ManagedStorageEvents
-#else
-#define MAYBE_ManagedStorageEvents ManagedStorageEvents
-#endif
-
-IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest, MAYBE_ManagedStorageEvents) {
+IN_PROC_BROWSER_TEST_F(ExtensionSettingsApiTest,
+                       DISABLED_ManagedStorageEvents) {
   // This test runs after PRE_ManagedStorageEvents without having deleted the
   // profile, so the extension is still around. While the browser restarted the
   // policy went back to the empty default, and so the extension should receive

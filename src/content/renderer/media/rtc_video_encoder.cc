@@ -396,7 +396,7 @@ void RTCVideoEncoder::Impl::EncodeOneFrame() {
   const int index = input_buffers_free_.back();
   base::SharedMemory* input_buffer = input_buffers_[index];
   scoped_refptr<media::VideoFrame> frame =
-      media::VideoFrame::WrapExternalSharedMemory(
+      media::VideoFrame::WrapExternalPackedMemory(
           media::VideoFrame::I420,
           input_frame_coded_size_,
           gfx::Rect(input_visible_size_),
@@ -475,9 +475,9 @@ RTCVideoEncoder::RTCVideoEncoder(
     : video_codec_type_(type),
       video_codec_profile_(profile),
       gpu_factories_(gpu_factories),
-      weak_this_factory_(this),
       encoded_image_callback_(NULL),
-      impl_status_(WEBRTC_VIDEO_CODEC_UNINITIALIZED) {
+      impl_status_(WEBRTC_VIDEO_CODEC_UNINITIALIZED),
+      weak_this_factory_(this) {
   DVLOG(1) << "RTCVideoEncoder(): profile=" << profile;
 }
 
@@ -501,7 +501,7 @@ int32_t RTCVideoEncoder::InitEncode(const webrtc::VideoCodec* codec_settings,
   impl_ = new Impl(weak_this_factory_.GetWeakPtr(), gpu_factories_);
   base::WaitableEvent initialization_waiter(true, false);
   int32_t initialization_retval = WEBRTC_VIDEO_CODEC_UNINITIALIZED;
-  gpu_factories_->GetMessageLoop()->PostTask(
+  gpu_factories_->GetTaskRunner()->PostTask(
       FROM_HERE,
       base::Bind(&RTCVideoEncoder::Impl::CreateAndInitializeVEA,
                  impl_,
@@ -531,7 +531,7 @@ int32_t RTCVideoEncoder::Encode(
 
   base::WaitableEvent encode_waiter(true, false);
   int32_t encode_retval = WEBRTC_VIDEO_CODEC_UNINITIALIZED;
-  gpu_factories_->GetMessageLoop()->PostTask(
+  gpu_factories_->GetTaskRunner()->PostTask(
       FROM_HERE,
       base::Bind(&RTCVideoEncoder::Impl::Enqueue,
                  impl_,
@@ -567,7 +567,7 @@ int32_t RTCVideoEncoder::Release() {
   gpu_factories_->Abort();
   gpu_factories_ = gpu_factories_->Clone();
   if (impl_) {
-    gpu_factories_->GetMessageLoop()->PostTask(
+    gpu_factories_->GetTaskRunner()->PostTask(
         FROM_HERE, base::Bind(&RTCVideoEncoder::Impl::Destroy, impl_));
     impl_ = NULL;
     weak_this_factory_.InvalidateWeakPtrs();
@@ -593,7 +593,7 @@ int32_t RTCVideoEncoder::SetRates(uint32_t new_bit_rate, uint32_t frame_rate) {
     return impl_status_;
   }
 
-  gpu_factories_->GetMessageLoop()->PostTask(
+  gpu_factories_->GetTaskRunner()->PostTask(
       FROM_HERE,
       base::Bind(&RTCVideoEncoder::Impl::RequestEncodingParametersChange,
                  impl_,
@@ -637,7 +637,7 @@ void RTCVideoEncoder::ReturnEncodedImage(scoped_ptr<webrtc::EncodedImage> image,
 
   // The call through webrtc::EncodedImageCallback is synchronous, so we can
   // immediately recycle the output buffer back to the Impl.
-  gpu_factories_->GetMessageLoop()->PostTask(
+  gpu_factories_->GetTaskRunner()->PostTask(
       FROM_HERE,
       base::Bind(&RTCVideoEncoder::Impl::UseOutputBitstreamBufferId,
                  impl_,
@@ -649,7 +649,7 @@ void RTCVideoEncoder::NotifyError(int32_t error) {
   DVLOG(1) << "NotifyError(): error=" << error;
 
   impl_status_ = error;
-  gpu_factories_->GetMessageLoop()->PostTask(
+  gpu_factories_->GetTaskRunner()->PostTask(
       FROM_HERE, base::Bind(&RTCVideoEncoder::Impl::Destroy, impl_));
   impl_ = NULL;
 }

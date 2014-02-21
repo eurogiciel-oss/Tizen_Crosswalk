@@ -34,21 +34,21 @@ public:
     RenderCounter(Document*, const CounterContent&);
     virtual ~RenderCounter();
 
-    static void destroyCounterNodes(RenderObject*);
-    static void destroyCounterNode(RenderObject*, const AtomicString& identifier);
+    static void destroyCounterNodes(RenderObject&);
+    static void destroyCounterNode(RenderObject&, const AtomicString& identifier);
     static void rendererSubtreeAttached(RenderObject*);
     static void rendererRemovedFromTree(RenderObject*);
-    static void rendererStyleChanged(RenderObject*, const RenderStyle* oldStyle, const RenderStyle* newStyle);
+    static void rendererStyleChanged(RenderObject&, const RenderStyle* oldStyle, const RenderStyle* newStyle);
 
     void updateCounter();
 
 protected:
-    virtual void willBeDestroyed();
+    virtual void willBeDestroyed() OVERRIDE;
 
 private:
-    virtual const char* renderName() const;
-    virtual bool isCounter() const;
-    virtual PassRefPtr<StringImpl> originalText() const;
+    virtual const char* renderName() const OVERRIDE;
+    virtual bool isCounter() const OVERRIDE;
+    virtual PassRefPtr<StringImpl> originalText() const OVERRIDE;
 
     // Removes the reference to the CounterNode associated with this renderer.
     // This is used to cause a counter display update when the CounterNode tree changes.

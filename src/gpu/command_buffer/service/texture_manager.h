@@ -21,9 +21,6 @@
 #include "ui/gl/gl_image.h"
 
 namespace gpu {
-
-class StreamTextureManager;
-
 namespace gles2 {
 
 class GLES2Decoder;
@@ -77,7 +74,7 @@ class GPU_EXPORT Texture {
   }
 
   bool CanRenderTo() const {
-    return !stream_texture_ && target_ != GL_TEXTURE_EXTERNAL_OES;
+    return target_ != GL_TEXTURE_EXTERNAL_OES;
   }
 
   // The service side OpenGL id of the texture.
@@ -145,10 +142,6 @@ class GPU_EXPORT Texture {
   void DetachFromFramebuffer() {
     DCHECK_GT(framebuffer_attachment_count_, 0);
     --framebuffer_attachment_count_;
-  }
-
-  bool IsStreamTexture() const {
-    return stream_texture_;
   }
 
   void SetImmutable(bool immutable) {
@@ -240,11 +233,6 @@ class GPU_EXPORT Texture {
   // Whether or not this texture is a non-power-of-two texture.
   bool npot() const {
     return npot_;
-  }
-
-  void SetStreamTexture(bool stream_texture) {
-    stream_texture_ = stream_texture;
-    UpdateCanRenderCondition();
   }
 
   // Marks a particular level as cleared or uncleared.
@@ -379,9 +367,6 @@ class GPU_EXPORT Texture {
   // The number of framebuffers this texture is attached to.
   int framebuffer_attachment_count_;
 
-  // Whether this is a special streaming texture.
-  bool stream_texture_;
-
   // Whether the texture is immutable and no further changes to the format
   // or dimensions of the texture object can be made.
   bool immutable_;
@@ -402,13 +387,6 @@ class GPU_EXPORT Texture {
 // with a client id, though it can outlive the client id if it's still bound to
 // a FBO or another context when destroyed.
 // Multiple TextureRef can point to the same texture with cross-context sharing.
-//
-// Note: for stream textures, the TextureRef that created the stream texture is
-// set as the "owner" of the stream texture, i.e. it will call
-// DestroyStreamTexture on destruction. This is because the StreamTextureManager
-// isn't generally shared between ContextGroups, so ownership can't be at the
-// Texture level. We also can't have multiple StreamTexture on the same service
-// id, so there can be only one owner.
 class GPU_EXPORT TextureRef : public base::RefCounted<TextureRef> {
  public:
   TextureRef(TextureManager* manager, GLuint client_id, Texture* texture);
@@ -429,15 +407,10 @@ class GPU_EXPORT TextureRef : public base::RefCounted<TextureRef> {
   const TextureManager* manager() const { return manager_; }
   TextureManager* manager() { return manager_; }
   void reset_client_id() { client_id_ = 0; }
-  void set_is_stream_texture_owner(bool owner) {
-    is_stream_texture_owner_ = owner;
-  }
-  bool is_stream_texture_owner() const { return is_stream_texture_owner_; }
 
   TextureManager* manager_;
   Texture* texture_;
   GLuint client_id_;
-  bool is_stream_texture_owner_;
 
   DISALLOW_COPY_AND_ASSIGN(TextureRef);
 };
@@ -447,10 +420,11 @@ class GPU_EXPORT TextureRef : public base::RefCounted<TextureRef> {
 struct DecoderTextureState {
   // total_texture_upload_time automatically initialized to 0 in default
   // constructor.
-  DecoderTextureState():
-      tex_image_2d_failed(false),
-      texture_upload_count(0),
-      teximage2d_faster_than_texsubimage2d(true) {}
+  DecoderTextureState(bool texsubimage2d_faster_than_teximage2d)
+      : tex_image_2d_failed(false),
+        texture_upload_count(0),
+        texsubimage2d_faster_than_teximage2d(
+            texsubimage2d_faster_than_teximage2d) {}
 
   // This indicates all the following texSubImage2D calls that are part of the
   // failed texImage2D call should be ignored.
@@ -460,9 +434,7 @@ struct DecoderTextureState {
   int texture_upload_count;
   base::TimeDelta total_texture_upload_time;
 
-  // This is really not per-decoder, but the logic to decide this value is in
-  // the decoder for now, so it is simpler to leave it there.
-  bool teximage2d_faster_than_texsubimage2d;
+  bool texsubimage2d_faster_than_teximage2d;
 };
 
 // This class keeps track of the textures and their sizes so we can do NPOT and
@@ -503,10 +475,6 @@ class GPU_EXPORT TextureManager {
 
   void set_framebuffer_manager(FramebufferManager* manager) {
     framebuffer_manager_ = manager;
-  }
-
-  void set_stream_texture_manager(StreamTextureManager* manager) {
-    stream_texture_manager_ = manager;
   }
 
   // Init the texture manager.
@@ -567,13 +535,6 @@ class GPU_EXPORT TextureManager {
   void SetTarget(
       TextureRef* ref,
       GLenum target);
-
-  // Marks a texture as a stream texture, and the ref as the stream texture
-  // owner.
-  void SetStreamTexture(TextureRef* ref, bool stream_texture);
-
-  // Whether the TextureRef is the stream texture owner.
-  bool IsStreamTextureOwner(TextureRef* ref);
 
   // Set the info for a particular level in a TexureInfo.
   void SetLevelInfo(
@@ -783,7 +744,6 @@ class GPU_EXPORT TextureManager {
   scoped_refptr<FeatureInfo> feature_info_;
 
   FramebufferManager* framebuffer_manager_;
-  StreamTextureManager* stream_texture_manager_;
 
   // Info for each texture in the system.
   typedef base::hash_map<GLuint, scoped_refptr<TextureRef> > TextureMap;

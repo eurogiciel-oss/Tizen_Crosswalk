@@ -6,6 +6,7 @@
 #include "ozone/wayland/display.h"
 
 #include "base/stl_util.h"
+#include "ozone/wayland/display_poll_thread.h"
 #include "ozone/wayland/input/cursor.h"
 #include "ozone/wayland/input_device.h"
 #include "ozone/wayland/screen.h"
@@ -14,32 +15,21 @@
 namespace ozonewayland {
 WaylandDisplay* WaylandDisplay::instance_ = NULL;
 
-WaylandWindow* WaylandDisplay::CreateAcceleratedSurface(unsigned w) {
-  WaylandWindow* window = new WaylandWindow(w);
-  widget_map_[w] = window;
-
-  return window;
-}
-
-void WaylandDisplay::DestroyWindow(unsigned w) {
-  std::map<unsigned, WaylandWindow*>::const_iterator it = widget_map_.find(w);
-  WaylandWindow* widget = it == widget_map_.end() ? NULL : it->second;
-  DCHECK(widget);
-  delete widget;
-  widget_map_.erase(w);
-}
-
-void WaylandDisplay::FlushDisplay() {
-  wl_display_flush(display_);
-}
-
-WaylandDisplay::WaylandDisplay(RegistrationType type) : compositor_(NULL),
+WaylandDisplay::WaylandDisplay(RegistrationType type) : display_(NULL),
+    registry_(NULL),
+    compositor_(NULL),
     shell_(NULL),
     shm_(NULL),
-    primary_screen_(NULL) {
+    primary_screen_(NULL),
+    primary_input_(NULL),
+    display_poll_thread_(NULL),
+    screen_list_(),
+    input_list_(),
+    widget_map_(),
+    serial_(0) {
   display_ = wl_display_connect(NULL);
   if (!display_)
-      return;
+    return;
 
   instance_ = this;
   static const struct wl_registry_listener registry_all = {
@@ -58,14 +48,158 @@ WaylandDisplay::WaylandDisplay(RegistrationType type) : compositor_(NULL),
 
   if (wl_display_roundtrip(display_) < 0)
     terminate();
+  else if (type == RegisterAsNeeded) {
+    WindowStateChangeHandler::SetInstance(this);
+    display_poll_thread_ = new WaylandDisplayPollThread(display_);
+  }
 }
 
 WaylandDisplay::~WaylandDisplay() {
   terminate();
 }
 
+const std::list<WaylandScreen*>& WaylandDisplay::GetScreenList() const {
+  return screen_list_;
+}
+
+WaylandWindow* WaylandDisplay::CreateAcceleratedSurface(unsigned w) {
+  WaylandWindow* window = new WaylandWindow(w);
+  widget_map_[w] = window;
+
+  return window;
+}
+
+void WaylandDisplay::DestroyWindow(unsigned w) {
+  std::map<unsigned, WaylandWindow*>::const_iterator it = widget_map_.find(w);
+  WaylandWindow* widget = it == widget_map_.end() ? NULL : it->second;
+  DCHECK(widget);
+  delete widget;
+  widget_map_.erase(w);
+}
+
+void WaylandDisplay::StartProcessingEvents() {
+  DCHECK(display_poll_thread_);
+  // Start polling for wayland events.
+  display_poll_thread_->StartProcessingEvents();
+}
+
+void WaylandDisplay::StopProcessingEvents() {
+  DCHECK(display_poll_thread_);
+  // Start polling for wayland events.
+  display_poll_thread_->StopProcessingEvents();
+}
+
+void WaylandDisplay::FlushDisplay() {
+  wl_display_flush(display_);
+}
+
+void WaylandDisplay::SyncDisplay() {
+  wl_display_roundtrip(display_);
+}
+
+void WaylandDisplay::SetWidgetState(unsigned w,
+                                    WidgetState state,
+                                    unsigned width,
+                                    unsigned height) {
+  switch (state) {
+    case CREATE:
+    {
+      CreateAcceleratedSurface(w);
+      break;
+    }
+    case FULLSCREEN:
+    {
+      WaylandWindow* widget = GetWidget(w);
+      widget->SetFullscreen();
+      widget->Resize(width, height);
+      break;
+    }
+    case MAXIMIZED:
+    {
+      WaylandWindow* widget = GetWidget(w);
+      widget->Maximize();
+      break;
+    }
+    case MINIMIZED:
+    {
+      WaylandWindow* widget = GetWidget(w);
+      widget->Minimize();
+      break;
+    }
+    case RESTORE:
+    {
+      WaylandWindow* widget = GetWidget(w);
+      widget->Restore();
+      widget->Resize(width, height);
+      break;
+    }
+    case ACTIVE:
+      NOTIMPLEMENTED();
+      break;
+    case INACTIVE:
+      NOTIMPLEMENTED();
+      break;
+    case SHOW:
+      NOTIMPLEMENTED();
+      break;
+    case HIDE:
+      NOTIMPLEMENTED();
+      break;
+    case RESIZE:
+    {
+      WaylandWindow* window = GetWidget(w);
+      DCHECK(window);
+      window->Resize(width, height);
+      break;
+    }
+    case DESTROYED:
+    {
+      DestroyWindow(w);
+      if (widget_map_.empty())
+        StopProcessingEvents();
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void WaylandDisplay::SetWidgetTitle(unsigned w,
+                                    const base::string16& title) {
+  WaylandWindow* widget = GetWidget(w);
+  DCHECK(widget);
+  widget->SetWindowTitle(title);
+}
+
+void WaylandDisplay::SetWidgetAttributes(unsigned widget,
+                                         unsigned parent,
+                                         unsigned x,
+                                         unsigned y,
+                                         WidgetType type) {
+  WaylandWindow* window = GetWidget(widget);
+  WaylandWindow* parent_window = GetWidget(parent);
+  DCHECK(window);
+  switch (type) {
+  case WINDOW:
+    window->SetShellAttributes(WaylandWindow::TOPLEVEL);
+    break;
+  case WINDOWFRAMELESS:
+    NOTIMPLEMENTED();
+    break;
+  case POPUP:
+    DCHECK(parent_window);
+    window->SetShellAttributes(WaylandWindow::POPUP,
+                               parent_window->ShellSurface(),
+                               x,
+                               y);
+    break;
+  default:
+    break;
+  }
+}
+
 void WaylandDisplay::terminate() {
-  if (widget_map_.size()) {
+  if (!widget_map_.empty()) {
     STLDeleteValues(&widget_map_);
     widget_map_.clear();
   }
@@ -97,6 +231,8 @@ void WaylandDisplay::terminate() {
   if (registry_)
     wl_registry_destroy(registry_);
 
+  delete display_poll_thread_;
+
   if (display_) {
     wl_display_flush(display_);
     wl_display_disconnect(display_);
@@ -106,9 +242,11 @@ void WaylandDisplay::terminate() {
   instance_ = NULL;
 }
 
-void WaylandDisplay::SyncDisplay() {
-  wl_display_roundtrip(display_);
+WaylandWindow* WaylandDisplay::GetWidget(unsigned w) {
+  std::map<unsigned, WaylandWindow*>::const_iterator it = widget_map_.find(w);
+  return it == widget_map_.end() ? NULL : it->second;
 }
+
 
 // static
 void WaylandDisplay::DisplayHandleGlobal(void *data,
@@ -124,12 +262,16 @@ void WaylandDisplay::DisplayHandleGlobal(void *data,
         wl_registry_bind(registry, name, &wl_compositor_interface, 1));
   } else if (strcmp(interface, "wl_output") == 0) {
     WaylandScreen* screen = new WaylandScreen(disp, name);
+    if (!disp->screen_list_.empty())
+      NOTIMPLEMENTED() << "Multiple screens support is not implemented";
+
     disp->screen_list_.push_back(screen);
     // (kalyan) Support extended output.
     disp->primary_screen_ = disp->screen_list_.front();
   } else if (strcmp(interface, "wl_seat") == 0) {
     WaylandInputDevice *input_device = new WaylandInputDevice(disp, name);
     disp->input_list_.push_back(input_device);
+    disp->primary_input_ = disp->input_list_.front();
   } else if (strcmp(interface, "wl_shell") == 0) {
     disp->shell_ = static_cast<wl_shell*>(
         wl_registry_bind(registry, name, &wl_shell_interface, 1));

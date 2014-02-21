@@ -10,7 +10,6 @@
 #include "ash/display/display_manager.h"
 #include "ash/display/output_configurator_animation.h"
 #include "ash/display/resolution_notification_controller.h"
-#include "ash/screen_ash.h"
 #include "ash/shell.h"
 #include "base/bind.h"
 #include "base/logging.h"
@@ -71,7 +70,7 @@ DisplayOptionsHandler::~DisplayOptionsHandler() {
 }
 
 void DisplayOptionsHandler::GetLocalizedValues(
-    DictionaryValue* localized_strings) {
+    base::DictionaryValue* localized_strings) {
   DCHECK(localized_strings);
   RegisterTitle(localized_strings, "displayOptionsPage",
                 IDS_OPTIONS_SETTINGS_DISPLAY_OPTIONS_TAB_TITLE);
@@ -193,7 +192,7 @@ void DisplayOptionsHandler::SendDisplayInfo(
     if (display.IsInternal()) {
       ui_scales = DisplayManager::GetScalesForDisplay(display_info);
       gfx::SizeF base_size = display_info.bounds_in_native().size();
-      base_size.Scale(1.0f / display.device_scale_factor());
+      base_size.Scale(1.0f / display_info.device_scale_factor());
       if (display_info.rotation() == gfx::Display::ROTATE_90 ||
           display_info.rotation() == gfx::Display::ROTATE_270) {
         float tmp = base_size.width();
@@ -223,7 +222,7 @@ void DisplayOptionsHandler::SendDisplayInfo(
         if (ui_scales[i] == 1.0f)
           resolution_info->SetBoolean("isBest", true);
         resolution_info->SetBoolean(
-            "selected", display_info.ui_scale() == ui_scales[i]);
+            "selected", display_info.configured_ui_scale() == ui_scales[i]);
       } else {
         // Picks the largest one as the "best", which is the last element
         // because |resolutions| is sorted by its area.

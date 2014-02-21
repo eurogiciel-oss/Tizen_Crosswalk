@@ -42,7 +42,7 @@ typedef BaseMultipleFieldsDateAndTimeInputType BaseWeekInputType;
 typedef BaseChooserOnlyDateAndTimeInputType BaseWeekInputType;
 #endif
 
-class WeekInputType : public BaseWeekInputType {
+class WeekInputType FINAL : public BaseWeekInputType {
 public:
     static PassRefPtr<InputType> create(HTMLInputElement&);
 
@@ -50,7 +50,6 @@ private:
     WeekInputType(HTMLInputElement& element) : BaseWeekInputType(element) { }
     virtual void countUsage() OVERRIDE;
     virtual const AtomicString& formControlType() const OVERRIDE;
-    virtual DateComponents::Type dateType() const OVERRIDE;
     virtual StepRange createStepRange(AnyStepHandling) const OVERRIDE;
     virtual bool parseToDateComponentsInternal(const String&, DateComponents*) const OVERRIDE;
     virtual bool setMillisecondToDateComponents(double, DateComponents*) const OVERRIDE;
@@ -58,9 +57,9 @@ private:
 
 #if ENABLE(INPUT_MULTIPLE_FIELDS_UI)
     // BaseMultipleFieldsDateAndTimeInputType functions
-    virtual String formatDateTimeFieldsState(const DateTimeFieldsState&) const OVERRIDE FINAL;
-    virtual void setupLayoutParameters(DateTimeEditElement::LayoutParameters&, const DateComponents&) const OVERRIDE FINAL;
-    virtual bool isValidFormat(bool hasYear, bool hasMonth, bool hasWeek, bool hasDay, bool hasAMPM, bool hasHour, bool hasMinute, bool hasSecond) const;
+    virtual String formatDateTimeFieldsState(const DateTimeFieldsState&) const OVERRIDE;
+    virtual void setupLayoutParameters(DateTimeEditElement::LayoutParameters&, const DateComponents&) const OVERRIDE;
+    virtual bool isValidFormat(bool hasYear, bool hasMonth, bool hasWeek, bool hasDay, bool hasAMPM, bool hasHour, bool hasMinute, bool hasSecond) const OVERRIDE;
 #endif
 };
 

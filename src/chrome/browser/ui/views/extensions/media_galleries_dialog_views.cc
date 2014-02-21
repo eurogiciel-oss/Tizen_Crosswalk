@@ -10,13 +10,12 @@
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
 #include "content/public/browser/web_contents.h"
-#include "content/public/browser/web_contents_view.h"
 #include "grit/generated_resources.h"
 #include "grit/locale_settings.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/resource/resource_bundle.h"
 #include "ui/native_theme/native_theme.h"
+#include "ui/views/border.h"
 #include "ui/views/controls/button/checkbox.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/controls/label.h"
@@ -90,9 +89,7 @@ MediaGalleriesDialogViews::MediaGalleriesDialogViews(
       web_contents_modal_dialog_manager->delegate();
   DCHECK(modal_delegate);
   window_ = views::Widget::CreateWindowAsFramelessChild(
-      this,
-      controller->web_contents()->GetView()->GetNativeView(),
-      modal_delegate->GetWebContentsModalDialogHost()->GetHostView());
+      this, modal_delegate->GetWebContentsModalDialogHost()->GetHostView());
   web_contents_modal_dialog_manager->ShowDialog(window_->GetNativeView());
 }
 
@@ -115,16 +112,6 @@ void MediaGalleriesDialogViews::InitChildViews() {
                      dialog_content_width,
                      0);
 
-  if (!DialogDelegate::UseNewStyle()) {
-    // Header text.
-    views::Label* header = new views::Label(controller_->GetHeader());
-    ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
-    header->SetFont(rb.GetFont(ui::ResourceBundle::MediumFont));
-    header->SetHorizontalAlignment(gfx::ALIGN_LEFT);
-    layout->StartRow(0, column_set_id);
-    layout->AddView(header);
-  }
-
   // Message text.
   views::Label* subtext = new views::Label(controller_->GetSubtext());
   subtext->SetMultiLine(true);
@@ -141,11 +128,11 @@ void MediaGalleriesDialogViews::InitChildViews() {
   scroll_container->SetLayoutManager(new views::BoxLayout(
       views::BoxLayout::kVertical, 0, 0,
       views::kRelatedControlSmallVerticalSpacing));
-  scroll_container->set_border(views::Border::CreateEmptyBorder(
-      views::kRelatedControlVerticalSpacing,
-      0,
-      views::kRelatedControlVerticalSpacing,
-      0));
+  scroll_container->SetBorder(
+      views::Border::CreateEmptyBorder(views::kRelatedControlVerticalSpacing,
+                                       0,
+                                       views::kRelatedControlVerticalSpacing,
+                                       0));
 
   // Add attached galleries checkboxes.
   checkbox_map_.clear();
@@ -174,11 +161,11 @@ void MediaGalleriesDialogViews::InitChildViews() {
         controller_->GetUnattachedLocationsHeader());
     unattached_text->SetMultiLine(true);
     unattached_text->SetHorizontalAlignment(gfx::ALIGN_LEFT);
-    unattached_text->set_border(views::Border::CreateEmptyBorder(
-        views::kRelatedControlVerticalSpacing,
-        views::kPanelHorizMargin,
-        views::kRelatedControlVerticalSpacing,
-        0));
+    unattached_text->SetBorder(
+        views::Border::CreateEmptyBorder(views::kRelatedControlVerticalSpacing,
+                                         views::kPanelHorizMargin,
+                                         views::kRelatedControlVerticalSpacing,
+                                         0));
     scroll_container->AddChildView(unattached_text);
 
     // Add unattached galleries checkboxes.
@@ -213,9 +200,9 @@ bool MediaGalleriesDialogViews::AddOrUpdateGallery(
     bool permitted,
     views::View* container,
     int trailing_vertical_space) {
-  string16 label = gallery.GetGalleryDisplayName();
-  string16 tooltip_text = gallery.GetGalleryTooltip();
-  string16 details = gallery.GetGalleryAdditionalDetails();
+  base::string16 label = gallery.GetGalleryDisplayName();
+  base::string16 tooltip_text = gallery.GetGalleryTooltip();
+  base::string16 details = gallery.GetGalleryAdditionalDetails();
 
   CheckboxMap::iterator iter = checkbox_map_.find(gallery.pref_id);
   if (iter != checkbox_map_.end() &&
@@ -245,7 +232,7 @@ bool MediaGalleriesDialogViews::AddOrUpdateGallery(
   secondary_text->SetTooltipText(tooltip_text);
   secondary_text->SetEnabledColor(kDeemphasizedTextColor);
   secondary_text->SetTooltipText(tooltip_text);
-  secondary_text->set_border(views::Border::CreateEmptyBorder(
+  secondary_text->SetBorder(views::Border::CreateEmptyBorder(
       0,
       views::kRelatedControlSmallHorizontalSpacing,
       0,
@@ -254,11 +241,8 @@ bool MediaGalleriesDialogViews::AddOrUpdateGallery(
   views::View* checkbox_view = new views::View();
   if (gallery.pref_id != kInvalidMediaGalleryPrefId)
     checkbox_view->set_context_menu_controller(this);
-  checkbox_view->set_border(views::Border::CreateEmptyBorder(
-      0,
-      views::kPanelHorizMargin,
-      trailing_vertical_space,
-      0));
+  checkbox_view->SetBorder(views::Border::CreateEmptyBorder(
+      0, views::kPanelHorizMargin, trailing_vertical_space, 0));
   checkbox_view->SetLayoutManager(
       new views::BoxLayout(views::BoxLayout::kHorizontal, 0, 0, 0));
   checkbox_view->AddChildView(checkbox);
@@ -275,12 +259,8 @@ bool MediaGalleriesDialogViews::AddOrUpdateGallery(
   return true;
 }
 
-string16 MediaGalleriesDialogViews::GetWindowTitle() const {
+base::string16 MediaGalleriesDialogViews::GetWindowTitle() const {
   return controller_->GetHeader();
-}
-
-bool MediaGalleriesDialogViews::ShouldShowWindowTitle() const {
-  return DialogDelegate::UseNewStyle();
 }
 
 void MediaGalleriesDialogViews::DeleteDelegate() {
@@ -299,7 +279,7 @@ views::View* MediaGalleriesDialogViews::GetContentsView() {
   return contents_;
 }
 
-string16 MediaGalleriesDialogViews::GetDialogButtonLabel(
+base::string16 MediaGalleriesDialogViews::GetDialogButtonLabel(
     ui::DialogButton button) const {
   return l10n_util::GetStringUTF16(button == ui::DIALOG_BUTTON_OK ?
       IDS_MEDIA_GALLERIES_DIALOG_CONFIRM :
@@ -323,7 +303,7 @@ views::View* MediaGalleriesDialogViews::CreateExtraView() {
   DCHECK(!add_gallery_button_);
   add_gallery_button_ = new views::LabelButton(this,
       l10n_util::GetStringUTF16(IDS_MEDIA_GALLERIES_DIALOG_ADD_GALLERY));
-  add_gallery_button_->SetStyle(views::Button::STYLE_NATIVE_TEXTBUTTON);
+  add_gallery_button_->SetStyle(views::Button::STYLE_BUTTON);
   return add_gallery_button_;
 }
 

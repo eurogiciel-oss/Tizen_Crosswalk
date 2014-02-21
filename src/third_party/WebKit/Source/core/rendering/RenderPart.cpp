@@ -25,8 +25,9 @@
 #include "config.h"
 #include "core/rendering/RenderPart.h"
 
-#include "core/html/HTMLFrameElementBase.h"
+#include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
+#include "core/html/HTMLFrameElementBase.h"
 #include "core/plugins/PluginView.h"
 #include "core/rendering/HitTestResult.h"
 #include "core/rendering/RenderLayer.h"
@@ -54,22 +55,15 @@ void RenderPart::setWidget(PassRefPtr<Widget> widget)
         return;
 
     RenderWidget::setWidget(widget);
-
-    // make sure the scrollbars are set correctly for restore
-    // ### find better fix
-    viewCleared();
 }
 
-void RenderPart::viewCleared()
+LayerType RenderPart::layerTypeRequired() const
 {
-}
+    LayerType type = RenderWidget::layerTypeRequired();
+    if (type != NoLayer)
+        return type;
 
-bool RenderPart::requiresLayer() const
-{
-    if (RenderWidget::requiresLayer())
-        return true;
-
-    return requiresAcceleratedCompositing();
+    return requiresAcceleratedCompositing() ? NormalLayer : NoLayer;
 }
 
 bool RenderPart::requiresAcceleratedCompositing() const
@@ -85,6 +79,9 @@ bool RenderPart::requiresAcceleratedCompositing() const
         return false;
 
     HTMLFrameOwnerElement* element = toHTMLFrameOwnerElement(node());
+    if (element->contentFrame() && element->contentFrame()->remotePlatformLayer())
+        return true;
+
     if (Document* contentDocument = element->contentDocument()) {
         if (RenderView* view = contentDocument->renderView())
             return view->usesCompositing();

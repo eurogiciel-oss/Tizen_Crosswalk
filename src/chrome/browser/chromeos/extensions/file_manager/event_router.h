@@ -15,9 +15,11 @@
 #include "chrome/browser/chromeos/drive/drive_integration_service.h"
 #include "chrome/browser/chromeos/drive/file_system_observer.h"
 #include "chrome/browser/chromeos/drive/job_list.h"
+#include "chrome/browser/chromeos/drive/sync_client.h"
 #include "chrome/browser/chromeos/file_manager/file_watcher.h"
 #include "chrome/browser/chromeos/file_manager/volume_manager_observer.h"
 #include "chrome/browser/drive/drive_service_interface.h"
+#include "chrome/common/extensions/api/file_browser_private.h"
 #include "chromeos/disks/disk_mount_manager.h"
 #include "chromeos/network/network_state_handler_observer.h"
 #include "webkit/browser/fileapi/file_system_operation.h"
@@ -34,8 +36,6 @@ class NetworkState;
 }
 
 namespace file_manager {
-
-class DesktopNotifications;
 
 // Monitors changes in disk mounts, network connection state and preferences
 // affecting File Manager. Dispatches appropriate File Browser events.
@@ -73,7 +73,7 @@ class EventRouter
   // Called when a copy task is completed.
   void OnCopyCompleted(
       int copy_id, const GURL& source_url, const GURL& destination_url,
-      base::PlatformFileError error);
+      base::File::Error error);
 
   // Called when a copy task progress is updated.
   void OnCopyProgress(int copy_id,
@@ -98,6 +98,9 @@ class EventRouter
   // drive::FileSystemObserver overrides.
   virtual void OnDirectoryChanged(
       const base::FilePath& directory_path) OVERRIDE;
+  virtual void OnDriveSyncError(
+      drive::file_system::DriveSyncErrorType type,
+      const base::FilePath& file_path) OVERRIDE;
 
   // VolumeManagerObserver overrides.
   virtual void OnDiskAdded(
@@ -138,6 +141,12 @@ class EventRouter
   // after calling notifying observers by DiskMountManager.
   void ShowRemovableDeviceInFileManager(const base::FilePath& mount_path);
 
+  // Dispatches an onDeviceChanged event containing |type| and |path| to
+  // extensions.
+  void DispatchDeviceEvent(
+      extensions::api::file_browser_private::DeviceEventType type,
+      const std::string& path);
+
   // Sends onFileTranferUpdated to extensions if needed. If |always| is true,
   // it sends the event always. Otherwise, it sends the event if enough time has
   // passed from the previous event so as not to make extension busy.
@@ -155,7 +164,6 @@ class EventRouter
   base::Time last_file_transfer_event_;
 
   WatcherMap file_watchers_;
-  scoped_ptr<DesktopNotifications> notifications_;
   scoped_ptr<PrefChangeRegistrar> pref_change_registrar_;
   Profile* profile_;
 

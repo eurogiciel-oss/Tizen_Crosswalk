@@ -5,15 +5,21 @@
 #ifndef UI_VIEWS_CONTROLS_COMBOBOX_COMBOBOX_LISTENER_H_
 #define UI_VIEWS_CONTROLS_COMBOBOX_COMBOBOX_LISTENER_H_
 
+#include "ui/views/views_export.h"
+
 namespace views {
 
 class Combobox;
 
 // An interface implemented by an object to let it know that the selected index
 // has changed.
-class ComboboxListener {
+class VIEWS_EXPORT ComboboxListener {
  public:
   virtual void OnSelectedIndexChanged(Combobox* combobox) = 0;
+
+  // Handles when the combobox's style is the button style and the button is
+  // clicked.
+  virtual void OnComboboxTextButtonClicked(Combobox* combobox) {}
 
  protected:
   virtual ~ComboboxListener() {}

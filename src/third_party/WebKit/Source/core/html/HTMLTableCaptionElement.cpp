@@ -32,23 +32,15 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-inline HTMLTableCaptionElement::HTMLTableCaptionElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+inline HTMLTableCaptionElement::HTMLTableCaptionElement(Document& document)
+    : HTMLElement(captionTag, document)
 {
-    ASSERT(hasTagName(captionTag));
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<HTMLTableCaptionElement> HTMLTableCaptionElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<HTMLTableCaptionElement> HTMLTableCaptionElement::create(Document& document)
 {
-    return adoptRef(new HTMLTableCaptionElement(tagName, document));
-}
-
-bool HTMLTableCaptionElement::isPresentationAttribute(const QualifiedName& name) const
-{
-    if (name == alignAttr)
-        return true;
-    return HTMLElement::isPresentationAttribute(name);
+    return adoptRef(new HTMLTableCaptionElement(document));
 }
 
 void HTMLTableCaptionElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStylePropertySet* style)

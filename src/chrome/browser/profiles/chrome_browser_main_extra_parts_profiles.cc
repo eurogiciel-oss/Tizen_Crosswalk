@@ -8,6 +8,7 @@
 #include "apps/app_load_service_factory.h"
 #include "apps/app_restore_service_factory.h"
 #include "apps/shell_window_geometry_cache.h"
+#include "chrome/browser/apps/ephemeral_app_service_factory.h"
 #include "chrome/browser/apps/shortcut_manager_factory.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/background/background_contents_service_factory.h"
@@ -29,7 +30,6 @@
 #include "chrome/browser/policy/profile_policy_connector_factory.h"
 #include "chrome/browser/predictors/autocomplete_action_predictor_factory.h"
 #include "chrome/browser/predictors/predictor_database_factory.h"
-#include "chrome/browser/predictors/resource_prefetch_predictor_factory.h"
 #include "chrome/browser/prerender/prerender_link_manager_factory.h"
 #include "chrome/browser/prerender/prerender_manager_factory.h"
 #include "chrome/browser/printing/cloud_print/cloud_print_proxy_service_factory.h"
@@ -42,7 +42,6 @@
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/signin/about_signin_internals_factory.h"
 #include "chrome/browser/signin/signin_manager_factory.h"
-#include "chrome/browser/signin/token_service_factory.h"
 #include "chrome/browser/speech/extension_api/tts_extension_api.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
 #include "chrome/browser/themes/theme_service_factory.h"
@@ -51,7 +50,7 @@
 #include "chrome/browser/ui/global_error/global_error_service_factory.h"
 #include "chrome/browser/ui/tabs/pinned_tab_service_factory.h"
 #include "chrome/browser/ui/webui/ntp/ntp_resource_cache_factory.h"
-#include "chrome/browser/user_style_sheet_watcher_factory.h"
+#include "chrome/browser/undo/bookmark_undo_service_factory.h"
 #include "chrome/browser/webdata/web_data_service_factory.h"
 
 #if defined(ENABLE_EXTENSIONS)
@@ -67,7 +66,6 @@
 #include "chrome/browser/extensions/api/cookies/cookies_api.h"
 #include "chrome/browser/extensions/api/developer_private/developer_private_api_factory.h"
 #include "chrome/browser/extensions/api/dial/dial_api_factory.h"
-#include "chrome/browser/extensions/api/discovery/suggested_links_registry_factory.h"
 #include "chrome/browser/extensions/api/extension_action/extension_action_api.h"
 #include "chrome/browser/extensions/api/feedback_private/feedback_private_api.h"
 #include "chrome/browser/extensions/api/font_settings/font_settings_api.h"
@@ -79,11 +77,13 @@
 #include "chrome/browser/extensions/api/management/management_api.h"
 #include "chrome/browser/extensions/api/mdns/mdns_api.h"
 #include "chrome/browser/extensions/api/media_galleries_private/media_galleries_private_api.h"
+#include "chrome/browser/extensions/api/networking_private/networking_private_event_router_factory.h"
 #include "chrome/browser/extensions/api/omnibox/omnibox_api.h"
 #include "chrome/browser/extensions/api/preference/chrome_direct_setting_api.h"
 #include "chrome/browser/extensions/api/preference/preference_api.h"
 #include "chrome/browser/extensions/api/processes/processes_api.h"
 #include "chrome/browser/extensions/api/push_messaging/push_messaging_api.h"
+#include "chrome/browser/extensions/api/runtime/runtime_api_factory.h"
 #include "chrome/browser/extensions/api/serial/serial_connection.h"
 #include "chrome/browser/extensions/api/sessions/sessions_api.h"
 #include "chrome/browser/extensions/api/settings_overrides/settings_overrides_api.h"
@@ -100,13 +100,17 @@
 #include "chrome/browser/extensions/api/tabs/tabs_windows_api.h"
 #include "chrome/browser/extensions/api/usb/usb_device_resource.h"
 #include "chrome/browser/extensions/api/web_navigation/web_navigation_api.h"
+#include "chrome/browser/extensions/api/web_request/web_request_api.h"
 #include "chrome/browser/extensions/api/webrtc_audio_private/webrtc_audio_private_api.h"
-#include "chrome/browser/extensions/extension_prefs_factory.h"
 #include "chrome/browser/extensions/extension_system_factory.h"
+#include "chrome/browser/extensions/extension_toolbar_model_factory.h"
 #include "chrome/browser/extensions/extension_web_ui_override_registrar.h"
 #include "chrome/browser/extensions/install_tracker_factory.h"
+#include "chrome/browser/extensions/menu_manager_factory.h"
 #include "chrome/browser/extensions/plugin_manager.h"
 #include "chrome/browser/extensions/token_cache/token_cache_service_factory.h"
+#include "extensions/browser/extension_prefs_factory.h"
+#include "extensions/browser/renderer_startup_helper.h"
 #endif  // defined(ENABLE_EXTENSIONS)
 
 #if defined(ENABLE_CAPTIVE_PORTAL_DETECTION)
@@ -114,14 +118,20 @@
 #endif
 
 #if defined(ENABLE_CONFIGURATION_POLICY)
+#include "chrome/browser/policy/cloud/policy_header_service_factory.h"
 #include "chrome/browser/policy/cloud/user_cloud_policy_invalidator_factory.h"
+#include "chrome/browser/policy/schema_registry_service_factory.h"
 #if defined(OS_CHROMEOS)
+#include "chrome/browser/chromeos/policy/policy_cert_service_factory.h"
 #include "chrome/browser/chromeos/policy/recommendation_restorer_factory.h"
 #include "chrome/browser/chromeos/policy/user_cloud_policy_manager_factory_chromeos.h"
 #include "chrome/browser/chromeos/policy/user_cloud_policy_token_forwarder_factory.h"
+#include "chrome/browser/chromeos/policy/user_network_configuration_updater_factory.h"
 #else
 #include "chrome/browser/policy/cloud/user_cloud_policy_manager_factory.h"
+#if !defined(OS_IOS)
 #include "chrome/browser/policy/cloud/user_policy_signin_service_factory.h"
+#endif
 #endif
 #endif
 
@@ -133,11 +143,10 @@
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/extensions/input_method_api.h"
 #include "chrome/browser/chromeos/extensions/media_player_api.h"
-#include "chrome/browser/extensions/api/input_ime/input_ime_api.h"
-#include "chrome/browser/extensions/api/networking_private/networking_private_event_router_factory.h"
-#if defined(FILE_MANAGER_EXTENSION)
+#include "chrome/browser/chromeos/extensions/screenlock_private_api.h"
 #include "chrome/browser/chromeos/extensions/file_manager/file_browser_private_api_factory.h"
-#endif
+#include "chrome/browser/extensions/api/input_ime/input_ime_api.h"
+#include "chrome/browser/extensions/api/log_private/log_private_api.h"
 #endif
 
 #if defined(USE_AURA)
@@ -197,15 +206,15 @@ EnsureBrowserContextKeyedServiceFactoriesBuilt() {
   BackgroundContentsServiceFactory::GetInstance();
 #endif
   BookmarkModelFactory::GetInstance();
+#if !defined(OS_ANDROID)
+  BookmarkUndoServiceFactory::GetInstance();
+#endif
 #if defined(ENABLE_CAPTIVE_PORTAL_DETECTION)
   captive_portal::CaptivePortalServiceFactory::GetInstance();
 #endif
   ChromeGeolocationPermissionContextFactory::GetInstance();
 #if defined(OS_ANDROID)
   ProtectedMediaIdentifierPermissionContextFactory::GetInstance();
-#endif
-#if defined(OS_CHROMEOS)
-  chromeos::NetworkingPrivateEventRouterFactory::GetInstance();
 #endif
 #if defined(ENABLE_FULL_PRINTING)
   CloudPrintProxyServiceFactory::GetInstance();
@@ -220,6 +229,7 @@ EnsureBrowserContextKeyedServiceFactoriesBuilt() {
   apps::AppLoadServiceFactory::GetInstance();
   apps::AppRestoreServiceFactory::GetInstance();
   apps::ShellWindowGeometryCache::Factory::GetInstance();
+  EphemeralAppServiceFactory::GetInstance();
   extensions::ActivityLogFactory::GetInstance();
   extensions::ActivityLogAPI::GetFactoryInstance();
   extensions::AlarmManager::GetFactoryInstance();
@@ -262,14 +272,22 @@ EnsureBrowserContextKeyedServiceFactoriesBuilt() {
 #if defined(OS_CHROMEOS)
   extensions::InputImeAPI::GetFactoryInstance();
   extensions::InputMethodAPI::GetFactoryInstance();
+  extensions::ScreenlockPrivateEventRouter::GetFactoryInstance();
 #endif
   extensions::LocationManager::GetFactoryInstance();
+#if defined(OS_CHROMEOS)
+  extensions::LogPrivateAPI::GetFactoryInstance();
+#endif
   extensions::ManagementAPI::GetFactoryInstance();
   extensions::MDnsAPI::GetFactoryInstance();
   extensions::MediaGalleriesPrivateAPI::GetFactoryInstance();
 #if defined(OS_CHROMEOS)
   extensions::MediaPlayerAPI::GetFactoryInstance();
 #endif
+  extensions::MenuManagerFactory::GetInstance();
+#if defined(OS_CHROMEOS) || defined(OS_WIN)
+  extensions::NetworkingPrivateEventRouterFactory::GetInstance();
+#endif  // defined(OS_CHROMEOS) || defined(OS_WIN)
   extensions::OmniboxAPI::GetFactoryInstance();
 #if defined(ENABLE_PLUGINS)
   extensions::PluginManager::GetFactoryInstance();
@@ -277,6 +295,8 @@ EnsureBrowserContextKeyedServiceFactoriesBuilt() {
   extensions::PreferenceAPI::GetFactoryInstance();
   extensions::ProcessesAPI::GetFactoryInstance();
   extensions::PushMessagingAPI::GetFactoryInstance();
+  extensions::RendererStartupHelperFactory::GetInstance();
+  extensions::RuntimeAPIFactory::GetInstance();
   extensions::SessionsAPI::GetFactoryInstance();
   extensions::SettingsOverridesAPI::GetFactoryInstance();
   extensions::SignedInDevicesManager::GetFactoryInstance();
@@ -285,15 +305,16 @@ EnsureBrowserContextKeyedServiceFactoriesBuilt() {
 #endif
   extensions::StreamsPrivateAPI::GetFactoryInstance();
   extensions::SystemInfoAPI::GetFactoryInstance();
-  extensions::SuggestedLinksRegistryFactory::GetInstance();
   extensions::TabCaptureRegistry::GetFactoryInstance();
   extensions::TabsWindowsAPI::GetFactoryInstance();
   extensions::TtsAPI::GetFactoryInstance();
   extensions::WebNavigationAPI::GetFactoryInstance();
+  extensions::WebRequestAPI::GetFactoryInstance();
   extensions::WebrtcAudioPrivateEventService::GetFactoryInstance();
+  ExtensionToolbarModelFactory::GetInstance();
 #endif  // defined(ENABLE_EXTENSIONS)
   FaviconServiceFactory::GetInstance();
-#if defined(OS_CHROMEOS) && defined(FILE_MANAGER_EXTENSION)
+#if defined(OS_CHROMEOS)
   file_manager::FileBrowserPrivateAPIFactory::GetInstance();
 #endif
   FindBarStateFactory::GetInstance();
@@ -329,18 +350,23 @@ EnsureBrowserContextKeyedServiceFactoriesBuilt() {
   policy::ProfilePolicyConnectorFactory::GetInstance();
 #if defined(ENABLE_CONFIGURATION_POLICY)
 #if defined(OS_CHROMEOS)
+  policy::PolicyCertServiceFactory::GetInstance();
   policy::RecommendationRestorerFactory::GetInstance();
   policy::UserCloudPolicyManagerFactoryChromeOS::GetInstance();
   policy::UserCloudPolicyTokenForwarderFactory::GetInstance();
+  policy::UserNetworkConfigurationUpdaterFactory::GetInstance();
 #else
   policy::UserCloudPolicyManagerFactory::GetInstance();
+#if !defined(OS_IOS)
   policy::UserPolicySigninServiceFactory::GetInstance();
 #endif
+#endif
+  policy::PolicyHeaderServiceFactory::GetInstance();
+  policy::SchemaRegistryServiceFactory::GetInstance();
   policy::UserCloudPolicyInvalidatorFactory::GetInstance();
 #endif
   predictors::AutocompleteActionPredictorFactory::GetInstance();
   predictors::PredictorDatabaseFactory::GetInstance();
-  predictors::ResourcePrefetchPredictorFactory::GetInstance();
   prerender::PrerenderManagerFactory::GetInstance();
   prerender::PrerenderLinkManagerFactory::GetInstance();
   ProfileSyncServiceFactory::GetInstance();
@@ -362,10 +388,6 @@ EnsureBrowserContextKeyedServiceFactoriesBuilt() {
 #endif
 #if defined(ENABLE_EXTENSIONS)
   TokenCacheServiceFactory::GetInstance();
-#endif
-  TokenServiceFactory::GetInstance();
-#if !defined(OS_ANDROID)
-  UserStyleSheetWatcherFactory::GetInstance();
 #endif
   WebDataServiceFactory::GetInstance();
 }

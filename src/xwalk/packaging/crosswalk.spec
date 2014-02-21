@@ -1,7 +1,7 @@
 %bcond_with x
 %bcond_with wayland
 Name:           crosswalk
-Version:        5.32.88.0
+Version:        5.34.90.0
 Release:        0
 Summary:        Crosswalk is an app runtime based on Chromium
 # License:        (BSD-3-Clause and LGPL-2.1+)
@@ -16,11 +16,6 @@ Source1001:     crosswalk.manifest
 Source1002:     %{name}.xml.in
 Source1003:     %{name}.png
 Patch1:         %{name}-do-not-look-for-gtk2-when-using-aura.patch
-Patch2:         %{name}-look-for-pvr-libGLESv2.so.patch
-Patch3:         %{name}-include-tizen-ime-files.patch
-Patch4:         %{name}-disable-ffmpeg-pragmas.patch
-Patch5:         Chromium-Fix-gcc-4.5.3-uninitialized-warnings.patch
-Patch6:         Blink-Fix-gcc-4.5.3-uninitialized-warnings.patch
 Patch7:         %{name}-tizen-audio-session-manager.patch
 Patch8:         %{name}-mesa-ozone-typedefs.patch
 Patch9:         Blink-Add-GCC-flag-Wno-narrowing-fix-64bits-build.patch
@@ -62,6 +57,7 @@ BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(pkgmgr-info)
 BuildRequires:  pkgconfig(pkgmgr-parser)
 BuildRequires:  pkgconfig(nspr)
+BuildRequires:  pkgconfig(nss)
 BuildRequires:  pkgconfig(sensor)
 BuildRequires:  pkgconfig(vconf)
 %if %{with x}
@@ -86,13 +82,6 @@ BuildRequires:  pkgconfig(xtst)
 # Wayland support) or for a certain Tizen major version (the differences betwen
 # Tizen 2 and Tizen 3 are big enough that we need completely different patches
 # and build dependencies, for example).
-
-%if "%{tizen}" < "3.0"
-BuildRequires:  gst-plugins-atomisp-devel
-BuildRequires:  pkgconfig(openssl)
-%else
-BuildRequires:  pkgconfig(nss)
-%endif
 
 %if %{with wayland}
 BuildRequires:  pkgconfig(wayland-client)
@@ -131,7 +120,6 @@ sed "s/@VERSION@/%{version}/g" %{name}.xml.in > %{name}.xml
 
 cp -a src/AUTHORS AUTHORS.chromium
 cp -a src/LICENSE LICENSE.chromium
-cp -a src/xwalk/AUTHORS AUTHORS.xwalk
 cp -a src/xwalk/LICENSE LICENSE.xwalk
 
 %patch1
@@ -189,11 +177,6 @@ if [ -z "${BUILDDIR_NAME}" ]; then
 else
    GYP_EXTRA_FLAGS="--depth=. --generator-output=${BUILDDIR_NAME}"
 fi
-
-# Tizen 2's NSS is too old for Chromium, so we have to use the OpenSSL backend.
-%if "%{tizen}" < "3.0"
-GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Dtizen_mobile=1 -Duse_openssl=1"
-%endif
 
 %if %{with wayland}
 GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Duse_ash=1 -Duse_ozone=1"
@@ -258,6 +241,7 @@ install -p -D ${BUILDDIR_NAME}/out/Release/xwalk-launcher %{buildroot}%{_bindir}
 install -m 06755 -p -D ${BUILDDIR_NAME}/out/Release/xwalk-pkg-helper %{buildroot}%{_bindir}/xwalk-pkg-helper
 
 # Supporting libraries and resources.
+install -p -D ${BUILDDIR_NAME}/out/Release/icudtl.dat %{buildroot}%{_libdir}/xwalk/icudtl.dat
 install -p -D ${BUILDDIR_NAME}/out/Release/libffmpegsumo.so %{buildroot}%{_libdir}/xwalk/libffmpegsumo.so
 install -p -D ${BUILDDIR_NAME}/out/Release/libosmesa.so %{buildroot}%{_libdir}/xwalk/libosmesa.so
 install -p -D ${BUILDDIR_NAME}/out/Release/xwalk.pak %{buildroot}%{_libdir}/xwalk/xwalk.pak
@@ -268,11 +252,12 @@ install -p -D ../%{name}.png %{buildroot}%{_desktop_icondir}/%{name}.png
 
 %files
 %manifest %{name}.manifest
-# %license AUTHORS.chromium AUTHORS.xwalk LICENSE.chromium LICENSE.xwalk
+# %license AUTHORS.chromium LICENSE.chromium LICENSE.xwalk
 %{_bindir}/xwalk
 %{_bindir}/xwalkctl
 %{_bindir}/xwalk-launcher
 %{_bindir}/xwalk-pkg-helper
+%{_libdir}/xwalk/icudtl.dat
 %{_libdir}/xwalk/libffmpegsumo.so
 %{_libdir}/xwalk/xwalk
 %{_libdir}/xwalk/xwalk.pak

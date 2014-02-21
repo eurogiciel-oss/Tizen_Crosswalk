@@ -20,6 +20,7 @@
 #include "net/url_request/url_request_job_factory.h"
 
 class GURL;
+class PrefService;
 
 namespace content {
 class ResourceContext;
@@ -98,6 +99,15 @@ class AwBrowserContext : public content::BrowserContext,
         int render_view_id,
         int bridge_id,
         const GURL& requesting_frame) OVERRIDE;
+  virtual void RequestProtectedMediaIdentifierPermission(
+      int render_process_id,
+      int render_view_id,
+      int bridge_id,
+      int group_id,
+      const GURL& requesting_frame,
+      const ProtectedMediaIdentifierPermissionCallback& callback) OVERRIDE;
+  virtual void CancelProtectedMediaIdentifierPermissionRequests(int group_id)
+      OVERRIDE;
   virtual content::ResourceContext* GetResourceContext() OVERRIDE;
   virtual content::DownloadManagerDelegate*
       GetDownloadManagerDelegate() OVERRIDE;
@@ -126,7 +136,7 @@ class AwBrowserContext : public content::BrowserContext,
   scoped_ptr<visitedlink::VisitedLinkMaster> visitedlink_master_;
   scoped_ptr<content::ResourceContext> resource_context_;
 
-  bool user_pref_service_ready_;
+  scoped_ptr<PrefService> user_pref_service_;
 
   DISALLOW_COPY_AND_ASSIGN(AwBrowserContext);
 };

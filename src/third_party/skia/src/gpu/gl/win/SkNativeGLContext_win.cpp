@@ -10,7 +10,7 @@
 #include "SkWGL.h"
 
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#include <windows.h>
 
 SkNativeGLContext::AutoContextRestore::AutoContextRestore() {
     fOldHGLRC = wglGetCurrentContext();
@@ -86,7 +86,8 @@ const GrGLInterface* SkNativeGLContext::createGLContext() {
         return NULL;
     }
 
-    if (!(fGlRenderContext = SkCreateWGLContext(fDeviceContext, 0, true))) {
+    // Requesting a Core profile would bar us from using NVPR. So we pass false.
+    if (!(fGlRenderContext = SkCreateWGLContext(fDeviceContext, 0, false))) {
         SkDebugf("Could not create rendering context.\n");
         this->destroyGLContext();
         return NULL;

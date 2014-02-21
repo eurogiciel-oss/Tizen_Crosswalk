@@ -9,7 +9,6 @@
 #include "base/path_service.h"
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
-#include "chrome/browser/ui/window_snapshot/window_snapshot.h"
 #include "ui/base/test/ui_controls.h"
 #include "ui/base/win/foreground_helper.h"
 #include "ui/views/focus/focus_manager.h"
@@ -29,7 +28,7 @@ void HideNativeWindow(gfx::NativeWindow window) {
     HideNativeWindowAura(window);
     return;
   }
-  HWND hwnd = window->GetDispatcher()->GetAcceleratedWidget();
+  HWND hwnd = window->GetDispatcher()->host()->GetAcceleratedWidget();
 #else
   HWND hwnd = window;
 #endif
@@ -43,7 +42,7 @@ bool ShowAndFocusNativeWindow(gfx::NativeWindow window) {
     ShowAndFocusNativeWindowAura(window);
   window->Show();
   // Always make sure the window hosting ash is visible and focused.
-  HWND hwnd = window->GetDispatcher()->GetAcceleratedWidget();
+  HWND hwnd = window->GetDispatcher()->host()->GetAcceleratedWidget();
 #else
   HWND hwnd = window;
 #endif

@@ -15,15 +15,9 @@
 #include "base/time/time.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chrome_notification_types.h"
-#include "chrome/browser/infobars/infobar_service.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/tab_contents/language_state.h"
 #include "chrome/browser/tab_contents/tab_util.h"
-#include "chrome/browser/translate/page_translated_details.h"
 #include "chrome/browser/translate/translate_accept_languages.h"
-#include "chrome/browser/translate/translate_browser_metrics.h"
-#include "chrome/browser/translate/translate_error_details.h"
-#include "chrome/browser/translate/translate_event_details.h"
 #include "chrome/browser/translate/translate_infobar_delegate.h"
 #include "chrome/browser/translate/translate_language_list.h"
 #include "chrome/browser/translate/translate_prefs.h"
@@ -39,9 +33,14 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/render_messages.h"
-#include "chrome/common/translate/language_detection_details.h"
 #include "chrome/common/url_constants.h"
-#include "components/translate/common/translate_constants.h"
+#include "components/translate/core/browser/language_state.h"
+#include "components/translate/core/browser/page_translated_details.h"
+#include "components/translate/core/browser/translate_browser_metrics.h"
+#include "components/translate/core/browser/translate_error_details.h"
+#include "components/translate/core/browser/translate_event_details.h"
+#include "components/translate/core/common/language_detection_details.h"
+#include "components/translate/core/common/translate_constants.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_details.h"
 #include "content/public/browser/navigation_entry.h"
@@ -55,7 +54,7 @@
 #include "net/base/url_util.h"
 #include "net/http/http_status_code.h"
 
-#ifdef FILE_MANAGER_EXTENSION
+#if defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/file_manager/app_id.h"
 #include "extensions/common/constants.h"
 #endif
@@ -83,17 +82,6 @@ const int kMaxTranslateLoadCheckAttempts = 20;
 // The field trial name to compare Translate infobar and bubble.
 const char kFieldTrialNameForUX[] = "TranslateInfobarVsBubble";
 
-bool IsEnabledTranslateNewUX() {
-  if (CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kEnableTranslateNewUX)) {
-    return true;
-  }
-
-  std::string group_name = base::FieldTrialList::FindFullName(
-      kFieldTrialNameForUX);
-  return group_name == "Bubble";
-}
-
 }  // namespace
 
 TranslateManager::~TranslateManager() {
@@ -116,11 +104,11 @@ bool TranslateManager::IsTranslatableURL(const GURL& url) {
   return !url.is_empty() &&
          !url.SchemeIs(chrome::kChromeUIScheme) &&
          !url.SchemeIs(chrome::kChromeDevToolsScheme) &&
-#ifdef FILE_MANAGER_EXTENSION
+#if defined(OS_CHROMEOS)
          !(url.SchemeIs(extensions::kExtensionScheme) &&
            url.DomainIs(file_manager::kFileManagerAppId)) &&
 #endif
-         !url.SchemeIs(chrome::kFtpScheme);
+         !url.SchemeIs(content::kFtpScheme);
 }
 
 // static
@@ -214,7 +202,7 @@ void TranslateManager::Observe(int type,
       }
 
       if (!load_details->is_main_frame &&
-          translate_tab_helper->language_state().translation_declined()) {
+          translate_tab_helper->GetLanguageState().translation_declined()) {
         // Some sites (such as Google map) may trigger sub-frame navigations
         // when the user interacts with the page.  We don't want to show a new
         // infobar if the user already dismissed one in that case.
@@ -228,7 +216,7 @@ void TranslateManager::Observe(int type,
       // When doing a page reload, TAB_LANGUAGE_DETERMINED is not sent,
       // so the translation needs to be explicitly initiated, but only when the
       // page needs translation.
-      if (!translate_tab_helper->language_state().page_needs_translation())
+      if (!translate_tab_helper->GetLanguageState().page_needs_translation())
         return;
       // Note that we delay it as the TranslateManager gets this notification
       // before the WebContents and the WebContents processing might remove the
@@ -240,7 +228,7 @@ void TranslateManager::Observe(int type,
               weak_method_factory_.GetWeakPtr(),
               controller->GetWebContents()->GetRenderProcessHost()->GetID(),
               controller->GetWebContents()->GetRenderViewHost()->GetRoutingID(),
-              translate_tab_helper->language_state().original_language(), 0));
+              translate_tab_helper->GetLanguageState().original_language(), 0));
       break;
     }
     case chrome::NOTIFICATION_TAB_LANGUAGE_DETERMINED: {
@@ -258,7 +246,7 @@ void TranslateManager::Observe(int type,
       if (!translate_tab_helper)
         return;
 
-      LanguageState& language_state = translate_tab_helper->language_state();
+      LanguageState& language_state = translate_tab_helper->GetLanguageState();
       if (language_state.page_needs_translation() &&
           !language_state.translation_pending() &&
           !language_state.translation_declined() &&
@@ -406,14 +394,9 @@ void TranslateManager::InitiateTranslation(WebContents* web_contents,
   // automatically translate.  Note that in incognito mode we disable that
   // feature; the user will get an infobar, so they can control whether the
   // page's text is sent to the translate server.
-  std::string auto_target_lang;
-  if (!web_contents->GetBrowserContext()->IsOffTheRecord() &&
-      TranslatePrefs::ShouldAutoTranslate(prefs, language_code,
-          &auto_target_lang)) {
-    // We need to confirm that the saved target language is still supported.
-    // Also, GetLanguageCode will take care of removing country code if any.
-    auto_target_lang = GetLanguageCode(auto_target_lang);
-    if (IsSupportedLanguage(auto_target_lang)) {
+  if (!web_contents->GetBrowserContext()->IsOffTheRecord()) {
+    std::string auto_target_lang = GetAutoTargetLanguage(language_code, prefs);
+    if (!auto_target_lang.empty()) {
       TranslateBrowserMetrics::ReportInitiationStatus(
           TranslateBrowserMetrics::INITIATION_STATUS_AUTO_BY_CONFIG);
       TranslatePage(web_contents, language_code, auto_target_lang);
@@ -421,7 +404,7 @@ void TranslateManager::InitiateTranslation(WebContents* web_contents,
     }
   }
 
-  LanguageState& language_state = translate_tab_helper->language_state();
+  LanguageState& language_state = translate_tab_helper->GetLanguageState();
   std::string auto_translate_to = language_state.AutoTranslateTo();
   if (!auto_translate_to.empty()) {
     // This page was navigated through a click from a translated page.
@@ -434,17 +417,19 @@ void TranslateManager::InitiateTranslation(WebContents* web_contents,
   TranslateBrowserMetrics::ReportInitiationStatus(
       TranslateBrowserMetrics::INITIATION_STATUS_SHOW_INFOBAR);
 
-  if (IsEnabledTranslateNewUX()) {
+  if (IsTranslateBubbleEnabled()) {
     language_state.SetTranslateEnabled(true);
-    if (language_state.HasLanguageChanged())
+    if (language_state.HasLanguageChanged()) {
       ShowBubble(web_contents,
-                 TranslateBubbleModel::VIEW_STATE_BEFORE_TRANSLATE);
+                 TranslateBubbleModel::VIEW_STATE_BEFORE_TRANSLATE,
+                 TranslateErrors::NONE);
+    }
   } else {
     // Prompts the user if he/she wants the page translated.
     TranslateInfoBarDelegate::Create(
-        false, InfoBarService::FromWebContents(web_contents),
-        TranslateInfoBarDelegate::BEFORE_TRANSLATE, language_code, target_lang,
-        TranslateErrors::NONE, profile->GetPrefs(), ShortcutConfig());
+        false, web_contents, TranslateInfoBarDelegate::BEFORE_TRANSLATE,
+        language_code, target_lang, TranslateErrors::NONE, profile->GetPrefs(),
+        ShortcutConfig());
   }
 }
 
@@ -460,7 +445,7 @@ void TranslateManager::InitiateTranslationPosted(int process_id,
 
   TranslateTabHelper* translate_tab_helper =
       TranslateTabHelper::FromWebContents(web_contents);
-  if (translate_tab_helper->language_state().translation_pending())
+  if (translate_tab_helper->GetLanguageState().translation_pending())
     return;
 
   // During a reload we need web content to be available before the
@@ -497,15 +482,16 @@ void TranslateManager::TranslatePage(WebContents* web_contents,
   if (!IsSupportedLanguage(source_lang))
     source_lang = std::string(translate::kUnknownLanguageCode);
 
-  if (IsEnabledTranslateNewUX()) {
-    ShowBubble(web_contents, TranslateBubbleModel::VIEW_STATE_TRANSLATING);
+  if (IsTranslateBubbleEnabled()) {
+    ShowBubble(web_contents, TranslateBubbleModel::VIEW_STATE_TRANSLATING,
+               TranslateErrors::NONE);
   } else {
     Profile* profile =
         Profile::FromBrowserContext(web_contents->GetBrowserContext());
     TranslateInfoBarDelegate::Create(
-        true, InfoBarService::FromWebContents(web_contents),
-        TranslateInfoBarDelegate::TRANSLATING, source_lang, target_lang,
-        TranslateErrors::NONE, profile->GetPrefs(), ShortcutConfig());
+        true, web_contents, TranslateInfoBarDelegate::TRANSLATING, source_lang,
+        target_lang, TranslateErrors::NONE, profile->GetPrefs(),
+        ShortcutConfig());
   }
 
   DCHECK(script_.get() != NULL);
@@ -546,8 +532,8 @@ void TranslateManager::RevertTranslation(WebContents* web_contents) {
 
   TranslateTabHelper* translate_tab_helper =
       TranslateTabHelper::FromWebContents(web_contents);
-  translate_tab_helper->language_state().set_current_language(
-      translate_tab_helper->language_state().original_language());
+  translate_tab_helper->GetLanguageState().SetCurrentLanguage(
+      translate_tab_helper->GetLanguageState().original_language());
 }
 
 void TranslateManager::ReportLanguageDetectionError(WebContents* web_contents) {
@@ -572,7 +558,7 @@ void TranslateManager::ReportLanguageDetectionError(WebContents* web_contents) {
   report_error_url = net::AppendQueryParameter(
       report_error_url,
       kSourceLanguageQueryName,
-      translate_tab_helper->language_state().original_language());
+      translate_tab_helper->GetLanguageState().original_language());
 
   report_error_url = TranslateURLUtil::AddHostLocaleToUrl(report_error_url);
   report_error_url = TranslateURLUtil::AddApiKeyToUrl(report_error_url);
@@ -604,7 +590,7 @@ void TranslateManager::DoTranslatePage(WebContents* web_contents,
   if (!translate_tab_helper)
     return;
 
-  translate_tab_helper->language_state().set_translation_pending(true);
+  translate_tab_helper->GetLanguageState().set_translation_pending(true);
   web_contents->GetRenderViewHost()->Send(new ChromeViewMsg_TranslatePage(
       web_contents->GetRenderViewHost()->GetRoutingID(), entry->GetPageID(),
       translate_script, source_lang, target_lang));
@@ -618,20 +604,20 @@ void TranslateManager::PageTranslated(WebContents* web_contents,
     details->error_type = TranslateErrors::UNSUPPORTED_LANGUAGE;
   }
 
-  if (IsEnabledTranslateNewUX()) {
+  if (IsTranslateBubbleEnabled()) {
     TranslateBubbleModel::ViewState view_state =
         (details->error_type == TranslateErrors::NONE) ?
         TranslateBubbleModel::VIEW_STATE_AFTER_TRANSLATE :
         TranslateBubbleModel::VIEW_STATE_ERROR;
-    ShowBubble(web_contents, view_state);
+    ShowBubble(web_contents, view_state, details->error_type);
   } else {
     PrefService* prefs = Profile::FromBrowserContext(
         web_contents->GetBrowserContext())->GetPrefs();
     TranslateInfoBarDelegate::Create(
-        true, InfoBarService::FromWebContents(web_contents),
+        true, web_contents,
         (details->error_type == TranslateErrors::NONE) ?
-        TranslateInfoBarDelegate::AFTER_TRANSLATE :
-        TranslateInfoBarDelegate::TRANSLATION_ERROR,
+            TranslateInfoBarDelegate::AFTER_TRANSLATE :
+            TranslateInfoBarDelegate::TRANSLATION_ERROR,
         details->source_language, details->target_language, details->error_type,
         prefs, ShortcutConfig());
   }
@@ -692,16 +678,16 @@ void TranslateManager::OnTranslateScriptFetchComplete(
       DoTranslatePage(web_contents, translate_script,
                       request.source_lang, request.target_lang);
     } else {
-      if (IsEnabledTranslateNewUX()) {
-        ShowBubble(web_contents, TranslateBubbleModel::VIEW_STATE_ERROR);
+      if (IsTranslateBubbleEnabled()) {
+        ShowBubble(web_contents, TranslateBubbleModel::VIEW_STATE_ERROR,
+                   TranslateErrors::NETWORK);
       } else {
         Profile* profile =
             Profile::FromBrowserContext(web_contents->GetBrowserContext());
         TranslateInfoBarDelegate::Create(
-            true, InfoBarService::FromWebContents(web_contents),
-            TranslateInfoBarDelegate::TRANSLATION_ERROR, request.source_lang,
-            request.target_lang, TranslateErrors::NETWORK, profile->GetPrefs(),
-            ShortcutConfig());
+            true, web_contents, TranslateInfoBarDelegate::TRANSLATION_ERROR,
+            request.source_lang, request.target_lang, TranslateErrors::NETWORK,
+            profile->GetPrefs(), ShortcutConfig());
       }
 
       if (!web_contents->GetBrowserContext()->IsOffTheRecord()) {
@@ -717,12 +703,45 @@ void TranslateManager::OnTranslateScriptFetchComplete(
 }
 
 void TranslateManager::ShowBubble(WebContents* web_contents,
-                                  TranslateBubbleModel::ViewState view_state) {
+                                  TranslateBubbleModel::ViewState view_state,
+                                  TranslateErrors::Type error_type) {
   // The bubble is implemented only on the desktop platforms.
 #if !defined(OS_ANDROID) && !defined(OS_IOS)
   Browser* browser = chrome::FindBrowserWithWebContents(web_contents);
-  BrowserWindow* window = browser ? browser->window() : NULL;
-  TranslateBubbleFactory::Show(window, web_contents, view_state);
+
+  // |browser| might be NULL when testing. In this case, Show(...) should be
+  // called because the implementation for testing is used.
+  if (!browser) {
+    TranslateBubbleFactory::Show(NULL, web_contents, view_state, error_type);
+    return;
+  }
+
+  if (web_contents != browser->tab_strip_model()->GetActiveWebContents())
+    return;
+
+  // This ShowBubble function is also used for upating the existing bubble.
+  // However, with the bubble shown, any browser windows are NOT activated
+  // because the bubble takes the focus from the other widgets including the
+  // browser windows. So it is checked that |browser| is the last activated
+  // browser, not is now activated.
+  if (browser !=
+      chrome::FindLastActiveWithHostDesktopType(browser->host_desktop_type())) {
+    return;
+  }
+
+  // During auto-translating, the bubble should not be shown.
+  if (view_state == TranslateBubbleModel::VIEW_STATE_TRANSLATING ||
+      view_state == TranslateBubbleModel::VIEW_STATE_AFTER_TRANSLATE) {
+    TranslateTabHelper* translate_tab_helper =
+        TranslateTabHelper::FromWebContents(web_contents);
+    if (!translate_tab_helper ||
+        translate_tab_helper->GetLanguageState().InTranslateNavigation()) {
+      return;
+    }
+  }
+
+  TranslateBubbleFactory::Show(browser->window(), web_contents, view_state,
+                               error_type);
 #else
   NOTREACHED();
 #endif
@@ -731,7 +750,9 @@ void TranslateManager::ShowBubble(WebContents* web_contents,
 // static
 std::string TranslateManager::GetTargetLanguage(PrefService* prefs) {
   std::string ui_lang =
-      GetLanguageCode(g_browser_process->GetApplicationLocale());
+      TranslatePrefs::ConvertLangCodeForTranslation(
+          GetLanguageCode(g_browser_process->GetApplicationLocale()));
+
   if (IsSupportedLanguage(ui_lang))
     return ui_lang;
 
@@ -751,6 +772,34 @@ std::string TranslateManager::GetTargetLanguage(PrefService* prefs) {
       return lang_code;
   }
   return std::string();
+}
+
+// static
+std::string TranslateManager::GetAutoTargetLanguage(
+    const std::string& original_language,
+    PrefService* prefs) {
+  std::string auto_target_lang;
+  if (TranslatePrefs::ShouldAutoTranslate(prefs, original_language,
+                                          &auto_target_lang)) {
+    // We need to confirm that the saved target language is still supported.
+    // Also, GetLanguageCode will take care of removing country code if any.
+    auto_target_lang = GetLanguageCode(auto_target_lang);
+    if (IsSupportedLanguage(auto_target_lang))
+      return auto_target_lang;
+  }
+  return std::string();
+}
+
+// static
+bool TranslateManager::IsTranslateBubbleEnabled() {
+  if (CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kEnableTranslateNewUX)) {
+    return true;
+  }
+
+  std::string group_name = base::FieldTrialList::FindFullName(
+      kFieldTrialNameForUX);
+  return group_name == "Bubble";
 }
 
 // static

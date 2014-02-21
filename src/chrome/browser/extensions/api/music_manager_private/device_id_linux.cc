@@ -10,21 +10,23 @@
 #include "base/file_util.h"
 #include "base/files/file_enumerator.h"
 #include "base/files/file_path.h"
+#include "base/threading/thread_restrictions.h"
 #include "content/public/browser/browser_thread.h"
 
 namespace {
 
 const char kDiskByUuidDirectoryName[] = "/dev/disk/by-uuid";
-const char* kDeviceNames[] = { "sda1", "hda1", "dm-0" };
+const char* kDeviceNames[] = {
+  "sda1", "hda1", "dm-0", "xvda1", "sda2", "hda2", "dm-1", "xvda2",
+};
 
 // Map from device name to disk uuid
 typedef std::map<base::FilePath, base::FilePath> DiskEntries;
 
 void GetDiskUuid(const extensions::api::DeviceId::IdCallback& callback) {
-  DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::FILE));
+  base::ThreadRestrictions::AssertIOAllowed();
 
   DiskEntries disk_uuids;
-
   base::FileEnumerator files(base::FilePath(kDiskByUuidDirectoryName),
                              false,  // Recursive.
                              base::FileEnumerator::FILES);
@@ -34,7 +36,7 @@ void GetDiskUuid(const extensions::api::DeviceId::IdCallback& callback) {
       break;
 
     base::FilePath target_path;
-    if (!file_util::ReadSymbolicLink(file_path, &target_path))
+    if (!base::ReadSymbolicLink(file_path, &target_path))
       continue;
 
     base::FilePath device_name = target_path.BaseName();
@@ -78,9 +80,8 @@ void GetDiskUuid(const extensions::api::DeviceId::IdCallback& callback) {
 namespace extensions {
 namespace api {
 
-// Linux: Look for disk uuid
-/* static */
-void DeviceId::GetMachineId(const IdCallback& callback) {
+// static
+void DeviceId::GetRawDeviceId(const IdCallback& callback) {
   DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
 
   content::BrowserThread::PostTask(

@@ -31,8 +31,8 @@
 #include "config.h"
 #include "platform/text/BidiResolver.h"
 
-#include "platform/graphics/TextRunIterator.h"
 #include "platform/text/BidiTestHarness.h"
+#include "platform/text/TextRunIterator.h"
 #include "wtf/OwnPtr.h"
 #include <fstream>
 #include <gtest/gtest.h>
@@ -52,7 +52,60 @@ TEST(BidiResolver, Basic)
     bidiResolver.setPositionIgnoringNestedIsolates(TextRunIterator(&run, 0));
     TextDirection direction = bidiResolver.determineParagraphDirectionality(&hasStrongDirectionality);
     EXPECT_TRUE(hasStrongDirectionality);
-    EXPECT_EQ(direction, LTR);
+    EXPECT_EQ(LTR, direction);
+}
+
+TextDirection determineParagraphDirectionality(const TextRun& textRun, bool* hasStrongDirectionality = 0)
+{
+    BidiResolver<TextRunIterator, BidiCharacterRun> resolver;
+    resolver.setStatus(BidiStatus(LTR, false));
+    resolver.setPositionIgnoringNestedIsolates(TextRunIterator(&textRun, 0));
+    return resolver.determineParagraphDirectionality(hasStrongDirectionality);
+}
+
+struct TestData {
+    UChar text[3];
+    size_t length;
+    TextDirection expectedDirection;
+    bool expectedStrong;
+};
+
+void testDirectionality(const TestData& entry)
+{
+    bool hasStrongDirectionality;
+    String data(entry.text, entry.length);
+    TextRun run(data);
+    TextDirection direction = determineParagraphDirectionality(run, &hasStrongDirectionality);
+    EXPECT_EQ(entry.expectedStrong, hasStrongDirectionality);
+    EXPECT_EQ(entry.expectedDirection, direction);
+}
+
+TEST(BidiResolver, ParagraphDirectionSurrogates)
+{
+    const TestData testData[] = {
+        // Test strong RTL, non-BMP. (U+10858 Imperial Aramaic number one, strong RTL)
+        { { 0xD802, 0xDC58 }, 2, RTL, true },
+
+        // Test strong LTR, non-BMP. (U+1D15F Musical symbol quarter note, strong LTR)
+        { { 0xD834, 0xDD5F }, 2, LTR, true },
+
+        // Test broken surrogate: valid leading, invalid trail. (Lead of U+10858, space)
+        { { 0xD802, ' ' }, 2, LTR, false },
+
+        // Test broken surrogate: invalid leading. (Trail of U+10858, U+05D0 Hebrew Alef)
+        { { 0xDC58, 0x05D0 }, 2, RTL, true },
+
+        // Test broken surrogate: valid leading, invalid trail/valid lead, valid trail.
+        { { 0xD802, 0xD802, 0xDC58 }, 3, RTL, true },
+
+        // Test broken surrogate: valid leading, no trail (string too short). (Lead of U+10858)
+        { { 0xD802, 0xDC58 }, 1, LTR, false },
+
+        // Test broken surrogate: trail appearing before lead. (U+10858 units reversed)
+        { { 0xDC58, 0xD802 }, 2, LTR, false }
+    };
+    for (size_t i = 0; i < WTF_ARRAY_LENGTH(testData); ++i)
+        testDirectionality(testData[i]);
 }
 
 class BidiTestRunner {
@@ -105,14 +158,6 @@ std::string diffString(const std::vector<int>& actual, const std::vector<int>& e
     diff << " expected: ";
     std::copy(expected.begin(), expected.end(), std::ostream_iterator<int>(diff, " "));
     return diff.str();
-}
-
-TextDirection determineParagraphDirectionality(const TextRun& textRun)
-{
-    BidiResolver<TextRunIterator, BidiCharacterRun> resolver;
-    resolver.setStatus(BidiStatus(LTR, false));
-    resolver.setPositionIgnoringNestedIsolates(TextRunIterator(&textRun, 0));
-    return resolver.determineParagraphDirectionality();
 }
 
 void BidiTestRunner::runTest(const std::basic_string<UChar>& input, const std::vector<int>& expectedOrder,
@@ -212,7 +257,7 @@ TEST(BidiResolver, BidiTest_txt)
     // This code wants to use PathService from base/path_service.h
     // but we aren't allowed to depend on base/ directly from Blink yet.
     // Alternatively we could use:
-    // WebKit::Platform::current()->unitTestSupport()->webKitRootDir()
+    // blink::Platform::current()->unitTestSupport()->webKitRootDir()
     // and a relative path, but that would require running inside
     // webkit_unit_tests (to have a functioning Platform object).
     // The file we want is:
@@ -238,11 +283,11 @@ TEST(BidiResolver, BidiTest_txt)
 
     // The unittest harness only pays attention to GTest output, so we verify
     // that the tests behaved as expected:
-    EXPECT_EQ(runner.m_testsRun, 352098u);
-    EXPECT_EQ(runner.m_testsSkipped, 418143u);
-    EXPECT_EQ(runner.m_ignoredCharFailures, 0u);
-    EXPECT_EQ(runner.m_levelFailures, 44887u);
-    EXPECT_EQ(runner.m_orderFailures, 19153u);
+    EXPECT_EQ(352098u, runner.m_testsRun);
+    EXPECT_EQ(418143u, runner.m_testsSkipped);
+    EXPECT_EQ(0u, runner.m_ignoredCharFailures);
+    EXPECT_EQ(44882u, runner.m_levelFailures);
+    EXPECT_EQ(19151u, runner.m_orderFailures);
 }
 
 }

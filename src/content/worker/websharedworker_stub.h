@@ -6,25 +6,32 @@
 #define CONTENT_WORKER_WEBSHAREDWORKER_STUB_H_
 
 #include "base/memory/scoped_ptr.h"
+#include "content/child/scoped_child_process_reference.h"
 #include "content/worker/websharedworkerclient_proxy.h"
 #include "content/worker/worker_webapplicationcachehost_impl.h"
 #include "ipc/ipc_listener.h"
 #include "third_party/WebKit/public/web/WebSharedWorker.h"
 #include "url/gurl.h"
 
-namespace WebKit {
+namespace blink {
+class WebMessagePortChannel;
 class WebSharedWorker;
 }
 
 namespace content {
 
 class SharedWorkerDevToolsAgent;
+class WebMessagePortChannelImpl;
 
 // This class creates a WebSharedWorker, and translates incoming IPCs to the
 // appropriate WebSharedWorker APIs.
 class WebSharedWorkerStub : public IPC::Listener {
  public:
-  WebSharedWorkerStub(const string16& name, int route_id,
+  WebSharedWorkerStub(const GURL& url,
+                      const base::string16& name,
+                      const base::string16& content_security_policy,
+                      blink::WebContentSecurityPolicyType security_policy_type,
+                      int route_id,
                       const WorkerAppCacheInitInfo& appcache_init_info);
 
   // IPC::Listener implementation.
@@ -33,6 +40,9 @@ class WebSharedWorkerStub : public IPC::Listener {
 
   // Invoked when the WebSharedWorkerClientProxy is shutting down.
   void Shutdown();
+
+  void WorkerScriptLoaded();
+  void WorkerScriptLoadFailed();
 
   // Called after terminating the worker context to make sure that the worker
   // actually terminates (is not stuck in an infinite loop).
@@ -53,11 +63,14 @@ class WebSharedWorkerStub : public IPC::Listener {
 
   void OnConnect(int sent_message_port_id, int routing_id);
   void OnStartWorkerContext(
-      const GURL& url, const string16& user_agent, const string16& source_code,
-      const string16& content_security_policy,
-      WebKit::WebContentSecurityPolicyType policy_type);
+      const GURL& url, const base::string16& user_agent,
+      const base::string16& source_code,
+      const base::string16& content_security_policy,
+      blink::WebContentSecurityPolicyType policy_type);
 
   void OnTerminateWorkerContext();
+
+  ScopedChildProcessReference process_ref_;
 
   int route_id_;
   WorkerAppCacheInitInfo appcache_init_info_;
@@ -66,15 +79,15 @@ class WebSharedWorkerStub : public IPC::Listener {
   // from the worker object.
   WebSharedWorkerClientProxy client_;
 
-  WebKit::WebSharedWorker* impl_;
-  string16 name_;
+  blink::WebSharedWorker* impl_;
+  base::string16 name_;
   bool started_;
   GURL url_;
+  bool worker_script_loaded_;
   scoped_ptr<SharedWorkerDevToolsAgent> worker_devtools_agent_;
 
-  typedef std::pair<int, int> PendingConnectInfo;
-  typedef std::vector<PendingConnectInfo> PendingConnectInfoList;
-  PendingConnectInfoList pending_connects_;
+  typedef std::vector<blink::WebMessagePortChannel*> PendingChannelList;
+  PendingChannelList pending_channels_;
 
   DISALLOW_COPY_AND_ASSIGN(WebSharedWorkerStub);
 };

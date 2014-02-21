@@ -11,16 +11,16 @@
 #include "content/child/quota_message_filter.h"
 #include "content/child/thread_safe_sender.h"
 #include "content/common/quota_messages.h"
-#include "third_party/WebKit/public/web/WebStorageQuotaCallbacks.h"
-#include "third_party/WebKit/public/web/WebStorageQuotaType.h"
+#include "third_party/WebKit/public/platform/WebStorageQuotaCallbacks.h"
+#include "third_party/WebKit/public/platform/WebStorageQuotaType.h"
 #include "url/gurl.h"
 
 using quota::QuotaStatusCode;
 using quota::StorageType;
 
-using WebKit::WebStorageQuotaCallbacks;
-using WebKit::WebStorageQuotaError;
-using WebKit::WebStorageQuotaType;
+using blink::WebStorageQuotaCallbacks;
+using blink::WebStorageQuotaError;
+using blink::WebStorageQuotaType;
 
 using webkit_glue::WorkerTaskRunner;
 
@@ -34,7 +34,7 @@ namespace {
 // QuotaDispatcher::Callback implementation for WebStorageQuotaCallbacks.
 class WebStorageQuotaDispatcherCallback : public QuotaDispatcher::Callback {
  public:
-  WebStorageQuotaDispatcherCallback(WebKit::WebStorageQuotaCallbacks* callback)
+  WebStorageQuotaDispatcherCallback(blink::WebStorageQuotaCallbacks* callback)
       : callbacks_(callback) {
     DCHECK(callbacks_);
   }
@@ -42,8 +42,8 @@ class WebStorageQuotaDispatcherCallback : public QuotaDispatcher::Callback {
   virtual void DidQueryStorageUsageAndQuota(int64 usage, int64 quota) OVERRIDE {
     callbacks_->didQueryStorageUsageAndQuota(usage, quota);
   }
-  virtual void DidGrantStorageQuota(int64 granted_quota) OVERRIDE {
-    callbacks_->didGrantStorageQuota(granted_quota);
+  virtual void DidGrantStorageQuota(int64 usage, int64 granted_quota) OVERRIDE {
+    callbacks_->didGrantStorageQuota(usage, granted_quota);
   }
   virtual void DidFail(quota::QuotaStatusCode error) OVERRIDE {
     callbacks_->didFail(static_cast<WebStorageQuotaError>(error));
@@ -51,7 +51,7 @@ class WebStorageQuotaDispatcherCallback : public QuotaDispatcher::Callback {
 
  private:
   // Not owned (self-destructed).
-  WebKit::WebStorageQuotaCallbacks* callbacks_;
+  blink::WebStorageQuotaCallbacks* callbacks_;
 };
 
 int CurrentWorkerId() {
@@ -135,16 +135,17 @@ void QuotaDispatcher::RequestStorageQuota(
 // static
 QuotaDispatcher::Callback*
 QuotaDispatcher::CreateWebStorageQuotaCallbacksWrapper(
-    WebKit::WebStorageQuotaCallbacks* callbacks) {
+    blink::WebStorageQuotaCallbacks* callbacks) {
   return new WebStorageQuotaDispatcherCallback(callbacks);
 }
 
 void QuotaDispatcher::DidGrantStorageQuota(
     int request_id,
+    int64 current_usage,
     int64 granted_quota) {
   Callback* callback = pending_quota_callbacks_.Lookup(request_id);
   DCHECK(callback);
-  callback->DidGrantStorageQuota(granted_quota);
+  callback->DidGrantStorageQuota(current_usage, granted_quota);
   pending_quota_callbacks_.Remove(request_id);
 }
 
@@ -167,14 +168,14 @@ void QuotaDispatcher::DidFail(
   pending_quota_callbacks_.Remove(request_id);
 }
 
-COMPILE_ASSERT(int(WebKit::WebStorageQuotaTypeTemporary) == \
+COMPILE_ASSERT(int(blink::WebStorageQuotaTypeTemporary) == \
                int(quota::kStorageTypeTemporary), mismatching_enums);
-COMPILE_ASSERT(int(WebKit::WebStorageQuotaTypePersistent) == \
+COMPILE_ASSERT(int(blink::WebStorageQuotaTypePersistent) == \
                int(quota::kStorageTypePersistent), mismatching_enums);
 
-COMPILE_ASSERT(int(WebKit::WebStorageQuotaErrorNotSupported) == \
+COMPILE_ASSERT(int(blink::WebStorageQuotaErrorNotSupported) == \
                int(quota::kQuotaErrorNotSupported), mismatching_enums);
-COMPILE_ASSERT(int(WebKit::WebStorageQuotaErrorAbort) == \
+COMPILE_ASSERT(int(blink::WebStorageQuotaErrorAbort) == \
                int(quota::kQuotaErrorAbort), mismatching_enums);
 
 }  // namespace content

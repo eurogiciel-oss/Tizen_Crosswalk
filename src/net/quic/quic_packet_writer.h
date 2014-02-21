@@ -26,14 +26,21 @@ class NET_EXPORT_PRIVATE QuicPacketWriter {
   // and error_code is populated.
   virtual WriteResult WritePacket(
       const char* buffer, size_t buf_len,
-      const net::IPAddressNumber& self_address,
-      const net::IPEndPoint& peer_address,
+      const IPAddressNumber& self_address,
+      const IPEndPoint& peer_address,
       QuicBlockedWriterInterface* blocked_writer) = 0;
 
   // Returns true if the writer buffers and subsequently rewrites data
   // when an attempt to write results in the underlying socket becoming
   // write blocked.
   virtual bool IsWriteBlockedDataBuffered() const = 0;
+
+  // Returns true if the network socket is not writable.
+  virtual bool IsWriteBlocked() const = 0;
+
+  // Records that the socket has become writable, for example when an EPOLLOUT
+  // is received or an asynchronous write completes.
+  virtual void SetWritable() = 0;
 };
 
 }  // namespace net

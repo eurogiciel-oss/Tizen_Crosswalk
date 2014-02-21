@@ -12,6 +12,7 @@
 #include "chrome/browser/ui/app_list/search/app_search_provider.h"
 #include "chrome/browser/ui/app_list/search/chrome_search_result.h"
 #include "chrome/test/base/testing_profile.h"
+#include "extensions/common/extension_set.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace app_list {
@@ -42,14 +43,14 @@ class AppSearchProviderTest : public ExtensionServiceTestBase {
     service_->Init();
 
     // There should be 4 extensions in the test profile.
-    const ExtensionSet* extensions = service_->extensions();
+    const extensions::ExtensionSet* extensions = service_->extensions();
     ASSERT_EQ(static_cast<size_t>(4),  extensions->size());
 
     app_search_.reset(new AppSearchProvider(profile_.get(), NULL));
   }
 
   std::string RunQuery(const std::string& query) {
-    app_search_->Start(UTF8ToUTF16(query));
+    app_search_->Start(base::UTF8ToUTF16(query));
     app_search_->Stop();
 
     std::string result_str;
@@ -58,7 +59,7 @@ class AppSearchProviderTest : public ExtensionServiceTestBase {
       if (!result_str.empty())
         result_str += ',';
 
-      result_str += UTF16ToUTF8(results[i]->title());
+      result_str += base::UTF16ToUTF8(results[i]->title());
     }
     return result_str;
   }

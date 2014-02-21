@@ -14,6 +14,7 @@
 #include "chrome/installer/util/channel_info.h"
 #include "chrome/installer/util/fake_installation_state.h"
 #include "chrome/installer/util/google_update_constants.h"
+#include "chrome/installer/util/google_update_experiment_util.h"
 #include "chrome/installer/util/google_update_settings.h"
 #include "chrome/installer/util/util_constants.h"
 #include "chrome/installer/util/work_item_list.h"
@@ -101,7 +102,7 @@ class GoogleUpdateSettingsTest : public testing::Test {
           const wchar_t* channel = expectations[j].channel;
 
           SetApField(install, ap.c_str());
-          string16 ret_channel;
+          base::string16 ret_channel;
 
           EXPECT_TRUE(GoogleUpdateSettings::GetChromeChannelAndModifiers(
               is_system, &ret_channel));
@@ -127,7 +128,7 @@ class GoogleUpdateSettingsTest : public testing::Test {
     // an empty string.
     EXPECT_TRUE(GoogleUpdateSettings::ReadExperimentLabels(
         install == SYSTEM_INSTALL, &value));
-    EXPECT_EQ(string16(), value);
+    EXPECT_EQ(base::string16(), value);
 
     EXPECT_TRUE(GoogleUpdateSettings::SetExperimentLabels(
         install == SYSTEM_INSTALL, kTestExperimentLabel));
@@ -136,7 +137,7 @@ class GoogleUpdateSettingsTest : public testing::Test {
     RegKey key;
     HKEY root = install == SYSTEM_INSTALL ?
         HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
-    string16 state_key = install == SYSTEM_INSTALL ?
+    base::string16 state_key = install == SYSTEM_INSTALL ?
         chrome->GetStateMediumKey() : chrome->GetStateKey();
 
     EXPECT_EQ(ERROR_SUCCESS,
@@ -152,14 +153,14 @@ class GoogleUpdateSettingsTest : public testing::Test {
     // Now that the label is set, test the delete functionality. An empty label
     // should result in deleting the value.
     EXPECT_TRUE(GoogleUpdateSettings::SetExperimentLabels(
-        install == SYSTEM_INSTALL, string16()));
+        install == SYSTEM_INSTALL, base::string16()));
     EXPECT_EQ(ERROR_SUCCESS,
               key.Open(root, state_key.c_str(), KEY_QUERY_VALUE));
     EXPECT_EQ(ERROR_FILE_NOT_FOUND,
         key.ReadValue(google_update::kExperimentLabels, &value));
     EXPECT_TRUE(GoogleUpdateSettings::ReadExperimentLabels(
         install == SYSTEM_INSTALL, &value));
-    EXPECT_EQ(string16(), value);
+    EXPECT_EQ(base::string16(), value);
     key.Close();
 #else
     EXPECT_FALSE(chrome->ShouldSetExperimentLabels());
@@ -214,7 +215,7 @@ class GoogleUpdateSettingsTest : public testing::Test {
 // whether per-system or per-user install.
 TEST_F(GoogleUpdateSettingsTest, CurrentChromeChannelAbsent) {
   // Per-system first.
-  string16 channel;
+  base::string16 channel;
   EXPECT_TRUE(GoogleUpdateSettings::GetChromeChannelAndModifiers(true,
                                                                  &channel));
   EXPECT_STREQ(L"", channel.c_str());
@@ -228,7 +229,7 @@ TEST_F(GoogleUpdateSettingsTest, CurrentChromeChannelAbsent) {
 // Test an empty Ap key for system and user.
 TEST_F(GoogleUpdateSettingsTest, CurrentChromeChannelEmptySystem) {
   SetApField(SYSTEM_INSTALL, L"");
-  string16 channel;
+  base::string16 channel;
   EXPECT_TRUE(GoogleUpdateSettings::GetChromeChannelAndModifiers(true,
                                                                  &channel));
   EXPECT_STREQ(L"", channel.c_str());
@@ -242,7 +243,7 @@ TEST_F(GoogleUpdateSettingsTest, CurrentChromeChannelEmptySystem) {
 TEST_F(GoogleUpdateSettingsTest, CurrentChromeChannelEmptyUser) {
   SetApField(USER_INSTALL, L"");
   // Per-system lookups still succeed and return empty string.
-  string16 channel;
+  base::string16 channel;
   EXPECT_TRUE(GoogleUpdateSettings::GetChromeChannelAndModifiers(true,
                                                                  &channel));
   EXPECT_STREQ(L"", channel.c_str());
@@ -664,7 +665,7 @@ const wchar_t GetUninstallCommandLine::kDummyCommand[] =
 // Tests that GetUninstallCommandLine returns an empty string if there's no
 // Software\Google\Update key.
 TEST_P(GetUninstallCommandLine, TestNoKey) {
-  EXPECT_EQ(string16(),
+  EXPECT_EQ(base::string16(),
             GoogleUpdateSettings::GetUninstallCommandLine(system_install_));
 }
 
@@ -672,7 +673,7 @@ TEST_P(GetUninstallCommandLine, TestNoKey) {
 // UninstallCmdLine value in the Software\Google\Update key.
 TEST_P(GetUninstallCommandLine, TestNoValue) {
   RegKey(root_key_, google_update::kRegPathGoogleUpdate, KEY_SET_VALUE);
-  EXPECT_EQ(string16(),
+  EXPECT_EQ(base::string16(),
             GoogleUpdateSettings::GetUninstallCommandLine(system_install_));
 }
 
@@ -681,7 +682,7 @@ TEST_P(GetUninstallCommandLine, TestNoValue) {
 TEST_P(GetUninstallCommandLine, TestEmptyValue) {
   RegKey(root_key_, google_update::kRegPathGoogleUpdate, KEY_SET_VALUE)
     .WriteValue(google_update::kRegUninstallCmdLine, L"");
-  EXPECT_EQ(string16(),
+  EXPECT_EQ(base::string16(),
             GoogleUpdateSettings::GetUninstallCommandLine(system_install_));
 }
 
@@ -690,10 +691,10 @@ TEST_P(GetUninstallCommandLine, TestEmptyValue) {
 TEST_P(GetUninstallCommandLine, TestRealValue) {
   RegKey(root_key_, google_update::kRegPathGoogleUpdate, KEY_SET_VALUE)
       .WriteValue(google_update::kRegUninstallCmdLine, kDummyCommand);
-  EXPECT_EQ(string16(kDummyCommand),
+  EXPECT_EQ(base::string16(kDummyCommand),
             GoogleUpdateSettings::GetUninstallCommandLine(system_install_));
   // Make sure that there's no value in the other level (user or system).
-  EXPECT_EQ(string16(),
+  EXPECT_EQ(base::string16(),
             GoogleUpdateSettings::GetUninstallCommandLine(!system_install_));
 }
 
@@ -748,7 +749,7 @@ TEST_P(GetGoogleUpdateVersion, TestEmptyValue) {
 TEST_P(GetGoogleUpdateVersion, TestRealValue) {
   RegKey(root_key_, google_update::kRegPathGoogleUpdate, KEY_SET_VALUE)
       .WriteValue(google_update::kRegGoogleUpdateVersion, kDummyVersion);
-  Version expected(UTF16ToUTF8(kDummyVersion));
+  Version expected(base::UTF16ToUTF8(kDummyVersion));
   EXPECT_TRUE(expected.Equals(
       GoogleUpdateSettings::GetGoogleUpdateVersion(system_install_)));
   // Make sure that there's no value in the other level (user or system).

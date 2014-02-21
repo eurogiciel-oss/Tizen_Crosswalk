@@ -30,6 +30,7 @@
 #include "core/fetch/ResourcePtr.h"
 #include "platform/Timer.h"
 #include "platform/fonts/FontSelector.h"
+#include "platform/fonts/GenericFontFamilySettings.h"
 #include "wtf/Forward.h"
 #include "wtf/HashMap.h"
 #include "wtf/HashSet.h"
@@ -38,6 +39,7 @@ namespace WebCore {
 
 class CSSFontFace;
 class CSSFontFaceRule;
+class CSSFontSelectorClient;
 class CSSSegmentedFontFace;
 class FontResource;
 class Document;
@@ -49,6 +51,7 @@ public:
     explicit FontLoader(ResourceFetcher*);
 
     void addFontToBeginLoading(FontResource*);
+    void loadPendingFonts();
 
     void clearResourceFetcher();
 
@@ -60,7 +63,7 @@ private:
     ResourceFetcher* m_resourceFetcher;
 };
 
-class CSSFontSelector : public FontSelector {
+class CSSFontSelector FINAL : public FontSelector {
 public:
     static PassRefPtr<CSSFontSelector> create(Document* document)
     {
@@ -70,23 +73,26 @@ public:
 
     virtual unsigned version() const OVERRIDE { return m_cssSegmentedFontFaceCache.version(); }
 
-    virtual PassRefPtr<FontData> getFontData(const FontDescription&, const AtomicString&);
-    CSSSegmentedFontFace* getFontFace(const FontDescription&, const AtomicString& family);
+    virtual PassRefPtr<FontData> getFontData(const FontDescription&, const AtomicString&) OVERRIDE;
     virtual void willUseFontData(const FontDescription&, const AtomicString& family) OVERRIDE;
 
     void clearDocument();
 
-    void addFontFaceRule(const StyleRuleFontFace*);
-
     void fontLoaded();
-    virtual void fontCacheInvalidated();
 
-    virtual void registerForInvalidationCallbacks(FontSelectorClient*);
-    virtual void unregisterForInvalidationCallbacks(FontSelectorClient*);
+    // FontCacheClient implementation
+    virtual void fontCacheInvalidated() OVERRIDE;
+
+    void registerForInvalidationCallbacks(CSSFontSelectorClient*);
+    void unregisterForInvalidationCallbacks(CSSFontSelectorClient*);
 
     Document* document() const { return m_document; }
+    CSSSegmentedFontFaceCache* fontFaceCache() { return &m_cssSegmentedFontFaceCache; }
+
+    const GenericFontFamilySettings& genericFontFamilySettings() const { return m_genericFontFamilySettings; }
 
     void beginLoadingFontSoon(FontResource*);
+    void loadPendingFonts();
 
 private:
     explicit CSSFontSelector(Document*);
@@ -96,9 +102,10 @@ private:
     Document* m_document;
     // FIXME: Move to Document or StyleEngine.
     CSSSegmentedFontFaceCache m_cssSegmentedFontFaceCache;
-    HashSet<FontSelectorClient*> m_clients;
+    HashSet<CSSFontSelectorClient*> m_clients;
 
     FontLoader m_fontLoader;
+    GenericFontFamilySettings m_genericFontFamilySettings;
 };
 
 } // namespace WebCore

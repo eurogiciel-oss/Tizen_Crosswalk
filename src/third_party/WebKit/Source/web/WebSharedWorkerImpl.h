@@ -33,11 +33,9 @@
 
 #include "WebSharedWorker.h"
 
-#include "WebCommonWorkerClient.h"
 #include "WebContentSecurityPolicy.h"
 #include "WebFrameClient.h"
 #include "WebSharedWorkerClient.h"
-#include "WebWorkerBase.h"
 #include "core/dom/ExecutionContext.h"
 #include "core/workers/WorkerLoaderProxy.h"
 #include "core/workers/WorkerReportingProxy.h"
@@ -46,8 +44,7 @@
 #include "wtf/RefPtr.h"
 #include "wtf/WeakPtr.h"
 
-
-namespace WebKit {
+namespace blink {
 class WebApplicationCacheHost;
 class WebApplicationCacheHostClient;
 class WebWorkerClient;
@@ -57,63 +54,51 @@ class WebURL;
 class WebView;
 class WebWorker;
 class WebSharedWorkerClient;
+
 // This class is used by the worker process code to talk to the WebCore::SharedWorker implementation.
 // It can't use it directly since it uses WebKit types, so this class converts the data types.
 // When the WebCore::SharedWorker object wants to call WebCore::WorkerReportingProxy, this class will
 // convert to Chrome data types first and then call the supplied WebCommonWorkerClient.
-class WebSharedWorkerImpl
+class WebSharedWorkerImpl FINAL
     : public WebCore::WorkerReportingProxy
     , public WebCore::WorkerLoaderProxy
-    , public WebWorkerBase
     , public WebFrameClient
     , public WebSharedWorker {
 public:
     explicit WebSharedWorkerImpl(WebSharedWorkerClient*);
 
     // WebCore::WorkerReportingProxy methods:
-    virtual void postExceptionToWorkerObject(
-        const WTF::String&, int, int, const WTF::String&);
-    virtual void postConsoleMessageToWorkerObject(
+    virtual void reportException(
+        const WTF::String&, int, int, const WTF::String&) OVERRIDE;
+    virtual void reportConsoleMessage(
         WebCore::MessageSource, WebCore::MessageLevel,
-        const WTF::String&, int, const WTF::String&);
-    virtual void postMessageToPageInspector(const WTF::String&);
-    virtual void updateInspectorStateCookie(const WTF::String&);
-    virtual void workerGlobalScopeClosed();
-    virtual void workerGlobalScopeDestroyed();
-
-    virtual WebView* view() const { return m_webView; }
+        const WTF::String&, int, const WTF::String&) OVERRIDE;
+    virtual void postMessageToPageInspector(const WTF::String&) OVERRIDE;
+    virtual void updateInspectorStateCookie(const WTF::String&) OVERRIDE;
+    virtual void workerGlobalScopeStarted(WebCore::WorkerGlobalScope*) OVERRIDE;
+    virtual void workerGlobalScopeClosed() OVERRIDE;
+    virtual void workerGlobalScopeDestroyed() OVERRIDE;
 
     // WebCore::WorkerLoaderProxy methods:
-    virtual void postTaskToLoader(PassOwnPtr<WebCore::ExecutionContextTask>);
+    virtual void postTaskToLoader(PassOwnPtr<WebCore::ExecutionContextTask>) OVERRIDE;
     virtual bool postTaskForModeToWorkerGlobalScope(
-        PassOwnPtr<WebCore::ExecutionContextTask>, const WTF::String& mode);
-    virtual WebWorkerBase* toWebWorkerBase() OVERRIDE;
+        PassOwnPtr<WebCore::ExecutionContextTask>, const WTF::String& mode) OVERRIDE;
 
     // WebFrameClient methods to support resource loading thru the 'shadow page'.
-    virtual void didCreateDataSource(WebFrame*, WebDataSource*);
-    virtual WebApplicationCacheHost* createApplicationCacheHost(WebFrame*, WebApplicationCacheHostClient*);
-
+    virtual WebApplicationCacheHost* createApplicationCacheHost(WebFrame*, WebApplicationCacheHostClient*) OVERRIDE;
 
     // WebSharedWorker methods:
-    virtual bool isStarted();
+    virtual void startWorkerContext(const WebURL&, const WebString& name, const WebString& userAgent, const WebString& sourceCode, const WebString& contentSecurityPolicy, WebContentSecurityPolicyType, long long cacheId) OVERRIDE;
+    virtual void connect(WebMessagePortChannel*) OVERRIDE;
+    virtual void terminateWorkerContext() OVERRIDE;
+    virtual void clientDestroyed() OVERRIDE;
 
-    virtual void startWorkerContext(const WebURL&, const WebString& name, const WebString& userAgent, const WebString& sourceCode, const WebString& contentSecurityPolicy, WebContentSecurityPolicyType, long long cacheId);
-
-    virtual void connect(WebMessagePortChannel*, ConnectListener*);
-    virtual void terminateWorkerContext();
-    virtual void clientDestroyed();
-
-    virtual void pauseWorkerContextOnStart();
-    virtual void resumeWorkerContext();
-    virtual void attachDevTools();
-    virtual void reattachDevTools(const WebString& savedState);
-    virtual void detachDevTools();
-    virtual void dispatchDevToolsMessage(const WebString&);
-
-
-    // WebWorkerBase methods:
-    WebCore::WorkerLoaderProxy* workerLoaderProxy() { return this; }
-    WebCommonWorkerClient* commonClient() { return m_client->get(); }
+    virtual void pauseWorkerContextOnStart() OVERRIDE;
+    virtual void resumeWorkerContext() OVERRIDE;
+    virtual void attachDevTools() OVERRIDE;
+    virtual void reattachDevTools(const WebString& savedState) OVERRIDE;
+    virtual void detachDevTools() OVERRIDE;
+    virtual void dispatchDevToolsMessage(const WebString&) OVERRIDE;
 
 private:
     virtual ~WebSharedWorkerImpl();
@@ -130,13 +115,12 @@ private:
     void initializeLoader(const WebURL&);
 
 
-    static void connectTask(WebCore::ExecutionContext*, PassOwnPtr<WebCore::MessagePortChannel>);
+    static void connectTask(WebCore::ExecutionContext*, PassOwnPtr<WebMessagePortChannel>);
     // Tasks that are run on the main thread.
     void workerGlobalScopeClosedOnMainThread();
     void workerGlobalScopeDestroyedOnMainThread();
 
     // 'shadow page' - created to proxy loading requests from the worker.
-    RefPtr<WebCore::ExecutionContext> m_loadingDocument;
     WebView* m_webView;
     WebFrame* m_mainFrame;
     bool m_askedToTerminate;
@@ -154,6 +138,6 @@ private:
     bool m_pauseWorkerContextOnStart;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

@@ -3,13 +3,12 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import errno
 import optparse
-import sys
 import os
+import sys
 
-import parse_deps
-import generate
+import tvcm_stub
+import tvcm
 
 src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../src"))
 
@@ -39,7 +38,7 @@ js_warning_message = """/**
 """
 
 def generate_html(outdir, load_sequence):
-  return generate.generate_standalone_html_file(
+  return tvcm.generate_standalone_html_file(
     load_sequence,
     title='chrome://tracing',
     flattened_js_url='chrome://tracing/tracing.js')
@@ -77,13 +76,13 @@ def main(args):
     return 1
 
   filenames = ["base.js", "about_tracing.js"]
-  load_sequence = parse_deps.calc_load_sequence(filenames, [src_dir])
+  load_sequence = tvcm.calc_load_sequence(filenames, [src_dir])
 
   olddir = os.getcwd()
   try:
     try:
       result_html = generate_html(options.out_dir, load_sequence)
-    except parse_deps.DepsException, ex:
+    except tvcm.module.DepsException, ex:
       sys.stderr.write("Error: %s\n\n" % str(ex))
       return 255
 

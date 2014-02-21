@@ -25,7 +25,7 @@
 
 #include "HTMLNames.h"
 #include "core/dom/Document.h"
-#include "core/page/Settings.h"
+#include "core/frame/Settings.h"
 
 namespace WebCore {
 
@@ -45,21 +45,15 @@ if (!source.is8Bit()) { \
 
 using namespace HTMLNames;
 
-inline HTMLMetaElement::HTMLMetaElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+inline HTMLMetaElement::HTMLMetaElement(Document& document)
+    : HTMLElement(metaTag, document)
 {
-    ASSERT(hasTagName(metaTag));
     ScriptWrappable::init(this);
 }
 
 PassRefPtr<HTMLMetaElement> HTMLMetaElement::create(Document& document)
 {
-    return adoptRef(new HTMLMetaElement(metaTag, document));
-}
-
-PassRefPtr<HTMLMetaElement> HTMLMetaElement::create(const QualifiedName& tagName, Document& document)
-{
-    return adoptRef(new HTMLMetaElement(tagName, document));
+    return adoptRef(new HTMLMetaElement(document));
 }
 
 static bool isInvalidSeparator(UChar c)
@@ -183,10 +177,10 @@ Length HTMLMetaElement::parseViewportValueAsLength(const String& keyString, cons
     DEFINE_ARRAY_FOR_MATCHING(characters, valueString, 13);
     SWITCH(characters, length) {
         CASE("device-width") {
-            return Length(100, ViewportPercentageWidth);
+            return Length(DeviceWidth);
         }
         CASE("device-height") {
-            return Length(100, ViewportPercentageHeight);
+            return Length(DeviceHeight);
         }
     }
 
@@ -194,13 +188,6 @@ Length HTMLMetaElement::parseViewportValueAsLength(const String& keyString, cons
 
     if (value < 0)
         return Length(); // auto
-
-    if (!value && document().settings() && document().settings()->viewportMetaZeroValuesQuirk()) {
-        if (keyString == "width")
-            return Length(100, ViewportPercentageWidth);
-        if (keyString == "height")
-            return Length(100, ViewportPercentageHeight);
-    }
 
     return Length(clampLengthValue(value), Fixed);
 }
@@ -346,6 +333,10 @@ void HTMLMetaElement::processViewportKeyValuePair(const String& keyString, const
             reportViewportWarning(TargetDensityDpiUnsupported, String(), String());
             return;
         }
+        CASE("minimal-ui") {
+            // Ignore vendor-specific argument.
+            return;
+        }
     }
     reportViewportWarning(UnrecognizedViewportArgumentKeyError, keyString, String());
 }
@@ -368,11 +359,10 @@ static MessageLevel viewportErrorMessageLevel(ViewportErrorCode errorCode)
     switch (errorCode) {
     case TruncatedViewportArgumentValueError:
     case TargetDensityDpiUnsupported:
-        return WarningMessageLevel;
     case UnrecognizedViewportArgumentKeyError:
     case UnrecognizedViewportArgumentValueError:
     case MaximumScaleTooLargeError:
-        return ErrorMessageLevel;
+        return WarningMessageLevel;
     }
 
     ASSERT_NOT_REACHED();
@@ -464,37 +454,36 @@ void HTMLMetaElement::process()
         return;
 
     const AtomicString& nameValue = fastGetAttribute(nameAttr);
-    if (nameValue.isNull()) {
-        // Get the document to process the tag, but only if we're actually part of DOM
-        // tree (changing a meta tag while it's not in the tree shouldn't have any effect
-        // on the document).
-        const AtomicString& httpEquivValue = fastGetAttribute(http_equivAttr);
-        if (!httpEquivValue.isNull())
-            document().processHttpEquiv(httpEquivValue, contentValue);
-        return;
+    if (!nameValue.isEmpty()) {
+        if (equalIgnoringCase(nameValue, "viewport"))
+            processViewportContentAttribute(contentValue, ViewportDescription::ViewportMeta);
+        else if (equalIgnoringCase(nameValue, "referrer"))
+            document().processReferrerPolicy(contentValue);
+        else if (equalIgnoringCase(nameValue, "handheldfriendly") && equalIgnoringCase(contentValue, "true"))
+            processViewportContentAttribute("width=device-width", ViewportDescription::HandheldFriendlyMeta);
+        else if (equalIgnoringCase(nameValue, "mobileoptimized"))
+            processViewportContentAttribute("width=device-width, initial-scale=1", ViewportDescription::MobileOptimizedMeta);
     }
 
-    if (equalIgnoringCase(nameValue, "viewport"))
-        processViewportContentAttribute(contentValue, ViewportDescription::ViewportMeta);
-    else if (equalIgnoringCase(nameValue, "referrer"))
-        document().processReferrerPolicy(contentValue);
-    else if (equalIgnoringCase(nameValue, "handheldfriendly") && equalIgnoringCase(contentValue, "true"))
-        processViewportContentAttribute("width=device-width", ViewportDescription::HandheldFriendlyMeta);
-    else if (equalIgnoringCase(nameValue, "mobileoptimized"))
-        processViewportContentAttribute("width=device-width, initial-scale=1", ViewportDescription::MobileOptimizedMeta);
+    // Get the document to process the tag, but only if we're actually part of DOM
+    // tree (changing a meta tag while it's not in the tree shouldn't have any effect
+    // on the document).
+    const AtomicString& httpEquivValue = fastGetAttribute(http_equivAttr);
+    if (!httpEquivValue.isEmpty())
+        document().processHttpEquiv(httpEquivValue, contentValue);
 }
 
-String HTMLMetaElement::content() const
+const AtomicString& HTMLMetaElement::content() const
 {
     return getAttribute(contentAttr);
 }
 
-String HTMLMetaElement::httpEquiv() const
+const AtomicString& HTMLMetaElement::httpEquiv() const
 {
     return getAttribute(http_equivAttr);
 }
 
-String HTMLMetaElement::name() const
+const AtomicString& HTMLMetaElement::name() const
 {
     return getNameAttribute();
 }

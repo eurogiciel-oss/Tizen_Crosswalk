@@ -27,10 +27,10 @@
 #include "ui/gfx/scoped_ns_graphics_context_save_gstate_mac.h"
 #include "webkit/common/cursors/webcursor.h"
 
-using WebKit::WebKeyboardEvent;
-using WebKit::WebInputEvent;
-using WebKit::WebMouseEvent;
-using WebKit::WebMouseWheelEvent;
+using blink::WebKeyboardEvent;
+using blink::WebInputEvent;
+using blink::WebMouseEvent;
+using blink::WebMouseWheelEvent;
 
 // Important implementation notes: The Mac definition of NPAPI, particularly
 // the distinction between windowed and windowless modes, differs from the
@@ -229,7 +229,7 @@ bool WebPluginDelegateImpl::PlatformInitialize() {
         // that behavior here.
         const WebPluginInfo& plugin_info =
             instance_->plugin_lib()->plugin_info();
-        if (plugin_info.name.find(ASCIIToUTF16("Flash")) !=
+        if (plugin_info.name.find(base::ASCIIToUTF16("Flash")) !=
             base::string16::npos)
           gpu_preference = gfx::PreferIntegratedGpu;
         surface_ = plugin_->GetAcceleratedSurface(gpu_preference);

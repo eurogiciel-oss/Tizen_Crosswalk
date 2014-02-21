@@ -95,12 +95,11 @@ Status PrepareCommandLine(int port,
   CommandLine command(program);
   Switches switches;
 
-  // TODO(chrisgao): Add "disable-sync" when chrome 30- is not supported.
-  // For chrome 30-, it leads to crash when opening chrome://settings.
   for (size_t i = 0; i < arraysize(kCommonSwitches); ++i)
     switches.SetSwitch(kCommonSwitches[i]);
   switches.SetSwitch("disable-hang-monitor");
   switches.SetSwitch("disable-prompt-on-repost");
+  switches.SetSwitch("disable-sync");
   switches.SetSwitch("full-memory-crash-report");
   switches.SetSwitch("no-first-run");
   switches.SetSwitch("disable-background-networking");
@@ -160,7 +159,7 @@ Status WaitForDevToolsAndCheckVersion(
   scoped_ptr<DevToolsHttpClient> client(new DevToolsHttpClient(
       address, context_getter, socket_factory));
   base::TimeTicks deadline =
-      base::TimeTicks::Now() + base::TimeDelta::FromSeconds(20);
+      base::TimeTicks::Now() + base::TimeDelta::FromSeconds(60);
   Status status = client->Init(deadline - base::TimeTicks::Now());
   if (status.IsError())
     return status;
@@ -352,7 +351,7 @@ Status LaunchAndroidChrome(
     status = device_manager->AcquireSpecificDevice(
         capabilities.android_device_serial, &device);
   }
-  if (!status.IsOk())
+  if (status.IsError())
     return status;
 
   Switches switches(capabilities.switches);
@@ -360,12 +359,14 @@ Status LaunchAndroidChrome(
     switches.SetSwitch(kCommonSwitches[i]);
   switches.SetSwitch("disable-fre");
   switches.SetSwitch("enable-remote-debugging");
-  status = device->StartApp(capabilities.android_package,
-                            capabilities.android_activity,
-                            capabilities.android_process,
-                            switches.ToString(), port);
-  if (!status.IsOk()) {
-    device->StopApp();
+  status = device->SetUp(capabilities.android_package,
+                         capabilities.android_activity,
+                         capabilities.android_process,
+                         switches.ToString(),
+                         capabilities.android_use_running_app,
+                         port);
+  if (status.IsError()) {
+    device->TearDown();
     return status;
   }
 
@@ -374,8 +375,10 @@ Status LaunchAndroidChrome(
                                           context_getter,
                                           socket_factory,
                                           &devtools_client);
-  if (status.IsError())
+  if (status.IsError()) {
+    device->TearDown();
     return status;
+  }
 
   chrome->reset(new ChromeAndroidImpl(devtools_client.Pass(),
                                       devtools_event_listeners,
@@ -404,14 +407,12 @@ Status LaunchChrome(
   int port = 0;
   scoped_ptr<PortReservation> port_reservation;
   Status port_status(kOk);
-  if (port_server)
-    port_status = port_server->ReservePort(&port, &port_reservation);
-  else
-    port_status = port_manager->ReservePort(&port, &port_reservation);
-  if (port_status.IsError())
-    return Status(kUnknownError, "cannot reserve port for Chrome", port_status);
 
   if (capabilities.IsAndroid()) {
+    port_status = port_manager->ReservePortFromPool(&port, &port_reservation);
+    if (port_status.IsError())
+      return Status(kUnknownError, "cannot reserve port for Chrome",
+                    port_status);
     return LaunchAndroidChrome(context_getter,
                                port,
                                port_reservation.Pass(),
@@ -421,6 +422,13 @@ Status LaunchChrome(
                                device_manager,
                                chrome);
   } else {
+    if (port_server)
+      port_status = port_server->ReservePort(&port, &port_reservation);
+    else
+      port_status = port_manager->ReservePort(&port, &port_reservation);
+    if (port_status.IsError())
+      return Status(kUnknownError, "cannot reserve port for Chrome",
+                    port_status);
     return LaunchDesktopChrome(context_getter,
                                port,
                                port_reservation.Pass(),
@@ -480,7 +488,7 @@ Status ProcessExtension(const std::string& extension,
   // 'encoded lines be no more than 76 characters long'. Just remove any
   // newlines.
   std::string extension_base64;
-  RemoveChars(extension, "\n", &extension_base64);
+  base::RemoveChars(extension, "\n", &extension_base64);
   std::string decoded_extension;
   if (!base::Base64Decode(extension_base64, &decoded_extension))
     return Status(kUnknownError, "cannot base64 decode");
@@ -495,8 +503,7 @@ Status ProcessExtension(const std::string& extension,
   if (key_len != public_key.size())
     return Status(kUnknownError, "invalid public key length");
   std::string public_key_base64;
-  if (!base::Base64Encode(public_key, &public_key_base64))
-    return Status(kUnknownError, "cannot base64 encode public key");
+  base::Base64Encode(public_key, &public_key_base64);
   std::string id = GenerateExtensionId(public_key);
 
   // Unzip the crx file.
@@ -522,7 +529,27 @@ Status ProcessExtension(const std::string& extension,
   base::DictionaryValue* manifest;
   if (!manifest_value || !manifest_value->GetAsDictionary(&manifest))
     return Status(kUnknownError, "invalid manifest");
-  if (!manifest->HasKey("key")) {
+
+  std::string manifest_key_base64;
+  if (manifest->GetString("key", &manifest_key_base64)) {
+    // If there is a key in both the header and the manifest, use the key in the
+    // manifest. This allows chromedriver users users who generate dummy crxs
+    // to set the manifest key and have a consistent ID.
+    std::string manifest_key;
+    if (!base::Base64Decode(manifest_key_base64, &manifest_key))
+      return Status(kUnknownError, "'key' in manifest is not base64 encoded");
+    std::string manifest_id = GenerateExtensionId(manifest_key);
+    if (id != manifest_id) {
+      LOG(WARNING)
+          << "Public key in crx header is different from key in manifest"
+          << std::endl << "key from header:   " << public_key_base64
+          << std::endl << "key from manifest: " << manifest_key_base64
+          << std::endl << "generated extension id from header key:   " << id
+          << std::endl << "generated extension id from manifest key: "
+          << manifest_id;
+      id = manifest_id;
+    }
+  } else {
     manifest->SetString("key", public_key_base64);
     base::JSONWriter::Write(manifest, &manifest_data);
     if (file_util::WriteFile(
@@ -635,7 +662,7 @@ Status PrepareUserDataDir(
     const base::DictionaryValue* custom_prefs,
     const base::DictionaryValue* custom_local_state) {
   base::FilePath default_dir = user_data_dir.AppendASCII("Default");
-  if (!file_util::CreateDirectory(default_dir))
+  if (!base::CreateDirectory(default_dir))
     return Status(kUnknownError, "cannot create default profile directory");
 
   Status status = WritePrefsFile(

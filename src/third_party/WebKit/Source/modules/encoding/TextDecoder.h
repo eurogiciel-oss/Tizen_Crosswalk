@@ -42,15 +42,15 @@ namespace WebCore {
 
 class ExceptionState;
 
-class TextDecoder : public RefCounted<TextDecoder> {
+class TextDecoder FINAL : public RefCounted<TextDecoder> {
 public:
     static PassRefPtr<TextDecoder> create(const String& label, const Dictionary&, ExceptionState&);
-    virtual ~TextDecoder();
+    ~TextDecoder();
 
     // Implement the IDL
     String encoding() const;
     String decode(ArrayBufferView*, const Dictionary&, ExceptionState&);
-    String decode(ExceptionState& es) { return decode(0, Dictionary(), es); }
+    String decode(ExceptionState& exceptionState) { return decode(0, Dictionary(), exceptionState); }
 
     using RefCounted<TextDecoder>::ref;
     using RefCounted<TextDecoder>::deref;

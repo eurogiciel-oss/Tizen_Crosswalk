@@ -222,8 +222,8 @@ void HttpStreamFactoryImpl::Job::Orphan(const Request* request) {
     stream_factory_->OnOrphanedJobComplete(this);
   } else if (stream_factory_->for_websockets_) {
     // We cancel this job because a WebSocketHandshakeStream can't be created
-    // without a WebSocketHandshakeStreamBase::Factory which is stored in the
-    // Request class and isn't accessible from this job.
+    // without a WebSocketHandshakeStreamBase::CreateHelper which is stored in
+    // the Request class and isn't accessible from this job.
     if (connection_ && connection_->socket())
       connection_->socket()->Disconnect();
     stream_factory_->OnOrphanedJobComplete(this);
@@ -291,8 +291,9 @@ bool HttpStreamFactoryImpl::Job::CanUseExistingSpdySession() const {
   // The only time we can use an existing session is if the request URL is
   // https (the normal case) or if we're connection to a SPDY proxy, or
   // if we're running with force_spdy_always_.  crbug.com/133176
+  // TODO(ricea): Add "wss" back to this list when SPDY WebSocket support is
+  // working.
   return request_info_.url.SchemeIs("https") ||
-         request_info_.url.SchemeIs("wss") ||
          proxy_info_.proxy_server().is_https() ||
          force_spdy_always_;
 }
@@ -855,10 +856,13 @@ int HttpStreamFactoryImpl::Job::DoInitConnection() {
                    GetSpdySessionKey()) :
         OnHostResolutionCallback();
     if (stream_factory_->for_websockets_) {
+      // TODO(ricea): Re-enable NPN when WebSockets over SPDY is supported.
+      SSLConfig websocket_server_ssl_config = server_ssl_config_;
+      websocket_server_ssl_config.next_protos.clear();
       return InitSocketHandleForWebSocketRequest(
           origin_url_, request_info_.extra_headers, request_info_.load_flags,
           priority_, session_, proxy_info_, ShouldForceSpdySSL(),
-          want_spdy_over_npn, server_ssl_config_, proxy_ssl_config_,
+          want_spdy_over_npn, websocket_server_ssl_config, proxy_ssl_config_,
           request_info_.privacy_mode, net_log_,
           connection_.get(), resolution_callback, io_callback_);
     }
@@ -1064,10 +1068,10 @@ int HttpStreamFactoryImpl::Job::DoCreateStream() {
       CHECK(stream_.get());
     } else if (stream_factory_->for_websockets_) {
       DCHECK(request_);
-      DCHECK(request_->websocket_handshake_stream_factory());
+      DCHECK(request_->websocket_handshake_stream_create_helper());
       websocket_stream_.reset(
-          request_->websocket_handshake_stream_factory()->CreateBasicStream(
-              connection_.release(), using_proxy));
+          request_->websocket_handshake_stream_create_helper()
+              ->CreateBasicStream(connection_.Pass(), using_proxy));
     } else if (!using_proxy && IsRequestEligibleForPipelining()) {
       // TODO(simonjam): Support proxies.
       stream_.reset(
@@ -1140,12 +1144,8 @@ int HttpStreamFactoryImpl::Job::DoCreateStream() {
   // will know when SpdySessions become available.
 
   if (stream_factory_->for_websockets_) {
-    DCHECK(request_);
-    DCHECK(request_->websocket_handshake_stream_factory());
-    bool use_relative_url = direct || request_info_.url.SchemeIs("wss");
-    websocket_stream_.reset(
-        request_->websocket_handshake_stream_factory()->CreateSpdyStream(
-            spdy_session, use_relative_url));
+    // TODO(ricea): Restore this code when WebSockets over SPDY is implemented.
+    NOTREACHED();
   } else {
     bool use_relative_url = direct || request_info_.url.SchemeIs("https");
     stream_.reset(new SpdyHttpStream(spdy_session, use_relative_url));
@@ -1338,7 +1338,7 @@ int HttpStreamFactoryImpl::Job::ReconsiderProxyAfterError(int error) {
 
   if (proxy_info_.is_https() && proxy_ssl_config_.send_client_cert) {
     session_->ssl_client_auth_cache()->Remove(
-        proxy_info_.proxy_server().host_port_pair().ToString());
+        proxy_info_.proxy_server().host_port_pair());
   }
 
   int rv = session_->proxy_service()->ReconsiderProxyAfterError(

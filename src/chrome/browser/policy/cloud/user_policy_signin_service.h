@@ -29,12 +29,15 @@ class CloudPolicyClientRegistrationHelper;
 class UserPolicySigninService : public UserPolicySigninServiceBase,
                                 public OAuth2TokenService::Observer {
  public:
-  // Creates a UserPolicySigninService associated with the passed |profile|.
+  // Creates a UserPolicySigninService associated with the passed
+  // |policy_manager| and |signin_manager|.
   UserPolicySigninService(
       Profile* profile,
       PrefService* local_state,
-      scoped_refptr<net::URLRequestContextGetter> request_context,
       DeviceManagementService* device_management_service,
+      UserCloudPolicyManager* policy_manager,
+      SigninManager* signin_manager,
+      scoped_refptr<net::URLRequestContextGetter> system_request_context,
       ProfileOAuth2TokenService* oauth2_token_service);
   virtual ~UserPolicySigninService();
 
@@ -43,9 +46,9 @@ class UserPolicySigninService : public UserPolicySigninServiceBase,
   // the user is not signed in yet (ProfileOAuth2TokenService does not have
   // any tokens yet to prevent services from using it until after we've fetched
   // policy).
-  void RegisterPolicyClient(const std::string& username,
-                            const std::string& oauth2_login_token,
-                            const PolicyRegistrationCallback& callback);
+  void RegisterForPolicy(const std::string& username,
+                         const std::string& oauth2_login_token,
+                         const PolicyRegistrationCallback& callback);
 
   // OAuth2TokenService::Observer implementation:
   virtual void OnRefreshTokenAvailable(const std::string& account_id) OVERRIDE;
@@ -59,6 +62,7 @@ class UserPolicySigninService : public UserPolicySigninServiceBase,
  protected:
   // UserPolicySigninServiceBase implementation:
   virtual void InitializeUserCloudPolicyManager(
+      const std::string& username,
       scoped_ptr<CloudPolicyClient> client) OVERRIDE;
 
   virtual void PrepareForUserCloudPolicyManagerShutdown() OVERRIDE;
@@ -81,6 +85,9 @@ class UserPolicySigninService : public UserPolicySigninServiceBase,
   // Invoked when a policy registration request is complete.
   void CallPolicyRegistrationCallback(scoped_ptr<CloudPolicyClient> client,
                                       PolicyRegistrationCallback callback);
+
+  // Parent profile for this service.
+  Profile* profile_;
 
   scoped_ptr<CloudPolicyClientRegistrationHelper> registration_helper_;
 

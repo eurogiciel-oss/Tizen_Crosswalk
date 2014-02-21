@@ -53,7 +53,6 @@
 #include "chrome/browser/notifications/notification_ui_manager.h"
 #include "chrome/browser/plugins/chrome_plugin_service_filter.h"
 #include "chrome/browser/plugins/plugin_finder.h"
-#include "chrome/browser/policy/policy_service.h"
 #include "chrome/browser/prefs/browser_prefs.h"
 #include "chrome/browser/prefs/chrome_pref_service_factory.h"
 #include "chrome/browser/prerender/prerender_tracker.h"
@@ -68,6 +67,7 @@
 #include "chrome/browser/storage_monitor/storage_monitor.h"
 #include "chrome/browser/thumbnails/render_widget_snapshot_taker.h"
 #include "chrome/browser/ui/bookmarks/bookmark_prompt_controller.h"
+#include "chrome/browser/ui/browser_dialogs.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/web_resource/promo_resource_service.h"
 #include "chrome/common/chrome_constants.h"
@@ -76,9 +76,11 @@
 #include "chrome/common/extensions/chrome_extensions_client.h"
 #include "chrome/common/extensions/extension_l10n_util.h"
 #include "chrome/common/pref_names.h"
+#include "chrome/common/profile_management_switches.h"
 #include "chrome/common/switch_utils.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/installer/util/google_update_constants.h"
+#include "components/policy/core/common/policy_service.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/notification_details.h"
@@ -92,9 +94,9 @@
 #include "ui/message_center/message_center.h"
 
 #if defined(ENABLE_CONFIGURATION_POLICY)
-#include "chrome/browser/policy/browser_policy_connector.h"
+#include "components/policy/core/browser/browser_policy_connector.h"
 #else
-#include "chrome/browser/policy/policy_service_stub.h"
+#include "components/policy/core/common/policy_service_stub.h"
 #endif  // defined(ENABLE_CONFIGURATION_POLICY)
 
 #if defined(OS_WIN)
@@ -177,7 +179,7 @@ BrowserProcessImpl::BrowserProcessImpl(
   ChildProcessSecurityPolicy::GetInstance()->RegisterWebSafeScheme(
       extensions::kExtensionScheme);
   ChildProcessSecurityPolicy::GetInstance()->RegisterWebSafeScheme(
-      chrome::kExtensionResourceScheme);
+      extensions::kExtensionResourceScheme);
   ChildProcessSecurityPolicy::GetInstance()->RegisterWebSafeScheme(
       chrome::kChromeSearchScheme);
 
@@ -188,8 +190,11 @@ BrowserProcessImpl::BrowserProcessImpl(
   apps::AppsClient::Set(ChromeAppsClient::GetInstance());
   extensions::ExtensionsClient::Set(
       extensions::ChromeExtensionsClient::GetInstance());
-  extensions::ExtensionsBrowserClient::Set(
-      extensions::ChromeExtensionsBrowserClient::GetInstance());
+
+  extensions_browser_client_.reset(
+      new extensions::ChromeExtensionsBrowserClient);
+  extensions::ExtensionsBrowserClient::Set(extensions_browser_client_.get());
+
   extension_event_router_forwarder_ = new extensions::EventRouterForwarder;
   ExtensionRendererState::GetInstance()->Init();
 
@@ -245,6 +250,10 @@ void BrowserProcessImpl::StartTearDown() {
   {
     TRACE_EVENT0("shutdown",
                  "BrowserProcessImpl::StartTearDown:ProfileManager");
+    // The desktop User Manager needs to be closed before the guest profile
+    // can be destroyed.
+    if (switches::IsNewProfileManagement())
+      chrome::HideUserManager();
     profile_manager_.reset();
   }
 
@@ -283,6 +292,13 @@ void BrowserProcessImpl::StartTearDown() {
 #endif
 
   platform_part()->StartTearDown();
+
+#if defined(ENABLE_WEBRTC)
+  webrtc_log_uploader_.reset();
+#endif
+
+  if (local_state())
+    local_state()->CommitPendingWrite();
 }
 
 void BrowserProcessImpl::PostDestroyThreads() {
@@ -496,7 +512,7 @@ policy::BrowserPolicyConnector* BrowserProcessImpl::browser_policy_connector() {
 #if defined(ENABLE_CONFIGURATION_POLICY)
   if (!created_browser_policy_connector_) {
     DCHECK(!browser_policy_connector_);
-    browser_policy_connector_.reset(new policy::BrowserPolicyConnector());
+    browser_policy_connector_ = platform_part_->CreateBrowserPolicyConnector();
     created_browser_policy_connector_ = true;
   }
   return browser_policy_connector_.get();
@@ -783,12 +799,13 @@ prerender::PrerenderTracker* BrowserProcessImpl::prerender_tracker() {
   return prerender_tracker_.get();
 }
 
-ComponentUpdateService* BrowserProcessImpl::component_updater() {
+component_updater::ComponentUpdateService*
+BrowserProcessImpl::component_updater() {
   if (!component_updater_.get()) {
     if (!BrowserThread::CurrentlyOn(BrowserThread::UI))
       return NULL;
-    ComponentUpdateService::Configurator* configurator =
-        MakeChromeComponentUpdaterConfigurator(
+    component_updater::ComponentUpdateService::Configurator* configurator =
+        component_updater::MakeChromeComponentUpdaterConfigurator(
             CommandLine::ForCurrentProcess(),
             io_thread()->system_url_request_context_getter());
     // Creating the component updater does not do anything, components
@@ -804,9 +821,12 @@ CRLSetFetcher* BrowserProcessImpl::crl_set_fetcher() {
   return crl_set_fetcher_.get();
 }
 
-PnaclComponentInstaller* BrowserProcessImpl::pnacl_component_installer() {
-  if (!pnacl_component_installer_.get())
-    pnacl_component_installer_.reset(new PnaclComponentInstaller());
+component_updater::PnaclComponentInstaller*
+BrowserProcessImpl::pnacl_component_installer() {
+  if (!pnacl_component_installer_.get()) {
+    pnacl_component_installer_.reset(
+        new component_updater::PnaclComponentInstaller());
+  }
   return pnacl_component_installer_.get();
 }
 
@@ -860,12 +880,12 @@ void BrowserProcessImpl::CreateLocalState() {
   // Register local state preferences.
   chrome::RegisterLocalState(pref_registry.get());
 
-  local_state_.reset(
+  local_state_ =
       chrome_prefs::CreateLocalState(local_state_path,
                                      local_state_task_runner_.get(),
                                      policy_service(),
                                      pref_registry,
-                                     false));
+                                     false).Pass();
 
   pref_change_registrar_.Init(local_state_.get());
 

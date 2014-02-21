@@ -69,7 +69,7 @@ class DeviceSettingsTestHelper : public SessionManagerClient {
     const std::map<std::string, PolicyState>::const_iterator entry =
         device_local_account_policy_.find(id);
     return entry == device_local_account_policy_.end() ?
-        EmptyString() : entry->second.policy_blob_;
+        base::EmptyString() : entry->second.policy_blob_;
   }
 
   void set_device_local_account_policy_blob(const std::string& id,
@@ -168,7 +168,7 @@ class DeviceSettingsTestBase : public testing::Test {
   // |device_settings_service_| and flushes the resulting load operation.
   void ReloadDeviceSettings();
 
-  base::MessageLoop loop_;
+  base::MessageLoopForUI loop_;
   content::TestBrowserThread ui_thread_;
   content::TestBrowserThread file_thread_;
 

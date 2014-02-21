@@ -19,11 +19,12 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/chrome_version_info.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_file_util.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_source.h"
+#include "content/public/browser/plugin_service.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/id_util.h"
 #include "extensions/common/manifest_constants.h"
 #include "grit/browser_resources.h"
@@ -43,12 +44,10 @@
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
-#include "chrome/browser/extensions/extension_service.h"
-#include "chrome/browser/extensions/extension_system.h"
-#include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/profiles/profile_manager.h"
 #include "chromeos/chromeos_switches.h"
+#include "content/public/browser/site_instance.h"
 #include "content/public/browser/storage_partition.h"
+#include "extensions/browser/extensions_browser_client.h"
 #include "webkit/browser/fileapi/file_system_context.h"
 #endif
 
@@ -111,9 +110,11 @@ ComponentLoader::ComponentExtensionInfo::ComponentExtensionInfo(
 
 ComponentLoader::ComponentLoader(ExtensionServiceInterface* extension_service,
                                  PrefService* profile_prefs,
-                                 PrefService* local_state)
+                                 PrefService* local_state,
+                                 content::BrowserContext* browser_context)
     : profile_prefs_(profile_prefs),
       local_state_(local_state),
+      browser_context_(browser_context),
       extension_service_(extension_service) {}
 
 ComponentLoader::~ComponentLoader() {
@@ -271,7 +272,7 @@ bool ComponentLoader::Exists(const std::string& id) const {
 }
 
 void ComponentLoader::AddFileManagerExtension() {
-#if defined(FILE_MANAGER_EXTENSION)
+#if defined(OS_CHROMEOS)
 #ifndef NDEBUG
   const CommandLine* command_line = CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kFileManagerExtensionPath)) {
@@ -283,12 +284,14 @@ void ComponentLoader::AddFileManagerExtension() {
 #endif  // NDEBUG
   Add(IDR_FILEMANAGER_MANIFEST,
       base::FilePath(FILE_PATH_LITERAL("file_manager")));
-#endif  // defined(FILE_MANAGER_EXTENSION)
+#endif  // defined(OS_CHROMEOS)
 }
 
 void ComponentLoader::AddHangoutServicesExtension() {
+#if defined(GOOGLE_CHROME_BUILD)
   Add(IDR_HANGOUT_SERVICES_MANIFEST,
       base::FilePath(FILE_PATH_LITERAL("hangout_services")));
+#endif
 }
 
 void ComponentLoader::AddImageLoaderExtension() {
@@ -315,6 +318,18 @@ void ComponentLoader::AddBookmarksExtensions() {
       base::FilePath(FILE_PATH_LITERAL("enhanced_bookmark_manager")));
 #endif
 }
+
+void ComponentLoader::AddNetworkSpeechSynthesisExtension() {
+  Add(IDR_NETWORK_SPEECH_SYNTHESIS_MANIFEST,
+      base::FilePath(FILE_PATH_LITERAL("network_speech_synthesis")));
+}
+
+#if defined(OS_CHROMEOS)
+void ComponentLoader::AddChromeOsSpeechSynthesisExtension() {
+  Add(IDR_SPEECH_SYNTHESIS_MANIFEST,
+      base::FilePath(extension_misc::kSpeechSynthesisExtensionPath));
+}
+#endif
 
 void ComponentLoader::AddWithName(int manifest_resource_id,
                                   const base::FilePath& root_directory,
@@ -369,15 +384,6 @@ void ComponentLoader::AddDefaultComponentExtensions(
       base::FilePath(FILE_PATH_LITERAL("/usr/share/chromeos-assets/mobile")));
 
 #if defined(GOOGLE_CHROME_BUILD)
-  {
-    const CommandLine* command_line = CommandLine::ForCurrentProcess();
-    if (!command_line->HasSwitch(chromeos::switches::kDisableGeniusApp)) {
-      AddWithName(IDR_GENIUS_APP_MANIFEST,
-                  base::FilePath(FILE_PATH_LITERAL(
-                      "/usr/share/chromeos-assets/genius_app")),
-                  l10n_util::GetStringUTF8(IDS_GENIUS_APP_NAME));
-    }
-  }
   if (browser_defaults::enable_help_app) {
     Add(IDR_HELP_MANIFEST, base::FilePath(FILE_PATH_LITERAL(
                                "/usr/share/chromeos-assets/helpapp")));
@@ -411,6 +417,16 @@ void ComponentLoader::AddDefaultComponentExtensions(
   AddDefaultComponentExtensionsWithBackgroundPages(skip_session_components);
 }
 
+void ComponentLoader::AddDefaultComponentExtensionsForKioskMode(
+    bool skip_session_components) {
+  // No component extension for kiosk app launch splash screen.
+  if (skip_session_components)
+    return;
+
+  // Component extensions needed for kiosk apps.
+  AddFileManagerExtension();
+}
+
 void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
     bool skip_session_components) {
   const CommandLine* command_line = CommandLine::ForCurrentProcess();
@@ -424,15 +440,17 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
     return;
   }
 
+#if defined(OS_CHROMEOS) && defined(GOOGLE_CHROME_BUILD)
+  // Since this is a v2 app it has a background page.
+  if (!command_line->HasSwitch(chromeos::switches::kDisableGeniusApp)) {
+    AddWithName(IDR_GENIUS_APP_MANIFEST,
+                base::FilePath(FILE_PATH_LITERAL(
+                    "/usr/share/chromeos-assets/genius_app")),
+                l10n_util::GetStringUTF8(IDS_GENIUS_APP_NAME));
+  }
+#endif
+
   if (!skip_session_components) {
-    // Apps Debugger
-    if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kAppsDevtool) &&
-        profile_prefs_->GetBoolean(prefs::kExtensionsUIDeveloperMode)) {
-      Add(IDR_APPS_DEBUGGER_MANIFEST,
-          base::FilePath(FILE_PATH_LITERAL("apps_debugger")));
-    }
-
-
     AddFileManagerExtension();
     AddHangoutServicesExtension();
     AddImageLoaderExtension();
@@ -466,14 +484,17 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
       if (command_line->HasSwitch(chromeos::switches::kGuestSession)) {
         // TODO(dpolukhin): Hack to enable HTML5 temporary file system for
         // Quickoffice. It doesn't work without temporary file system access.
-        Profile* profile = ProfileManager::GetDefaultProfileOrOffTheRecord();
-        ExtensionService* service =
-            extensions::ExtensionSystem::Get(profile)->extension_service();
-        GURL site = service->GetSiteForExtensionId(id);
-        fileapi::FileSystemContext* context =
-            content::BrowserContext::GetStoragePartitionForSite(profile, site)->
-                GetFileSystemContext();
-        context->EnableTemporaryFileSystemInIncognito();
+        // Make sure temporary file system is enabled in the off the record
+        // browser context (as that is the one used in guest session).
+        content::BrowserContext* off_the_record_context =
+            ExtensionsBrowserClient::Get()->GetOffTheRecordContext(
+                browser_context_);
+        GURL site = content::SiteInstance::GetSiteForURL(
+            off_the_record_context, Extension::GetBaseURLFromExtensionId(id));
+        fileapi::FileSystemContext* file_system_context =
+            content::BrowserContext::GetStoragePartitionForSite(
+                off_the_record_context, site)->GetFileSystemContext();
+        file_system_context->EnableTemporaryFileSystemInIncognito();
       }
     }
 #endif  // defined(GOOGLE_CHROME_BUILD)
@@ -489,6 +510,11 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
     if (!command_line->HasSwitch(chromeos::switches::kGuestSession)) {
       Add(IDR_WALLPAPERMANAGER_MANIFEST,
           base::FilePath(FILE_PATH_LITERAL("chromeos/wallpaper_manager")));
+    }
+
+    if (!command_line->HasSwitch(chromeos::switches::kDisableFirstRunUI)) {
+      Add(IDR_FIRST_RUN_DIALOG_MANIFEST,
+          base::FilePath(FILE_PATH_LITERAL("chromeos/first_run/app")));
     }
 
     Add(IDR_NETWORK_CONFIGURATION_MANIFEST,
@@ -538,9 +564,30 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
       CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kDisableGoogleNowIntegration);
 
-  if (enabled && !disabled_via_flag) {
+  if (!skip_session_components && enabled && !disabled_via_flag) {
     Add(IDR_GOOGLE_NOW_MANIFEST,
         base::FilePath(FILE_PATH_LITERAL("google_now")));
+  }
+#endif
+
+#if defined(GOOGLE_CHROME_BUILD)
+#if !defined(OS_CHROMEOS)  // http://crbug.com/314799
+  AddNetworkSpeechSynthesisExtension();
+#endif
+#endif  // defined(GOOGLE_CHROME_BUILD)
+
+#if defined(OS_CHROMEOS)
+  AddChromeOsSpeechSynthesisExtension();
+#endif  // defined(OS_CHROMEOS)
+
+#if defined(ENABLE_PLUGINS)
+  base::FilePath pdf_path;
+  content::PluginService* plugin_service =
+      content::PluginService::GetInstance();
+  if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kOutOfProcessPdf) &&
+      PathService::Get(chrome::FILE_PDF_PLUGIN, &pdf_path) &&
+      plugin_service->GetRegisteredPpapiPluginInfo(pdf_path)) {
+    Add(IDR_PDF_MANIFEST, base::FilePath(FILE_PATH_LITERAL("pdf")));
   }
 #endif
 }

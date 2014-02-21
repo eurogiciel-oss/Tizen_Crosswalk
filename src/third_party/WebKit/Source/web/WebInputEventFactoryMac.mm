@@ -32,7 +32,7 @@
 #import <Cocoa/Cocoa.h>
 
 #include "WebInputEvent.h"
-#include "core/platform/WindowsKeyboardCodes.h"
+#include "platform/WindowsKeyboardCodes.h"
 #include "wtf/ASCIICType.h"
 
 #if __MAC_OS_X_VERSION_MAX_ALLOWED == 1060
@@ -64,7 +64,7 @@ enum {
 
 #endif  // __MAC_OS_X_VERSION_MAX_ALLOWED < 1080
 
-namespace WebKit {
+namespace blink {
 
 static int windowsKeyCodeForKeyCode(uint16_t keyCode)
 {
@@ -766,6 +766,20 @@ static inline void setWebEventLocationFromEventInView(WebMouseEvent* result,
     result->movementY = [event deltaY];
 }
 
+bool WebInputEventFactory::isSystemKeyEvent(const WebKeyboardEvent& event)
+{
+    // Windows and Linux set |isSystemKey| if alt is down. Blink looks at this
+    // flag to decide if it should handle a key or not. E.g. alt-left/right
+    // shouldn't be used by Blink to scroll the current page, because we want
+    // to get that key back for it to do history navigation. Hence, the
+    // corresponding situation on OS X is to set this for cmd key presses.
+    // cmd-b and and cmd-i are system wide key bindings that OS X doesn't
+    // handle for us, so the editor handles them.
+    return event.modifiers & WebInputEvent::MetaKey
+           && event.windowsKeyCode != VK_B
+           && event.windowsKeyCode != VK_I;
+}
+
 WebKeyboardEvent WebInputEventFactory::keyboardEvent(NSEvent* event)
 {
     WebKeyboardEvent result;
@@ -828,14 +842,7 @@ WebKeyboardEvent WebInputEventFactory::keyboardEvent(NSEvent* event)
                      encoding:NSASCIIStringEncoding];
 
     result.timeStampSeconds = [event timestamp];
-
-    // Windows and Linux set |isSystemKey| if alt is down. WebKit looks at this
-    // flag to decide if it should handle a key or not. E.g. alt-left/right
-    // shouldn't be used by WebKit to scroll the current page, because we want
-    // to get that key back for it to do history navigation. Hence, the
-    // corresponding situation on OS X is to set this for cmd key presses.
-    if (result.modifiers & WebInputEvent::MetaKey)
-        result.isSystemKey = true;
+    result.isSystemKey = isSystemKeyEvent(result);
 
     return result;
 }
@@ -849,21 +856,14 @@ WebKeyboardEvent WebInputEventFactory::keyboardEvent(wchar_t character,
     // such methods, this function creates a WebInputEvent::Char event without
     // using a NSEvent object.
     WebKeyboardEvent result;
-    result.type = WebKit::WebInputEvent::Char;
+    result.type = blink::WebInputEvent::Char;
     result.timeStampSeconds = timeStampSeconds;
     result.modifiers = modifiers;
     result.windowsKeyCode = character;
     result.nativeKeyCode = character;
     result.text[0] = character;
     result.unmodifiedText[0] = character;
-
-    // Windows and Linux set |isSystemKey| if alt is down. WebKit looks at this
-    // flag to decide if it should handle a key or not. E.g. alt-left/right
-    // shouldn't be used by WebKit to scroll the current page, because we want
-    // to get that key back for it to do history navigation. Hence, the
-    // corresponding situation on OS X is to set this for cmd key presses.
-    if (result.modifiers & WebInputEvent::MetaKey)
-        result.isSystemKey = true;
+    result.isSystemKey = isSystemKeyEvent(result);
 
     return result;
 }
@@ -1145,4 +1145,4 @@ WebGestureEvent WebInputEventFactory::gestureEvent(NSEvent *event, NSView *view)
     return result;
 }
 
-} // namespace WebKit
+} // namespace blink

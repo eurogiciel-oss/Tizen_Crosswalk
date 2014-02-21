@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Google Inc. All rights reserved.
+ * Copyright (C) 2014 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -38,37 +38,23 @@
 
 namespace WebCore {
 
-class ExecutionContext;
-class StorageErrorCallback;
-class StorageQuota;
-class StorageQuotaCallback;
-class StorageUsageCallback;
-
-class StorageInfo : public RefCounted<StorageInfo>, public ScriptWrappable {
+class StorageInfo FINAL : public RefCounted<StorageInfo>, public ScriptWrappable {
 public:
-    enum {
-        TEMPORARY,
-        PERSISTENT,
-    };
-
-    static PassRefPtr<StorageInfo> create()
+    static PassRefPtr<StorageInfo> create(unsigned long long usage, unsigned long long quota)
     {
-        return adoptRef(new StorageInfo());
+        return adoptRef(new StorageInfo(usage, quota));
     }
 
-    void queryUsageAndQuota(ExecutionContext*, int storageType, PassRefPtr<StorageUsageCallback>, PassRefPtr<StorageErrorCallback>);
-
-    void requestQuota(ExecutionContext*, int storageType, unsigned long long newQuotaInBytes, PassRefPtr<StorageQuotaCallback>, PassRefPtr<StorageErrorCallback>);
+    unsigned long long usage() const { return m_usage; }
+    unsigned long long quota() const { return m_quota; }
 
     ~StorageInfo();
 
 private:
-    StorageInfo();
+    StorageInfo(unsigned long long usage, unsigned long long quota);
 
-    StorageQuota* getStorageQuota(int storageType);
-
-    mutable RefPtr<StorageQuota> m_temporaryStorage;
-    mutable RefPtr<StorageQuota> m_persistentStorage;
+    unsigned long long m_usage;
+    unsigned long long m_quota;
 };
 
 } // namespace WebCore

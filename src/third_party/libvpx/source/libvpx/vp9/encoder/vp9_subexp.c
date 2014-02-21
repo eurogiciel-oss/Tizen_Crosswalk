@@ -11,10 +11,9 @@
 #include "vp9/common/vp9_common.h"
 #include "vp9/common/vp9_entropy.h"
 
-#include "vp9/encoder/vp9_boolhuff.h"
 #include "vp9/encoder/vp9_treewriter.h"
+#include "vp9/encoder/vp9_writer.h"
 
-#define vp9_cost_upd  ((int)(vp9_cost_one(upd) - vp9_cost_zero(upd)) >> 8)
 #define vp9_cost_upd256  ((int)(vp9_cost_one(upd) - vp9_cost_zero(upd)))
 
 static int update_bits[255];
@@ -221,7 +220,7 @@ int vp9_prob_diff_update_savings_search_model(const unsigned int *ct,
 }
 
 void vp9_cond_prob_diff_update(vp9_writer *w, vp9_prob *oldp,
-                               unsigned int *ct) {
+                               const unsigned int ct[2]) {
   const vp9_prob upd = DIFF_UPDATE_PROB;
   vp9_prob newp = get_binary_prob(ct[0], ct[1]);
   const int savings = vp9_prob_diff_update_savings_search(ct, *oldp, &newp,

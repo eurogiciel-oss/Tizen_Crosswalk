@@ -104,6 +104,10 @@
                 'libvpx_intrinsics_ssse3',
                 # Currently no sse4_1 intrinsic functions
                 #'libvpx_intrinsics_sse4_1',
+                # Currently no avx intrinsic functions
+                #'libvpx_intrinsics_avx',
+                # Add avx2 support when VS2013 lands: crbug.com/328981
+                #'libvpx_intrinsics_avx2',
               ],
             }],
             ['target_arch=="x64"', {
@@ -118,6 +122,10 @@
                 'libvpx_intrinsics_ssse3',
                 # Currently no sse4_1 intrinsic functions
                 #'libvpx_intrinsics_sse4_1',
+                # Currently no avx intrinsic functions
+                #'libvpx_intrinsics_avx',
+                # Add avx2 support when VS2013 lands: crbug.com/328981
+                #'libvpx_intrinsics_avx2',
               ],
             }],
             ['clang == 1', {
@@ -223,10 +231,10 @@
               'action': [
                 'bash',
                 '-c',
-                'cat <(RULE_INPUT_PATH) | perl <(shared_generated_dir)/<(ads2gas_script) > <(shared_generated_dir)/<(RULE_INPUT_ROOT).S',
+                'cat <(RULE_INPUT_PATH) | perl <(shared_generated_dir)/<(ads2gas_script) -chromium > <(shared_generated_dir)/<(RULE_INPUT_ROOT).S',
               ],
               'process_outputs_as_sources': 1,
-              'message': 'Convert libvpx asm file for ARM <(RULE_INPUT_PATH).',
+              'message': 'Convert libvpx asm file for ARM <(RULE_INPUT_PATH)',
             },
           ],
 
@@ -295,9 +303,8 @@
               ],
             }],
             ['OS == "android"', {
-              'include_dirs': [
-                '<(android_ndk_include)',
-                '<(android_ndk_root)/sources/android/cpufeatures',
+              'includes': [
+                '../../build/android/cpufeatures.gypi',
               ],
             }],
             ['chromeos == 1', {
@@ -332,6 +339,7 @@
       # A library that contains assembly offsets needed.
       'target_name': 'libvpx_asm_offsets_vp8',
       'type': 'static_library',
+      'android_unmangled_name': 1,
       'hard_dependency': 1,
       'include_dirs': [
         'source/config/<(OS_CATEGORY)/<(target_arch_full)',
@@ -355,6 +363,7 @@
       # libvpx_asm_offsets.
       'target_name': 'libvpx_asm_offsets_vpx_scale',
       'type': 'static_library',
+      'android_unmangled_name': 1,
       'hard_dependency': 1,
       'include_dirs': [
         'source/config/<(OS_CATEGORY)/<(target_arch_full)',
@@ -386,6 +395,14 @@
         'libvpx_asm_offsets_vp8',
         'libvpx_obj_int_extract#host',
       ],
+      'variables' : {
+        'lib_intermediate_path' : '',
+        'conditions' : [
+          ['android_webview_build==1', {
+            'lib_intermediate_path' : '<(android_src)/$(call intermediates-dir-for, STATIC_LIBRARIES, libvpx_asm_offsets_vp8)/libvpx_asm_offsets_vp8.a',
+          }],
+        ],
+      },
       'conditions': [
         ['OS=="win"', {
           'variables': {
@@ -427,6 +444,7 @@
                 '-a', '<(PRODUCT_DIR)/libvpx_asm_offsets_vp8.a',
                 '-a', '<(LIB_DIR)/third_party/libvpx/libvpx_asm_offsets_vp8.a',
                 '-a', '<(LIB_DIR)/Source/WebKit/chromium/third_party/libvpx/libvpx_asm_offsets_vp8.a',
+                '-a', '<(lib_intermediate_path)',
                 '-f', 'vp8_asm_enc_offsets.o',
               ],
               'process_output_as_sources': 1,
@@ -467,7 +485,7 @@
             '-b', '<(RULE_INPUT_PATH)',
             '-o', '<(shared_generated_dir)/<(RULE_INPUT_ROOT).asm',
           ],
-          'message': 'Generate assembly offsets <(RULE_INPUT_PATH).',
+          'message': 'Generate assembly offsets <(RULE_INPUT_PATH)',
           'msvs_cygwin_shell': 1,
         },
       ],
@@ -484,6 +502,14 @@
         'libvpx_asm_offsets_vpx_scale',
         'libvpx_obj_int_extract#host',
       ],
+      'variables' : {
+        'lib_intermediate_path' : '',
+        'conditions' : [
+          ['android_webview_build==1', {
+            'lib_intermediate_path' : '<(android_src)/$(call intermediates-dir-for, STATIC_LIBRARIES, libvpx_asm_offsets_vpx_scale)/libvpx_asm_offsets_vpx_scale.a',
+          }],
+        ],
+      },
       'conditions': [
         ['OS=="win"', {
           'variables': {
@@ -525,6 +551,7 @@
                 '-a', '<(PRODUCT_DIR)/libvpx_asm_offsets_vpx_scale.a',
                 '-a', '<(LIB_DIR)/third_party/libvpx/libvpx_asm_offsets_vpx_scale.a',
                 '-a', '<(LIB_DIR)/Source/WebKit/chromium/third_party/libvpx/libvpx_asm_offsets_vpx_scale.a',
+                '-a', '<(lib_intermediate_path)',
                 '-f', 'vpx_scale_asm_offsets.o',
               ],
               'process_output_as_sources': 1,
@@ -564,7 +591,7 @@
             '-b', '<(RULE_INPUT_PATH)',
             '-o', '<(shared_generated_dir)/<(RULE_INPUT_ROOT).asm',
           ],
-          'message': 'Generate assembly offsets <(RULE_INPUT_PATH).',
+          'message': 'Generate assembly offsets <(RULE_INPUT_PATH)',
           'msvs_cygwin_shell': 1,
         },
       ],
@@ -600,7 +627,7 @@
             '<(shared_generated_dir)/simple_encoder/gen_example_code.sh <(RULE_INPUT_PATH) > <(shared_generated_dir)/<(RULE_INPUT_ROOT).c',
           ],
           'process_outputs_as_sources': 1,
-          'message': 'Generate libvpx example code <(RULE_INPUT_PATH).',
+          'message': 'Generate libvpx example code <(RULE_INPUT_PATH)',
         },
       ],
       'sources': [
@@ -638,7 +665,7 @@
             '<(shared_generated_dir)/simple_decoder/gen_example_code.sh <(RULE_INPUT_PATH) > <(shared_generated_dir)/<(RULE_INPUT_ROOT).c',
           ],
           'process_outputs_as_sources': 1,
-          'message': 'Generate libvpx example code <(RULE_INPUT_PATH).',
+          'message': 'Generate libvpx example code <(RULE_INPUT_PATH)',
         },
       ],
       'sources': [

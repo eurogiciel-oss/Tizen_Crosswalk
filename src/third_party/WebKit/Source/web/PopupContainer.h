@@ -32,9 +32,9 @@
 #define PopupContainer_h
 
 #include "PopupListBox.h"
-#include "core/platform/PopupMenuStyle.h"
-#include "core/platform/chromium/FramelessScrollView.h"
+#include "platform/PopupMenuStyle.h"
 #include "platform/geometry/FloatQuad.h"
+#include "platform/scroll/FramelessScrollView.h"
 
 namespace WebCore {
 
@@ -42,14 +42,14 @@ class ChromeClient;
 class FrameView;
 class PopupMenuClient;
 
-class PopupContainer : public FramelessScrollView {
+class PopupContainer FINAL : public FramelessScrollView {
 public:
     enum PopupType {
         Select, // HTML select popup.
         Suggestion, // Autocomplete/autofill popup.
     };
 
-    static PassRefPtr<PopupContainer> create(PopupMenuClient*, PopupType, const PopupContainerSettings&);
+    static PassRefPtr<PopupContainer> create(PopupMenuClient*, PopupType, bool deviceSupportsTouch);
 
     // Whether a key event should be sent to this popup.
     bool isInterestedInEventForKey(int keyCode);
@@ -117,8 +117,8 @@ public:
 private:
     friend class WTF::RefCounted<PopupContainer>;
 
-    PopupContainer(PopupMenuClient*, PopupType, const PopupContainerSettings&);
-    ~PopupContainer();
+    PopupContainer(PopupMenuClient*, PopupType, bool deviceSupportsTouch);
+    virtual ~PopupContainer();
 
     // Paint the border.
     void paintBorder(GraphicsContext*, const IntRect&);
@@ -134,7 +134,6 @@ private:
     RefPtr<PopupListBox> m_listBox;
     RefPtr<FrameView> m_frameView;
 
-    PopupContainerSettings m_settings;
     PopupType m_popupType;
 
     // m_controlPosition contains the transformed position of the

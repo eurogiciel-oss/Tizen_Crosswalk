@@ -11,14 +11,14 @@
 #include "chrome/browser/sessions/session_tab_helper.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/permissions/permissions_data.h"
 #include "chrome/test/base/interactive_test_utils.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test_utils.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/feature_switch.h"
+#include "extensions/common/permissions/permissions_data.h"
 
 using content::WebContents;
 
@@ -41,17 +41,6 @@ class CommandsApiTest : public ExtensionApiTest {
         SessionID::IdForTab(web_contents),
         APIPermission::kTab);
   }
-};
-
-class ScriptBadgesCommandsApiTest : public ExtensionApiTest {
- public:
-  ScriptBadgesCommandsApiTest() {
-    // We cannot add this to CommandsApiTest because then PageActions get
-    // treated like BrowserActions and the PageAction test starts failing.
-    CommandLine::ForCurrentProcess()->AppendSwitchASCII(
-        switches::kScriptBadges, "1");
-  }
-  virtual ~ScriptBadgesCommandsApiTest() {}
 };
 
 // Test the basic functionality of the Keybinding API:
@@ -162,36 +151,6 @@ IN_PROC_BROWSER_TEST_F(CommandsApiTest, MAYBE_PageAction) {
   ASSERT_TRUE(result);
 }
 
-// Checked-in in a disabled state, because the necessary functionality to
-// automatically verify that the test works hasn't been implemented for the
-// script badges yet (see http://crbug.com/140016). The test results, can be
-// verified manually by running the test and verifying that the synthesized
-// popup for script badges appear. When bug 140016 has been fixed, the popup
-// code can signal to the test that the test passed.
-// TODO(finnur): Enable this test once the bug is fixed.
-IN_PROC_BROWSER_TEST_F(ScriptBadgesCommandsApiTest, DISABLED_ScriptBadge) {
-  ASSERT_TRUE(test_server()->Start());
-  ASSERT_TRUE(RunExtensionTest("keybinding/script_badge")) << message_;
-  const Extension* extension = GetSingleLoadedExtension();
-  ASSERT_TRUE(extension) << message_;
-
-  {
-    ResultCatcher catcher;
-    // Tell the extension to update the script badge state.
-    ui_test_utils::NavigateToURL(
-        browser(), GURL(extension->GetResourceURL("show.html")));
-    ASSERT_TRUE(catcher.GetNextResult());
-  }
-
-  {
-    ResultCatcher catcher;
-    // Activate the shortcut (Ctrl+Shift+F).
-    ASSERT_TRUE(ui_test_utils::SendKeyPressSync(
-        browser(), ui::VKEY_F, true, true, false, false));
-    ASSERT_TRUE(catcher.GetNextResult());
-  }
-}
-
 #if defined(OS_LINUX) && !defined(OS_CHROMEOS) && defined(USE_AURA)
 // TODO(erg): linux_aura bringup: http://crbug.com/163931
 #define MAYBE_SynthesizedCommand DISABLED_SynthesizedCommand
@@ -259,6 +218,32 @@ IN_PROC_BROWSER_TEST_F(CommandsApiTest, MAYBE_DontOverwriteSystemShortcuts) {
       "    window.domAutomationController.send(true)}}, 100)",
       &result));
   ASSERT_TRUE(result);
+}
+
+#if defined(OS_WIN)
+// Currently this feature is implemented on Windows only.
+#define MAYBE_AllowDuplicatedMediaKeys AllowDuplicatedMediaKeys
+#else
+#define MAYBE_AllowDuplicatedMediaKeys DISABLED_AllowDuplicatedMediaKeys
+#endif
+
+// Test that media keys go to all extensions that register for them.
+IN_PROC_BROWSER_TEST_F(CommandsApiTest, MAYBE_AllowDuplicatedMediaKeys) {
+  ResultCatcher catcher;
+  ASSERT_TRUE(RunExtensionTest("keybinding/non_global_media_keys_0"))
+      << message_;
+  ASSERT_TRUE(catcher.GetNextResult());
+  ASSERT_TRUE(RunExtensionTest("keybinding/non_global_media_keys_1"))
+      << message_;
+  ASSERT_TRUE(catcher.GetNextResult());
+
+  // Activate the Media Stop key.
+  ASSERT_TRUE(ui_test_utils::SendKeyPressSync(
+      browser(), ui::VKEY_MEDIA_STOP, false, false, false, false));
+
+  // We should get two success result.
+  ASSERT_TRUE(catcher.GetNextResult());
+  ASSERT_TRUE(catcher.GetNextResult());
 }
 
 }  // namespace extensions

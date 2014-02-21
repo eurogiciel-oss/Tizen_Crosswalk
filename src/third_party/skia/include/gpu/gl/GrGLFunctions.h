@@ -11,11 +11,28 @@
 
 #include "GrGLConfig.h"
 
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Classifies GL contexts by which standard they implement (currently as Desktop
+ * vs. ES).
+ */
+enum GrGLStandard {
+    kNone_GrGLStandard,
+    kGL_GrGLStandard,
+    kGLES_GrGLStandard,
+};
+
+// Temporary aliases until Chromium can be updated.
+typedef GrGLStandard GrGLBinding;
+static const GrGLStandard kES2_GrGLBinding = kGLES_GrGLStandard;
+static const GrGLStandard kDesktop_GrGLBinding = kGL_GrGLStandard;
+
+///////////////////////////////////////////////////////////////////////////////
+
 /**
  * Declares typedefs for all the GL functions used in GrGLInterface
  */
-
-///////////////////////////////////////////////////////////////////////////////
 
 typedef unsigned int GrGLenum;
 typedef unsigned char GrGLboolean;
@@ -35,8 +52,18 @@ typedef float GrGLclampf;
 typedef double GrGLdouble;
 typedef double GrGLclampd;
 typedef void GrGLvoid;
-typedef long GrGLintptr;
-typedef long GrGLsizeiptr;
+#ifndef SK_IGNORE_64BIT_OPENGL_CHANGES
+#ifdef _WIN64
+typedef signed long long int GrGLintptr;
+typedef signed long long int GrGLsizeiptr;
+#else
+typedef signed long int GrGLintptr;
+typedef signed long int GrGLsizeiptr;
+#endif
+#else
+typedef signed long int GrGLintptr;
+typedef signed long int GrGLsizeiptr;
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -131,6 +158,8 @@ extern "C" {
     typedef GrGLvoid (GR_GL_FUNCTION_TYPE* GrGLRenderbufferStorageMultisampleProc)(GrGLenum target, GrGLsizei samples, GrGLenum internalformat, GrGLsizei width, GrGLsizei height);
     typedef GrGLvoid (GR_GL_FUNCTION_TYPE* GrGLResolveMultisampleFramebufferProc)();
     typedef GrGLvoid (GR_GL_FUNCTION_TYPE* GrGLScissorProc)(GrGLint x, GrGLint y, GrGLsizei width, GrGLsizei height);
+    typedef GrGLvoid (GR_GL_FUNCTION_TYPE* GrGLBindUniformLocation)(GrGLuint program, GrGLint location, const char* name);
+
 #if GR_GL_USE_NEW_SHADER_SOURCE_SIGNATURE
     typedef GrGLvoid (GR_GL_FUNCTION_TYPE* GrGLShaderSourceProc)(GrGLuint shader, GrGLsizei count, const char* const * str, const GrGLint* length);
 #else

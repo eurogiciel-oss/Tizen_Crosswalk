@@ -51,6 +51,12 @@ void AccountTracker::RemoveObserver(Observer* observer) {
 }
 
 void AccountTracker::OnRefreshTokenAvailable(const std::string& account_id) {
+  // Ignore refresh tokens if there is no primary account ID at all.
+  ProfileOAuth2TokenService* token_service =
+      ProfileOAuth2TokenServiceFactory::GetForProfile(profile_);
+  if (token_service->GetPrimaryAccountId().empty())
+    return;
+
   DVLOG(1) << "AVAILABLE " << account_id;
   ClearAuthError(account_id);
   UpdateSignInState(account_id, true);
@@ -198,7 +204,8 @@ void AccountTracker::DeleteFetcher(AccountIdFetcher* fetcher) {
 AccountIdFetcher::AccountIdFetcher(Profile* profile,
                                    AccountTracker* tracker,
                                    const std::string& account_key)
-    : profile_(profile),
+    : OAuth2TokenService::Consumer("extensions_account_tracker"),
+      profile_(profile),
       tracker_(tracker),
       account_key_(account_key) {}
 
@@ -227,7 +234,7 @@ void AccountIdFetcher::OnGetTokenSuccess(
 void AccountIdFetcher::OnGetTokenFailure(
     const OAuth2TokenService::Request* request,
     const GoogleServiceAuthError& error) {
-  LOG(ERROR) << "OnGetTokenFailure: " << error.error_message();
+  LOG(ERROR) << "OnGetTokenFailure: " << error.ToString();
   DCHECK_EQ(request, login_token_request_.get());
   tracker_->OnUserInfoFetchFailure(this);
 }

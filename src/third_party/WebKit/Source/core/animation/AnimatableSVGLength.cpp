@@ -37,18 +37,18 @@ namespace WebCore {
 
 PassRefPtr<AnimatableValue> AnimatableSVGLength::interpolateTo(const AnimatableValue* value, double fraction) const
 {
-    return create(toAnimatableSVGLength(value)->toSVGLength().blend(m_length, narrowPrecisionToFloat(fraction)));
+    return create(toAnimatableSVGLength(value)->toSVGLength()->blend(m_length.get(), narrowPrecisionToFloat(fraction)));
 }
 
 PassRefPtr<AnimatableValue> AnimatableSVGLength::addWith(const AnimatableValue* value) const
 {
-    RELEASE_ASSERT_WITH_MESSAGE(false, "Web Animations not yet implemented: AnimatableSVGLength::addWith()");
-    return 0;
+    ASSERT_WITH_MESSAGE(false, "Web Animations not yet implemented: AnimatableSVGLength::addWith()");
+    return defaultAddWith(this, value);
 }
 
 bool AnimatableSVGLength::equalTo(const AnimatableValue* value) const
 {
-    return m_length == toAnimatableSVGLength(value)->m_length;
+    return *m_length == *toAnimatableSVGLength(value)->m_length;
 }
 
 } // namespace WebCore

@@ -1,4 +1,3 @@
-
 /*
  * Copyright 2006 The Android Open Source Project
  *
@@ -6,14 +5,12 @@
  * found in the LICENSE file.
  */
 
-
 #ifndef SkBitmap_DEFINED
 #define SkBitmap_DEFINED
 
-#include "Sk64.h"
-#include "SkAlpha.h"
 #include "SkColor.h"
 #include "SkColorTable.h"
+#include "SkImageInfo.h"
 #include "SkPoint.h"
 #include "SkRefCnt.h"
 
@@ -21,6 +18,7 @@ struct SkIRect;
 struct SkRect;
 class SkPaint;
 class SkPixelRef;
+class SkPixelRefFactory;
 class SkRegion;
 class SkString;
 
@@ -38,16 +36,10 @@ class GrTexture;
 */
 class SK_API SkBitmap {
 public:
-    class Allocator;
+    class SK_API Allocator;
 
     enum Config {
         kNo_Config,         //!< bitmap has not been configured
-        /**
-         *  1-bit per pixel, (0 is transparent, 1 is opaque)
-         *  Valid as a destination (target of a canvas), but not valid as a src.
-         *  i.e. you can draw into a 1-bit bitmap, but you cannot draw from one.
-         */
-        kA1_Config,
         kA8_Config,         //!< 8-bits per pixel, with only alpha specified (0 is transparent, 0xFF is opaque)
         kIndex8_Config,     //!< 8-bits per pixel, using SkColorTable to specify the colors
         kRGB_565_Config,    //!< 16-bits per pixel, (see SkColorPriv.h for packing)
@@ -155,19 +147,21 @@ public:
     */
     size_t getSafeSize() const ;
 
-    /** Return the byte size of the pixels, based on the height and rowBytes.
-        This routine is slightly slower than getSize(), but does not truncate
-        the answer to 32bits.
-    */
-    Sk64 getSize64() const {
-        Sk64 size;
-        size.setMul(fHeight, fRowBytes);
-        return size;
+    /**
+     *  Return the full size of the bitmap, in bytes.
+     */
+    int64_t computeSize64() const {
+        return sk_64_mul(fHeight, fRowBytes);
     }
 
-    /** Same as getSafeSize(), but does not truncate the answer to 32bits.
-    */
-    Sk64 getSafeSize64() const ;
+    /**
+     *  Return the number of bytes from the pointer returned by getPixels()
+     *  to the end of the allocated space in the buffer. This may be smaller
+     *  than computeSize64() if there is any rowbytes padding beyond the width.
+     */
+    int64_t computeSafeSize64() const {
+        return ComputeSafeSize64((Config)fConfig, fWidth, fHeight, fRowBytes);
+    }
 
     /** Returns true if this bitmap is marked as immutable, meaning that the
         contents of its pixels will not change for the lifetime of the bitmap.
@@ -186,11 +180,6 @@ public:
     */
     bool isOpaque() const {
         return SkAlphaTypeIsOpaque(this->alphaType());
-    }
-
-    SK_ATTR_DEPRECATED("use setAlphaType")
-    void setIsOpaque(bool opaque) {
-        this->setAlphaType(opaque ? kOpaque_SkAlphaType : kPremul_SkAlphaType);
     }
 
     /** Returns true if the bitmap is volatile (i.e. should not be cached by devices.)
@@ -228,7 +217,7 @@ public:
         return ComputeBytesPerPixel(c) >> 1;
     }
 
-    static Sk64 ComputeSize64(Config, int width, int height);
+    static int64_t ComputeSize64(Config, int width, int height);
     static size_t ComputeSize(Config, int width, int height);
 
     /**
@@ -237,8 +226,8 @@ public:
      *  it will return false.
      *
      *  Since this can be an expensive operation, the bitmap stores a flag for
-     *  this (isOpaque, setIsOpaque). Only call this if you need to compute this
-     *  value from "unknown" pixels.
+     *  this (isOpaque). Only call this if you need to compute this value from
+     *  "unknown" pixels.
      */
     static bool ComputeIsOpaque(const SkBitmap&);
 
@@ -259,6 +248,57 @@ public:
                                kPremul_SkAlphaType);
     }
 
+    bool setConfig(const SkImageInfo& info, size_t rowBytes = 0);
+
+    /**
+     *  Allocate a pixelref to match the specified image info. If the Factory
+     *  is non-null, call it to allcoate the pixelref. If the ImageInfo requires
+     *  a colortable, then ColorTable must be non-null, and will be ref'd.
+     *  On failure, the bitmap will be set to empty and return false.
+     */
+    bool allocPixels(const SkImageInfo&, SkPixelRefFactory*, SkColorTable*);
+
+    /**
+     *  Allocate a pixelref to match the specified image info, using the default
+     *  allocator.
+     *  On success, the bitmap's pixels will be "locked", and return true.
+     *  On failure, the bitmap will be set to empty and return false.
+     */
+    bool allocPixels(const SkImageInfo& info) {
+        return this->allocPixels(info, NULL, NULL);
+    }
+
+    /**
+     *  Legacy helper function, which creates an SkImageInfo from the specified
+     *  config and then calls allocPixels(info).
+     */
+    bool allocConfigPixels(Config, int width, int height, bool isOpaque = false);
+
+    bool allocN32Pixels(int width, int height, bool isOpaque = false) {
+        SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+        if (isOpaque) {
+            info.fAlphaType = kOpaque_SkAlphaType;
+        }
+        return this->allocPixels(info);
+    }
+
+    /**
+     *  Install a pixelref that wraps the specified pixels and rowBytes, and
+     *  optional ReleaseProc and context. When the pixels are no longer
+     *  referenced, if ReleaseProc is not null, it will be called with the
+     *  pixels and context as parameters.
+     *  On failure, the bitmap will be set to empty and return false.
+     */
+    bool installPixels(const SkImageInfo&, void* pixels, size_t rowBytes,
+                       void (*ReleaseProc)(void* addr, void* context),
+                       void* context);
+
+    /**
+     *  If the bitmap's config can be represented as SkImageInfo, return true,
+     *  and if info is not-null, set it to the bitmap's info. If it cannot be
+     *  represented as SkImageInfo, return false and ignore the info parameter.
+     */
+    bool asImageInfo(SkImageInfo* info) const;
 
     /** Use this to assign a new pixel address for an existing bitmap. This
         will automatically release any pixelref previously installed. Only call
@@ -331,18 +371,41 @@ public:
     */
     bool allocPixels(Allocator* allocator, SkColorTable* ctable);
 
-    /** Return the current pixelref object, if any
-    */
+    /**
+     *  Return the current pixelref object or NULL if there is none. This does
+     *  not affect the refcount of the pixelref.
+     */
     SkPixelRef* pixelRef() const { return fPixelRef; }
-    /** Return the offset into the pixelref, if any. Will return 0 if there is
-        no pixelref installed.
-    */
-    size_t pixelRefOffset() const { return fPixelRefOffset; }
-    /** Assign a pixelref and optional offset. Pixelrefs are reference counted,
-        so the existing one (if any) will be unref'd and the new one will be
-        ref'd.
-    */
-    SkPixelRef* setPixelRef(SkPixelRef* pr, size_t offset = 0);
+
+    /**
+     *  A bitmap can reference a subset of a pixelref's pixels. That means the
+     *  bitmap's width/height can be <= the dimensions of the pixelref. The
+     *  pixelref origin is the x,y location within the pixelref's pixels for
+     *  the bitmap's top/left corner. To be valid the following must be true:
+     *
+     *  origin_x + bitmap_width  <= pixelref_width
+     *  origin_y + bitmap_height <= pixelref_height
+     *
+     *  pixelRefOrigin() returns this origin, or (0,0) if there is no pixelRef.
+     */
+    SkIPoint pixelRefOrigin() const { return fPixelRefOrigin; }
+
+    /**
+     *  Assign a pixelref and origin to the bitmap. Pixelrefs are reference,
+     *  so the existing one (if any) will be unref'd and the new one will be
+     *  ref'd. (x,y) specify the offset within the pixelref's pixels for the
+     *  top/left corner of the bitmap. For a bitmap that encompases the entire
+     *  pixels of the pixelref, these will be (0,0).
+     */
+    SkPixelRef* setPixelRef(SkPixelRef* pr, int dx, int dy);
+
+    SkPixelRef* setPixelRef(SkPixelRef* pr, const SkIPoint& origin) {
+        return this->setPixelRef(pr, origin.fX, origin.fY);
+    }
+
+    SkPixelRef* setPixelRef(SkPixelRef* pr) {
+        return this->setPixelRef(pr, 0, 0);
+    }
 
     /** Call this to ensure that the bitmap points to the current pixel address
         in the pixelref. Balance it with a call to unlockPixels(). These calls
@@ -493,14 +556,6 @@ public:
      */
     inline uint8_t* getAddr8(int x, int y) const;
 
-    /** Returns the address of the byte containing the pixel specified by x,y
-     *  for 1bit pixels.
-     *  In debug build, this asserts that the pixels are allocated and locked,
-     *  and that the config is 1-bit, however none of these checks are performed
-     *  in the release build.
-     */
-    inline uint8_t* getAddr1(int x, int y) const;
-
     /** Returns the color corresponding to the pixel specified by x,y for
      *  colortable based bitmaps.
      *  In debug build, this asserts that the pixels are allocated and locked,
@@ -626,7 +681,7 @@ public:
     */
     class HeapAllocator : public Allocator {
     public:
-        virtual bool allocPixelRef(SkBitmap*, SkColorTable*);
+        virtual bool allocPixelRef(SkBitmap*, SkColorTable*) SK_OVERRIDE;
     };
 
     class RLEPixels {
@@ -657,12 +712,12 @@ private:
     mutable MipMap* fMipMap;
 
     mutable SkPixelRef* fPixelRef;
-    mutable size_t      fPixelRefOffset;
     mutable int         fPixelLockCount;
-    // either user-specified (in which case it is not treated as mutable)
-    // or a cache of the returned value from fPixelRef->lockPixels()
+    // These are just caches from the locked pixelref
     mutable void*       fPixels;
     mutable SkColorTable* fColorTable;    // only meaningful for kIndex8
+
+    SkIPoint    fPixelRefOrigin;
 
     enum Flags {
         kImageIsOpaque_Flag     = 0x01,
@@ -689,10 +744,10 @@ private:
 
     /* Internal computations for safe size.
     */
-    static Sk64 ComputeSafeSize64(Config   config,
-                                  uint32_t width,
-                                  uint32_t height,
-                                  size_t   rowBytes);
+    static int64_t ComputeSafeSize64(Config   config,
+                                     uint32_t width,
+                                     uint32_t height,
+                                     size_t   rowBytes);
     static size_t ComputeSafeSize(Config   config,
                                   uint32_t width,
                                   uint32_t height,
@@ -734,6 +789,8 @@ private:
     const SkBitmap& fBitmap;
     bool            fDidLock;
 };
+//TODO(mtklein): uncomment when 71713004 lands and Chromium's fixed.
+//#define SkAutoLockPixels(...) SK_REQUIRE_LOCAL_VAR(SkAutoLockPixels)
 
 /** Helper class that performs the lock/unlockColors calls on a colortable.
     The destructor will call unlockColors(false) if it has a bitmap's colortable
@@ -787,6 +844,7 @@ private:
     SkColorTable*    fCTable;
     const SkPMColor* fColors;
 };
+#define SkAutoLockColors(...) SK_REQUIRE_LOCAL_VAR(SkAutoLockColors)
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -817,14 +875,6 @@ inline SkPMColor SkBitmap::getIndex8Color(int x, int y) const {
     SkASSERT((unsigned)x < fWidth && (unsigned)y < fHeight);
     SkASSERT(fColorTable);
     return (*fColorTable)[*((const uint8_t*)fPixels + y * fRowBytes + x)];
-}
-
-// returns the address of the byte that contains the x coordinate
-inline uint8_t* SkBitmap::getAddr1(int x, int y) const {
-    SkASSERT(fPixels);
-    SkASSERT(fConfig == kA1_Config);
-    SkASSERT((unsigned)x < fWidth && (unsigned)y < fHeight);
-    return (uint8_t*)fPixels + y * fRowBytes + (x >> 3);
 }
 
 #endif

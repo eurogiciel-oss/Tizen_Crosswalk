@@ -39,8 +39,8 @@
 #include "net/base/static_cookie_policy.h"
 #include "url/gurl.h"
 
+using base::UserMetricsAction;
 using content::BrowserThread;
-using content::UserMetricsAction;
 
 namespace {
 
@@ -254,7 +254,7 @@ void HostContentSettingsMap::SetDefaultContentSetting(
 
   base::Value* value = NULL;
   if (setting != CONTENT_SETTING_DEFAULT)
-    value = Value::CreateIntegerValue(setting);
+    value = base::Value::CreateIntegerValue(setting);
   SetWebsiteSetting(
       ContentSettingsPattern::Wildcard(),
       ContentSettingsPattern::Wildcard(),
@@ -297,7 +297,7 @@ void HostContentSettingsMap::SetContentSetting(
   DCHECK(!ContentTypeHasCompoundValue(content_type));
   base::Value* value = NULL;
   if (setting != CONTENT_SETTING_DEFAULT)
-    value = Value::CreateIntegerValue(setting);
+    value = base::Value::CreateIntegerValue(setting);
   SetWebsiteSetting(primary_pattern,
                     secondary_pattern,
                     content_type,
@@ -309,7 +309,6 @@ void HostContentSettingsMap::AddExceptionForURL(
     const GURL& primary_url,
     const GURL& secondary_url,
     ContentSettingsType content_type,
-    const std::string& resource_identifier,
     ContentSetting setting) {
   // TODO(markusheintz): Until the UI supports pattern pairs, both urls must
   // match.
@@ -321,13 +320,13 @@ void HostContentSettingsMap::AddExceptionForURL(
   SetContentSetting(ContentSettingsPattern::FromURLNoWildcard(primary_url),
                     ContentSettingsPattern::Wildcard(),
                     content_type,
-                    resource_identifier,
+                    std::string(),
                     CONTENT_SETTING_DEFAULT);
 
   SetContentSetting(ContentSettingsPattern::FromURL(primary_url),
                     ContentSettingsPattern::Wildcard(),
                     content_type,
-                    resource_identifier,
+                    std::string(),
                     setting);
 }
 
@@ -477,7 +476,8 @@ void HostContentSettingsMap::MigrateObsoleteClearOnExitPref() {
                       it->secondary_pattern,
                       CONTENT_SETTINGS_TYPE_COOKIES,
                       std::string(),
-                      Value::CreateIntegerValue(CONTENT_SETTING_SESSION_ONLY));
+                      base::Value::CreateIntegerValue(
+                          CONTENT_SETTING_SESSION_ONLY));
   }
 
   prefs_->SetBoolean(prefs::kContentSettingsClearOnExitMigrated, true);
@@ -554,7 +554,6 @@ bool HostContentSettingsMap::ShouldAllowAllContent(
     }
   }
   return primary_url.SchemeIs(chrome::kChromeDevToolsScheme) ||
-         primary_url.SchemeIs(chrome::kChromeInternalScheme) ||
          primary_url.SchemeIs(chrome::kChromeUIScheme);
 }
 
@@ -574,7 +573,7 @@ base::Value* HostContentSettingsMap::GetWebsiteSetting(
       info->primary_pattern = ContentSettingsPattern::Wildcard();
       info->secondary_pattern = ContentSettingsPattern::Wildcard();
     }
-    return Value::CreateIntegerValue(CONTENT_SETTING_ALLOW);
+    return base::Value::CreateIntegerValue(CONTENT_SETTING_ALLOW);
   }
 
   ContentSettingsPattern* primary_pattern = NULL;

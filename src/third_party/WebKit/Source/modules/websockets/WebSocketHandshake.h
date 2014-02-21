@@ -33,15 +33,15 @@
 
 #include "modules/websockets/WebSocketExtensionDispatcher.h"
 #include "modules/websockets/WebSocketExtensionProcessor.h"
-#include "modules/websockets/WebSocketHandshakeRequest.h"
-#include "modules/websockets/WebSocketHandshakeResponse.h"
-#include "weborigin/KURL.h"
+#include "platform/network/WebSocketHandshakeRequest.h"
+#include "platform/network/WebSocketHandshakeResponse.h"
+#include "platform/weborigin/KURL.h"
 #include "wtf/PassOwnPtr.h"
 #include "wtf/text/WTFString.h"
 
 namespace WebCore {
 
-class ExecutionContext;
+class Document;
 
 class WebSocketHandshake {
     WTF_MAKE_NONCOPYABLE(WebSocketHandshake); WTF_MAKE_FAST_ALLOCATED;
@@ -52,7 +52,7 @@ public:
     enum Mode {
         Incomplete, Normal, Failed, Connected, ModeMax
     };
-    WebSocketHandshake(const KURL&, const String& protocol, ExecutionContext*);
+    WebSocketHandshake(const KURL&, const String& protocol, Document*);
     ~WebSocketHandshake();
 
     const KURL& url() const;
@@ -73,19 +73,19 @@ public:
     // We're collecting data for histogram in the destructor. Note that calling
     // this method affects that.
     void reset();
-    void clearExecutionContext();
+    void clearDocument();
 
     int readServerHandshake(const char* header, size_t len);
     Mode mode() const;
     // Returns a string indicating the reason of failure if mode() == Failed.
     String failureReason() const;
 
-    String serverWebSocketProtocol() const;
-    String serverSetCookie() const;
-    String serverSetCookie2() const;
-    String serverUpgrade() const;
-    String serverConnection() const;
-    String serverWebSocketAccept() const;
+    const AtomicString& serverWebSocketProtocol() const;
+    const AtomicString& serverSetCookie() const;
+    const AtomicString& serverSetCookie2() const;
+    const AtomicString& serverUpgrade() const;
+    const AtomicString& serverConnection() const;
+    const AtomicString& serverWebSocketAccept() const;
     String acceptedExtensions() const;
 
     const WebSocketHandshakeResponse& serverHandshakeResponse() const;
@@ -107,7 +107,7 @@ private:
     KURL m_url;
     String m_clientProtocol;
     bool m_secure;
-    ExecutionContext* m_context;
+    Document* m_document;
 
     Mode m_mode;
 

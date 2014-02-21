@@ -39,7 +39,7 @@ using namespace HTMLNames;
 
 static String emptyValueAXText()
 {
-    return Locale::defaultLocale().queryString(WebKit::WebLocalizedString::AXDateTimeFieldEmptyValueText);
+    return Locale::defaultLocale().queryString(blink::WebLocalizedString::AXDateTimeFieldEmptyValueText);
 }
 
 DateTimeFieldElement::FieldOwner::~FieldOwner()
@@ -47,7 +47,7 @@ DateTimeFieldElement::FieldOwner::~FieldOwner()
 }
 
 DateTimeFieldElement::DateTimeFieldElement(Document& document, FieldOwner& fieldOwner)
-    : HTMLSpanElement(spanTag, document)
+    : HTMLSpanElement(document)
     , m_fieldOwner(&fieldOwner)
 {
 }
@@ -64,10 +64,15 @@ void DateTimeFieldElement::defaultEventHandler(Event* event)
         KeyboardEvent* keyboardEvent = toKeyboardEvent(event);
         if (!isDisabled() && !isFieldOwnerDisabled() && !isFieldOwnerReadOnly()) {
             handleKeyboardEvent(keyboardEvent);
-            if (keyboardEvent->defaultHandled())
+            if (keyboardEvent->defaultHandled()) {
+                if (m_fieldOwner)
+                    m_fieldOwner->fieldDidChangeValueByKeyboard();
                 return;
+            }
         }
         defaultKeyboardEventHandler(keyboardEvent);
+        if (m_fieldOwner)
+            m_fieldOwner->fieldDidChangeValueByKeyboard();
         if (keyboardEvent->defaultHandled())
             return;
     }
@@ -152,12 +157,12 @@ void DateTimeFieldElement::initialize(const AtomicString& pseudo, const String& 
 {
     // On accessibility, DateTimeFieldElement acts like spin button.
     setAttribute(roleAttr, AtomicString("spinbutton", AtomicString::ConstructFromLiteral));
-    setAttribute(aria_valuetextAttr, emptyValueAXText());
-    setAttribute(aria_valueminAttr, String::number(axMinimum));
-    setAttribute(aria_valuemaxAttr, String::number(axMaximum));
+    setAttribute(aria_valuetextAttr, AtomicString(emptyValueAXText()));
+    setAttribute(aria_valueminAttr, AtomicString::number(axMinimum));
+    setAttribute(aria_valuemaxAttr, AtomicString::number(axMaximum));
 
-    setAttribute(aria_helpAttr, axHelpText);
-    setPart(pseudo);
+    setAttribute(aria_helpAttr, AtomicString(axHelpText));
+    setShadowPseudoId(pseudo);
     appendChild(Text::create(document(), visibleValue()));
 }
 
@@ -220,10 +225,10 @@ void DateTimeFieldElement::updateVisibleValue(EventBehavior eventBehavior)
 
     textNode->replaceWholeText(newVisibleValue);
     if (hasValue()) {
-        setAttribute(aria_valuetextAttr, newVisibleValue);
-        setAttribute(aria_valuenowAttr, String::number(valueForARIAValueNow()));
+        setAttribute(aria_valuetextAttr, AtomicString(newVisibleValue));
+        setAttribute(aria_valuenowAttr, AtomicString::number(valueForARIAValueNow()));
     } else {
-        setAttribute(aria_valuetextAttr, emptyValueAXText());
+        setAttribute(aria_valuetextAttr, AtomicString(emptyValueAXText()));
         removeAttribute(aria_valuenowAttr);
     }
 

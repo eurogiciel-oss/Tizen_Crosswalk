@@ -24,6 +24,8 @@
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/user_metrics.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/extension_set.h"
 #include "grit/theme_resources.h"
 #include "grit/ui_resources.h"
 #include "ui/base/layout.h"
@@ -34,8 +36,8 @@
 #include "ui/base/win/shell.h"
 #endif
 
+using base::UserMetricsAction;
 using content::BrowserThread;
-using content::UserMetricsAction;
 using extensions::Extension;
 using extensions::UnloadedExtensionInfo;
 using ui::ResourceBundle;
@@ -59,10 +61,6 @@ const char* kDefaultThemeGalleryID = "hkacjpbfdknhflllbcmjibkdeoafencn";
 // reason to do it at startup.
 // ExtensionService::GarbageCollectExtensions() does something similar.
 const int kRemoveUnusedThemesStartupDelay = 30;
-
-SkColor TintForUnderline(SkColor input) {
-  return SkColorSetA(input, SkColorGetA(input) / 3);
-}
 
 SkColor IncreaseLightness(SkColor color, double percent) {
   color_utils::HSL result;
@@ -159,6 +157,20 @@ SkColor ThemeService::GetColor(int id) const {
           GetColor(Properties::COLOR_MANAGED_USER_LABEL_BACKGROUND),
           SK_ColorBLACK,
           230);
+    case Properties::COLOR_STATUS_BAR_TEXT: {
+      // A long time ago, we blended the toolbar and the tab text together to
+      // get the status bar text because, at the time, our text rendering in
+      // views couldn't do alpha blending. Even though this is no longer the
+      // case, this blending decision is built into the majority of themes that
+      // exist, and we must keep doing it.
+      SkColor toolbar_color = GetColor(Properties::COLOR_TOOLBAR);
+      SkColor text_color = GetColor(Properties::COLOR_TAB_TEXT);
+      return SkColorSetARGB(
+          SkColorGetA(text_color),
+          (SkColorGetR(text_color) + SkColorGetR(toolbar_color)) / 2,
+          (SkColorGetG(text_color) + SkColorGetR(toolbar_color)) / 2,
+          (SkColorGetB(text_color) + SkColorGetR(toolbar_color)) / 2);
+    }
   }
 
   return Properties::GetDefaultColor(id);
@@ -324,10 +336,10 @@ void ThemeService::RemoveUnusedThemes(bool ignore_infobars) {
     return;
   std::string current_theme = GetThemeID();
   std::vector<std::string> remove_list;
-  scoped_ptr<const ExtensionSet> extensions(
+  scoped_ptr<const extensions::ExtensionSet> extensions(
       service->GenerateInstalledExtensionsSet());
   extensions::ExtensionPrefs* prefs = service->extension_prefs();
-  for (ExtensionSet::const_iterator it = extensions->begin();
+  for (extensions::ExtensionSet::const_iterator it = extensions->begin();
        it != extensions->end(); ++it) {
     const extensions::Extension* extension = *it;
     if (extension->is_theme() &&

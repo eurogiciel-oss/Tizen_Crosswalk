@@ -11,6 +11,13 @@ function consoleOutputHook(messageType)
 console.log = consoleOutputHook.bind(InspectorTest, "log");
 console.error = consoleOutputHook.bind(InspectorTest, "error");
 console.info = consoleOutputHook.bind(InspectorTest, "info");
+console.assert = function(condition, object)
+{
+    if (condition)
+        return;
+    var message = "Assertion failed: " + (typeof object !== "undefined" ? object : "");
+    InspectorTest.addResult(new Error(message).stack);
+}
 
 InspectorTest.Output = {   // override in window.initialize_yourName
     testComplete: function() 
@@ -84,6 +91,12 @@ InspectorTest.evaluateInPage = function(code, callback)
 InspectorTest.evaluateInPageWithTimeout = function(code)
 {
     InspectorTest.evaluateInPage("setTimeout(unescape('" + escape(code) + "'))");
+}
+
+InspectorTest.check = function(passCondition, failureText)
+{
+    if (!passCondition)
+        InspectorTest.addResult("FAIL: " + failureText);
 }
 
 InspectorTest.addResult = function(text)
@@ -207,6 +220,11 @@ InspectorTest.navigate = function(url, callback)
 
     WebInspector.panel("network")._reset();
     InspectorTest.evaluateInConsole("window.location = '" + url + "'");
+}
+
+InspectorTest.recordNetwork = function()
+{
+    WebInspector.panel("network")._networkLogView._recordButton.toggled = true;
 }
 
 InspectorTest.hardReloadPage = function(callback, scriptToEvaluateOnLoad, scriptPreprocessor)
@@ -392,8 +410,15 @@ InspectorTest.textContentWithLineBreaks = function(node)
             buffer += "\n    ";
         else if (currentNode.classList.contains("console-message"))
             buffer += "\n\n";
+        else if (currentNode.classList.contains("console-user-command"))
+            buffer += "\n\n> ";
     }
     return buffer;
+}
+
+InspectorTest.hideInspectorView = function()
+{
+    WebInspector.inspectorView.element.setAttribute("style", "display:none !important");
 }
 
 InspectorTest.StringOutputStream = function(callback)
@@ -403,6 +428,11 @@ InspectorTest.StringOutputStream = function(callback)
 };
 
 InspectorTest.StringOutputStream.prototype = {
+    open: function(fileName, callback)
+    {
+        callback(true);
+    },
+
     write: function(chunk, callback)
     {
         this._buffer += chunk;
@@ -430,6 +460,79 @@ InspectorTest.MockSetting.prototype = {
         this._value = value;
     }
 };
+
+
+/**
+ * @constructor
+ * @param {!string} dirPath
+ * @param {!string} name
+ * @param {!function(?WebInspector.TempFile)} callback
+ */
+InspectorTest.TempFileMock = function(dirPath, name, callback)
+{
+    this._chunks = [];
+    this._name = name;
+    setTimeout(callback.bind(this, this), 0);
+}
+
+InspectorTest.TempFileMock.prototype = {
+    /**
+     * @param {!string} data
+     * @param {!function(boolean)} callback
+     */
+    write: function(data, callback)
+    {
+        this._chunks.push(data);
+        setTimeout(callback.bind(this, true), 0);
+    },
+
+    finishWriting: function() { },
+
+    /**
+     * @param {function(?string)} callback
+     */
+    read: function(callback)
+    {
+        callback(this._chunks.join(""));
+    },
+
+    /**
+     * @param {!WebInspector.OutputStream} outputStream
+     * @param {!WebInspector.OutputStreamDelegate} delegate
+     */
+    writeToOutputSteam: function(outputStream, delegate)
+    {
+        var name = this._name;
+        var text = this._chunks.join("");
+        var chunkedReaderMock = {
+            loadedSize: function()
+            {
+                return text.length;
+            },
+
+            fileSize: function()
+            {
+                return text.length;
+            },
+
+            fileName: function()
+            {
+                return name;
+            },
+
+            cancel: function() { }
+        }
+        delegate.onTransferStarted(chunkedReaderMock);
+        outputStream.write(text);
+        delegate.onChunkTransferred(chunkedReaderMock);
+        outputStream.close();
+        delegate.onTransferFinished(chunkedReaderMock);
+    },
+
+    remove: function() { }
+}
+
+WebInspector.TempFile = InspectorTest.TempFileMock;
 
 };
 

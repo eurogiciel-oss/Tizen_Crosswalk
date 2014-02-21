@@ -24,10 +24,6 @@
 #include "ui/gl/gl_share_group.h"
 #include "ui/gl/gpu_preference.h"
 
-#if defined(OS_ANDROID)
-#include "content/common/android/surface_texture_peer.h"
-#endif
-
 struct GPUCreateCommandBufferConfig;
 
 namespace base {
@@ -42,13 +38,8 @@ class ImageManager;
 }
 }
 
-#if defined(OS_ANDROID)
 namespace content {
-class StreamTextureManagerAndroid;
-}
-#endif
-
-namespace content {
+class DevToolsGpuAgent;
 class GpuChannelManager;
 class GpuChannelMessageFilter;
 struct GpuRenderingStats;
@@ -136,7 +127,7 @@ class GpuChannel : public IPC::Listener,
   void DestroySoon();
 
   // Generate a route ID guaranteed to be unique for this channel.
-  int GenerateRouteID();
+  int32 GenerateRouteID();
 
   // Called to add/remove a listener for a particular message routing ID.
   void AddRoute(int32 route_id, IPC::Listener* listener);
@@ -151,12 +142,6 @@ class GpuChannel : public IPC::Listener,
   // should stop issuing GL commands. Setting this to NULL stops deferral.
   void SetPreemptByFlag(
       scoped_refptr<gpu::PreemptionFlag> preemption_flag);
-
-#if defined(OS_ANDROID)
-  StreamTextureManagerAndroid* stream_texture_manager() {
-    return stream_texture_manager_.get();
-  }
-#endif
 
   void CacheShader(const std::string& key, const std::string& shader);
 
@@ -184,20 +169,8 @@ class GpuChannel : public IPC::Listener,
   void OnDestroyCommandBuffer(int32 route_id);
   void OnCreateVideoEncoder(int32* route_id);
   void OnDestroyVideoEncoder(int32 route_id);
-
-#if defined(OS_ANDROID)
-  // Register the StreamTextureProxy class with the gpu process so that all
-  // the callbacks will be correctly forwarded to the renderer.
-  void OnRegisterStreamTextureProxy(int32 stream_id, int32* route_id);
-
-  // Create a java surface texture object and send it to the renderer process
-  // through binder thread.
-  void OnEstablishStreamTexture(
-      int32 stream_id, int32 primary_id, int32 secondary_id);
-
-  // Set the size of StreamTexture.
-  void OnSetStreamTextureSize(int32 stream_id, const gfx::Size& size);
-#endif
+  void OnDevToolsStartEventsRecording(int32* route_id);
+  void OnDevToolsStopEventsRecording();
 
   // Collect rendering stats.
   void OnCollectRenderingStatsForSurface(
@@ -240,9 +213,6 @@ class GpuChannel : public IPC::Listener,
 
   scoped_refptr<gpu::gles2::MailboxManager> mailbox_manager_;
   scoped_refptr<gpu::gles2::ImageManager> image_manager_;
-#if defined(OS_ANDROID)
-  scoped_ptr<StreamTextureManagerAndroid> stream_texture_manager_;
-#endif
 
   typedef IDMap<GpuCommandBufferStub, IDMapOwnPointer> StubMap;
   StubMap stubs_;
@@ -262,6 +232,7 @@ class GpuChannel : public IPC::Listener,
 
   scoped_refptr<GpuChannelMessageFilter> filter_;
   scoped_refptr<base::MessageLoopProxy> io_message_loop_;
+  scoped_ptr<DevToolsGpuAgent> devtools_gpu_agent_;
 
   size_t num_stubs_descheduled_;
 

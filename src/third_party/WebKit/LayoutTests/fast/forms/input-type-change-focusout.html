@@ -1,6 +1,6 @@
 <html>
 <head>
-<script src="../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../resources/js-test.js"></script>
 </head>
 <body>
 <input id="input" type='date' />
@@ -13,7 +13,7 @@ input.addEventListener('focusout', function() {
     focusoutCalled = true;
 });
 input.focus();
-input.setAttribute('x-webkit-speech');
+input.setAttribute('x-webkit-speech', '');
 shouldBeFalse('focusoutCalled');
 input.type = 'month';
 shouldBeFalse('focusoutCalled');

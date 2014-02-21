@@ -33,8 +33,15 @@ const char kClearKeyCdmPluginMimeType[] = "application/x-ppapi-clearkey-cdm";
 
 // Available key systems.
 const char kClearKeyKeySystem[] = "webkit-org.w3.clearkey";
-const char kExternalClearKeyKeySystem[] =
-    "org.chromium.externalclearkey";
+const char kExternalClearKeyKeySystem[] = "org.chromium.externalclearkey";
+const char kExternalClearKeyDecryptOnlyKeySystem[] =
+    "org.chromium.externalclearkey.decryptonly";
+const char kExternalClearKeyFileIOTestKeySystem[] =
+    "org.chromium.externalclearkey.fileiotest";
+const char kExternalClearKeyInitializeFailKeySystem[] =
+    "org.chromium.externalclearkey.initializefail";
+const char kExternalClearKeyCrashKeySystem[] =
+    "org.chromium.externalclearkey.crash";
 
 // Supported media types.
 const char kWebMAudioOnly[] = "audio/webm; codecs=\"vorbis\"";
@@ -48,6 +55,7 @@ const char kMP4VideoOnly[] = "video/mp4; codecs=\"avc1.4D4041\"";
 // EME-specific test results and errors.
 const char kEmeKeyError[] = "KEYERROR";
 const char kEmeNotSupportedError[] = "NOTSUPPORTEDERROR";
+const char kFileIOTestSuccess[] = "FILEIOTESTSUCCESS";
 
 // The type of video src used to load media.
 enum SrcType {
@@ -59,11 +67,17 @@ enum SrcType {
 static bool IsMSESupported() {
 #if defined(OS_ANDROID)
   if (base::android::BuildInfo::GetInstance()->sdk_int() < 16) {
-    LOG(INFO) << "MSE is only supported in Android 4.1 and later.";
+    VLOG(0) << "MSE is only supported in Android 4.1 and later.";
     return false;
   }
 #endif  // defined(OS_ANDROID)
   return true;
+}
+
+static bool IsParentKeySystemOf(const std::string& parent_key_system,
+                                const std::string& key_system) {
+  std::string prefix = parent_key_system + '.';
+  return key_system.substr(0, prefix.size()) == prefix;
 }
 
 // Base class for encrypted media tests.
@@ -71,13 +85,14 @@ class EncryptedMediaTestBase : public MediaBrowserTest {
  public:
   EncryptedMediaTestBase() : is_pepper_cdm_registered_(false) {}
 
-  bool IsExternalClearKey(const char* key_system) {
-    return (strcmp(key_system, kExternalClearKeyKeySystem) == 0);
+  bool IsExternalClearKey(const std::string& key_system) {
+    return key_system == kExternalClearKeyKeySystem ||
+           IsParentKeySystemOf(kExternalClearKeyKeySystem, key_system);
   }
 
 #if defined(WIDEVINE_CDM_AVAILABLE)
-  bool IsWidevine(const char* key_system) {
-    return (strcmp(key_system, kWidevineKeySystem) == 0);
+  bool IsWidevine(const std::string& key_system) {
+    return key_system == kWidevineKeySystem;
   }
 #endif  // defined(WIDEVINE_CDM_AVAILABLE)
 
@@ -88,7 +103,7 @@ class EncryptedMediaTestBase : public MediaBrowserTest {
                              SrcType src_type,
                              const char* expectation) {
     if (src_type == MSE && !IsMSESupported()) {
-      LOG(INFO) << "Skipping test - MSE not supported.";
+      VLOG(0) << "Skipping test - MSE not supported.";
       return;
     }
 
@@ -133,8 +148,8 @@ class EncryptedMediaTestBase : public MediaBrowserTest {
   // We want to fail quickly when a test fails because an error is encountered.
   virtual void AddWaitForTitles(content::TitleWatcher* title_watcher) OVERRIDE {
     MediaBrowserTest::AddWaitForTitles(title_watcher);
-    title_watcher->AlsoWaitForTitle(ASCIIToUTF16(kEmeNotSupportedError));
-    title_watcher->AlsoWaitForTitle(ASCIIToUTF16(kEmeKeyError));
+    title_watcher->AlsoWaitForTitle(base::ASCIIToUTF16(kEmeNotSupportedError));
+    title_watcher->AlsoWaitForTitle(base::ASCIIToUTF16(kEmeKeyError));
   }
 
   virtual void SetUpCommandLine(CommandLine* command_line) OVERRIDE {
@@ -148,13 +163,11 @@ class EncryptedMediaTestBase : public MediaBrowserTest {
                                     CommandLine* command_line) {
 #if defined(ENABLE_PEPPER_CDMS)
     if (IsExternalClearKey(key_system)) {
-      RegisterPepperCdm(command_line, kClearKeyCdmAdapterFileName,
-                        kExternalClearKeyKeySystem);
+      RegisterPepperCdm(command_line, kClearKeyCdmAdapterFileName, key_system);
     }
 #if defined(WIDEVINE_CDM_AVAILABLE) && defined(WIDEVINE_CDM_IS_COMPONENT)
     else if (IsWidevine(key_system)) {
-      RegisterPepperCdm(command_line, kWidevineCdmAdapterFileName,
-                        kWidevineKeySystem);
+      RegisterPepperCdm(command_line, kWidevineCdmAdapterFileName, key_system);
     }
 #endif  // defined(WIDEVINE_CDM_AVAILABLE) && defined(WIDEVINE_CDM_IS_COMPONENT)
 #endif  // defined(ENABLE_PEPPER_CDMS)
@@ -177,7 +190,7 @@ class EncryptedMediaTestBase : public MediaBrowserTest {
     base::FilePath::StringType pepper_plugin = plugin_lib.value();
     pepper_plugin.append(FILE_PATH_LITERAL("#CDM#0.1.0.0;"));
 #if defined(OS_WIN)
-    pepper_plugin.append(ASCIIToWide(GetPepperType(key_system)));
+    pepper_plugin.append(base::ASCIIToWide(GetPepperType(key_system)));
 #else
     pepper_plugin.append(GetPepperType(key_system));
 #endif
@@ -187,10 +200,10 @@ class EncryptedMediaTestBase : public MediaBrowserTest {
 
   // Adapted from key_systems.cc.
   std::string GetPepperType(const std::string& key_system) {
-    if (key_system == kExternalClearKeyKeySystem)
+    if (IsExternalClearKey(key_system))
       return kClearKeyCdmPluginMimeType;
 #if defined(WIDEVINE_CDM_AVAILABLE)
-    if (key_system == kWidevineKeySystem)
+    if (IsWidevine(key_system))
       return kWidevineCdmPluginMimeType;
 #endif  // WIDEVINE_CDM_AVAILABLE
 
@@ -203,7 +216,8 @@ class EncryptedMediaTestBase : public MediaBrowserTest {
 };
 
 #if defined(ENABLE_PEPPER_CDMS)
-// Tests encrypted media playback using ExternalClearKey key system.
+// Tests encrypted media playback using ExternalClearKey key system in
+// decrypt-and-decode mode.
 class ECKEncryptedMediaTest : public EncryptedMediaTestBase {
  protected:
   virtual void SetUpCommandLine(CommandLine* command_line) OVERRIDE {
@@ -250,7 +264,7 @@ class EncryptedMediaTest : public EncryptedMediaTestBase,
   void TestFrameSizeChange() {
 #if defined(WIDEVINE_CDM_AVAILABLE)
     if (IsWidevine(CurrentKeySystem())) {
-      LOG(INFO) << "FrameSizeChange test cannot run with Widevine.";
+      VLOG(0) << "FrameSizeChange test cannot run with Widevine.";
       return;
     }
 #endif  // defined(WIDEVINE_CDM_AVAILABLE)
@@ -261,12 +275,12 @@ class EncryptedMediaTest : public EncryptedMediaTestBase,
 
   void TestConfigChange() {
     if (CurrentSourceType() != MSE || !IsMSESupported()) {
-      LOG(INFO) << "Skipping test - config change test requires MSE.";
+      VLOG(0) << "Skipping test - config change test requires MSE.";
       return;
     }
 #if defined(WIDEVINE_CDM_AVAILABLE)
     if (IsWidevine(CurrentKeySystem())) {
-      LOG(INFO) << "ConfigChange test cannot run with Widevine.";
+      VLOG(0) << "ConfigChange test cannot run with Widevine.";
       return;
     }
 #endif  // defined(WIDEVINE_CDM_AVAILABLE)
@@ -300,6 +314,9 @@ INSTANTIATE_TEST_CASE_P(SRC_ExternalClearKey, EncryptedMediaTest,
     Combine(Values(kExternalClearKeyKeySystem), Values(SRC)));
 INSTANTIATE_TEST_CASE_P(MSE_ExternalClearKey, EncryptedMediaTest,
     Combine(Values(kExternalClearKeyKeySystem), Values(MSE)));
+// To reduce test time, only run ExternalClearKeyDecryptOnly with MSE.
+INSTANTIATE_TEST_CASE_P(MSE_ExternalClearKeyDecryptOnly, EncryptedMediaTest,
+    Combine(Values(kExternalClearKeyDecryptOnlyKeySystem), Values(MSE)));
 #endif // defined(ENABLE_PEPPER_CDMS)
 
 #if defined(WIDEVINE_CDM_AVAILABLE)
@@ -347,7 +364,7 @@ IN_PROC_BROWSER_TEST_P(EncryptedMediaTest, FrameSizeChangeVideo) {
 IN_PROC_BROWSER_TEST_P(EncryptedMediaTest, Playback_VideoOnly_MP4) {
   // MP4 without MSE is not support yet, http://crbug.com/170793.
   if (CurrentSourceType() != MSE) {
-    LOG(INFO) << "Skipping test; Can only play MP4 encrypted streams by MSE.";
+    VLOG(0) << "Skipping test; Can only play MP4 encrypted streams by MSE.";
     return;
   }
   TestSimplePlayback("bear-640x360-v_frag-cenc.mp4", kMP4VideoOnly);
@@ -356,7 +373,7 @@ IN_PROC_BROWSER_TEST_P(EncryptedMediaTest, Playback_VideoOnly_MP4) {
 IN_PROC_BROWSER_TEST_P(EncryptedMediaTest, Playback_AudioOnly_MP4) {
   // MP4 without MSE is not support yet, http://crbug.com/170793.
   if (CurrentSourceType() != MSE) {
-    LOG(INFO) << "Skipping test; Can only play MP4 encrypted streams by MSE.";
+    VLOG(0) << "Skipping test; Can only play MP4 encrypted streams by MSE.";
     return;
   }
   TestSimplePlayback("bear-640x360-a_frag-cenc.mp4", kMP4AudioOnly);
@@ -376,13 +393,31 @@ IN_PROC_BROWSER_TEST_F(WVEncryptedMediaTest, ParentThrowsException) {
 #endif  // defined(WIDEVINE_CDM_AVAILABLE)
 
 #if defined(ENABLE_PEPPER_CDMS)
-IN_PROC_BROWSER_TEST_F(ECKEncryptedMediaTest,
-                       ExternalClearKeyInitializeCDMFail) {
+IN_PROC_BROWSER_TEST_F(ECKEncryptedMediaTest, InitializeCDMFail) {
   RunEncryptedMediaTest("encrypted_media_player.html",
                         "bear-a-enc_a.webm",
                         kWebMAudioOnly,
-                        "org.chromium.externalclearkey.initializefail",
+                        kExternalClearKeyInitializeFailKeySystem,
                         SRC,
                         kEmeKeyError);
+}
+
+// When CDM crashes, we should still get a decode error.
+IN_PROC_BROWSER_TEST_F(ECKEncryptedMediaTest, CDMCrashDuringDecode) {
+  RunEncryptedMediaTest("encrypted_media_player.html",
+                        "bear-a-enc_a.webm",
+                        kWebMAudioOnly,
+                        kExternalClearKeyCrashKeySystem,
+                        SRC,
+                        kError);
+}
+
+IN_PROC_BROWSER_TEST_F(ECKEncryptedMediaTest, FileIOTest) {
+  RunEncryptedMediaTest("encrypted_media_player.html",
+                        "bear-a-enc_a.webm",
+                        kWebMAudioOnly,
+                        kExternalClearKeyFileIOTestKeySystem,
+                        SRC,
+                        kFileIOTestSuccess);
 }
 #endif  // defined(ENABLE_PEPPER_CDMS)

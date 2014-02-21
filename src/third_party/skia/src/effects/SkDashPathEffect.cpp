@@ -277,7 +277,7 @@ bool SkDashPathEffect::filterPath(SkPath* dst, const SkPath& src,
                 scale = SkScalarDiv(length, fIntervalLength);
             } else {
                 SkScalar div = SkScalarDiv(length, fIntervalLength);
-                int n = SkScalarFloor(div);
+                int n = SkScalarFloorToInt(div);
                 scale = SkScalarDiv(length, n * fIntervalLength);
             }
         }
@@ -554,6 +554,11 @@ SkDashPathEffect::SkDashPathEffect(SkFlattenableReadBuffer& buffer) : INHERITED(
     fScaleToFit = buffer.readBool();
 
     fCount = buffer.getArrayCount();
-    fIntervals = (SkScalar*)sk_malloc_throw(sizeof(SkScalar) * fCount);
-    buffer.readScalarArray(fIntervals, fCount);
+    size_t allocSize = sizeof(SkScalar) * fCount;
+    if (buffer.validateAvailable(allocSize)) {
+        fIntervals = (SkScalar*)sk_malloc_throw(allocSize);
+        buffer.readScalarArray(fIntervals, fCount);
+    } else {
+        fIntervals = NULL;
+    }
 }

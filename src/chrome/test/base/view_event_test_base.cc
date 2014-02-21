@@ -9,6 +9,7 @@
 #include "base/message_loop/message_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/test/base/interactive_test_utils.h"
+#include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "content/public/browser/browser_thread.h"
 #include "ui/base/ime/input_method_initializer.h"
@@ -30,10 +31,12 @@
 #include "ui/aura/env.h"
 #include "ui/aura/root_window.h"
 #include "ui/aura/test/aura_test_helper.h"
+#include "ui/views/corewm/wm_state.h"
 #endif
 
 #if defined(OS_CHROMEOS)
 #include "chromeos/audio/cras_audio_handler.h"
+#include "chromeos/dbus/dbus_thread_manager.h"
 #include "chromeos/network/network_handler.h"
 #endif
 
@@ -74,17 +77,13 @@ const int kMouseMoveDelayMS = 200;
 ViewEventTestBase::ViewEventTestBase()
   : window_(NULL),
     content_view_(NULL) {
+  // The TestingBrowserProcess must be created in the constructor because there
+  // are tests that require it before SetUp() is called.
+  TestingBrowserProcess::CreateInstance();
 }
 
 void ViewEventTestBase::Done() {
   base::MessageLoop::current()->Quit();
-
-#if defined(OS_WIN) && !defined(USE_AURA)
-  // We need to post a message to tickle the Dispatcher getting called and
-  // exiting out of the nested loop. Without this the quit never runs.
-  if (window_)
-    PostMessage(window_->GetNativeWindow(), WM_USER, 0, 0);
-#endif
 
   // If we're in a nested message loop, as is the case with menus, we
   // need to quit twice. The second quit does that for us. Finish all
@@ -95,6 +94,10 @@ void ViewEventTestBase::Done() {
 }
 
 void ViewEventTestBase::SetUp() {
+#if defined(USE_AURA)
+  wm_state_.reset(new views::corewm::WMState);
+#endif
+
   views::ViewsDelegate::views_delegate = &views_delegate_;
   ui::InitializeInputMethodForTesting();
   gfx::NativeView context = NULL;
@@ -114,6 +117,7 @@ void ViewEventTestBase::SetUp() {
   // also create the message center.
   message_center::MessageCenter::Initialize();
 #if defined(OS_CHROMEOS)
+  chromeos::DBusThreadManager::InitializeWithStub();
   chromeos::CrasAudioHandler::InitializeForTesting();
   chromeos::NetworkHandler::Initialize();
 #endif  // OS_CHROMEOS
@@ -130,7 +134,8 @@ void ViewEventTestBase::SetUp() {
   // the test screen.
   aura_test_helper_.reset(
       new aura::test::AuraTestHelper(base::MessageLoopForUI::current()));
-  aura_test_helper_->SetUp();
+  bool allow_test_contexts = true;
+  aura_test_helper_->SetUp(allow_test_contexts);
   context = aura_test_helper_->root_window();
 #endif  // !USE_ASH && USE_AURA
 
@@ -139,12 +144,8 @@ void ViewEventTestBase::SetUp() {
 
 void ViewEventTestBase::TearDown() {
   if (window_) {
-#if defined(OS_WIN) && !defined(USE_AURA)
-    DestroyWindow(window_->GetNativeWindow());
-#else
     window_->Close();
     content::RunAllPendingInMessageLoop();
-#endif
     window_ = NULL;
   }
 
@@ -154,6 +155,7 @@ void ViewEventTestBase::TearDown() {
 #if defined(OS_CHROMEOS)
   chromeos::NetworkHandler::Shutdown();
   chromeos::CrasAudioHandler::Shutdown();
+  chromeos::DBusThreadManager::Shutdown();
 #endif
   // Ash Shell can't just live on its own without a browser process, we need to
   // also shut down the message center.
@@ -167,6 +169,10 @@ void ViewEventTestBase::TearDown() {
 
   ui::ShutdownInputMethodForTesting();
   views::ViewsDelegate::views_delegate = NULL;
+
+#if defined(USE_AURA)
+  wm_state_.reset();
+#endif
 }
 
 bool ViewEventTestBase::CanResize() const {
@@ -194,6 +200,7 @@ views::Widget* ViewEventTestBase::GetWidget() {
 }
 
 ViewEventTestBase::~ViewEventTestBase() {
+  TestingBrowserProcess::DeleteInstance();
 }
 
 void ViewEventTestBase::StartMessageLoopAndRunTest() {

@@ -199,6 +199,11 @@ const int kSpaceTagMask = (1 << kSpaceTagSize) - 1;
 // allows).
 enum PretenureFlag { NOT_TENURED, TENURED };
 
+enum MinimumCapacity {
+  USE_DEFAULT_MINIMUM_CAPACITY,
+  USE_CUSTOM_MINIMUM_CAPACITY
+};
+
 enum GarbageCollector { SCAVENGER, MARK_COMPACTOR };
 
 enum Executability { NOT_EXECUTABLE, EXECUTABLE };
@@ -284,12 +289,9 @@ enum CheckType {
 
 
 enum CallFunctionFlags {
-  NO_CALL_FUNCTION_FLAGS = 0,
-  // Receiver might implicitly be the global objects. If it is, the
-  // hole is passed to the call function stub.
-  RECEIVER_MIGHT_BE_IMPLICIT = 1 << 0,
+  NO_CALL_FUNCTION_FLAGS,
   // The call target is cached in the instruction stream.
-  RECORD_CALL_TARGET = 1 << 1
+  RECORD_CALL_TARGET
 };
 
 
@@ -317,6 +319,9 @@ union DoubleRepresentation {
   double  value;
   int64_t bits;
   DoubleRepresentation(double x) { value = x; }
+  bool operator==(const DoubleRepresentation& other) const {
+    return bits == other.bits;
+  }
 };
 
 
@@ -436,14 +441,6 @@ enum CpuFeature { SSE4_1 = 32 + 19,  // x86
 enum SmiCheckType {
   DONT_DO_SMI_CHECK,
   DO_SMI_CHECK
-};
-
-
-// Used to specify whether a receiver is implicitly or explicitly
-// provided to a call.
-enum CallKind {
-  CALL_AS_METHOD,
-  CALL_AS_FUNCTION
 };
 
 

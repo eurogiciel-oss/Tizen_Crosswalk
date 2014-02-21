@@ -12,11 +12,11 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/extensions/api/plugins/plugins_handler.h"
-#include "chrome/common/extensions/extension.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_source.h"
 #include "content/public/browser/plugin_service.h"
 #include "content/public/common/pepper_plugin_info.h"
+#include "extensions/common/extension.h"
 #include "url/gurl.h"
 
 using content::PluginService;
@@ -40,7 +40,7 @@ static base::LazyInstance<ProfileKeyedAPIFactory<PluginManager> >
 
 // static
 ProfileKeyedAPIFactory<PluginManager>* PluginManager::GetFactoryInstance() {
-  return &g_factory.Get();
+  return g_factory.Pointer();
 }
 
 void PluginManager::Observe(int type,
@@ -167,9 +167,10 @@ void PluginManager::UpdatePluginListWithNaClModules() {
         // manifest file.
         content::WebPluginMimeType mime_type_info;
         mime_type_info.mime_type = iter->mime_type;
-        mime_type_info.additional_param_names.push_back(UTF8ToUTF16("nacl"));
+        mime_type_info.additional_param_names.push_back(
+            base::UTF8ToUTF16("nacl"));
         mime_type_info.additional_param_values.push_back(
-            UTF8ToUTF16(iter->url.spec()));
+            base::UTF8ToUTF16(iter->url.spec()));
         info.mime_types.push_back(mime_type_info);
       }
 

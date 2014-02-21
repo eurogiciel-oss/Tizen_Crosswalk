@@ -67,6 +67,19 @@ void FakeProfile::CancelMIDISysExPermissionRequest(
     const GURL& requesting_frame) {
 }
 
+void FakeProfile::RequestProtectedMediaIdentifierPermission(
+    int render_process_id,
+    int render_view_id,
+    int bridge_id,
+    int group_id,
+    const GURL& requesting_frame,
+    const ProtectedMediaIdentifierPermissionCallback& callback) {
+}
+
+void FakeProfile::CancelProtectedMediaIdentifierPermissionRequests(
+    int group_id) {
+}
+
 content::ResourceContext* FakeProfile::GetResourceContext() {
   return NULL;
 }
@@ -175,9 +188,6 @@ void FakeProfile::ChangeAppLocale(
     const std::string& locale, AppLocaleChangedVia via) {}
 void FakeProfile::OnLogin() {}
 void FakeProfile::InitChromeOSPreferences() {}
-bool FakeProfile::IsLoginProfile() {
-  return false;
-}
 #endif  // defined(OS_CHROMEOS)
 
 PrefProxyConfigTracker* FakeProfile::GetProxyConfigTracker() {

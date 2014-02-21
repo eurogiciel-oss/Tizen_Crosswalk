@@ -26,6 +26,7 @@
 #ifndef SVGSMILElement_h
 #define SVGSMILElement_h
 
+#include "SVGNames.h"
 #include "core/svg/SVGElement.h"
 #include "core/svg/animation/SMILTime.h"
 #include "wtf/HashMap.h"
@@ -44,8 +45,6 @@ class SVGSMILElement : public SVGElement {
 public:
     SVGSMILElement(const QualifiedName&, Document&);
     virtual ~SVGSMILElement();
-
-    static bool isSMILElement(Node*);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
@@ -88,7 +87,6 @@ public:
     SMILTime elapsed() const;
 
     SMILTime intervalBegin() const { return m_intervalBegin; }
-    SMILTime intervalEnd() const { return m_intervalEnd; }
     SMILTime previousIntervalBegin() const { return m_previousIntervalBegin; }
     SMILTime simpleDuration() const;
 
@@ -102,21 +100,22 @@ public:
     static SMILTime parseOffsetValue(const String&);
 
     bool isContributing(SMILTime elapsed) const;
-    bool isInactive() const;
     bool isFrozen() const;
 
     unsigned documentOrderIndex() const { return m_documentOrderIndex; }
     void setDocumentOrderIndex(unsigned index) { m_documentOrderIndex = index; }
 
-    virtual bool isAdditive() const = 0;
     virtual void resetAnimatedType() = 0;
     virtual void clearAnimatedType(SVGElement* targetElement) = 0;
     virtual void applyResultsToTarget() = 0;
 
-    void connectConditions();
+    void connectSyncBaseConditions();
+    void connectEventBaseConditions();
 
     void dispatchPendingEvent(SMILEventSender*);
     void dispatchRepeatEvents(unsigned);
+
+    virtual bool isSVGDiscardElement() const { return false; }
 
 protected:
     void addBeginTime(SMILTime eventTime, SMILTime endTime, SMILTimeWithOrigin::Origin = SMILTimeWithOrigin::ParserOrigin);
@@ -129,8 +128,9 @@ protected:
     virtual void setAttributeName(const QualifiedName&);
 
 private:
-    void buildPendingResource();
-    void clearResourceReferences();
+    virtual void buildPendingResource() OVERRIDE;
+    void clearResourceAndEventBaseReferences();
+    void clearConditions();
 
     virtual void startedActiveInterval() = 0;
     void endedActiveInterval();
@@ -145,7 +145,7 @@ private:
 
     SMILTime findInstanceTime(BeginOrEnd, SMILTime minimumTime, bool equalsMinimumOK) const;
     void resolveFirstInterval();
-    bool resolveNextInterval(bool notifyDependents);
+    bool resolveNextInterval();
     void resolveInterval(bool first, SMILTime& beginResult, SMILTime& endResult) const;
     SMILTime resolveActiveEnd(SMILTime resolvedBegin, SMILTime resolvedEnd) const;
     SMILTime repeatingDuration() const;
@@ -174,23 +174,18 @@ private:
     };
     bool parseCondition(const String&, BeginOrEnd beginOrEnd);
     void parseBeginOrEnd(const String&, BeginOrEnd beginOrEnd);
-    Element* eventBaseFor(const Condition&);
+    SVGElement* eventBaseFor(const Condition&);
 
-    void disconnectConditions();
+    void disconnectSyncBaseConditions();
+    void disconnectEventBaseConditions();
 
     // Event base timing
     void handleConditionEvent(Event*, Condition*);
 
-    // Syncbase timing
-    enum NewOrExistingInterval {
-        NewInterval,
-        ExistingInterval
-    };
-
-    void notifyDependentsIntervalChanged(NewOrExistingInterval);
-    void createInstanceTimesFromSyncbase(SVGSMILElement* syncbase, NewOrExistingInterval);
-    void addTimeDependent(SVGSMILElement*);
-    void removeTimeDependent(SVGSMILElement*);
+    void notifyDependentsIntervalChanged();
+    void createInstanceTimesFromSyncbase(SVGSMILElement* syncbase);
+    void addSyncBaseDependent(SVGSMILElement*);
+    void removeSyncBaseDependent(SVGSMILElement*);
 
     enum ActiveState {
         Inactive,
@@ -207,13 +202,13 @@ private:
     mutable SVGElement* m_targetElement;
 
     Vector<Condition> m_conditions;
-    bool m_conditionsConnected;
+    bool m_syncBaseConditionsConnected;
     bool m_hasEndEventConditions;
 
     bool m_isWaitingForFirstInterval;
 
     typedef HashSet<SVGSMILElement*> TimeDependentSet;
-    TimeDependentSet m_timeDependents;
+    TimeDependentSet m_syncBaseDependents;
 
     // Instance time lists
     Vector<SMILTimeWithOrigin> m_beginTimes;
@@ -245,11 +240,13 @@ private:
     friend class ConditionEventListener;
 };
 
-inline SVGSMILElement* toSVGSMILElement(Element* element)
+inline bool isSVGSMILElement(const Node& node)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(!element || SVGSMILElement::isSMILElement(element));
-    return static_cast<SVGSMILElement*>(element);
+    return node.hasTagName(SVGNames::setTag) || node.hasTagName(SVGNames::animateTag) || node.hasTagName(SVGNames::animateMotionTag)
+        || node.hasTagName(SVGNames::animateTransformTag) || node.hasTagName((SVGNames::discardTag));
 }
+
+DEFINE_NODE_TYPE_CASTS_WITH_FUNCTION(SVGSMILElement);
 
 }
 

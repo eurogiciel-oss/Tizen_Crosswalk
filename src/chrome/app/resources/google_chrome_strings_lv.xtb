@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="lv">
+<translation id="3234920859344197194">Šajā vietnē tiek izmantots spraudnis Chrome Frame, kura drošības un stabilitātes atjauninājumi drīzumā vairs netiks sūtīti. Lūdzu, atinstalējiet šo spraudni un jauniniet uz modernu pārlūku.</translation>
 <translation id="8914504000324227558">Atkārtoti palaist pārlūkprogrammu Chrome</translation>
 <translation id="8000275528373650868">Pārlūkprogrammas Google Chrome izmantošanai nepieciešama operētājsistēma Windows Vista vai Windows XP ar SP2, vai jaunāka tās versija.</translation>
 <translation id="8485767968786176057">Šajā gadījumā adrese, kas norādīta sertifikātā, neatbilst tās vietnes adresei, kuru mēģināja atvērt jūsu pārlūks. Viens no iespējamajiem iemesliem ir tas, ka jūsu apmeklējumu pārķer uzbrucējs, kurš uzrāda citas vietnes sertifikātu, kas rada neatbilstību. Cits iespējamais iemesls ir tāds, ka serveris ir iestatīts uzrādīt vienu un to pašu sertifikātu vairākām vietnēm, tostarp tai vietnei, kuru cenšaties apmeklēt, pat tad, ja sertifikāts nav derīgs visām šīm vietnēm. Pārlūks Google Chrome var droši apliecināt, ka esat sasniedzis &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, bet nevar pārbaudīt, ka tā ir tā pati vietne &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, kuru paredzējāt sasniegt. Ja turpināsiet, pārlūks Chrome turpmāk nepārbaudīs nosaukumu neatbilstības.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">Ļaut Google Chrome darboties fonā</translation>
 <translation id="2896252579017640304">Palaist Chrome lietotnes</translation>
 <translation id="2370289711218562573">Google Chrome pašlaik importē Izlasi/Grāmatzīmes.</translation>
-<translation id="8762286861469007470">Chrome gūstītājvārtu noteicējs</translation>
 <translation id="2721687379934343312">Operētājsistēmā Mac paroles tiek saglabātas sistēmā Keychain un citi Chrome lietotāji, kuri kopīgo šo OS X kontu, var piekļūt tām un sinhronizēt tās.</translation>
 <translation id="1761870329818521071">Nevar instalēt to pašu Google Chrome Frame versiju, kas jau darbojas. Aizveriet Google Chrome Frame un mēģiniet vēlreiz.</translation>
 <translation id="6014844626092547096">Jūs esat pierakstījies pārlūkā Chrome. Jūsu administrators ir atspējojis sinhronizēšanu.</translation>
@@ -59,10 +59,10 @@
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Jūsu norēķinu dati ir saglabāti pārlūkā Chrome.</translation>
 <translation id="7098166902387133879">Pārlūkā Google Chrome tiek izmantots mikrofons.</translation>
-<translation id="3590194807845837023">Atbloķēt profilu un restartēt</translation>
 <translation id="4053720452172726777">Pielāgot un kontrolēt Google Chrome</translation>
 <translation id="6423071462708908582">Jūs mēģinājāt sasniegt vietni &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, bet serveris uzrādīja sertifikātu, kuram beidzies derīguma termiņš. Nav pieejama informācija, kas apliecinātu, ka sertifikāts ir apdraudēts, kopš tam ir beidzies derīguma termiņš. Tas nozīmē, ka pārlūks Google Chrome nevar garantēt, ka jūs sazināties ar &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, nevis uzbrucēju. Jūsu datora pulkstenis šobrīd ir iestatīts uz <ph name="CURRENT_TIME"/>. Vai tas ir pareizs? Ja tā nav, novērsiet kļūdu un atsvaidziniet šo lapu.</translation>
 <translation id="3197823471738295152">Ierīce ir atjaunināta.</translation>
+<translation id="8286862437124483331">Google Chrome mēģina rādīt paroles. Lai to atļautu, ierakstiet savu Windows paroli.</translation>
 <translation id="3889417619312448367">Atinstalēt Google Chrome</translation>
 <translation id="1434626383986940139">Chrome Canary lietotnes</translation>
 <translation id="8551886023433311834">Atjaunināšana ir gandrīz pabeigta. Restartējiet ierīci, lai pabeigtu atjaunināšanu.</translation>
@@ -184,7 +184,6 @@ Ja pierakstīsieties tik un tā, Chrome informācija, piemēram, grāmatzīmes, 
 <translation id="7396375882099008034">Atļaušana pārlūkam Chrome piekļūt tīklam jūsu ugunsmūra vai pretvīrusu programmas
         iestatījumos.</translation>
 <translation id="9102715433345326100">Šis fails ir ļaunprātīgs, un Chrome to bloķēja.</translation>
-<translation id="3170677364322086041">Šajā vietnē tiek izmantots novecojušais spraudnis Chrome Frame, kuram vairs netiek nodrošināti drošības un stabilitātes atjauninājumi. Lūdzu, atinstalējiet šo spraudni un izmantojiet modernu pārlūku.</translation>
 <translation id="8205111949707227942">Neobligāti: palīdziet uzlabot Chrome OS, automātiski nosūtot uzņēmumam Google lietošanas statistiku un avārijas pārskatus.</translation>
 <translation id="7253415505590551024">Lejupielādes vēl nav pabeigtas. Vai vēlaties iziet no pārlūkprogrammas Google Chrome un atcelt lejupielādes?</translation>
 <translation id="7196020411877309443">Kāpēc es redzu šo dialoglodziņu?</translation>
@@ -201,6 +200,7 @@ Ja pierakstīsieties tik un tā, Chrome informācija, piemēram, grāmatzīmes, 
           LAN iestatījumi
           un noņemiet atzīmi no izvēles rūtiņas “Use a proxy server for your LAN” (Izmantot starpniekserveri savam LAN).</translation>
 <translation id="7825851276765848807">Instalēšana neizdevās nenoteiktas kļūdas dēļ. Lūdzu, lejupielādējiet pārlūkprogrammu Google Chrome vēlreiz.</translation>
+<translation id="4919523385405675060">Šajā vietnē tiek izmantots spraudnis Chrome Frame, kura drošības un stabilitātes atjauninājumi drīzumā vairs netiks sūtīti. Lūdzu, atinstalējiet šo spraudni un lejupielādējiet saderīgu pārlūku.</translation>
 <translation id="1061257178446858647">Esat pierakstījies pārlūkprogrammā Chrome. Jūsu grāmatzīmes, vēsture un citi iestatījumi tiks sinhronizēti ar jūsu Google kontu.</translation>
 <translation id="3335672657969596251">Google Chrome neatbalsta <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Lūdzu, izrakstieties un pierakstieties vēlreiz, lai šīs izmaiņas stātos spēkā.</translation>

@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_EXTENSIONS_TAB_HELPER_H_
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,8 @@
 #include "extensions/common/stack_frame.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 
+class FaviconDownloader;
+
 namespace content {
 struct LoadCommittedDetails;
 }
@@ -34,8 +37,6 @@ class Image;
 namespace extensions {
 class Extension;
 class LocationBarController;
-class ScriptBadgeController;
-class ScriptBubbleController;
 class ScriptExecutor;
 class WebstoreInlineInstallerFactory;
 
@@ -49,9 +50,10 @@ class TabHelper : public content::WebContentsObserver,
   // Different types of action when web app info is available.
   // OnDidGetApplicationInfo uses this to dispatch calls.
   enum WebAppAction {
-    NONE,             // No action at all.
-    CREATE_SHORTCUT,  // Bring up create application shortcut dialog.
-    UPDATE_SHORTCUT   // Update icon for app shortcut.
+    NONE,              // No action at all.
+    CREATE_SHORTCUT,   // Bring up create application shortcut dialog.
+    CREATE_HOSTED_APP, // Create and install a hosted app.
+    UPDATE_SHORTCUT    // Update icon for app shortcut.
   };
 
   // Observer base class for classes that need to be notified when content
@@ -84,6 +86,21 @@ class TabHelper : public content::WebContentsObserver,
     TabHelper* tab_helper_;
   };
 
+  // This finds the closest not-smaller bitmap in |bitmaps| for each size in
+  // |sizes| and resizes it to that size. This returns a map of sizes to bitmaps
+  // which contains only bitmaps of a size in |sizes| and at most one bitmap of
+  // each size.
+  static std::map<int, SkBitmap> ConstrainBitmapsToSizes(
+      const std::vector<SkBitmap>& bitmaps,
+      const std::set<int>& sizes);
+
+  // Adds a square container icon of |output_size| pixels to |bitmaps| by
+  // centering the biggest smaller icon in |bitmaps| and drawing a rounded
+  // rectangle with strip of the that icon's dominant color at the bottom.
+  // Does nothing if an icon of |output_size| already exists in |bitmaps|.
+  static void GenerateContainerIcon(std::map<int, SkBitmap>* bitmaps,
+                                    int output_size);
+
   virtual ~TabHelper();
 
   void AddScriptExecutionObserver(ScriptExecutionObserver* observer) {
@@ -95,6 +112,7 @@ class TabHelper : public content::WebContentsObserver,
   }
 
   void CreateApplicationShortcuts();
+  void CreateHostedAppFromWebContents();
   bool CanCreateApplicationShortcuts() const;
 
   void set_pending_web_app_action(WebAppAction action) {
@@ -149,10 +167,6 @@ class TabHelper : public content::WebContentsObserver,
     return active_tab_permission_granter_.get();
   }
 
-  ScriptBubbleController* script_bubble_controller() {
-    return script_bubble_controller_.get();
-  }
-
   // Sets a non-extension app icon associated with WebContents and fires an
   // INVALIDATE_TYPE_TITLE navigation state change to trigger repaint of title.
   void SetAppIcon(const SkBitmap& app_icon);
@@ -165,6 +179,12 @@ class TabHelper : public content::WebContentsObserver,
  private:
   explicit TabHelper(content::WebContents* web_contents);
   friend class content::WebContentsUserData<TabHelper>;
+
+  // Creates a hosted app for the current tab. Requires the |web_app_info_| to
+  // be populated.
+  void CreateHostedApp();
+  void FinishCreateHostedApp(
+      bool success, const std::map<GURL, std::vector<SkBitmap> >& bitmaps);
 
   // content::WebContentsObserver overrides.
   virtual void RenderViewCreated(
@@ -263,7 +283,7 @@ class TabHelper : public content::WebContentsObserver,
 
   scoped_ptr<ActiveTabPermissionGranter> active_tab_permission_granter_;
 
-  scoped_ptr<ScriptBubbleController> script_bubble_controller_;
+  scoped_ptr<FaviconDownloader> favicon_downloader_;
 
   Profile* profile_;
 

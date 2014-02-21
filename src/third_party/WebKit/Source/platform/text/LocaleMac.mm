@@ -64,9 +64,9 @@ static RetainPtr<NSLocale> determineLocale(const String& locale)
      return RetainPtr<NSLocale>(AdoptNS, [[NSLocale alloc] initWithLocaleIdentifier:locale]);
 }
 
-PassOwnPtr<Locale> Locale::create(const AtomicString& locale)
+PassOwnPtr<Locale> Locale::create(const String& locale)
 {
-    return LocaleMac::create(determineLocale(locale.string()).get());
+    return LocaleMac::create(determineLocale(locale).get());
 }
 
 static RetainPtr<NSDateFormatter> createDateTimeFormatter(NSLocale* locale, NSCalendar* calendar, NSDateFormatterStyle dateStyle, NSDateFormatterStyle timeStyle)
@@ -129,7 +129,6 @@ const Vector<String>& LocaleMac::monthLabels()
     return m_monthLabels;
 }
 
-#if ENABLE(CALENDAR_PICKER)
 const Vector<String>& LocaleMac::weekDayShortLabels()
 {
     if (!m_weekDayShortLabels.isEmpty())
@@ -160,7 +159,6 @@ bool LocaleMac::isRTL()
 {
     return NSLocaleLanguageDirectionRightToLeft == [NSLocale characterDirectionForLanguage:[NSLocale canonicalLanguageIdentifierFromString:[m_locale.get() localeIdentifier]]];
 }
-#endif
 
 RetainPtr<NSDateFormatter> LocaleMac::timeFormatter()
 {

@@ -51,11 +51,6 @@ bool LaunchSetupForEula(const base::FilePath::StringType& value,
   CommandLine cl(CommandLine::NO_PROGRAM);
   cl.AppendSwitchNative(installer::switches::kShowEula, value);
 
-  CommandLine* browser_command_line = CommandLine::ForCurrentProcess();
-  if (browser_command_line->HasSwitch(switches::kChromeFrame)) {
-    cl.AppendSwitch(switches::kChromeFrame);
-  }
-
   if (base::win::IsMetroProcess()) {
     cl.AppendSwitch(installer::switches::kShowEulaForMetro);
 
@@ -125,7 +120,7 @@ bool IsEULANotAccepted(installer::MasterPreferences* install_prefs) {
 bool WriteEULAtoTempFile(base::FilePath* eula_path) {
   std::string terms = l10n_util::GetStringUTF8(IDS_TERMS_HTML);
   return (!terms.empty() &&
-          file_util::CreateTemporaryFile(eula_path) &&
+          base::CreateTemporaryFile(eula_path) &&
           file_util::WriteFile(*eula_path, terms.data(), terms.size()) != -1);
 }
 
@@ -136,7 +131,7 @@ bool CreateEULASentinel() {
   if (!GetEULASentinelFilePath(&eula_sentinel))
     return false;
 
-  return (file_util::CreateDirectory(eula_sentinel.DirName()) &&
+  return (base::CreateDirectory(eula_sentinel.DirName()) &&
           file_util::WriteFile(eula_sentinel, "", 0) != -1);
 }
 

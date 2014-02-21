@@ -34,7 +34,7 @@ namespace WebCore {
 class DocumentFragment;
 class ReplacementFragment;
 
-class ReplaceSelectionCommand : public CompositeEditCommand {
+class ReplaceSelectionCommand FINAL : public CompositeEditCommand {
 public:
     enum CommandOption {
         SelectReplacement = 1 << 0,
@@ -55,19 +55,19 @@ public:
 private:
     ReplaceSelectionCommand(Document&, PassRefPtr<DocumentFragment>, CommandOptions, EditAction);
 
-    virtual void doApply();
-    virtual EditAction editingAction() const;
+    virtual void doApply() OVERRIDE;
+    virtual EditAction editingAction() const OVERRIDE;
 
     class InsertedNodes {
     public:
-        void respondToNodeInsertion(Node*);
-        void willRemoveNodePreservingChildren(Node*);
-        void willRemoveNode(Node*);
-        void didReplaceNode(Node*, Node* newNode);
+        void respondToNodeInsertion(Node&);
+        void willRemoveNodePreservingChildren(Node&);
+        void willRemoveNode(Node&);
+        void didReplaceNode(Node&, Node& newNode);
 
         Node* firstNodeInserted() const { return m_firstNodeInserted.get(); }
         Node& lastLeafInserted() const { ASSERT(m_lastNodeInserted); return m_lastNodeInserted->lastDescendant(); }
-        Node* pastLastLeaf() const { return m_lastNodeInserted ? NodeTraversal::next(&lastLeafInserted()) : 0; }
+        Node* pastLastLeaf() const { return m_lastNodeInserted ? NodeTraversal::next(lastLeafInserted()) : 0; }
 
     private:
         RefPtr<Node> m_firstNodeInserted;
@@ -91,7 +91,6 @@ private:
     void makeInsertedContentRoundTrippableWithHTMLTreeBuilder(InsertedNodes&);
     void moveNodeOutOfAncestor(PassRefPtr<Node>, PassRefPtr<Node> ancestor);
     void handleStyleSpans(InsertedNodes&);
-    void handlePasteAsQuotationNode();
 
     VisiblePosition positionAtStartOfInsertedContent() const;
     VisiblePosition positionAtEndOfInsertedContent() const;

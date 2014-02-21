@@ -26,6 +26,8 @@ const int kPacketHeaderSize = sizeof(PacketLength);
 const int kReadBufferSize = 4096;
 const int kPacketLengthOffset = 2;
 const int kTurnChannelDataHeaderSize = 4;
+const int kRecvSocketBufferSize = 128 * 1024;
+const int kSendSocketBufferSize = 128 * 1024;
 
 bool IsTlsClientSocket(content::P2PSocketType type) {
   return (type == content::P2P_SOCKET_STUN_TLS_CLIENT ||
@@ -198,6 +200,17 @@ void P2PSocketHostTcpBase::ProcessTlsSslConnectDone(int status) {
 
 void P2PSocketHostTcpBase::OnOpen() {
   state_ = STATE_OPEN;
+  // Setting socket send and receive buffer size.
+  if (!socket_->SetReceiveBufferSize(kRecvSocketBufferSize)) {
+    LOG(WARNING) << "Failed to set socket receive buffer size to "
+                 << kRecvSocketBufferSize;
+  }
+
+  if (!socket_->SetSendBufferSize(kSendSocketBufferSize)) {
+    LOG(WARNING) << "Failed to set socket send buffer size to "
+                 << kSendSocketBufferSize;
+  }
+
   DoSendSocketCreateMsg();
   DoRead();
 }
@@ -268,7 +281,8 @@ void P2PSocketHostTcpBase::OnPacket(const std::vector<char>& data) {
     }
   }
 
-  message_sender_->Send(new P2PMsg_OnDataReceived(id_, remote_address_, data));
+  message_sender_->Send(new P2PMsg_OnDataReceived(
+      id_, remote_address_, data, base::TimeTicks::Now()));
 }
 
 // Note: dscp is not actually used on TCP sockets as this point,
@@ -387,6 +401,21 @@ void P2PSocketHostTcpBase::DidCompleteRead(int result) {
   if (pos && pos <= read_buffer_->offset()) {
     memmove(head, head + pos, read_buffer_->offset() - pos);
     read_buffer_->set_offset(read_buffer_->offset() - pos);
+  }
+}
+
+bool P2PSocketHostTcpBase::SetOption(P2PSocketOption option, int value) {
+  DCHECK_EQ(STATE_OPEN, state_);
+  switch (option) {
+    case P2P_SOCKET_OPT_RCVBUF:
+      return socket_->SetReceiveBufferSize(value);
+    case P2P_SOCKET_OPT_SNDBUF:
+      return socket_->SetSendBufferSize(value);
+    case P2P_SOCKET_OPT_DSCP:
+      return false;  // For TCP sockets DSCP setting is not available.
+    default:
+      NOTREACHED();
+      return false;
   }
 }
 

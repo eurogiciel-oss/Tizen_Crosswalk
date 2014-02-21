@@ -21,15 +21,13 @@ typedef unsigned WaylandWindowId;
 
 class WaylandWindow {
  public:
-  enum Shell {
+  enum ShellType {
     None,
     TOPLEVEL,
     FULLSCREEN,
-    TRANSIENT,
+    POPUP,
     CUSTOM
   };
-
-  typedef unsigned ShellType;
 
   // Creates a window and maps it to handle.
   explicit WaylandWindow(unsigned handle);
@@ -40,15 +38,15 @@ class WaylandWindow {
                           WaylandShellSurface* shell_parent,
                           unsigned x,
                           unsigned y);
-  void SetWindowTitle(const string16& title);
+  void SetWindowTitle(const base::string16& title);
   void Maximize();
   void Minimize();
   void Restore();
-  void ToggleFullscreen();
+  void SetFullscreen();
 
   ShellType Type() const { return type_; }
   unsigned Handle() const { return handle_; }
-  WaylandShellSurface *ShellSurface() const { return shell_surface_; }
+  WaylandShellSurface* ShellSurface() const { return shell_surface_; }
 
   void RealizeAcceleratedWidget();
 
@@ -58,16 +56,17 @@ class WaylandWindow {
   // Returns pointer to Wayland Surface associated with the window.
   struct wl_surface* GetSurface() const;
 
-  bool SetBounds(const gfx::Rect& new_bounds);
+  // Immediately Resizes window and flushes Wayland Display.
+  void Resize(unsigned width, unsigned height);
   gfx::Rect GetBounds() const { return allocation_; }
 
  private:
   WaylandShellSurface* shell_surface_;
   EGLWindow* window_;
 
-  gfx::Rect allocation_;
   ShellType type_;
   unsigned handle_;
+  gfx::Rect allocation_;
   DISALLOW_COPY_AND_ASSIGN(WaylandWindow);
 };
 

@@ -182,6 +182,16 @@ void AnalysisDevice::drawOval(const SkDraw& draw,
   is_transparent_ = false;
 }
 
+void AnalysisDevice::drawRRect(const SkDraw& draw,
+                               const SkRRect& rr,
+                               const SkPaint& paint) {
+  // This should add the SkRRect to an SkPath, and call
+  // drawPath, but since drawPath ignores the SkPath, just
+  // do the same work here.
+  is_solid_color_ = false;
+  is_transparent_ = false;
+}
+
 void AnalysisDevice::drawPath(const SkDraw& draw,
                               const SkPath& path,
                               const SkPaint& paint,
@@ -253,20 +263,6 @@ void AnalysisDevice::drawTextOnPath(const SkDraw& draw,
   is_transparent_ = false;
   has_text_ = true;
 }
-
-#ifdef SK_BUILD_FOR_ANDROID
-void AnalysisDevice::drawPosTextOnPath(const SkDraw& draw,
-                                       const void* text,
-                                       size_t len,
-                                       const SkPoint pos[],
-                                       const SkPaint& paint,
-                                       const SkPath& path,
-                                       const SkMatrix* matrix) {
-  is_solid_color_ = false;
-  is_transparent_ = false;
-  has_text_ = true;
-}
-#endif
 
 void AnalysisDevice::drawVertices(const SkDraw& draw,
                                   SkCanvas::VertexMode,

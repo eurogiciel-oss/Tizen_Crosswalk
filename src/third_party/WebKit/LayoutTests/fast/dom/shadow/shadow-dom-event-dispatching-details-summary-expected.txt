@@ -1,8 +1,3 @@
-Tests to ensure that event dispatching behaves as the Shadow DOM spec describes.
-
-On success, you will see a series of "PASS" messages, followed by "TEST COMPLETE".
-
-
 
 
 Composed Shadow Tree will be:
@@ -11,6 +6,7 @@ DIV	 id=sandbox
 		DETAILS	 id=details
 			SUMMARY	 id=summary
 				DIV	
+			DIV	 id=details-content
 
 
 Moving mouse from details to summary

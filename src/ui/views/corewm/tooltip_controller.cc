@@ -133,6 +133,18 @@ void TooltipController::UpdateTooltip(aura::Window* target) {
   if (tooltip_window_ == target && tooltip_->IsVisible())
     UpdateIfRequired();
 
+  // Reset |tooltip_window_at_mouse_press_| if the moving within the same window
+  // but over a region that has different tooltip text. By resetting
+  // |tooltip_window_at_mouse_press_| we ensure the next time the timer fires
+  // we'll requery for the tooltip text.
+  // This handles the case of clicking on a view, moving within the same window
+  // but over a different view, than back to the original.
+  if (tooltip_window_at_mouse_press_ &&
+      target == tooltip_window_at_mouse_press_ &&
+      aura::client::GetTooltipText(target) != tooltip_text_at_mouse_press_) {
+    tooltip_window_at_mouse_press_ = NULL;
+  }
+
   // If we had stopped the tooltip timer for some reason, we must restart it if
   // there is a change in the tooltip.
   if (!tooltip_timer_.IsRunning()) {
@@ -227,7 +239,6 @@ void TooltipController::OnWindowDestroyed(aura::Window* window) {
   if (tooltip_window_ == window) {
     tooltip_->Hide();
     tooltip_shown_timeout_map_.erase(tooltip_window_);
-    tooltip_window_->RemoveObserver(this);
     tooltip_window_ = NULL;
   }
 }
@@ -256,7 +267,7 @@ void TooltipController::UpdateIfRequired() {
     return;
   }
 
-  string16 tooltip_text;
+  base::string16 tooltip_text;
   if (tooltip_window_)
     tooltip_text = aura::client::GetTooltipText(tooltip_window_);
 
@@ -290,7 +301,7 @@ void TooltipController::UpdateIfRequired() {
     } else {
       gfx::Point widget_loc = curr_mouse_loc_ +
           tooltip_window_->GetBoundsInScreen().OffsetFromOrigin();
-      tooltip_->SetText(tooltip_window_, trimmed_text, widget_loc);
+      tooltip_->SetText(tooltip_window_, whitespace_removed_text, widget_loc);
       tooltip_->Show();
       int timeout = GetTooltipShownTimeout();
       if (timeout > 0) {

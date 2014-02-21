@@ -27,14 +27,14 @@ namespace WebCore {
 
 class SVGTSpanElement FINAL : public SVGTextPositioningElement {
 public:
-    static PassRefPtr<SVGTSpanElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGTSpanElement> create(Document&);
 
 private:
-    SVGTSpanElement(const QualifiedName&, Document&);
+    explicit SVGTSpanElement(Document&);
 
-    virtual RenderObject* createRenderer(RenderStyle*);
-    virtual bool childShouldCreateRenderer(const Node& child) const;
-    virtual bool rendererIsNeeded(const RenderStyle&);
+    virtual RenderObject* createRenderer(RenderStyle*) OVERRIDE;
+    virtual bool childShouldCreateRenderer(const Node& child) const OVERRIDE { return true; }
+    virtual bool rendererIsNeeded(const RenderStyle&) OVERRIDE;
 };
 
 } // namespace WebCore

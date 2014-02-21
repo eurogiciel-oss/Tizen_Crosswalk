@@ -39,6 +39,7 @@
 #include "core/fileapi/FileReaderLoaderClient.h"
 #include "wtf/Forward.h"
 #include "wtf/RefCounted.h"
+#include "wtf/ThreadSpecific.h"
 #include "wtf/text/WTFString.h"
 
 namespace WebCore {
@@ -47,7 +48,7 @@ class Blob;
 class ExceptionState;
 class ExecutionContext;
 
-class FileReader : public RefCounted<FileReader>, public ScriptWrappable, public ActiveDOMObject, public EventTargetWithInlineData, public FileReaderLoaderClient {
+class FileReader FINAL : public RefCounted<FileReader>, public ScriptWrappable, public ActiveDOMObject, public EventTargetWithInlineData, public FileReaderLoaderClient {
     REFCOUNTED_EVENT_TARGET(FileReader);
 public:
     static PassRefPtr<FileReader> create(ExecutionContext*);
@@ -76,17 +77,17 @@ public:
     String stringResult();
 
     // ActiveDOMObject
-    virtual void stop();
+    virtual void stop() OVERRIDE;
 
     // EventTarget
     virtual const AtomicString& interfaceName() const OVERRIDE;
     virtual ExecutionContext* executionContext() const OVERRIDE { return ActiveDOMObject::executionContext(); }
 
     // FileReaderLoaderClient
-    virtual void didStartLoading();
-    virtual void didReceiveData();
-    virtual void didFinishLoading();
-    virtual void didFail(FileError::ErrorCode);
+    virtual void didStartLoading() OVERRIDE;
+    virtual void didReceiveData() OVERRIDE;
+    virtual void didFinishLoading() OVERRIDE;
+    virtual void didFail(FileError::ErrorCode) OVERRIDE;
 
     DEFINE_ATTRIBUTE_EVENT_LISTENER(loadstart);
     DEFINE_ATTRIBUTE_EVENT_LISTENER(progress);
@@ -96,6 +97,8 @@ public:
     DEFINE_ATTRIBUTE_EVENT_LISTENER(loadend);
 
 private:
+    class ThrottlingController;
+
     FileReader(ExecutionContext*);
 
     void terminate();
@@ -103,12 +106,16 @@ private:
     void fireErrorEvent(int httpStatusCode);
     void fireEvent(const AtomicString& type);
 
+    static ThreadSpecific<ThrottlingController>& throttlingController();
+    void executePendingRead();
+
     ReadyState m_state;
 
     // Internal loading state, which could differ from ReadyState as it's
     // for script-visible state while this one's for internal state.
     enum LoadingState {
         LoadingStateNone,
+        LoadingStatePending,
         LoadingStateLoading,
         LoadingStateAborted
     };

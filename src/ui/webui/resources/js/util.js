@@ -120,6 +120,26 @@ function parseQueryParams(location) {
   return params;
 }
 
+/**
+ * Creates a new URL by appending or replacing the given query key and value.
+ * Not supporting URL with username and password.
+ * @param {object} location The original URL.
+ * @param {string} key The query parameter name.
+ * @param {string} value The query parameter value.
+ * @return {string} The constructed new URL.
+ */
+function setQueryParam(location, key, value) {
+  var query = parseQueryParams(location);
+  query[encodeURIComponent(key)] = encodeURIComponent(value);
+
+  var newQuery = '';
+  for (var q in query) {
+    newQuery += (newQuery ? '&' : '?') + q + '=' + query[q];
+  }
+
+  return location.origin + location.pathname + newQuery + location.hash;
+}
+
 function findAncestorByClass(el, className) {
   return findAncestor(el, function(el) {
     if (el.classList)
@@ -320,4 +340,72 @@ function ensureTransitionEndEvent(el, timeOut) {
     if (!fired)
       cr.dispatchSimpleEvent(el, 'webkitTransitionEnd');
   }, timeOut);
+}
+
+/**
+ * Alias for document.scrollTop getter.
+ * @param {!HTMLDocument} doc The document node where information will be
+ *     queried from.
+ * @return {number} The Y document scroll offset.
+ */
+function scrollTopForDocument(doc) {
+  return doc.documentElement.scrollTop || doc.body.scrollTop;
+}
+
+/**
+ * Alias for document.scrollTop setter.
+ * @param {!HTMLDocument} doc The document node where information will be
+ *     queried from.
+ * @param {number} value The target Y scroll offset.
+ */
+function setScrollTopForDocument(doc, value) {
+  doc.documentElement.scrollTop = doc.body.scrollTop = value;
+}
+
+/**
+ * Alias for document.scrollLeft getter.
+ * @param {!HTMLDocument} doc The document node where information will be
+ *     queried from.
+ * @return {number} The X document scroll offset.
+ */
+function scrollLeftForDocument(doc) {
+  return doc.documentElement.scrollLeft || doc.body.scrollLeft;
+}
+
+/**
+ * Alias for document.scrollLeft setter.
+ * @param {!HTMLDocument} doc The document node where information will be
+ *     queried from.
+ * @param {number} value The target X scroll offset.
+ */
+function setScrollLeftForDocument(doc, value) {
+  doc.documentElement.scrollLeft = doc.body.scrollLeft = value;
+}
+
+/**
+ * Replaces '&', '<', '>', '"', and ''' characters with their HTML encoding.
+ * @param {string} original The original string.
+ * @return {string} The string with all the characters mentioned above replaced.
+ */
+function HTMLEscape(original) {
+  return original.replace(/&/g, '&amp;')
+                 .replace(/</g, '&lt;')
+                 .replace(/>/g, '&gt;')
+                 .replace(/"/g, '&quot;')
+                 .replace(/'/g, '&#39;');
+}
+
+/**
+ * Shortens the provided string (if necessary) to a string of length at most
+ * |maxLength|.
+ * @param {string} original The original string.
+ * @param {number} maxLength The maximum length allowed for the string.
+ * @return {string} The original string if its length does not exceed
+ *     |maxLength|. Otherwise the first |maxLength| - 1 characters with '...'
+ *     appended.
+ */
+function elide(original, maxLength) {
+  if (original.length <= maxLength)
+    return original;
+  return original.substring(0, maxLength - 1) + '\u2026';
 }

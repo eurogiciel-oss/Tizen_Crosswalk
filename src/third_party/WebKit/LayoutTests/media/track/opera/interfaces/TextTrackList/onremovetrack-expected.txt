@@ -1,4 +1,5 @@
-
-FAIL TextTrackList.onremovetrack assert_equals: expected null but got undefined
+This is a testharness.js-based test.
+PASS TextTrackList.onremovetrack 
 PASS TextTrackList.addEventListener/removeEventListener 
+Harness: the test ran to completion.
 

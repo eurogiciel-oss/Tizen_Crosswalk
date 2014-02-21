@@ -46,7 +46,6 @@
 #include "platform/geometry/IntRect.h"
 #include "platform/geometry/IntSize.h"
 #include "wtf/CurrentTime.h"
-#include "wtf/text/WTFString.h"
 
 namespace {
 
@@ -90,8 +89,8 @@ void ConvertInspectorPoint(WebCore::Page* page, const WebCore::IntPoint& point, 
 
 namespace WebCore {
 
-InspectorInputAgent::InspectorInputAgent(InstrumentingAgents* instrumentingAgents, InspectorCompositeState* inspectorState, Page* page, InspectorClient* client)
-    : InspectorBaseAgent<InspectorInputAgent>("Input", instrumentingAgents, inspectorState)
+InspectorInputAgent::InspectorInputAgent(Page* page, InspectorClient* client)
+    : InspectorBaseAgent<InspectorInputAgent>("Input")
     , m_page(page), m_client(client)
 {
 }

@@ -43,13 +43,13 @@ namespace WebCore {
 class Document;
 class DOMNamedFlowCollection;
 
-class NamedFlowCollection : public RefCounted<NamedFlowCollection>, public DocumentLifecycleObserver {
+class NamedFlowCollection FINAL : public RefCounted<NamedFlowCollection>, public DocumentLifecycleObserver {
 public:
     static PassRefPtr<NamedFlowCollection> create(Document* doc) { return adoptRef(new NamedFlowCollection(doc)); }
 
     Vector<RefPtr<NamedFlow> > namedFlows();
-    NamedFlow* flowByName(const String&);
-    PassRefPtr<NamedFlow> ensureFlowWithName(const String&);
+    NamedFlow* flowByName(const AtomicString&);
+    PassRefPtr<NamedFlow> ensureFlowWithName(const AtomicString&);
 
     void discardNamedFlow(NamedFlow*);
 

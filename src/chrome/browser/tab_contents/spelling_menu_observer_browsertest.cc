@@ -41,23 +41,25 @@ class MockRenderViewContextMenu : public RenderViewContextMenuProxy {
     bool enabled;
     bool checked;
     bool hidden;
-    string16 title;
+    base::string16 title;
   };
 
   explicit MockRenderViewContextMenu(bool incognito);
   virtual ~MockRenderViewContextMenu();
 
   // RenderViewContextMenuProxy implementation.
-  virtual void AddMenuItem(int command_id, const string16& title) OVERRIDE;
-  virtual void AddCheckItem(int command_id, const string16& title) OVERRIDE;
+  virtual void AddMenuItem(int command_id,
+                           const base::string16& title) OVERRIDE;
+  virtual void AddCheckItem(int command_id,
+                            const base::string16& title) OVERRIDE;
   virtual void AddSeparator() OVERRIDE;
   virtual void AddSubMenu(int command_id,
-                          const string16& label,
+                          const base::string16& label,
                           ui::MenuModel* model) OVERRIDE;
   virtual void UpdateMenuItem(int command_id,
                               bool enabled,
                               bool hidden,
-                              const string16& title) OVERRIDE;
+                              const base::string16& title) OVERRIDE;
   virtual RenderViewHost* GetRenderViewHost() const OVERRIDE;
   virtual WebContents* GetWebContents() const OVERRIDE;
   virtual Profile* GetProfile() const OVERRIDE;
@@ -101,7 +103,7 @@ MockRenderViewContextMenu::~MockRenderViewContextMenu() {
 }
 
 void MockRenderViewContextMenu::AddMenuItem(int command_id,
-                                            const string16& title) {
+                                            const base::string16& title) {
   MockMenuItem item;
   item.command_id = command_id;
   item.enabled = observer_->IsCommandIdEnabled(command_id);
@@ -112,7 +114,7 @@ void MockRenderViewContextMenu::AddMenuItem(int command_id,
 }
 
 void MockRenderViewContextMenu::AddCheckItem(int command_id,
-                                             const string16& title) {
+                                             const base::string16& title) {
   MockMenuItem item;
   item.command_id = command_id;
   item.enabled = observer_->IsCommandIdEnabled(command_id);
@@ -132,7 +134,7 @@ void MockRenderViewContextMenu::AddSeparator() {
 }
 
 void MockRenderViewContextMenu::AddSubMenu(int command_id,
-                                           const string16& label,
+                                           const base::string16& label,
                                            ui::MenuModel* model) {
   MockMenuItem item;
   item.command_id = -1;
@@ -145,7 +147,7 @@ void MockRenderViewContextMenu::AddSubMenu(int command_id,
 void MockRenderViewContextMenu::UpdateMenuItem(int command_id,
                                                bool enabled,
                                                bool hidden,
-                                               const string16& title) {
+                                               const base::string16& title) {
   for (std::vector<MockMenuItem>::iterator it = items_.begin();
        it != items_.end(); ++it) {
     if (it->command_id == command_id) {
@@ -223,10 +225,10 @@ class SpellingMenuObserverTest : public InProcessBrowserTest {
   void InitMenu(const char* word, const char* suggestion) {
     content::ContextMenuParams params;
     params.is_editable = true;
-    params.misspelled_word = ASCIIToUTF16(word);
+    params.misspelled_word = base::ASCIIToUTF16(word);
     params.dictionary_suggestions.clear();
     if (suggestion)
-      params.dictionary_suggestions.push_back(ASCIIToUTF16(suggestion));
+      params.dictionary_suggestions.push_back(base::ASCIIToUTF16(suggestion));
     observer_->InitMenu(params);
   }
 

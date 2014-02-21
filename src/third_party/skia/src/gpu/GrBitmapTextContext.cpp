@@ -24,11 +24,9 @@ SK_CONF_DECLARE(bool, c_DumpFontCache, "gpu.dumpFontCache", false,
                 "Dump the contents of the font cache before every purge.");
 
 GrBitmapTextContext::GrBitmapTextContext(GrContext* context, const GrPaint& paint,
-                                         SkColor color) :
-                                         GrTextContext(context, paint) {
+                                         const SkPaint& skPaint) :
+                                         GrTextContext(context, paint, skPaint) {
     fAutoMatrix.setIdentity(fContext, &fPaint);
-
-    fSkPaintColor = color;
 
     fStrike = NULL;
 
@@ -70,7 +68,10 @@ void GrBitmapTextContext::flushGlyphs() {
                                 GrCustomCoordsTextureEffect::Create(fCurrTexture, params),
                                 kGlyphCoordsAttributeIndex)->unref();
 
-        if (!GrPixelConfigIsAlphaOnly(fCurrTexture->config())) {
+        if (NULL != fStrike && kARGB_GrMaskFormat == fStrike->getMaskFormat()) {
+            drawState->setBlendFunc(fPaint.getSrcBlendCoeff(), fPaint.getDstBlendCoeff());
+            drawState->setColor(0xffffffff);
+        } else if (!GrPixelConfigIsAlphaOnly(fCurrTexture->config())) {
             if (kOne_GrBlendCoeff != fPaint.getSrcBlendCoeff() ||
                 kISA_GrBlendCoeff != fPaint.getDstBlendCoeff() ||
                 fPaint.numColorStages()) {
@@ -80,11 +81,11 @@ void GrBitmapTextContext::flushGlyphs() {
             // alpha. Instead we feed in a non-premultiplied color, and multiply its alpha by
             // the mask texture color. The end result is that we get
             //            mask*paintAlpha*paintColor + (1-mask*paintAlpha)*dstColor
-            int a = SkColorGetA(fSkPaintColor);
+            int a = SkColorGetA(fSkPaint.getColor());
             // paintAlpha
             drawState->setColor(SkColorSetARGB(a, a, a, a));
             // paintColor
-            drawState->setBlendConstant(skcolor_to_grcolor_nopremultiply(fSkPaintColor));
+            drawState->setBlendConstant(skcolor_to_grcolor_nopremultiply(fSkPaint.getColor()));
             drawState->setBlendFunc(kConstC_GrBlendCoeff, kISC_GrBlendCoeff);
         } else {
             // set back to normal in case we took LCD path previously.
@@ -123,7 +124,11 @@ void GrBitmapTextContext::drawPackedGlyph(GrGlyph::PackedID packed,
         return;
     }
     if (NULL == fStrike) {
+#if SK_DISTANCEFIELD_FONTS
+        fStrike = fContext->getFontCache()->getStrike(scaler, false);
+#else
         fStrike = fContext->getFontCache()->getStrike(scaler);
+#endif
     }
 
     GrGlyph* glyph = fStrike->getGlyph(packed, scaler);

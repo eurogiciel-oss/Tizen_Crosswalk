@@ -173,8 +173,10 @@ int WRAP(fstat)(int fd, struct nacl_abi_stat *nacl_buf) {
   return 0;
 }
 
-char* WRAP(getcwd)(char* buf, size_t size) {
-  return ki_getcwd(buf, size);
+int WRAP(getcwd)(char* buf, size_t size) {
+  if (ki_getcwd(buf, size) == NULL)
+    return errno;
+  return 0;
 }
 
 int WRAP(getdents)(int fd, dirent* nacl_buf, size_t nacl_count, size_t *nread) {
@@ -386,12 +388,6 @@ int _real_rmdir(const char* pathname) {
 int _real_write(int fd, const void *buf, size_t count, size_t *nwrote) {
   CHECK_REAL(write);
   return REAL(write)(fd, buf, count, nwrote);
-}
-
-uint64_t usec_since_epoch() {
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  return tv.tv_usec + (tv.tv_sec * 1000000);
 }
 
 static bool s_wrapped = false;

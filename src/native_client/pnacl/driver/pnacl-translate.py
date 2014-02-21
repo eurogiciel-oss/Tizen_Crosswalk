@@ -27,12 +27,13 @@ EXTRA_ENV = {
   # Determine if we should build nexes compatible with the IRT
   'USE_IRT' : '1',
 
-  # Allow C++ exception handling in the pexe.
-  'ALLOW_CXX_EXCEPTIONS' : '0',
+  # Allow zero-cost C++ exception handling in the pexe, which is not
+  # supported by PNaCl's stable ABI.
+  'ALLOW_ZEROCOST_CXX_EH' : '0',
 
   # Use the IRT shim by default. This can be disabled with an explicit
   # flag (--noirtshim) or via -nostdlib.
-  'USE_IRT_SHIM'  : '${!SHARED ? 1 : 0}',
+  'USE_IRT_SHIM'  : '1',
 
   # To simulate the sandboxed translator better and avoid user surprises,
   # reject LLVM bitcode (non-finalized) by default, accepting only PNaCl
@@ -41,10 +42,8 @@ EXTRA_ENV = {
   'ALLOW_LLVM_BITCODE_INPUT': '0',
 
   # Flags for pnacl-nativeld
-  'LD_FLAGS': '${STATIC ? -static} ${SHARED ? -shared}',
+  'LD_FLAGS': '-static',
 
-  'STATIC'         : '0',
-  'SHARED'         : '0',
   'USE_STDLIB'     : '1',
   'USE_DEFAULTLIBS': '1',
   'FAST_TRANSLATION': '0',
@@ -72,12 +71,8 @@ EXTRA_ENV = {
   # pulled in from the archive.
   'LD_ARGS_ENTRY': '--entry=__pnacl_start --undefined=_start',
 
-  # TODO(eliben): remove SHARED stuff altogether
-  'STATIC_CRTBEGIN' : '${ALLOW_CXX_EXCEPTIONS ? ' +
-                      '-l:crtbegin_for_eh.o : -l:crtbegin.o}',
-  'CRTBEGIN' : '${SHARED ? -l:crtbeginS.o : ${STATIC_CRTBEGIN}}',
-  'CRTEND'   : '${SHARED ? -l:crtendS.o : -l:crtend.o}',
-  'LIBGCC_EH': '${STATIC ? -l:libgcc_eh.a : -l:libgcc_s.so.1}',
+  'CRTBEGIN': '${ALLOW_ZEROCOST_CXX_EH ? -l:crtbegin_for_eh.o : -l:crtbegin.o}',
+  'CRTEND': '-l:crtend.o',
 
   'LD_ARGS_nostdlib': '-nostdlib ${ld_inputs}',
 
@@ -85,13 +80,13 @@ EXTRA_ENV = {
   'LD_ARGS_normal':
     '${CRTBEGIN} ${ld_inputs} ' +
     '${USE_IRT_SHIM ? ${LD_ARGS_IRT_SHIM} : ${LD_ARGS_IRT_SHIM_DUMMY}} ' +
-    '${STATIC ? --start-group} ' +
+    '--start-group ' +
     '${USE_DEFAULTLIBS ? ${DEFAULTLIBS}} ' +
-    '${STATIC ? --end-group} ' +
+    '--end-group ' +
     '${CRTEND}',
 
-  'DEFAULTLIBS': '${ALLOW_CXX_EXCEPTIONS ? ' +
-                 '${LIBGCC_EH}} -l:libgcc.a -l:libcrt_platform.a ',
+  'DEFAULTLIBS': '${ALLOW_ZEROCOST_CXX_EH ? -l:libgcc_eh.a} ' +
+                 '-l:libgcc.a -l:libcrt_platform.a ',
 
   'TRIPLE'      : '${TRIPLE_%ARCH%}',
   'TRIPLE_ARM'  : 'armv7a-none-nacl-gnueabi',
@@ -105,7 +100,7 @@ EXTRA_ENV = {
                       # do the work that would otherwise be done by
                       # linker rewrites which are quite messy in the nacl
                       # case and hence have not been implemented in gold
-                      '${PIC && !SHARED ? -force-tls-non-pic} ' +
+                      '${PIC ? -force-tls-non-pic} ' +
                       # this translates the pexe one function at a time
                       # which is also what the streaming translation does
                       '-reduce-memory-footprint',
@@ -201,8 +196,6 @@ TranslatorPatterns = [
   # improving translation speed at the expense of code quality.
   ( '-translate-fast',  "env.set('FAST_TRANSLATION', '1')"),
 
-  ( '-static',         "env.set('STATIC', '1')"),
-  ( '-shared',         "env.set('SHARED', '1')"),
   ( '-nostdlib',       "env.set('USE_STDLIB', '0')"),
 
   # Disables the default libraries.
@@ -214,13 +207,14 @@ TranslatorPatterns = [
   ( '--noirtshim',     "env.set('USE_IRT_SHIM', '0')"),
   ( '(--pnacl-nativeld=.+)', "env.append('LD_FLAGS', $0)"),
 
-  # Allowing C++ exception handling causes a specific set of native objects to
-  # get linked into the nexe.
-  ( '--pnacl-allow-exceptions', "env.set('ALLOW_CXX_EXCEPTIONS', '1')"),
+  # Allowing zero-cost C++ exception handling causes a specific set of
+  # native objects to get linked into the nexe.
+  ( '--pnacl-allow-zerocost-eh', "env.set('ALLOW_ZEROCOST_CXX_EH', '1')"),
+  # TODO(mseaborn): Remove "--pnacl-allow-exceptions", replaced by
+  # "--pnacl-allow-zerocost-eh".
+  ( '--pnacl-allow-exceptions', "env.set('ALLOW_ZEROCOST_CXX_EH', '1')"),
 
   ( '--allow-llvm-bitcode-input', "env.set('ALLOW_LLVM_BITCODE_INPUT', '1')"),
-
-  ( '-rpath-link=(.+)', "env.append('LD_FLAGS', '-L'+$0)"),
 
   ( '-fPIC',           "env.set('PIC', '1')"),
 
@@ -238,9 +232,6 @@ TranslatorPatterns = [
 def main(argv):
   env.update(EXTRA_ENV)
   driver_tools.ParseArgs(argv, TranslatorPatterns)
-  if env.getbool('SHARED'):
-    Log.Fatal('Not handling SHARED')
-
   driver_tools.GetArch(required = True)
 
   inputs = env.get('INPUTS')
@@ -272,8 +263,6 @@ def main(argv):
     sfile = None
     if output_type == 's':
       sfile = output
-    elif env.getbool('FORCE_INTERMEDIATE_S'):
-      sfile = tng.TempNameForInput(bcfile, 's')
 
     ofile = None
     if output_type == 'o':
@@ -299,20 +288,6 @@ def main(argv):
     inputs = ListReplace(inputs, bcfile, '__BITCODE__')
     env.set('INPUTS', *inputs)
 
-  # Determine the output type, in this order of precedence:
-  # 1) Output type can be specified on command-line (-S, -c, -static)
-  #    -S and -c are handled above by the check that output_type in ('o', 's').
-  # 2) Otherwise, assume static nexe output.
-  if env.getbool('STATIC'):
-    output_type = 'nexe'
-  else:
-    # Until we stabilize the ABI for shared libraries,
-    # assume that pnacl-translate only handles pexes -> nexes,
-    # to avoid a dependency on bitcode metadata.
-    output_type = 'nexe'
-    env.set('STATIC', '1')
-
-  assert output_type in ('so','nexe')
   if env.getone('ARCH') == 'LINUX_X8632':
     RunHostLD(ofile, output)
   else:
@@ -345,12 +320,11 @@ def RequiresNonStandardLDCommandline(inputs, infile):
     return ('No bitcode input: %s' % str(infile), True)
   if not env.getbool('USE_STDLIB'):
     return ('NOSTDLIB', True)
-  if env.getbool('ALLOW_CXX_EXCEPTIONS'):
-    return ('ALLOW_CXX_EXCEPTIONS', True)
+  if env.getbool('ALLOW_ZEROCOST_CXX_EH'):
+    return ('ALLOW_ZEROCOST_CXX_EH', True)
   if not env.getbool('USE_IRT'):
     return ('USE_IRT false when normally true', True)
-  if (not env.getbool('SHARED') and
-      not env.getbool('USE_IRT_SHIM')):
+  if not env.getbool('USE_IRT_SHIM'):
     return ('USE_IRT_SHIM false when normally true', True)
   return (None, False)
 
@@ -393,7 +367,7 @@ def RunLD(infile, outfile):
   ToggleDefaultCommandlineLD(inputs, infile)
   env.set('ld_inputs', *inputs)
   args = env.get('LD_ARGS') + ['-o', outfile]
-  if not env.getbool('SHARED') and env.getbool('USE_STDLIB'):
+  if env.getbool('USE_STDLIB'):
     args += env.get('LD_ARGS_ENTRY')
   args += env.get('LD_FLAGS')
   driver_tools.RunDriver('nativeld', args)
@@ -411,9 +385,7 @@ def RunLLC(infile, outfile, outfiletype):
   env.push()
   env.setmany(input=infile, output=outfile, outfiletype=outfiletype)
   if env.getbool('SANDBOXED'):
-    is_shared, soname, needed = RunLLCSandboxed()
-    # Ignore is_shared, soname, and needed for now, since we aren't
-    # dealing with bitcode shared libraries.
+    RunLLCSandboxed()
     env.pop()
   else:
     args = ["${RUN_LLC}"]
@@ -436,20 +408,12 @@ def RunLLCSandboxed():
   script = MakeSelUniversalScriptForLLC(infile, outfile)
   command = ('${SEL_UNIVERSAL_PREFIX} ${SEL_UNIVERSAL} ${SEL_UNIVERSAL_FLAGS} '
     '-- ${LLC_SB}')
-  _, stdout, _  = driver_tools.Run(command,
-                                stdin_contents=script,
-                                # stdout/stderr will be automatically dumped
-                                # upon failure
-                                redirect_stderr=subprocess.PIPE,
-                                redirect_stdout=subprocess.PIPE)
-  # Get the values returned from the llc RPC to use in input to ld
-  is_shared = re.search(r'output\s+0:\s+i\(([0|1])\)', stdout).group(1)
-  is_shared = (is_shared == '1')
-  soname = re.search(r'output\s+1:\s+s\("(.*)"\)', stdout).group(1)
-  needed_str = re.search(r'output\s+2:\s+s\("(.*)"\)', stdout).group(1)
-  # If the delimiter changes, this line needs to change
-  needed_libs = [ lib for lib in needed_str.split(r'\n') if lib]
-  return is_shared, soname, needed_libs
+  driver_tools.Run(command,
+                   stdin_contents=script,
+                   # stdout/stderr will be automatically dumped
+                   # upon failure
+                   redirect_stderr=subprocess.PIPE,
+                   redirect_stdout=subprocess.PIPE)
 
 def BuildOverrideLLCCommandLine():
   extra_flags = env.get('LLC_FLAGS_EXTRA')

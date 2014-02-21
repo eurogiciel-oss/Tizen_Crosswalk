@@ -32,20 +32,22 @@ class AffineTransform;
 
 class SVGAnimateTransformElement FINAL : public SVGAnimateElement {
 public:
-    static PassRefPtr<SVGAnimateTransformElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGAnimateTransformElement> create(Document&);
 
     SVGTransform::SVGTransformType transformType() const { return m_type; }
 
 private:
-    SVGAnimateTransformElement(const QualifiedName&, Document&);
+    explicit SVGAnimateTransformElement(Document&);
 
-    virtual bool hasValidAttributeType();
+    virtual bool hasValidAttributeType() OVERRIDE;
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
 
     SVGTransform::SVGTransformType m_type;
 };
+
+DEFINE_NODE_TYPE_CASTS(SVGAnimateTransformElement, hasTagName(SVGNames::animateTransformTag));
 
 } // namespace WebCore
 

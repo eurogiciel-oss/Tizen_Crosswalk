@@ -34,9 +34,9 @@
 #include "modules/filesystem/FileSystemClient.h"
 #include "wtf/Forward.h"
 
-namespace WebKit {
+namespace blink {
 
-class LocalFileSystemClient : public WebCore::FileSystemClient {
+class LocalFileSystemClient FINAL : public WebCore::FileSystemClient {
 public:
     static PassOwnPtr<FileSystemClient> create();
 
@@ -48,6 +48,6 @@ private:
     LocalFileSystemClient();
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // LocalFileSystemClient_h

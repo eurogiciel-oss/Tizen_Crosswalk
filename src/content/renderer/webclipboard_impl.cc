@@ -23,15 +23,14 @@
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/clipboard/custom_data_helper.h"
 #include "url/gurl.h"
-#include "webkit/glue/webkit_glue.h"
 
-using WebKit::WebClipboard;
-using WebKit::WebData;
-using WebKit::WebDragData;
-using WebKit::WebImage;
-using WebKit::WebString;
-using WebKit::WebURL;
-using WebKit::WebVector;
+using blink::WebClipboard;
+using blink::WebData;
+using blink::WebDragData;
+using blink::WebImage;
+using blink::WebString;
+using blink::WebURL;
+using blink::WebVector;
 
 namespace content {
 
@@ -108,7 +107,7 @@ WebString WebClipboardImpl::readPlainText(Buffer buffer) {
     std::string text;
     client_->ReadAsciiText(clipboard_type, &text);
     if (!text.empty())
-      return ASCIIToUTF16(text);
+      return base::ASCIIToUTF16(text);
   }
 
   return WebString();
@@ -188,7 +187,8 @@ void WebClipboardImpl::writeImage(const WebImage& image,
     // We also don't want to write HTML on a Mac, since Mail.app prefers to use
     // the image markup over attaching the actual image. See
     // http://crbug.com/33016 for details.
-    scw.WriteHTML(UTF8ToUTF16(URLToImageMarkup(url, title)), std::string());
+    scw.WriteHTML(base::UTF8ToUTF16(URLToImageMarkup(url, title)),
+                  std::string());
 #endif
   }
 }

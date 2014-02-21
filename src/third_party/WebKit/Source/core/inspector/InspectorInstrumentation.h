@@ -33,11 +33,12 @@
 
 #include "bindings/v8/ScriptString.h"
 #include "core/css/CSSSelector.h"
+#include "core/css/CSSStyleDeclaration.h"
 #include "core/css/CSSStyleSheet.h"
 #include "core/dom/CharacterData.h"
 #include "core/dom/Element.h"
 #include "core/dom/ExecutionContext.h"
-#include "core/events/EventContext.h"
+#include "core/events/NodeEventContext.h"
 #include "core/frame/Frame.h"
 #include "core/inspector/ConsoleAPITypes.h"
 #include "core/page/Page.h"
@@ -45,23 +46,24 @@
 #include "core/rendering/RenderImage.h"
 #include "core/storage/StorageArea.h"
 #include "modules/websockets/WebSocketFrame.h"
-#include "modules/websockets/WebSocketHandshakeRequest.h"
-#include "modules/websockets/WebSocketHandshakeResponse.h"
 #include "platform/network/FormData.h"
+#include "platform/network/WebSocketHandshakeRequest.h"
+#include "platform/network/WebSocketHandshakeResponse.h"
 #include "wtf/RefPtr.h"
 
 namespace WebCore {
 
 struct CSSParserString;
+class DeviceOrientationData;
 class Document;
 class Element;
-class DeviceOrientationData;
-class GeolocationPosition;
+class EventTarget;
+class ExecutionContext;
 class GraphicsContext;
+class GraphicsLayer;
 class InspectorTimelineAgent;
 class InstrumentingAgents;
 class RenderLayer;
-class ExecutionContext;
 class ThreadableLoaderClient;
 class WorkerGlobalScope;
 class WorkerGlobalScopeProxy;
@@ -107,6 +109,7 @@ InspectorTimelineAgent* retrieveTimelineAgent(const InspectorInstrumentationCook
 // Called from generated instrumentation code.
 InstrumentingAgents* instrumentingAgentsFor(Page*);
 InstrumentingAgents* instrumentingAgentsFor(Frame*);
+InstrumentingAgents* instrumentingAgentsFor(EventTarget*);
 InstrumentingAgents* instrumentingAgentsFor(ExecutionContext*);
 InstrumentingAgents* instrumentingAgentsFor(Document&);
 InstrumentingAgents* instrumentingAgentsFor(Document*);
@@ -121,21 +124,18 @@ InstrumentingAgents* instrumentingAgentsForNonDocumentContext(ExecutionContext*)
 
 namespace InstrumentationEvents {
 extern const char PaintSetup[];
-extern const char PaintLayer[];
 extern const char RasterTask[];
-extern const char ImageDecodeTask[];
 extern const char Paint[];
 extern const char Layer[];
 extern const char BeginFrame[];
-extern const char UpdateLayer[];
+extern const char ActivateLayerTree[];
 };
 
 namespace InstrumentationEventArguments {
+extern const char FrameId[];
 extern const char LayerId[];
 extern const char LayerTreeId[];
-extern const char NodeId[];
 extern const char PageId[];
-extern const char PixelRefId[];
 };
 
 namespace InspectorInstrumentation {
@@ -165,9 +165,19 @@ inline InstrumentingAgents* instrumentingAgentsFor(Document* document)
     return document ? instrumentingAgentsFor(*document) : 0;
 }
 
+inline InstrumentingAgents* instrumentingAgentsFor(CSSStyleSheet* styleSheet)
+{
+    return styleSheet ? instrumentingAgentsFor(styleSheet->ownerDocument()) : 0;
+}
+
 inline InstrumentingAgents* instrumentingAgentsFor(Node* node)
 {
     return node ? instrumentingAgentsFor(node->document()) : 0;
+}
+
+inline InstrumentingAgents* instrumentingAgentsFor(CSSStyleDeclaration* declaration)
+{
+    return declaration ? instrumentingAgentsFor(declaration->parentStyleSheet()) : 0;
 }
 
 } // namespace InspectorInstrumentation

@@ -54,8 +54,6 @@ void SingleSplitView::Layout() {
     }
   }
 
-  SchedulePaint();
-
   // Invoke super's implementation so that the children are layed out.
   View::Layout();
 }
@@ -150,7 +148,7 @@ void SingleSplitView::CalculateChildrenBounds(
   }
 }
 
-void SingleSplitView::SetAccessibleName(const string16& name) {
+void SingleSplitView::SetAccessibleName(const base::string16& name) {
   accessible_name_ = name;
 }
 

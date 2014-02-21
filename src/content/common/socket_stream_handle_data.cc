@@ -7,20 +7,20 @@
 #include "webkit/child/websocketstreamhandle_impl.h"
 
 using webkit_glue::WebSocketStreamHandleImpl;
-using WebKit::WebSocketStreamHandle;
+using blink::WebSocketStreamHandle;
 
 namespace content {
 
 // static
 void SocketStreamHandleData::AddToHandle(
-    WebSocketStreamHandle* handle, int render_view_id) {
+    WebSocketStreamHandle* handle, int render_frame_id) {
   if (!handle) {
     NOTREACHED();
     return;
   }
   WebSocketStreamHandleImpl* impl =
       static_cast<WebSocketStreamHandleImpl*>(handle);
-  impl->SetUserData(handle, new SocketStreamHandleData(render_view_id));
+  impl->SetUserData(handle, new SocketStreamHandleData(render_frame_id));
 }
 
 // static

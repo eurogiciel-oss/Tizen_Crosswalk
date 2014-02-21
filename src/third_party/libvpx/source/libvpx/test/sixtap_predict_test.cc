@@ -1,12 +1,12 @@
 /*
-*  Copyright (c) 2012 The WebM project authors. All Rights Reserved.
-*
-*  Use of this source code is governed by a BSD-style license
-*  that can be found in the LICENSE file in the root of the source
-*  tree. An additional intellectual property rights grant can be found
-*  in the file PATENTS.  All contributing project authors may
-*  be found in the AUTHORS file in the root of the source tree.
-*/
+ *  Copyright (c) 2013 The WebM project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
 
 #include <math.h>
 #include <stdlib.h>
@@ -32,7 +32,10 @@ typedef void (*sixtap_predict_fn_t)(uint8_t *src_ptr,
                                     uint8_t *dst_ptr,
                                     int  dst_pitch);
 
-class SixtapPredictTest : public PARAMS(int, int, sixtap_predict_fn_t) {
+typedef std::tr1::tuple<int, int, sixtap_predict_fn_t> sixtap_predict_param_t;
+
+class SixtapPredictTest
+    : public ::testing::TestWithParam<sixtap_predict_param_t> {
  public:
   static void SetUpTestCase() {
     src_ = reinterpret_cast<uint8_t*>(vpx_memalign(kDataAlignment, kSrcSize));

@@ -11,7 +11,6 @@
 
 #include "base/memory/scoped_ptr.h"
 #include "chromeos/chromeos_export.h"
-#include "chromeos/ime/input_method_config.h"
 #include "chromeos/ime/input_method_descriptor.h"
 #include "chromeos/ime/input_method_property.h"
 
@@ -21,15 +20,14 @@ class Accelerator;
 
 namespace chromeos {
 class ComponentExtensionIMEManager;
-class InputMethodEngine;
+class InputMethodEngineInterface;
 namespace input_method {
-
 class InputMethodUtil;
 class XKeyboard;
 
 // This class manages input methodshandles.  Classes can add themselves as
 // observers. Clients can get an instance of this library class by:
-// GetInputMethodManager().
+// InputMethodManager::Get().
 class CHROMEOS_EXPORT InputMethodManager {
  public:
   enum State {
@@ -107,6 +105,11 @@ class CHROMEOS_EXPORT InputMethodManager {
   // methods.
   virtual size_t GetNumActiveInputMethods() const = 0;
 
+  // Returns the input method descriptor from the given input method id string.
+  // If the given input method id is invalid, returns NULL.
+  virtual const InputMethodDescriptor* GetInputMethodFromId(
+      const std::string& input_method_id) const = 0;
+
   // Changes the current input method to |input_method_id|. If |input_method_id|
   // is not active, switch to the first one in the active input method list.
   virtual void ChangeInputMethod(const std::string& input_method_id) = 0;
@@ -138,12 +141,8 @@ class CHROMEOS_EXPORT InputMethodManager {
   // Adds an input method extension. This function does not takes ownership of
   // |instance|.
   virtual void AddInputMethodExtension(
-      const std::string& id,
-      const std::string& name,
-      const std::vector<std::string>& layouts,
-      const std::vector<std::string>& languages,
-      const GURL& options_url,
-      InputMethodEngine* instance) = 0;
+      const std::string& imm_id,
+      InputMethodEngineInterface* instance) = 0;
 
   // Removes an input method extension.
   virtual void RemoveInputMethodExtension(const std::string& id) = 0;
@@ -162,6 +161,10 @@ class CHROMEOS_EXPORT InputMethodManager {
 
   // Gets the list of input method properties. The list could be empty().
   virtual InputMethodPropertyList GetCurrentInputMethodProperties() const = 0;
+
+  // Sets the list of input method properties. The list could be empty().
+  virtual void SetCurrentInputMethodProperties(
+      const InputMethodPropertyList& property_list) = 0;
 
   // Returns an X keyboard object which could be used to change the current XKB
   // layout, change the caps lock status, and set the auto repeat rate/interval.

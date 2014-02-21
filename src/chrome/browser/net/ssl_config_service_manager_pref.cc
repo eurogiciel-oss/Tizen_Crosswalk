@@ -27,11 +27,11 @@ namespace {
 
 // Converts a ListValue of StringValues into a vector of strings. Any Values
 // which cannot be converted will be skipped.
-std::vector<std::string> ListValueToStringVector(const ListValue* value) {
+std::vector<std::string> ListValueToStringVector(const base::ListValue* value) {
   std::vector<std::string> results;
   results.reserve(value->GetSize());
   std::string s;
-  for (ListValue::const_iterator it = value->begin(); it != value->end();
+  for (base::ListValue::const_iterator it = value->begin(); it != value->end();
        ++it) {
     if (!(*it)->GetAsString(&s))
       continue;
@@ -244,10 +244,8 @@ void SSLConfigServiceManagerPref::RegisterPrefs(PrefRegistrySimple* registry) {
                                 default_config.channel_id_enabled);
   registry->RegisterBooleanPref(prefs::kDisableSSLRecordSplitting,
                                 !default_config.false_start_enabled);
-  // Note: until http://crbug/237055 is resolved, unrestricted SSL 3.0 fallback
-  // is always enabled.
   registry->RegisterBooleanPref(prefs::kEnableUnrestrictedSSL3Fallback,
-      true /* default_config.unrestricted_ssl3_fallback_enabled */);
+      default_config.unrestricted_ssl3_fallback_enabled);
   registry->RegisterListPref(prefs::kCipherSuiteBlacklist);
 }
 
@@ -308,12 +306,12 @@ void SSLConfigServiceManagerPref::GetSSLConfigFromPrefs(
   config->false_start_enabled = !ssl_record_splitting_disabled_.GetValue();
   config->unrestricted_ssl3_fallback_enabled =
       unrestricted_ssl3_fallback_enabled_.GetValue();
-  SSLConfigServicePref::SetSSLConfigFlags(config);
 }
 
 void SSLConfigServiceManagerPref::OnDisabledCipherSuitesChange(
     PrefService* local_state) {
-  const ListValue* value = local_state->GetList(prefs::kCipherSuiteBlacklist);
+  const base::ListValue* value =
+      local_state->GetList(prefs::kCipherSuiteBlacklist);
   disabled_cipher_suites_ = ParseCipherSuites(ListValueToStringVector(value));
 }
 

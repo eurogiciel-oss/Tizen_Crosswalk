@@ -3,12 +3,19 @@
 // found in the LICENSE file.
 
 #include <stdio.h>
+#include <string>
 
+#include "mojo/examples/sample_app/gles2_client_impl.h"
+#include "mojo/public/bindings/lib/remote_ptr.h"
+#include "mojo/public/environment/environment.h"
+#include "mojo/public/gles2/gles2_cpp.h"
 #include "mojo/public/system/core.h"
 #include "mojo/public/system/macros.h"
-#include "mojo/system/core_impl.h"
+#include "mojo/public/utility/run_loop.h"
+#include "mojom/native_viewport.h"
+#include "mojom/shell.h"
 
-#if defined(OS_WIN)
+#if defined(WIN32)
 #if !defined(CDECL)
 #define CDECL __cdecl
 #endif
@@ -18,59 +25,86 @@
 #define SAMPLE_APP_EXPORT __attribute__((visibility("default")))
 #endif
 
-char* ReadStringFromPipe(mojo::Handle pipe) {
-  uint32_t len = 0;
-  char* buf = NULL;
-  MojoResult result = mojo::ReadMessage(pipe, buf, &len, NULL, NULL,
-                                        MOJO_READ_MESSAGE_FLAG_NONE);
-  if (result == MOJO_RESULT_RESOURCE_EXHAUSTED) {
-    buf = new char[len];
-    result = mojo::ReadMessage(pipe, buf, &len, NULL, NULL,
-                               MOJO_READ_MESSAGE_FLAG_NONE);
-  }
-  if (result < MOJO_RESULT_OK) {
-    // Failure..
-    if (buf)
-      delete[] buf;
-    return NULL;
-  }
-  return buf;
-}
+namespace mojo {
+namespace examples {
 
-class SampleMessageWaiter {
+class SampleApp : public ShellClient {
  public:
-  explicit SampleMessageWaiter(mojo::Handle pipe) : pipe_(pipe) {}
-  ~SampleMessageWaiter() {}
+  explicit SampleApp(ScopedMessagePipeHandle shell_handle)
+      : shell_(shell_handle.Pass(), this) {
 
-  void Read() {
-    char* string = ReadStringFromPipe(pipe_);
-    if (string) {
-      printf("Read string from pipe: %s\n", string);
-      delete[] string;
-      string = NULL;
-    }
+    MessagePipe pipe;
+    native_viewport_client_.reset(
+        new NativeViewportClientImpl(pipe.handle0.Pass()));
+    mojo::AllocationScope scope;
+    shell_->Connect("mojo:mojo_native_viewport_service", pipe.handle1.Pass());
   }
 
-  void WaitAndRead() {
-    for (int i = 0; i < 100;) {
-      MojoResult result = mojo::Wait(pipe_, MOJO_WAIT_FLAG_READABLE, 100);
-      if (result < MOJO_RESULT_OK) {
-        // Failure...
-        continue;
-      }
-      ++i;
-      Read();
-    }
+  virtual void AcceptConnection(ScopedMessagePipeHandle handle) MOJO_OVERRIDE {
   }
 
  private:
-  mojo::Handle pipe_;
+  class NativeViewportClientImpl : public mojo::NativeViewportClient {
+   public:
+    explicit NativeViewportClientImpl(ScopedMessagePipeHandle viewport_handle)
+        : viewport_(viewport_handle.Pass(), this) {
+      AllocationScope scope;
+      Rect::Builder rect;
+      Point::Builder point;
+      point.set_x(10);
+      point.set_y(10);
+      rect.set_position(point.Finish());
+      Size::Builder size;
+      size.set_width(800);
+      size.set_height(600);
+      rect.set_size(size.Finish());
+      viewport_->Create(rect.Finish());
+      viewport_->Show();
 
-  MOJO_DISALLOW_COPY_AND_ASSIGN(SampleMessageWaiter);
+      MessagePipe pipe;
+      gles2_client_.reset(new GLES2ClientImpl(pipe.handle0.Pass()));
+      viewport_->CreateGLES2Context(pipe.handle1.Pass());
+    }
+
+    virtual ~NativeViewportClientImpl() {}
+
+    virtual void OnCreated() MOJO_OVERRIDE {
+    }
+
+    virtual void OnDestroyed() MOJO_OVERRIDE {
+      RunLoop::current()->Quit();
+    }
+
+    virtual void OnBoundsChanged(const Rect& bounds) MOJO_OVERRIDE {
+    }
+
+    virtual void OnEvent(const Event& event) MOJO_OVERRIDE {
+      if (!event.location().is_null()) {
+        gles2_client_->HandleInputEvent(event);
+        viewport_->AckEvent(event);
+      }
+    }
+
+   private:
+    scoped_ptr<GLES2ClientImpl> gles2_client_;
+    RemotePtr<NativeViewport> viewport_;
+  };
+  mojo::RemotePtr<Shell> shell_;
+  scoped_ptr<NativeViewportClientImpl> native_viewport_client_;
 };
 
+}  // namespace examples
+}  // namespace mojo
+
 extern "C" SAMPLE_APP_EXPORT MojoResult CDECL MojoMain(
-    mojo::Handle pipe) {
-  SampleMessageWaiter(pipe).WaitAndRead();
+    MojoHandle shell_handle) {
+  mojo::Environment env;
+  mojo::RunLoop loop;
+  mojo::GLES2Initializer gles2;
+
+  mojo::examples::SampleApp app(
+      mojo::MakeScopedHandle(mojo::MessagePipeHandle(shell_handle)).Pass());
+  loop.Run();
+
   return MOJO_RESULT_OK;
 }

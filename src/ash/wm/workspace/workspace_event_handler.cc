@@ -4,9 +4,8 @@
 
 #include "ash/wm/workspace/workspace_event_handler.h"
 
-#include "ash/screen_ash.h"
+#include "ash/metrics/user_metrics_recorder.h"
 #include "ash/shell.h"
-#include "ash/shell_delegate.h"
 #include "ash/touch/touch_uma.h"
 #include "ash/wm/coordinate_conversion.h"
 #include "ash/wm/window_state.h"
@@ -54,14 +53,10 @@ void ToggleMaximizedState(wm::WindowState* window_state) {
 
 namespace internal {
 
-WorkspaceEventHandler::WorkspaceEventHandler(aura::Window* owner)
-    : ToplevelWindowEventHandler(owner),
-      destroyed_(NULL) {
+WorkspaceEventHandler::WorkspaceEventHandler() {
 }
 
 WorkspaceEventHandler::~WorkspaceEventHandler() {
-  if (destroyed_)
-    *destroyed_ = true;
 }
 
 void WorkspaceEventHandler::OnMouseEvent(ui::MouseEvent* event) {
@@ -80,25 +75,15 @@ void WorkspaceEventHandler::OnMouseEvent(ui::MouseEvent* event) {
     case ui::ET_MOUSE_EXITED:
       break;
     case ui::ET_MOUSE_PRESSED: {
-      // Maximize behavior is implemented as post-target handling so the target
-      // can cancel it.
-      if (ui::EventCanceledDefaultHandling(*event)) {
-        ToplevelWindowEventHandler::OnMouseEvent(event);
-        return;
-      }
       wm::WindowState* target_state = wm::GetWindowState(target);
       if (event->flags() & ui::EF_IS_DOUBLE_CLICK &&
           event->IsOnlyLeftMouseButton() &&
           target->delegate()->GetNonClientComponent(event->location()) ==
           HTCAPTION) {
-        bool destroyed = false;
-        destroyed_ = &destroyed;
-        ash::Shell::GetInstance()->delegate()->RecordUserMetricsAction(
+        ash::Shell::GetInstance()->metrics()->RecordUserMetricsAction(
             ash::UMA_TOGGLE_MAXIMIZE_CAPTION_CLICK);
         ToggleMaximizedState(target_state);
-        if (destroyed)
-          return;
-        destroyed_ = NULL;
+        event->StopPropagation();
       }
       multi_window_resize_controller_.Hide();
       HandleVerticalResizeDoubleClick(target_state, event);
@@ -107,7 +92,6 @@ void WorkspaceEventHandler::OnMouseEvent(ui::MouseEvent* event) {
     default:
       break;
   }
-  ToplevelWindowEventHandler::OnMouseEvent(event);
 }
 
 void WorkspaceEventHandler::OnGestureEvent(ui::GestureEvent* event) {
@@ -116,13 +100,12 @@ void WorkspaceEventHandler::OnGestureEvent(ui::GestureEvent* event) {
       target->delegate()->GetNonClientComponent(event->location()) ==
       HTCAPTION) {
     if (event->details().tap_count() == 2) {
-      ash::Shell::GetInstance()->delegate()->RecordUserMetricsAction(
+      ash::Shell::GetInstance()->metrics()->RecordUserMetricsAction(
           ash::UMA_TOGGLE_MAXIMIZE_CAPTION_GESTURE);
       // Note: TouchUMA::GESTURE_FRAMEVIEW_TAP is counted twice each time
       // TouchUMA::GESTURE_MAXIMIZE_DOUBLETAP is counted once.
       TouchUMA::GetInstance()->RecordGestureAction(
           TouchUMA::GESTURE_MAXIMIZE_DOUBLETAP);
-      // |this| may be destroyed from here.
       ToggleMaximizedState(wm::GetWindowState(target));
       event->StopPropagation();
       return;
@@ -132,7 +115,6 @@ void WorkspaceEventHandler::OnGestureEvent(ui::GestureEvent* event) {
           TouchUMA::GESTURE_FRAMEVIEW_TAP);
     }
   }
-  ToplevelWindowEventHandler::OnGestureEvent(event);
 }
 
 void WorkspaceEventHandler::HandleVerticalResizeDoubleClick(
@@ -149,6 +131,8 @@ void WorkspaceEventHandler::HandleVerticalResizeDoubleClick(
       // Don't maximize vertically if the window has a max height defined.
       if (max_size.height() != 0)
         return;
+      Shell::GetInstance()->metrics()->RecordUserMetricsAction(
+          UMA_TOGGLE_SINGLE_AXIS_MAXIMIZE_BORDER_CLICK);
       if (target_state->HasRestoreBounds() &&
           (target->bounds().height() == work_area.height() &&
            target->bounds().y() == work_area.y())) {
@@ -163,10 +147,13 @@ void WorkspaceEventHandler::HandleVerticalResizeDoubleClick(
                                      target->bounds().width(),
                                      work_area.height()));
       }
+      event->StopPropagation();
     } else if (component == HTLEFT || component == HTRIGHT) {
       // Don't maximize horizontally if the window has a max width defined.
       if (max_size.width() != 0)
         return;
+      Shell::GetInstance()->metrics()->RecordUserMetricsAction(
+          UMA_TOGGLE_SINGLE_AXIS_MAXIMIZE_BORDER_CLICK);
       if (target_state->HasRestoreBounds() &&
           (target->bounds().width() == work_area.width() &&
            target->bounds().x() == work_area.x())) {
@@ -181,6 +168,7 @@ void WorkspaceEventHandler::HandleVerticalResizeDoubleClick(
                                      work_area.width(),
                                      target->bounds().height()));
       }
+      event->StopPropagation();
     }
   }
 }

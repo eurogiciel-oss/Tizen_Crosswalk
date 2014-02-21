@@ -14,9 +14,9 @@
 #include "base/basictypes.h"
 #include "base/strings/string16.h"
 #include "content/common/content_export.h"
+#include "content/common/content_param_traits.h"
 #include "ipc/ipc_message_macros.h"
 #include "ipc/ipc_message_utils.h"
-#include "third_party/WebKit/public/web/WebContentSecurityPolicy.h"
 #include "url/gurl.h"
 
 #undef IPC_MESSAGE_EXPORT
@@ -31,21 +31,21 @@ IPC_STRUCT_BEGIN(WorkerHostMsg_PostConsoleMessageToWorkerObject_Params)
   IPC_STRUCT_MEMBER(int, source_identifier)
   IPC_STRUCT_MEMBER(int, message_type)
   IPC_STRUCT_MEMBER(int, message_level)
-  IPC_STRUCT_MEMBER(string16, message)
+  IPC_STRUCT_MEMBER(base::string16, message)
   IPC_STRUCT_MEMBER(int, line_number)
-  IPC_STRUCT_MEMBER(string16, source_url)
+  IPC_STRUCT_MEMBER(base::string16, source_url)
 IPC_STRUCT_END()
 
 // Parameter structure for WorkerProcessMsg_CreateWorker.
 IPC_STRUCT_BEGIN(WorkerProcessMsg_CreateWorker_Params)
   IPC_STRUCT_MEMBER(GURL, url)
-  IPC_STRUCT_MEMBER(string16, name)
+  IPC_STRUCT_MEMBER(base::string16, name)
+  IPC_STRUCT_MEMBER(base::string16, content_security_policy)
+  IPC_STRUCT_MEMBER(blink::WebContentSecurityPolicyType, security_policy_type)
   IPC_STRUCT_MEMBER(int, route_id)
   IPC_STRUCT_MEMBER(int, creator_process_id)
   IPC_STRUCT_MEMBER(int64, shared_worker_appcache_id)
 IPC_STRUCT_END()
-
-IPC_ENUM_TRAITS(WebKit::WebContentSecurityPolicyType)
 
 //-----------------------------------------------------------------------------
 // WorkerProcess messages
@@ -62,8 +62,8 @@ IPC_MESSAGE_CONTROL1(WorkerProcessMsg_CreateWorker,
 IPC_SYNC_MESSAGE_CONTROL5_1(WorkerProcessHostMsg_AllowDatabase,
                             int /* worker_route_id */,
                             GURL /* origin url */,
-                            string16 /* database name */,
-                            string16 /* database display name */,
+                            base::string16 /* database name */,
+                            base::string16 /* database display name */,
                             unsigned long /* estimated size */,
                             bool /* result */)
 
@@ -77,11 +77,11 @@ IPC_SYNC_MESSAGE_CONTROL2_1(WorkerProcessHostMsg_AllowFileSystem,
 IPC_SYNC_MESSAGE_CONTROL3_1(WorkerProcessHostMsg_AllowIndexedDB,
                             int /* worker_route_id */,
                             GURL /* origin url */,
-                            string16 /* database name */,
+                            base::string16 /* database name */,
                             bool /* result */)
 
 // Sent by the worker process to request being killed.
-IPC_SYNC_MESSAGE_CONTROL0_0(WorkerProcessHostMsg_ForceKillWorker);
+IPC_SYNC_MESSAGE_CONTROL0_0(WorkerProcessHostMsg_ForceKillWorker)
 
 
 //-----------------------------------------------------------------------------
@@ -89,10 +89,10 @@ IPC_SYNC_MESSAGE_CONTROL0_0(WorkerProcessHostMsg_ForceKillWorker);
 // These are messages sent from the renderer process to the worker process.
 IPC_MESSAGE_ROUTED5(WorkerMsg_StartWorkerContext,
                     GURL /* url */,
-                    string16  /* user_agent */,
-                    string16  /* source_code */,
-                    string16  /* content_security_policy */,
-                    WebKit::WebContentSecurityPolicyType)
+                    base::string16  /* user_agent */,
+                    base::string16  /* source_code */,
+                    base::string16  /* content_security_policy */,
+                    blink::WebContentSecurityPolicyType)
 
 IPC_MESSAGE_ROUTED0(WorkerMsg_TerminateWorkerContext)
 

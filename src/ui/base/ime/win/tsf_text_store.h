@@ -13,7 +13,7 @@
 #include "base/strings/string16.h"
 #include "base/win/scoped_comptr.h"
 #include "ui/base/ime/composition_underline.h"
-#include "ui/base/ui_export.h"
+#include "ui/base/ui_base_export.h"
 #include "ui/gfx/range/range.h"
 
 namespace ui {
@@ -81,9 +81,9 @@ class TextInputClient;
 //
 // More information about TSF can be found here:
 //   http://msdn.microsoft.com/en-us/library/ms629032
-class UI_EXPORT TSFTextStore : public ITextStoreACP,
-                               public ITfContextOwnerCompositionSink,
-                               public ITfTextEditSink {
+class UI_BASE_EXPORT TSFTextStore : public ITextStoreACP,
+                                    public ITfContextOwnerCompositionSink,
+                                    public ITfTextEditSink {
  public:
   TSFTextStore();
   virtual ~TSFTextStore();
@@ -250,7 +250,7 @@ class UI_EXPORT TSFTextStore : public ITextStoreACP,
   //  Example: "aoi" is committed, and "umi" is under composition.
   //    |string_buffer_|: "aoiumi"
   //    |committed_size_|: 3
-  string16 string_buffer_;
+  base::string16 string_buffer_;
   size_t committed_size_;
 
   //  |selection_start_| and |selection_end_| indicates the selection range.

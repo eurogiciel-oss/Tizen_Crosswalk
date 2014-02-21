@@ -11,7 +11,6 @@
 #include <limits.h>
 
 #include "vpx_mem/vpx_mem.h"
-#include "vp9/encoder/vp9_encodeintra.h"
 #include "vp9/encoder/vp9_rdopt.h"
 #include "vp9/encoder/vp9_segmentation.h"
 #include "vp9/encoder/vp9_mcomp.h"
@@ -43,7 +42,7 @@ static unsigned int do_16x16_motion_iteration(VP9_COMP *cpi,
       (cpi->speed < 8 ? (cpi->speed > 5 ? 1 : 0) : 2);
   step_param = MIN(step_param, (cpi->sf.max_step_search_steps - 2));
 
-  vp9_clamp_mv_min_max(x, &ref_mv->as_mv);
+  vp9_set_mv_search_range(x, &ref_mv->as_mv);
 
   ref_full.as_mv.col = ref_mv->as_mv.col >> 3;
   ref_full.as_mv.row = ref_mv->as_mv.row >> 3;
@@ -153,7 +152,8 @@ static int find_best_16x16_intra(VP9_COMP *cpi,
     xd->mi_8x8[0]->mbmi.mode = mode;
     vp9_predict_intra_block(xd, 0, 2, TX_16X16, mode,
                             x->plane[0].src.buf, x->plane[0].src.stride,
-                            xd->plane[0].dst.buf, xd->plane[0].dst.stride);
+                            xd->plane[0].dst.buf, xd->plane[0].dst.stride,
+                            0, 0, 0);
     err = vp9_sad16x16(x->plane[0].src.buf, x->plane[0].src.stride,
                        xd->plane[0].dst.buf, xd->plane[0].dst.stride, best_err);
 
@@ -324,8 +324,8 @@ static void separate_arf_mbs(VP9_COMP *cpi) {
                              1));
 
   // We are not interested in results beyond the alt ref itself.
-  if (n_frames > cpi->frames_till_gf_update_due)
-    n_frames = cpi->frames_till_gf_update_due;
+  if (n_frames > cpi->rc.frames_till_gf_update_due)
+    n_frames = cpi->rc.frames_till_gf_update_due;
 
   // defer cost to reference frames
   for (i = n_frames - 1; i >= 0; i--) {
@@ -397,10 +397,9 @@ void vp9_update_mbgraph_stats(VP9_COMP *cpi) {
 
   // we need to look ahead beyond where the ARF transitions into
   // being a GF - so exit if we don't look ahead beyond that
-  if (n_frames <= cpi->frames_till_gf_update_due)
+  if (n_frames <= cpi->rc.frames_till_gf_update_due)
     return;
-  if (n_frames > (int)cpi->frames_till_alt_ref_frame)
-    n_frames = cpi->frames_till_alt_ref_frame;
+
   if (n_frames > MAX_LAG_BUFFERS)
     n_frames = MAX_LAG_BUFFERS;
 

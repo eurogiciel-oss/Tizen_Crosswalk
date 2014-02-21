@@ -62,11 +62,14 @@ const char kGpuSwitching[]                  = "gpu-switching";
 
 const char kGpuSwitchingOptionNameForceIntegrated[] = "force_integrated";
 const char kGpuSwitchingOptionNameForceDiscrete[]   = "force_discrete";
-const char kGpuSwitchingOptionNameAutomatic[]   = "automatic";
 
 // Flag used for Linux tests: for desktop GL bindings, try to load this GL
 // library first, but fall back to regular library if loading fails.
 const char kTestGLLib[]                     = "test-gl-lib";
+
+// Disables GL drawing operations which produce pixel output. With this
+// the GL output will not be correct but tests will run faster.
+const char kDisableGLDrawingForTests[] = "disable-gl-drawing-for-tests";
 
 // This is the list of switches passed from this file that are passed from the
 // GpuProcessHost to the GPU Process. Add your switch to this list if you need
@@ -78,7 +81,6 @@ const char* kGLSwitchesCopiedFromGpuProcessHost[] = {
   kEnableGPUServiceLogging,
   kEnableGPUServiceTracing,
   kGpuNoContextLost,
-  kGpuSwitching,
 };
 const int kGLSwitchesCopiedFromGpuProcessHostNumSwitches =
     arraysize(kGLSwitchesCopiedFromGpuProcessHost);

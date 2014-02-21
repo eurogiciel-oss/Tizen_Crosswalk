@@ -34,7 +34,7 @@
 #include "../../platform/WebCommon.h"
 #include "../WebInputEvent.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebKeyboardEvent;
 
@@ -86,8 +86,10 @@ public:
                                                       int x,
                                                       int y,
                                                       int modifiers);
+
+    BLINK_EXPORT static bool isSystemKeyEvent(const WebKeyboardEvent&);
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

@@ -161,12 +161,11 @@ namespace WebCore {
             PseudoCue,
             PseudoFutureCue,
             PseudoPastCue,
-            PseudoSeamlessDocument,
             PseudoDistributed,
-            PseudoPart,
             PseudoUnresolved,
             PseudoContent,
-            PseudoHost
+            PseudoHost,
+            PseudoAncestor
         };
 
         enum MarginBoxType {
@@ -204,10 +203,15 @@ namespace WebCore {
 
         const QualifiedName& tagQName() const;
         const AtomicString& value() const;
+
+        // WARNING: Use of QualifiedName by attribute() is a lie.
+        // attribute() will return a QualifiedName with prefix and namespaceURI
+        // set to starAtom to mean "matches any namespace". Be very careful
+        // how you use the returned QualifiedName.
+        // http://www.w3.org/TR/css3-selectors/#attrnmsp
         const QualifiedName& attribute() const;
         const AtomicString& argument() const { return m_hasRareData ? m_data.m_rareData->m_argument : nullAtom; }
         const CSSSelectorList* selectorList() const { return m_hasRareData ? m_data.m_rareData->m_selectorList.get() : 0; }
-        bool isMatchUserAgentOnly() const { return m_hasRareData ? m_data.m_rareData->m_matchUserAgentOnly : false; }
 
         void setValue(const AtomicString&);
         void setAttribute(const QualifiedName&);
@@ -265,22 +269,21 @@ namespace WebCore {
         CSSSelector& operator=(const CSSSelector&);
 
         struct RareData : public RefCounted<RareData> {
-            static PassRefPtr<RareData> create(PassRefPtr<StringImpl> value) { return adoptRef(new RareData(value)); }
+            static PassRefPtr<RareData> create(const AtomicString& value) { return adoptRef(new RareData(value)); }
             ~RareData();
 
             bool parseNth();
             bool matchNth(int count);
 
-            StringImpl* m_value; // Plain pointer to keep things uniform with the union.
+            AtomicString m_value;
             int m_a; // Used for :nth-*
             int m_b; // Used for :nth-*
             QualifiedName m_attribute; // used for attribute selector
-            AtomicString m_argument; // Used for :contains, :lang, :nth-* and ::part
+            AtomicString m_argument; // Used for :contains, :lang, :nth-*
             OwnPtr<CSSSelectorList> m_selectorList; // Used for :-webkit-any and :not
-            unsigned m_matchUserAgentOnly : 1; // Used to make ::part with "-webkit"-prefixed part name match only elements in UA shadow roots.
 
         private:
-            RareData(PassRefPtr<StringImpl> value);
+            RareData(const AtomicString& value);
         };
         void createRareData();
 
@@ -313,7 +316,7 @@ inline bool CSSSelector::isUnknownPseudoElement() const
 
 inline bool CSSSelector::isCustomPseudoElement() const
 {
-    return m_match == PseudoElement && (m_pseudoType == PseudoUserAgentCustomElement || m_pseudoType == PseudoWebKitCustomElement || m_pseudoType == PseudoPart);
+    return m_match == PseudoElement && (m_pseudoType == PseudoUserAgentCustomElement || m_pseudoType == PseudoWebKitCustomElement);
 }
 
 inline bool CSSSelector::isHostPseudoClass() const
@@ -366,10 +369,7 @@ inline void CSSSelector::setValue(const AtomicString& value)
     ASSERT(m_pseudoType == PseudoNotParsed);
     // Need to do ref counting manually for the union.
     if (m_hasRareData) {
-        if (m_data.m_rareData->m_value)
-            m_data.m_rareData->m_value->deref();
-        m_data.m_rareData->m_value = value.impl();
-        m_data.m_rareData->m_value->ref();
+        m_data.m_rareData->m_value = value;
         return;
     }
     if (m_data.m_value)
@@ -451,11 +451,12 @@ inline const QualifiedName& CSSSelector::tagQName() const
 inline const AtomicString& CSSSelector::value() const
 {
     ASSERT(m_match != Tag);
+    if (m_hasRareData)
+        return m_data.m_rareData->m_value;
     // AtomicString is really just a StringImpl* so the cast below is safe.
     // FIXME: Perhaps call sites could be changed to accept StringImpl?
-    return *reinterpret_cast<const AtomicString*>(m_hasRareData ? &m_data.m_rareData->m_value : &m_data.m_value);
+    return *reinterpret_cast<const AtomicString*>(&m_data.m_value);
 }
-
 
 } // namespace WebCore
 

@@ -75,12 +75,6 @@
     </div>
   </header>
   <div id="dev-controls" hidden>
-    <div id="apps-dev-tool-banner">
-      <div class="apps-dev-tool-banner-text"
-          i18n-content="extensionSettingsUseAppsDevTools"></div>
-      <button id="open-apps-dev-tools"
-          i18n-content="extensionSettingsOpenAppsDevTools"></button>
-    </div>
     <div class="buttons-container">
       <button id="load-unpacked"
           i18n-content="extensionSettingsLoadUnpackedButton"></button>
@@ -137,6 +131,14 @@
           <div class="extension-warnings" hidden>
             <span i18n-content="extensionSettingsWarningsTitle"></span>
             <ul></ul>
+          </div>
+          <div class="suspicious-install-message" hidden>
+            <span i18n-content="extensionSettingsSuspiciousInstall"></span>
+            <a target="_blank" class="learn-more-link"
+                i18n-values="href:extensionSettingsSuspiciousInstallHelpUrl"
+                i18n-content="extensionSettingsSuspiciousInstallLearnMore"
+                href="#">
+            </a>
           </div>
         </div>
         <div class="developer-extras">
@@ -200,6 +202,7 @@
           </span>
         </label>
         <span class="location-text"></span>
+        <span class="blacklist-text"></span>
         </div>
       </div>
     </div>

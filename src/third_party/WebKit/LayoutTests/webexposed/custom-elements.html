@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<script src="../fast/js/resources/js-test-pre.js"></script>
+<script src="../resources/js-test.js"></script>
 <body>
 <script>
 description('Tests basic web-exposure of Custom Elements');
@@ -9,8 +9,8 @@ function evalAndLogValue(s) {
   debug('');
 }
 
-evalAndLogValue('Document.prototype.hasOwnProperty("register")');
-evalAndLogValue('typeof Document.prototype.register');
+evalAndLogValue('Document.prototype.hasOwnProperty("registerElement")');
+evalAndLogValue('typeof Document.prototype.registerElement');
 evalAndLogValue('document.createElement("x-a") instanceof HTMLUnknownElement');
 
 var div = document.createElement('div');

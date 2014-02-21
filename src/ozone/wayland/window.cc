@@ -8,29 +8,23 @@
 #include "base/logging.h"
 #include "ozone/wayland/display.h"
 #include "ozone/wayland/egl/egl_window.h"
+#include "ozone/wayland/input_device.h"
 #include "ozone/wayland/shell_surface.h"
 #include "ozone/wayland/surface.h"
 
 namespace ozonewayland {
 
 WaylandWindow::WaylandWindow(unsigned handle) : shell_surface_(NULL),
-    handle_(handle),
     window_(NULL),
     type_(None),
+    handle_(handle),
     allocation_(gfx::Rect(0, 0, 1, 1)) {
 }
 
 WaylandWindow::~WaylandWindow() {
   wl_surface_set_user_data(GetSurface(), 0);
-  if (window_) {
-    delete window_;
-    window_ = NULL;
-  }
-
-  if (shell_surface_) {
-    delete shell_surface_;
-    shell_surface_ = NULL;
-  }
+  delete window_;
+  delete shell_surface_;
 }
 
 void WaylandWindow::SetShellAttributes(ShellType type) {
@@ -50,23 +44,26 @@ void WaylandWindow::SetShellAttributes(ShellType type,
                                        WaylandShellSurface* shell_parent,
                                        unsigned x,
                                        unsigned y) {
-  DCHECK(shell_parent && (type == TRANSIENT));
+  DCHECK(shell_parent && (type == POPUP));
 
   if (!shell_surface_) {
     shell_surface_ = new WaylandShellSurface(this);
     wl_surface_set_user_data(GetSurface(), this);
+    WaylandInputDevice* input = WaylandDisplay::GetInstance()->PrimaryInput();
+    input->SetGrabWindowHandle(handle_, 0);
   }
 
   type_ = type;
   shell_surface_->UpdateShellSurface(type_, shell_parent, x, y);
 }
 
-void WaylandWindow::SetWindowTitle(const string16& title) {
+void WaylandWindow::SetWindowTitle(const base::string16& title) {
   shell_surface_->SetWindowTitle(title);
 }
 
 void WaylandWindow::Maximize() {
-  NOTIMPLEMENTED();
+  if (type_ != FULLSCREEN)
+    shell_surface_->Maximize();
 }
 
 void WaylandWindow::Minimize() {
@@ -74,14 +71,15 @@ void WaylandWindow::Minimize() {
 }
 
 void WaylandWindow::Restore() {
-  NOTIMPLEMENTED();
+  // If window is created as fullscreen, we don't set/restore any window states
+  // like Maximize etc.
+  if (type_ != FULLSCREEN)
+    shell_surface_->UpdateShellSurface(type_, NULL, 0, 0);
 }
 
-void WaylandWindow::ToggleFullscreen() {
-  if (type_ == FULLSCREEN)
-    SetShellAttributes(TOPLEVEL);
-  else
-    SetShellAttributes(FULLSCREEN);
+void WaylandWindow::SetFullscreen() {
+  if (type_ != FULLSCREEN)
+    shell_surface_->UpdateShellSurface(FULLSCREEN, NULL, 0, 0);
 }
 
 void WaylandWindow::RealizeAcceleratedWidget() {
@@ -92,25 +90,32 @@ void WaylandWindow::RealizeAcceleratedWidget() {
 
   if (!window_)
     window_ = new EGLWindow(shell_surface_->Surface()->wlSurface(),
-                            allocation_.width(), allocation_.height());
+                            allocation_.width(),
+                            allocation_.height());
 }
 
 wl_egl_window* WaylandWindow::egl_window() const {
-  return window_ ? window_->egl_window() : 0;
+  DCHECK(window_);
+  return window_->egl_window();
 }
 
 struct wl_surface* WaylandWindow::GetSurface() const {
-  return shell_surface_ ? shell_surface_->Surface()->wlSurface() : 0;
+  DCHECK(shell_surface_);
+  return shell_surface_->Surface()->wlSurface();
 }
 
-bool WaylandWindow::SetBounds(const gfx::Rect& new_bounds) {
-  int width = new_bounds.width();
-  int height = new_bounds.height();
+void WaylandWindow::Resize(unsigned width, unsigned height) {
+  if ((allocation_.width() == width) && (allocation_.height() == height))
+    return;
+
   allocation_ = gfx::Rect(allocation_.x(), allocation_.y(), width, height);
   if (!shell_surface_ || !window_)
-      return false;
+    return;
 
-  return window_->Resize(shell_surface_->Surface(), width, height);
+  window_->Resize(shell_surface_->Surface(), width, height);
+  WaylandDisplay* display = WaylandDisplay::GetInstance();
+  DCHECK(display);
+  display->FlushDisplay();
 }
 
 }  // namespace ozonewayland

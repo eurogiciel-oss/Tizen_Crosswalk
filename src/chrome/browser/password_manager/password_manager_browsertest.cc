@@ -9,6 +9,7 @@
 #include "base/metrics/statistics_recorder.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/infobars/confirm_infobar_delegate.h"
+#include "chrome/browser/infobars/infobar.h"
 #include "chrome/browser/infobars/infobar_service.h"
 #include "chrome/browser/password_manager/password_store_factory.h"
 #include "chrome/browser/password_manager/test_password_store.h"
@@ -17,7 +18,7 @@
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/test_switches.h"
 #include "chrome/test/base/ui_test_utils.h"
-#include "components/autofill/core/browser/autofill_common_test.h"
+#include "components/autofill/core/browser/autofill_test_utils.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
 #include "content/public/browser/notification_service.h"
@@ -45,9 +46,14 @@ class NavigationObserver : public content::NotificationObserver,
       : content::WebContentsObserver(web_contents),
         message_loop_runner_(new content::MessageLoopRunner),
         infobar_shown_(false),
+        infobar_removed_(false),
+        should_automatically_accept_infobar_(true),
         infobar_service_(InfoBarService::FromWebContents(web_contents)) {
     registrar_.Add(this,
                    chrome::NOTIFICATION_TAB_CONTENTS_INFOBAR_ADDED,
+                   content::Source<InfoBarService>(infobar_service_));
+    registrar_.Add(this,
+                   chrome::NOTIFICATION_TAB_CONTENTS_INFOBAR_REMOVED,
                    content::Source<InfoBarService>(infobar_service_));
   }
 
@@ -64,8 +70,23 @@ class NavigationObserver : public content::NotificationObserver,
   virtual void Observe(int type,
                        const content::NotificationSource& source,
                        const content::NotificationDetails& details) OVERRIDE {
-    infobar_service_->infobar_at(0)->AsConfirmInfoBarDelegate()->Accept();
-    infobar_shown_ = true;
+    switch (type) {
+      case chrome::NOTIFICATION_TAB_CONTENTS_INFOBAR_ADDED:
+        if (should_automatically_accept_infobar_) {
+          infobar_service_->infobar_at(0)
+              ->delegate()
+              ->AsConfirmInfoBarDelegate()
+              ->Accept();
+        }
+        infobar_shown_ = true;
+        return;
+      case chrome::NOTIFICATION_TAB_CONTENTS_INFOBAR_REMOVED:
+        infobar_removed_ = true;
+        return;
+      default:
+        NOTREACHED();
+        return;
+    }
   }
 
   // content::WebContentsObserver:
@@ -83,6 +104,11 @@ class NavigationObserver : public content::NotificationObserver,
   }
 
   bool infobar_shown() const { return infobar_shown_; }
+  bool infobar_removed() const { return infobar_removed_; }
+
+  void disable_should_automatically_accept_infobar() {
+    should_automatically_accept_infobar_ = false;
+  }
 
   void Wait() {
     message_loop_runner_->Run();
@@ -92,6 +118,10 @@ class NavigationObserver : public content::NotificationObserver,
   std::string wait_for_path_;
   scoped_refptr<content::MessageLoopRunner> message_loop_runner_;
   bool infobar_shown_;
+  bool infobar_removed_;
+  // If |should_automatically_accept_infobar_| is true, then whenever the test
+  // sees an infobar added, it will click its accepting button. Default = true.
+  bool should_automatically_accept_infobar_;
   content::NotificationRegistrar registrar_;
   InfoBarService* infobar_service_;
 
@@ -178,6 +208,62 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
   ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
   observer.Wait();
   EXPECT_TRUE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
+                       LoginSuccessWithUnrelatedForm) {
+  // Log in, see a form on the landing page. That form is not related to the
+  // login form (=has a different action), so we should offer saving the
+  // password.
+  NavigateToFile("/password/password_form.html");
+
+  NavigationObserver observer(WebContents());
+  std::string fill_and_submit =
+      "document.getElementById('username_unrelated').value = 'temp';"
+      "document.getElementById('password_unrelated').value = 'random';"
+      "document.getElementById('submit_unrelated').click()";
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
+  observer.Wait();
+  EXPECT_TRUE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest, LoginFailed) {
+  // Log in, see a form on the landing page. That form is not related to the
+  // login form (=has a different action), so we should offer saving the
+  // password.
+  NavigateToFile("/password/password_form.html");
+
+  NavigationObserver observer(WebContents());
+  std::string fill_and_submit =
+      "document.getElementById('username_failed').value = 'temp';"
+      "document.getElementById('password_failed').value = 'random';"
+      "document.getElementById('submit_failed').click()";
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
+  observer.Wait();
+  EXPECT_FALSE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest, Redirects) {
+  NavigateToFile("/password/password_form.html");
+
+  // Fill a form and submit through a <input type="submit"> button. The form
+  // points to a redirection page.
+  NavigationObserver observer(WebContents());
+  std::string fill_and_submit =
+      "document.getElementById('username_redirect').value = 'temp';"
+      "document.getElementById('password_redirect').value = 'random';"
+      "document.getElementById('submit_redirect').click()";
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
+  observer.disable_should_automatically_accept_infobar();
+  observer.Wait();
+  EXPECT_TRUE(observer.infobar_shown());
+
+  // The redirection page now redirects via Javascript. We check that the
+  // infobar stays.
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(),
+                                     "window.location.href = 'done.html';"));
+  observer.Wait();
+  EXPECT_FALSE(observer.infobar_removed());
 }
 
 IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
@@ -298,20 +384,34 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
   EXPECT_TRUE(observer.infobar_shown());
 }
 
-IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest, NoPromptForOtherXHR) {
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
+                       PromptForXHRWithoutOnSubmit) {
   NavigateToFile("/password/password_xhr_submit.html");
 
-  // Verify that if random XHR navigation occurs, we don't try and save the
-  // password.
-  //
-  // We may want to change this functionality in the future to account for
-  // cases where the element that users click on isn't a submit button.
+  // Verify that if XHR navigation occurs and the form is properly filled out,
+  // we try and save the password even though onsubmit hasn't been called.
   NavigationObserver observer(WebContents());
   std::string fill_and_navigate =
       "document.getElementById('username_field').value = 'temp';"
       "document.getElementById('password_field').value = 'random';"
       "send_xhr()";
   ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_navigate));
+  observer.Wait();
+  EXPECT_TRUE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
+                       NoPromptIfLinkClicked) {
+  NavigateToFile("/password/password_form.html");
+
+  // Verify that if the user takes a direct action to leave the page, we don't
+  // prompt to save the password even if the form is already filled out.
+  NavigationObserver observer(WebContents());
+  std::string fill_and_click_link =
+      "document.getElementById('username_field').value = 'temp';"
+      "document.getElementById('password_field').value = 'random';"
+      "document.getElementById('link').click();";
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_click_link));
   observer.Wait();
   EXPECT_FALSE(observer.infobar_shown());
 }
@@ -342,6 +442,11 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
   // Now navigate to a login form that has similar HTML markup.
   NavigateToFile("/password/password_form.html");
 
+  // Simulate a user click to force an autofill of the form's DOM value, not
+  // just the suggested value.
+  std::string click = "document.getElementById('testform_no_name').click()";
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), click));
+
   // The form should be filled with the previously submitted username.
   std::string get_username =
       "window.domAutomationController.send("
@@ -367,8 +472,105 @@ IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
   base::HistogramBase* upload_histogram =
       base::StatisticsRecorder::FindHistogram(
           "PasswordGeneration.UploadStarted");
+  ASSERT_TRUE(upload_histogram);
   scoped_ptr<base::HistogramSamples> snapshot =
       upload_histogram->SnapshotSamples();
   EXPECT_EQ(0, snapshot->GetCount(0 /* failure */));
   EXPECT_EQ(1, snapshot->GetCount(1 /* success */));
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest, PromptForSubmitFromIframe) {
+  NavigateToFile("/password/password_submit_from_iframe.html");
+
+  // Submit a form in an iframe, then cause the whole page to navigate without a
+  // user gesture. We expect the save password prompt to be shown here, because
+  // some pages use such iframes for login forms.
+  NavigationObserver observer(WebContents());
+  std::string fill_and_submit =
+      "var iframe = document.getElementById('test_iframe');"
+      "var iframe_doc = iframe.contentDocument;"
+      "iframe_doc.getElementById('username_field').value = 'temp';"
+      "iframe_doc.getElementById('password_field').value = 'random';"
+      "iframe_doc.getElementById('submit_button').click()";
+
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
+  observer.Wait();
+  EXPECT_TRUE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
+                       PromptForInputElementWithoutName) {
+  // Check that the prompt is shown for forms where input elements lack the
+  // "name" attribute but the "id" is present.
+  NavigateToFile("/password/password_form.html");
+
+  NavigationObserver observer(WebContents());
+  std::string fill_and_submit =
+      "document.getElementById('username_field_no_name').value = 'temp';"
+      "document.getElementById('password_field_no_name').value = 'random';"
+      "document.getElementById('input_submit_button_no_name').click()";
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
+  observer.Wait();
+  EXPECT_TRUE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
+                       PromptForInputElementWithoutId) {
+  // Check that the prompt is shown for forms where input elements lack the
+  // "id" attribute but the "name" attribute is present.
+  NavigateToFile("/password/password_form.html");
+
+  NavigationObserver observer(WebContents());
+  std::string fill_and_submit =
+      "document.getElementsByName('username_field_no_id')[0].value = 'temp';"
+      "document.getElementsByName('password_field_no_id')[0].value = 'random';"
+      "document.getElementsByName('input_submit_button_no_id')[0].click()";
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
+  observer.Wait();
+  EXPECT_TRUE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest,
+                       NoPromptForInputElementWithoutIdAndName) {
+  // Check that no prompt is shown for forms where the input fields lack both
+  // the "id" and the "name" attributes.
+  NavigateToFile("/password/password_form.html");
+
+  NavigationObserver observer(WebContents());
+  std::string fill_and_submit =
+      "var form = document.getElementById('testform_elements_no_id_no_name');"
+      "var username = form.children[0];"
+      "username.value = 'temp';"
+      "var password = form.children[1];"
+      "password.value = 'random';"
+      "form.children[2].click()";  // form.children[2] is the submit button.
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), fill_and_submit));
+  observer.Wait();
+  EXPECT_FALSE(observer.infobar_shown());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordManagerBrowserTest, DeleteFrameBeforeSubmit) {
+  NavigateToFile("/password/multi_frames.html");
+
+  NavigationObserver observer(WebContents());
+  // Make sure we save some password info from an iframe and then destroy it.
+  std::string save_and_remove =
+      "var first_frame = document.getElementById('first_frame');"
+      "var frame_doc = first_frame.contentDocument;"
+      "frame_doc.getElementById('username_field').value = 'temp';"
+      "frame_doc.getElementById('password_field').value = 'random';"
+      "frame_doc.getElementById('input_submit_button').click();"
+      "first_frame.parentNode.removeChild(first_frame);";
+  // Submit from the main frame, but without navigating through the onsubmit
+  // handler.
+  std::string navigate_frame =
+      "document.getElementById('username_field').value = 'temp';"
+      "document.getElementById('password_field').value = 'random';"
+      "document.getElementById('input_submit_button').click();"
+      "window.location.href = 'done.html';";
+
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), save_and_remove));
+  ASSERT_TRUE(content::ExecuteScript(RenderViewHost(), navigate_frame));
+  observer.Wait();
+  // The only thing we check here is that there is no use-after-free reported.
 }

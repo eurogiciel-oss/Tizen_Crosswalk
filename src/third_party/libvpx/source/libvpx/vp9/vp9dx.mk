@@ -17,12 +17,12 @@ VP9_DX_SRCS_REMOVE-no  += $(VP9_COMMON_SRCS_REMOVE-no)
 
 VP9_DX_SRCS-yes += vp9_dx_iface.c
 
-VP9_DX_SRCS-yes += decoder/vp9_dboolhuff.c
 VP9_DX_SRCS-yes += decoder/vp9_decodemv.c
-VP9_DX_SRCS-yes += decoder/vp9_decodframe.c
-VP9_DX_SRCS-yes += decoder/vp9_decodframe.h
+VP9_DX_SRCS-yes += decoder/vp9_decodeframe.c
+VP9_DX_SRCS-yes += decoder/vp9_decodeframe.h
 VP9_DX_SRCS-yes += decoder/vp9_detokenize.c
-VP9_DX_SRCS-yes += decoder/vp9_dboolhuff.h
+VP9_DX_SRCS-yes += decoder/vp9_reader.h
+VP9_DX_SRCS-yes += decoder/vp9_reader.c
 VP9_DX_SRCS-yes += decoder/vp9_read_bit_buffer.h
 VP9_DX_SRCS-yes += decoder/vp9_decodemv.h
 VP9_DX_SRCS-yes += decoder/vp9_detokenize.h
@@ -30,7 +30,6 @@ VP9_DX_SRCS-yes += decoder/vp9_onyxd.h
 VP9_DX_SRCS-yes += decoder/vp9_onyxd_int.h
 VP9_DX_SRCS-yes += decoder/vp9_thread.c
 VP9_DX_SRCS-yes += decoder/vp9_thread.h
-VP9_DX_SRCS-yes += decoder/vp9_treereader.h
 VP9_DX_SRCS-yes += decoder/vp9_onyxd_if.c
 VP9_DX_SRCS-yes += decoder/vp9_dsubexp.c
 VP9_DX_SRCS-yes += decoder/vp9_dsubexp.h

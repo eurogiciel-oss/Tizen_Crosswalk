@@ -158,8 +158,8 @@ void MouseCursorMonitorMac::CaptureImage() {
   DesktopSize size(nssize.width, nssize.height);
   NSPoint nshotspot = [nscursor hotSpot];
   DesktopVector hotspot(
-      std::min(0, std::max(size.width(), static_cast<int>(nshotspot.x))),
-      std::min(0, std::max(size.height(), static_cast<int>(nshotspot.y))));
+      std::max(0, std::min(size.width(), static_cast<int>(nshotspot.x))),
+      std::max(0, std::min(size.height(), static_cast<int>(nshotspot.y))));
   CGImageRef cg_image =
       [nsimage CGImageForProposedRect:NULL context:nil hints:nil];
   if (!cg_image)
@@ -182,10 +182,10 @@ void MouseCursorMonitorMac::CaptureImage() {
 
   // Compare the cursor with the previous one.
   if (last_cursor_.get() &&
-      last_cursor_->image().size().equals(size) &&
+      last_cursor_->image()->size().equals(size) &&
       last_cursor_->hotspot().equals(hotspot) &&
-      memcmp(last_cursor_->image().data(), src_data,
-             last_cursor_->image().stride() * size.height()) == 0) {
+      memcmp(last_cursor_->image()->data(), src_data,
+             last_cursor_->image()->stride() * size.height()) == 0) {
     return;
   }
 
@@ -211,7 +211,8 @@ MouseCursorMonitor* MouseCursorMonitor::CreateForWindow(
 }
 
 MouseCursorMonitor* MouseCursorMonitor::CreateForScreen(
-    const DesktopCaptureOptions& options) {
+    const DesktopCaptureOptions& options,
+    ScreenId screen) {
   return new MouseCursorMonitorMac(kCGNullWindowID);
 }
 

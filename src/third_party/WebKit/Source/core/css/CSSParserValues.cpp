@@ -22,13 +22,32 @@
 #include "core/css/CSSParserValues.h"
 
 #include "core/css/CSSFunctionValue.h"
-#include "core/css/CSSPrimitiveValue.h"
-#include "core/css/CSSSelector.h"
 #include "core/css/CSSSelectorList.h"
+#include "core/html/parser/HTMLParserIdioms.h"
 
 namespace WebCore {
 
 using namespace WTF;
+
+AtomicString CSSParserString::atomicSubstring(unsigned position, unsigned length) const
+{
+    ASSERT(m_length >= position + length);
+
+    if (is8Bit())
+        return AtomicString(characters8() + position, length);
+    return AtomicString(characters16() + position, length);
+}
+
+void CSSParserString::trimTrailingWhitespace()
+{
+    if (is8Bit()) {
+        while (m_length > 0 && isHTMLSpace<LChar>(m_data.characters8[m_length - 1]))
+            --m_length;
+    } else {
+        while (m_length > 0 && isHTMLSpace<UChar>(m_data.characters16[m_length - 1]))
+            --m_length;
+    }
+}
 
 CSSParserValueList::~CSSParserValueList()
 {
@@ -36,6 +55,8 @@ CSSParserValueList::~CSSParserValueList()
     for (size_t i = 0; i < numValues; i++) {
         if (m_values[i].unit == CSSParserValue::Function)
             delete m_values[i].function;
+        else if (m_values[i].unit == CSSParserValue::ValueList)
+            delete m_values[i].valueList;
     }
 }
 
@@ -71,8 +92,15 @@ PassRefPtr<CSSValue> CSSParserValue::createCSSValue()
         primitiveValue->setPrimitiveType(CSSPrimitiveValue::CSS_PARSER_OPERATOR);
         return primitiveValue;
     }
-    if (unit == CSSParserValue::Function)
+    if (unit == CSSParserValue::Function) {
+        if (function->name.equalIgnoringCase("var(")) {
+            ASSERT(function->args->size() == 1);
+            return CSSPrimitiveValue::create(function->args->valueAt(0)->string, CSSPrimitiveValue::CSS_VARIABLE_REFERENCE);
+        }
         return CSSFunctionValue::create(function);
+    }
+    if (unit == CSSParserValue::ValueList)
+        return CSSValueList::createFromParserValueList(valueList);
     if (unit >= CSSParserValue::Q_EMS)
         return CSSPrimitiveValue::createAllowingMarginQuirk(fValue, CSSPrimitiveValue::CSS_EMS);
 
@@ -86,7 +114,6 @@ PassRefPtr<CSSValue> CSSParserValue::createCSSValue()
         return CSSPrimitiveValue::create(fValue, isInt ? CSSPrimitiveValue::CSS_PARSER_INTEGER : CSSPrimitiveValue::CSS_NUMBER);
     case CSSPrimitiveValue::CSS_STRING:
     case CSSPrimitiveValue::CSS_URI:
-    case CSSPrimitiveValue::CSS_VARIABLE_NAME:
     case CSSPrimitiveValue::CSS_PARSER_HEXCOLOR:
         return CSSPrimitiveValue::create(string, primitiveUnit);
     case CSSPrimitiveValue::CSS_PERCENTAGE:
@@ -134,6 +161,9 @@ PassRefPtr<CSSValue> CSSParserValue::createCSSValue()
     case CSSPrimitiveValue::CSS_CALC:
     case CSSPrimitiveValue::CSS_CALC_PERCENTAGE_WITH_NUMBER:
     case CSSPrimitiveValue::CSS_CALC_PERCENTAGE_WITH_LENGTH:
+        return 0;
+    case CSSPrimitiveValue::CSS_VARIABLE_REFERENCE:
+        ASSERT_NOT_REACHED();
         return 0;
     }
 
@@ -234,5 +264,4 @@ CSSParserSelector* CSSParserSelector::findDistributedPseudoElementSelector() con
     return 0;
 }
 
-}
-
+} // namespace WebCore

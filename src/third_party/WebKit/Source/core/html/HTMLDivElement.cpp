@@ -31,28 +31,15 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-HTMLDivElement::HTMLDivElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+HTMLDivElement::HTMLDivElement(Document& document)
+    : HTMLElement(divTag, document)
 {
-    ASSERT(hasTagName(divTag));
     ScriptWrappable::init(this);
 }
 
 PassRefPtr<HTMLDivElement> HTMLDivElement::create(Document& document)
 {
-    return adoptRef(new HTMLDivElement(divTag, document));
-}
-
-PassRefPtr<HTMLDivElement> HTMLDivElement::create(const QualifiedName& tagName, Document& document)
-{
-    return adoptRef(new HTMLDivElement(tagName, document));
-}
-
-bool HTMLDivElement::isPresentationAttribute(const QualifiedName& name) const
-{
-    if (name == alignAttr)
-        return true;
-    return HTMLElement::isPresentationAttribute(name);
+    return adoptRef(new HTMLDivElement(document));
 }
 
 void HTMLDivElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStylePropertySet* style)

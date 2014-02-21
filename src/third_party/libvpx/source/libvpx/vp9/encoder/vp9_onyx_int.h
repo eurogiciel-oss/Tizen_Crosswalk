@@ -26,16 +26,9 @@
 #include "vpx_ports/mem.h"
 #include "vpx/internal/vpx_codec_internal.h"
 #include "vp9/encoder/vp9_mcomp.h"
-#include "vp9/common/vp9_findnearmv.h"
 #include "vp9/encoder/vp9_lookahead.h"
 
-// Experimental rate control switches
-#if CONFIG_ONESHOTQ
-#define ONE_SHOT_Q_ESTIMATE 0
-#define STRICT_ONE_SHOT_Q 0
-#endif
 #define DISABLE_RC_LONG_TERM_MEM 0
-
 // #define MODE_TEST_HIT_STATS
 
 // #define SPEEDSTATS 1
@@ -253,7 +246,6 @@ typedef struct {
   int auto_mv_step_size;
   int optimize_coefficients;
   int static_segmentation;
-  int variance_adaptive_quantization;
   int comp_inter_joint_search_thresh;
   int adaptive_rd_thresh;
   int skip_encode_sb;
@@ -277,6 +269,7 @@ typedef struct {
   int using_small_partition_info;
   // TODO(jingning): combine the related motion search speed features
   int adaptive_motion_search;
+  int adaptive_pred_filter_type;
 
   // Implements various heuristics to skip searching modes
   // The heuristics selected are based on  flags
@@ -294,6 +287,66 @@ typedef struct {
   int use_fast_lpf_pick;
   int use_fast_coef_updates;  // 0: 2-loop, 1: 1-loop, 2: 1-loop reduced
 } SPEED_FEATURES;
+
+typedef struct {
+  // Rate targetting variables
+  int this_frame_target;
+  int projected_frame_size;
+  int sb64_target_rate;
+  int last_q[3];                   // Separate values for Intra/Inter/ARF-GF
+  int last_boosted_qindex;         // Last boosted GF/KF/ARF q
+
+  int gfu_boost;
+  int last_boost;
+  int kf_boost;
+
+  double rate_correction_factor;
+  double key_frame_rate_correction_factor;
+  double gf_rate_correction_factor;
+
+  unsigned int frames_since_golden;
+  unsigned int frames_till_gf_update_due;  // Count down till next GF
+  unsigned int max_gf_interval;
+  unsigned int baseline_gf_interval;
+  unsigned int frames_to_key;
+  unsigned int frames_since_key;
+  unsigned int this_key_frame_forced;
+  unsigned int next_key_frame_forced;
+  unsigned int source_alt_ref_pending;
+  unsigned int source_alt_ref_active;
+  unsigned int is_src_frame_alt_ref;
+
+  int per_frame_bandwidth;  // Current section per frame bandwidth target
+  int av_per_frame_bandwidth;  // Average frame size target for clip
+  int min_frame_bandwidth;  // Minimum allocation used for any frame
+
+  int ni_av_qi;
+  int ni_tot_qi;
+  int ni_frames;
+  int avg_frame_qindex[3];  // 0 - KEY, 1 - INTER, 2 - ARF/GF
+  double tot_q;
+  double avg_q;
+
+  int buffer_level;
+  int bits_off_target;
+
+  int decimation_factor;
+  int decimation_count;
+
+  int rolling_target_bits;
+  int rolling_actual_bits;
+
+  int long_rolling_target_bits;
+  int long_rolling_actual_bits;
+
+  int64_t total_actual_bits;
+  int total_target_vs_actual;        // debug stats
+
+  int worst_quality;
+  int active_worst_quality;
+  int best_quality;
+  // int active_best_quality;
+} RATE_CONTROL;
 
 typedef struct VP9_COMP {
   DECLARE_ALIGNED(16, int16_t, y_quant[QINDEX_RANGE][8]);
@@ -317,11 +370,10 @@ typedef struct VP9_COMP {
   VP9_COMMON common;
   VP9_CONFIG oxcf;
   struct rdcost_block_args rdcost_stack;
-
   struct lookahead_ctx    *lookahead;
   struct lookahead_entry  *source;
 #if CONFIG_MULTIPLE_ARF
-  struct lookahead_entry  *alt_ref_source[NUM_REF_FRAMES];
+  struct lookahead_entry  *alt_ref_source[REF_FRAMES];
 #else
   struct lookahead_entry  *alt_ref_source;
 #endif
@@ -330,11 +382,7 @@ typedef struct VP9_COMP {
   YV12_BUFFER_CONFIG *un_scaled_source;
   YV12_BUFFER_CONFIG scaled_source;
 
-  unsigned int frames_till_alt_ref_frame;
-  int source_alt_ref_pending;
-  int source_alt_ref_active;
-
-  int is_src_frame_alt_ref;
+  unsigned int key_frame_frequency;
 
   int gold_is_last;  // gold same as last frame ( short circuit gold searches)
   int alt_is_last;  // Alt same as last ( short circuit altref search)
@@ -349,7 +397,7 @@ typedef struct VP9_COMP {
   int use_svc;
 
 #if CONFIG_MULTIPLE_ARF
-  int alt_ref_fb_idx[NUM_REF_FRAMES - 3];
+  int alt_ref_fb_idx[REF_FRAMES - 3];
 #endif
   int refresh_last_frame;
   int refresh_golden_frame;
@@ -359,11 +407,6 @@ typedef struct VP9_COMP {
   TOKENEXTRA *tok;
   unsigned int tok_count[4][1 << 6];
 
-
-  unsigned int frames_since_key;
-  unsigned int key_frame_frequency;
-  unsigned int this_key_frame_forced;
-  unsigned int next_key_frame_forced;
 #if CONFIG_MULTIPLE_ARF
   // Position within a frame coding order (including any additional ARF frames).
   unsigned int sequence_number;
@@ -385,13 +428,8 @@ typedef struct VP9_COMP {
   int rd_thresh_sub8x8[MAX_SEGMENTS][BLOCK_SIZES][MAX_REFS];
   int rd_thresh_freq_sub8x8[BLOCK_SIZES][MAX_REFS];
 
-  int64_t rd_comp_pred_diff[NB_PREDICTION_TYPES];
-  int64_t rd_prediction_type_threshes[4][NB_PREDICTION_TYPES];
-  unsigned int intra_inter_count[INTRA_INTER_CONTEXTS][2];
-  unsigned int comp_inter_count[COMP_INTER_CONTEXTS][2];
-  unsigned int single_ref_count[REF_CONTEXTS][2][2];
-  unsigned int comp_ref_count[REF_CONTEXTS][2];
-
+  int64_t rd_comp_pred_diff[REFERENCE_MODES];
+  int64_t rd_prediction_type_threshes[4][REFERENCE_MODES];
   int64_t rd_tx_select_diff[TX_MODES];
   // FIXME(rbultje) can this overflow?
   int rd_tx_select_threshes[4][TX_MODES];
@@ -399,95 +437,30 @@ typedef struct VP9_COMP {
   int64_t rd_filter_diff[SWITCHABLE_FILTER_CONTEXTS];
   int64_t rd_filter_threshes[4][SWITCHABLE_FILTER_CONTEXTS];
   int64_t rd_filter_cache[SWITCHABLE_FILTER_CONTEXTS];
+  int64_t mask_filter_rd;
 
   int RDMULT;
   int RDDIV;
 
   CODING_CONTEXT coding_context;
 
-  // Rate targetting variables
-  int this_frame_target;
-  int projected_frame_size;
-  int last_q[2];                   // Separate values for Intra/Inter
-  int last_boosted_qindex;         // Last boosted GF/KF/ARF q
-
-  double rate_correction_factor;
-  double key_frame_rate_correction_factor;
-  double gf_rate_correction_factor;
-
-  unsigned int frames_since_golden;
-  int frames_till_gf_update_due;  // Count down till next GF
-
-  int gf_overspend_bits;  // cumulative bits overspent because of GF boost
-
-  int non_gf_bitrate_adjustment;  // Following GF to recover extra bits spent
-
-  int kf_overspend_bits;  // Bits spent on key frames to be recovered on inters
-  int kf_bitrate_adjustment;  // number of bits to recover on each inter frame.
-  int max_gf_interval;
-  int baseline_gf_interval;
+  int zbin_mode_boost;
+  int zbin_mode_boost_enabled;
   int active_arnr_frames;           // <= cpi->oxcf.arnr_max_frames
   int active_arnr_strength;         // <= cpi->oxcf.arnr_max_strength
 
-  int64_t key_frame_count;
-  int prior_key_frame_distance[KEY_FRAME_CONTEXT];
-  int per_frame_bandwidth;  // Current section per frame bandwidth target
-  int av_per_frame_bandwidth;  // Average frame size target for clip
-  int min_frame_bandwidth;  // Minimum allocation used for any frame
-  int inter_frame_target;
   double output_framerate;
   int64_t last_time_stamp_seen;
   int64_t last_end_time_stamp_seen;
   int64_t first_time_stamp_ever;
 
-  int ni_av_qi;
-  int ni_tot_qi;
-  int ni_frames;
-  int avg_frame_qindex;
-  double tot_q;
-  double avg_q;
-
-  int zbin_mode_boost;
-  int zbin_mode_boost_enabled;
-
-  int64_t total_byte_count;
-
-  int buffered_mode;
-
-  int buffer_level;
-  int bits_off_target;
-
-  int rolling_target_bits;
-  int rolling_actual_bits;
-
-  int long_rolling_target_bits;
-  int long_rolling_actual_bits;
-
-  int64_t total_actual_bits;
-  int total_target_vs_actual;        // debug stats
-
-  int worst_quality;
-  int active_worst_quality;
-  int best_quality;
-  int active_best_quality;
+  RATE_CONTROL rc;
 
   int cq_target_quality;
 
-  int y_mode_count[4][INTRA_MODES];
-  int y_uv_mode_count[INTRA_MODES][INTRA_MODES];
-  unsigned int partition_count[PARTITION_CONTEXTS][PARTITION_TYPES];
-
-  nmv_context_counts NMVcount;
-
-  vp9_coeff_count coef_counts[TX_SIZES][BLOCK_TYPES];
-  vp9_coeff_probs_model frame_coef_probs[TX_SIZES][BLOCK_TYPES];
-  vp9_coeff_stats frame_branch_ct[TX_SIZES][BLOCK_TYPES];
-
-  int gfu_boost;
-  int last_boost;
-  int kf_boost;
-  int kf_zeromotion_pct;
-  int gf_zeromotion_pct;
+  vp9_coeff_count coef_counts[TX_SIZES][PLANE_TYPES];
+  vp9_coeff_probs_model frame_coef_probs[TX_SIZES][PLANE_TYPES];
+  vp9_coeff_stats frame_branch_ct[TX_SIZES][PLANE_TYPES];
 
   int64_t target_bandwidth;
   struct vpx_codec_pkt_list  *output_pkt_list;
@@ -502,19 +475,10 @@ typedef struct VP9_COMP {
   int static_mb_pct;                // % forced skip mbs by segmentation
   int seg0_progress, seg0_idx, seg0_cnt;
 
-  int decimation_factor;
-  int decimation_count;
-
   // for real time encoding
-  int avg_encode_time;              // microsecond
-  int avg_pick_mode_time;            // microsecond
   int speed;
-  unsigned int cpu_freq;           // Mhz
   int compressor_speed;
 
-  int interquantizer;
-  int goldfreq;
-  int auto_worst_q;
   int cpu_used;
   int pass;
 
@@ -529,16 +493,12 @@ typedef struct VP9_COMP {
   unsigned int max_mv_magnitude;
   int mv_step_param;
 
-  // Data used for real time conferencing mode to help determine if it
-  // would be good to update the gf
-  int inter_zz_count;
-  int gf_bad_count;
-  int gf_update_recommended;
-
   unsigned char *segmentation_map;
 
   // segment threashold for encode breakout
   int  segment_encode_breakout[MAX_SEGMENTS];
+
+  unsigned char *complexity_map;
 
   unsigned char *active_map;
   unsigned int active_map_enabled;
@@ -567,11 +527,9 @@ typedef struct VP9_COMP {
     int64_t clip_bits_total;
     double avg_iiratio;
     double modified_error_total;
-    double modified_error_used;
     double modified_error_left;
     double kf_intra_err_min;
     double gf_intra_err_min;
-    int frames_to_key;
     int maxq_max_limit;
     int maxq_min_limit;
     int static_scene_max_gf_interval;
@@ -592,7 +550,9 @@ typedef struct VP9_COMP {
     int alt_extra_bits;
 
     int sr_update_lag;
-    double est_max_qcorrection_factor;
+
+    int kf_zeromotion_pct;
+    int gf_zeromotion_pct;
   } twopass;
 
   YV12_BUFFER_CONFIG alt_ref_buffer;
@@ -707,8 +667,7 @@ static int get_scale_ref_frame_idx(VP9_COMP *cpi,
 
 void vp9_encode_frame(VP9_COMP *cpi);
 
-void vp9_pack_bitstream(VP9_COMP *cpi, unsigned char *dest,
-                        unsigned long *size);
+void vp9_pack_bitstream(VP9_COMP *cpi, uint8_t *dest, size_t *size);
 
 void vp9_activity_masking(VP9_COMP *cpi, MACROBLOCK *x);
 
@@ -718,7 +677,7 @@ int vp9_calc_ss_err(YV12_BUFFER_CONFIG *source, YV12_BUFFER_CONFIG *dest);
 
 void vp9_alloc_compressor_data(VP9_COMP *cpi);
 
-int vp9_compute_qdelta(VP9_COMP *cpi, double qstart, double qtarget);
+int vp9_compute_qdelta(const VP9_COMP *cpi, double qstart, double qtarget);
 
 static int get_token_alloc(int mb_rows, int mb_cols) {
   return mb_rows * mb_cols * (48 * 16 + 4);

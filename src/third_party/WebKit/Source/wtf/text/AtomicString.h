@@ -23,15 +23,8 @@
 
 #include "wtf/HashTableDeletedValueType.h"
 #include "wtf/WTFExport.h"
+#include "wtf/text/CString.h"
 #include "wtf/text/WTFString.h"
-
-// Define 'NO_IMPLICIT_ATOMICSTRING' before including this header,
-// to disallow (expensive) implicit String-->AtomicString conversions.
-#ifdef NO_IMPLICIT_ATOMICSTRING
-#define ATOMICSTRING_CONVERSION explicit
-#else
-#define ATOMICSTRING_CONVERSION
-#endif
 
 namespace WTF {
 
@@ -55,8 +48,11 @@ public:
     {
     }
 
-    ATOMICSTRING_CONVERSION AtomicString(StringImpl* imp) : m_string(add(imp)) { }
-    ATOMICSTRING_CONVERSION AtomicString(const String& s) : m_string(add(s.impl())) { }
+    // Constructing an AtomicString from a String / StringImpl can be expensive if
+    // the StringImpl is not already atomic.
+    explicit AtomicString(StringImpl* imp) : m_string(add(imp)) { }
+    explicit AtomicString(const String& s) : m_string(add(s.impl())) { }
+
     AtomicString(StringImpl* baseString, unsigned start, unsigned length) : m_string(add(baseString, start, length)) { }
 
     enum ConstructFromLiteralTag { ConstructFromLiteral };
@@ -138,6 +134,15 @@ public:
     float toFloat(bool* ok = 0) const { return m_string.toFloat(ok); }
     bool percentage(int& p) const { return m_string.percentage(p); }
 
+    static AtomicString number(int);
+    static AtomicString number(unsigned);
+    static AtomicString number(long);
+    static AtomicString number(unsigned long);
+    static AtomicString number(long long);
+    static AtomicString number(unsigned long long);
+
+    static AtomicString number(double, unsigned precision = 6, TrailingZerosTruncatingPolicy = TruncateTrailingZeros);
+
     bool isNull() const { return m_string.isNull(); }
     bool isEmpty() const { return m_string.isEmpty(); }
 
@@ -154,6 +159,10 @@ public:
     // the input data contains invalid UTF-8 sequences.
     static AtomicString fromUTF8(const char*, size_t);
     static AtomicString fromUTF8(const char*);
+
+    CString ascii() const { return m_string.ascii(); }
+    CString latin1() const { return m_string.latin1(); }
+    CString utf8(UTF8ConversionMode mode = LenientUTF8Conversion) const { return m_string.utf8(mode); }
 
 #ifndef NDEBUG
     void show() const;
@@ -216,8 +225,6 @@ inline bool equalIgnoringCase(const String& a, const AtomicString& b) { return e
 #ifndef ATOMICSTRING_HIDE_GLOBALS
 WTF_EXPORT extern const AtomicString nullAtom;
 WTF_EXPORT extern const AtomicString emptyAtom;
-WTF_EXPORT extern const AtomicString textAtom;
-WTF_EXPORT extern const AtomicString commentAtom;
 WTF_EXPORT extern const AtomicString starAtom;
 WTF_EXPORT extern const AtomicString xmlAtom;
 WTF_EXPORT extern const AtomicString xmlnsAtom;
@@ -254,8 +261,6 @@ template<> struct DefaultHash<AtomicString> {
 using WTF::AtomicString;
 using WTF::nullAtom;
 using WTF::emptyAtom;
-using WTF::textAtom;
-using WTF::commentAtom;
 using WTF::starAtom;
 using WTF::xmlAtom;
 using WTF::xmlnsAtom;

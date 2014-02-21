@@ -31,28 +31,28 @@ assertInterpolation({
 
 assertInterpolation({
   property: 'shape-outside',
-  from: 'circle(0%, 0%, 100%)',
-  to: 'circle(25%, 25%, 50%)',
+  from: 'circle(100% at 0% 0%)',
+  to: 'circle(50% at 25% 25%)',
 }, [
-  {at: -0.3, is: 'circle(-7.5%, -7.5%, 115%)'},
-  {at: 0, is: 'circle(0%, 0%, 100%)'},
-  {at: 0.3, is: 'circle(7.5%, 7.5%, 85%)'},
-  {at: 0.6, is: 'circle(15%, 15%, 70%)'},
-  {at: 1, is: 'circle(25%, 25%, 50%)'},
-  {at: 1.5, is: 'circle(37.5%, 37.5%, 25%)'}
+  {at: -0.3, is: 'circle(115% at -7.5% -7.5%)'},
+  {at: 0, is: 'circle(100% at 0% 0%)'},
+  {at: 0.3, is: 'circle(85% at 7.5% 7.5%)'},
+  {at: 0.6, is: 'circle(70% at 15% 15%)'},
+  {at: 1, is: 'circle(50% at 25% 25%)'},
+  {at: 1.5, is: 'circle(25% at 37.5% 37.5%)'}
 ]);
 
 assertInterpolation({
   property: 'shape-outside',
-  from: 'ellipse(0%, 0%, 100%, 100%)',
-  to: 'ellipse(25%, 25%, 50%, 50%)',
+  from: 'ellipse(100% 100% at 0% 0%)',
+  to: 'ellipse(50% 50% at 25% 25%)',
 }, [
-  {at: -0.3, is: 'ellipse(-7.5%, -7.5%, 115%, 115%)'},
-  {at: 0, is: 'ellipse(0%, 0%, 100%, 100%)'},
-  {at: 0.3, is: 'ellipse(7.5%, 7.5%, 85%, 85%)'},
-  {at: 0.6, is: 'ellipse(15%, 15%, 70%, 70%)'},
-  {at: 1, is: 'ellipse(25%, 25%, 50%, 50%)'},
-  {at: 1.5, is: 'ellipse(37.5%, 37.5%, 25%, 25%)'}
+  {at: -0.3, is: 'ellipse(115% 115% at -7.5% -7.5%)'},
+  {at: 0, is: 'ellipse(100% 100% at 0% 0%)'},
+  {at: 0.3, is: 'ellipse(85% 85% at 7.5% 7.5%)'},
+  {at: 0.6, is: 'ellipse(70% 70% at 15% 15%)'},
+  {at: 1, is: 'ellipse(50% 50% at 25% 25%)'},
+  {at: 1.5, is: 'ellipse(25% 25% at 37.5% 37.5%)'}
 ]);
 
 assertInterpolation({
@@ -66,6 +66,32 @@ assertInterpolation({
   {at: 0.6, is: 'polygon(nonzero, 15px 15px, 40px 40px, 65px 65px)'},
   {at: 1, is: 'polygon(nonzero, 25px 25px, 50px 50px, 75px 75px)'},
   {at: 1.5, is: 'polygon(nonzero, 37.5px 37.5px, 62.5px 62.5px, 87.5px 87.5px)'}
+]);
+
+assertInterpolation({
+  property: 'shape-outside',
+  from: 'polygon(evenodd, 0px 0px, 25px 25px, 50px 50px)',
+  to: 'polygon(nonzero, 25px 25px, 50px 50px, 75px 75px)',
+}, [
+  {at: -0.3, is: 'polygon(evenodd, 0px 0px, 25px 25px, 50px 50px)'},
+  {at: 0, is: 'polygon(evenodd, 0px 0px, 25px 25px, 50px 50px)'},
+  {at: 0.3, is: 'polygon(evenodd, 0px 0px, 25px 25px, 50px 50px)'},
+  {at: 0.6, is: 'polygon(nonzero, 25px 25px, 50px 50px, 75px 75px)'},
+  {at: 1, is: 'polygon(nonzero, 25px 25px, 50px 50px, 75px 75px)'},
+  {at: 1.5, is: 'polygon(nonzero, 25px 25px, 50px 50px, 75px 75px)'},
+]);
+
+assertInterpolation({
+  property: 'shape-outside',
+  from: 'none',
+  to: 'ellipse(100% 100% at 0% 0%)',
+}, [
+  {at: -0.3, is: 'none'},
+  {at: 0, is: 'none'},
+  {at: 0.3, is: 'none'},
+  {at: 0.6, is: 'ellipse(100% 100% at 0% 0%)'},
+  {at: 1, is: 'ellipse(100% 100% at 0% 0%)'},
+  {at: 1.5, is: 'ellipse(100% 100% at 0% 0%)'}
 ]);
 </script>
 </body>

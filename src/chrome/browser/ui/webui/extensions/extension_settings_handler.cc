@@ -39,7 +39,6 @@
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/extension_warning_set.h"
-#include "chrome/browser/extensions/management_policy.h"
 #include "chrome/browser/extensions/unpacked_installer.h"
 #include "chrome/browser/extensions/updater/extension_updater.h"
 #include "chrome/browser/google/google_util.h"
@@ -53,13 +52,8 @@
 #include "chrome/browser/ui/webui/extensions/extension_basic_info.h"
 #include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/extensions/background_info.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/extension_icon_set.h"
-#include "chrome/common/extensions/extension_set.h"
-#include "chrome/common/extensions/feature_switch.h"
-#include "chrome/common/extensions/incognito_handler.h"
 #include "chrome/common/extensions/manifest_url_handler.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
@@ -75,10 +69,19 @@
 #include "content/public/browser/web_contents_view.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "extensions/browser/blacklist_state.h"
 #include "extensions/browser/extension_error.h"
+#include "extensions/browser/extension_registry.h"
 #include "extensions/browser/lazy_background_task_queue.h"
+#include "extensions/browser/management_policy.h"
+#include "extensions/browser/pref_names.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/constants.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/extension_set.h"
+#include "extensions/common/feature_switch.h"
+#include "extensions/common/manifest_handlers/background_info.h"
+#include "extensions/common/manifest_handlers/incognito_info.h"
 #include "grit/browser_resources.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
@@ -152,7 +155,8 @@ ExtensionSettingsHandler::ExtensionSettingsHandler()
       deleting_rph_id_(-1),
       registered_for_notifications_(false),
       warning_service_observer_(this),
-      error_console_observer_(this) {
+      error_console_observer_(this),
+      should_do_verification_check_(false) {
 }
 
 ExtensionSettingsHandler::~ExtensionSettingsHandler() {
@@ -172,7 +176,8 @@ ExtensionSettingsHandler::ExtensionSettingsHandler(ExtensionService* service,
       deleting_rph_id_(-1),
       registered_for_notifications_(false),
       warning_service_observer_(this),
-      error_console_observer_(this) {
+      error_console_observer_(this),
+      should_do_verification_check_(false) {
 }
 
 // static
@@ -192,9 +197,21 @@ base::DictionaryValue* ExtensionSettingsHandler::CreateExtensionDetailValue(
   bool enabled = extension_service_->IsExtensionEnabled(extension->id());
   GetExtensionBasicInfo(extension, enabled, extension_data);
 
-  extension_data->SetBoolean(
-      "userModifiable",
-      management_policy_->UserMayModifySettings(extension, NULL));
+  ExtensionPrefs* prefs = extension_service_->extension_prefs();
+  int disable_reasons = prefs->GetDisableReasons(extension->id());
+
+  bool suspicious_install =
+      (disable_reasons & Extension::DISABLE_NOT_VERIFIED) != 0;
+  extension_data->SetBoolean("suspiciousInstall", suspicious_install);
+  if (suspicious_install)
+    should_do_verification_check_ = true;
+
+  bool managed_install =
+      !management_policy_->UserMayModifySettings(extension, NULL);
+  extension_data->SetBoolean("managedInstall", managed_install);
+
+  // We should not get into a state where both are true.
+  DCHECK(managed_install == false || suspicious_install == false);
 
   GURL icon =
       ExtensionIconSource::GetIconURL(extension,
@@ -206,16 +223,19 @@ base::DictionaryValue* ExtensionSettingsHandler::CreateExtensionDetailValue(
   extension_data->SetString("icon", icon.spec());
   extension_data->SetBoolean("isUnpacked",
       Manifest::IsUnpackedLocation(extension->location()));
-  extension_data->SetBoolean("terminated",
-      extension_service_->terminated_extensions()->Contains(extension->id()));
+  ExtensionRegistry* registry =
+      ExtensionRegistry::Get(extension_service_->profile());
+  extension_data->SetBoolean(
+      "terminated",
+      registry->terminated_extensions().Contains(extension->id()));
   extension_data->SetBoolean("enabledIncognito",
-      extension_util::IsIncognitoEnabled(extension->id(), extension_service_));
+      util::IsIncognitoEnabled(extension->id(), extension_service_->profile()));
   extension_data->SetBoolean("incognitoCanBeToggled",
                              extension->can_be_incognito_enabled() &&
                              !extension->force_incognito_enabled());
   extension_data->SetBoolean("wantsFileAccess", extension->wants_file_access());
   extension_data->SetBoolean("allowFileAccess",
-      extension_util::AllowFileAccess(extension, extension_service_));
+      util::AllowFileAccess(extension->id(), extension_service_->profile()));
   extension_data->SetBoolean("allow_reload",
       Manifest::IsUnpackedLocation(extension->location()));
   extension_data->SetBoolean("is_hosted_app", extension->is_hosted_app());
@@ -223,7 +243,7 @@ base::DictionaryValue* ExtensionSettingsHandler::CreateExtensionDetailValue(
   extension_data->SetBoolean("homepageProvided",
       ManifestURL::GetHomepageURL(extension).is_valid());
 
-  string16 location_text;
+  base::string16 location_text;
   if (Manifest::IsPolicyLocation(extension->location())) {
     location_text = l10n_util::GetStringUTF16(
         IDS_OPTIONS_INSTALL_LOCATION_ENTERPRISE);
@@ -236,6 +256,29 @@ base::DictionaryValue* ExtensionSettingsHandler::CreateExtensionDetailValue(
         IDS_OPTIONS_INSTALL_LOCATION_3RD_PARTY);
   }
   extension_data->SetString("locationText", location_text);
+
+  base::string16 blacklist_text;
+  switch (extension_service_->extension_prefs()->GetExtensionBlacklistState(
+              extension->id())) {
+    case BLACKLISTED_SECURITY_VULNERABILITY:
+      blacklist_text = l10n_util::GetStringUTF16(
+          IDS_OPTIONS_BLACKLISTED_SECURITY_VULNERABILITY);
+      break;
+
+    case BLACKLISTED_CWS_POLICY_VIOLATION:
+      blacklist_text = l10n_util::GetStringUTF16(
+          IDS_OPTIONS_BLACKLISTED_CWS_POLICY_VIOLATION);
+      break;
+
+    case BLACKLISTED_POTENTIALLY_UNWANTED:
+      blacklist_text = l10n_util::GetStringUTF16(
+          IDS_OPTIONS_BLACKLISTED_POTENTIALLY_UNWANTED);
+      break;
+
+    default:
+      break;
+  }
+  extension_data->SetString("blacklistText", blacklist_text);
 
   // Force unpacked extensions to show at the top.
   if (Manifest::IsUnpackedLocation(extension->location()))
@@ -296,18 +339,18 @@ base::DictionaryValue* ExtensionSettingsHandler::CreateExtensionDetailValue(
   ErrorConsole* error_console =
       ErrorConsole::Get(extension_service_->profile());
   if (error_console->enabled()) {
-    const ErrorConsole::ErrorList& errors =
+    const ErrorList& errors =
         error_console->GetErrorsForExtension(extension->id());
     if (!errors.empty()) {
-      scoped_ptr<ListValue> manifest_errors(new ListValue);
-      scoped_ptr<ListValue> runtime_errors(new ListValue);
-      for (ErrorConsole::ErrorList::const_iterator iter = errors.begin();
+      scoped_ptr<base::ListValue> manifest_errors(new base::ListValue);
+      scoped_ptr<base::ListValue> runtime_errors(new base::ListValue);
+      for (ErrorList::const_iterator iter = errors.begin();
            iter != errors.end(); ++iter) {
         if ((*iter)->type() == ExtensionError::MANIFEST_ERROR) {
           manifest_errors->Append((*iter)->ToValue().release());
         } else {  // Handle runtime error.
           const RuntimeError* error = static_cast<const RuntimeError*>(*iter);
-          scoped_ptr<DictionaryValue> value = error->ToValue();
+          scoped_ptr<base::DictionaryValue> value = error->ToValue();
           bool can_inspect =
               !(deleting_rwh_id_ == error->render_view_id() &&
                 deleting_rph_id_ == error->render_process_id()) &&
@@ -351,12 +394,12 @@ void ExtensionSettingsHandler::GetLocalizedValues(
       l10n_util::GetStringUTF16(IDS_EXTENSIONS_NONE_INSTALLED));
   source->AddString("extensionSettingsSuggestGallery",
       l10n_util::GetStringFUTF16(IDS_EXTENSIONS_NONE_INSTALLED_SUGGEST_GALLERY,
-          ASCIIToUTF16(google_util::AppendGoogleLocaleParam(
+          base::ASCIIToUTF16(google_util::AppendGoogleLocaleParam(
               GURL(extension_urls::GetExtensionGalleryURL())).spec())));
   source->AddString("extensionSettingsGetMoreExtensions",
       l10n_util::GetStringUTF16(IDS_GET_MORE_EXTENSIONS));
   source->AddString("extensionSettingsGetMoreExtensionsUrl",
-      ASCIIToUTF16(google_util::AppendGoogleLocaleParam(
+      base::ASCIIToUTF16(google_util::AppendGoogleLocaleParam(
           GURL(extension_urls::GetExtensionGalleryURL())).spec()));
   source->AddString("extensionSettingsExtensionId",
       l10n_util::GetStringUTF16(IDS_EXTENSIONS_ID));
@@ -399,17 +442,18 @@ void ExtensionSettingsHandler::GetLocalizedValues(
   source->AddString("extensionSettingsVisitWebStore",
       l10n_util::GetStringUTF16(IDS_EXTENSIONS_VISIT_WEBSTORE));
   source->AddString("extensionSettingsPolicyControlled",
-     l10n_util::GetStringUTF16(IDS_EXTENSIONS_POLICY_CONTROLLED));
+      l10n_util::GetStringUTF16(IDS_EXTENSIONS_POLICY_CONTROLLED));
   source->AddString("extensionSettingsManagedMode",
-     l10n_util::GetStringUTF16(IDS_EXTENSIONS_LOCKED_MANAGED_USER));
-  source->AddString("extensionSettingsUseAppsDevTools",
-     l10n_util::GetStringUTF16(IDS_EXTENSIONS_USE_APPS_DEV_TOOLS));
-  source->AddString("extensionSettingsOpenAppsDevTools",
-     l10n_util::GetStringUTF16(IDS_EXTENSIONS_OPEN_APPS_DEV_TOOLS));
-  source->AddString("sideloadWipeoutUrl",
-      chrome::kSideloadWipeoutHelpURL);
-  source->AddString("sideloadWipoutLearnMore",
+      l10n_util::GetStringUTF16(IDS_EXTENSIONS_LOCKED_MANAGED_USER));
+  source->AddString("extensionSettingsSuspiciousInstall",
+      l10n_util::GetStringFUTF16(
+          IDS_EXTENSIONS_ADDED_WITHOUT_KNOWLEDGE,
+          l10n_util::GetStringUTF16(IDS_EXTENSION_WEB_STORE_TITLE)));
+  source->AddString("extensionSettingsSuspiciousInstallLearnMore",
       l10n_util::GetStringUTF16(IDS_LEARN_MORE));
+  source->AddString("extensionSettingsSuspiciousInstallHelpUrl",
+      base::ASCIIToUTF16(google_util::AppendGoogleLocaleParam(
+          GURL(chrome::kRemoveNonCWSExtensionURL)).spec()));
   source->AddString("extensionSettingsShowButton",
       l10n_util::GetStringUTF16(IDS_EXTENSIONS_SHOW_BUTTON));
   source->AddString("extensionSettingsLoadUnpackedButton",
@@ -447,7 +491,8 @@ void ExtensionSettingsHandler::RenderViewDeleted(
   MaybeUpdateAfterNotification();
 }
 
-void ExtensionSettingsHandler::NavigateToPendingEntry(const GURL& url,
+void ExtensionSettingsHandler::DidStartNavigationToPendingEntry(
+    const GURL& url,
     content::NavigationController::ReloadType reload_type) {
   if (reload_type != content::NavigationController::NO_RELOAD)
     ReloadUnpackedExtensions();
@@ -467,46 +512,46 @@ void ExtensionSettingsHandler::RegisterMessages() {
 
   web_ui()->RegisterMessageCallback("extensionSettingsRequestExtensionsData",
       base::Bind(&ExtensionSettingsHandler::HandleRequestExtensionsData,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsToggleDeveloperMode",
       base::Bind(&ExtensionSettingsHandler::HandleToggleDeveloperMode,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsInspect",
       base::Bind(&ExtensionSettingsHandler::HandleInspectMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsLaunch",
       base::Bind(&ExtensionSettingsHandler::HandleLaunchMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsReload",
       base::Bind(&ExtensionSettingsHandler::HandleReloadMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsEnable",
       base::Bind(&ExtensionSettingsHandler::HandleEnableMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsEnableIncognito",
       base::Bind(&ExtensionSettingsHandler::HandleEnableIncognitoMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsAllowFileAccess",
       base::Bind(&ExtensionSettingsHandler::HandleAllowFileAccessMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsUninstall",
       base::Bind(&ExtensionSettingsHandler::HandleUninstallMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsOptions",
       base::Bind(&ExtensionSettingsHandler::HandleOptionsMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsPermissions",
       base::Bind(&ExtensionSettingsHandler::HandlePermissionsMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsShowButton",
       base::Bind(&ExtensionSettingsHandler::HandleShowButtonMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsAutoupdate",
       base::Bind(&ExtensionSettingsHandler::HandleAutoUpdateMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
   web_ui()->RegisterMessageCallback("extensionSettingsLoadUnpackedExtension",
       base::Bind(&ExtensionSettingsHandler::HandleLoadUnpackedExtensionMessage,
-                 base::Unretained(this)));
+                 AsWeakPtr()));
 }
 
 void ExtensionSettingsHandler::FileSelected(const base::FilePath& path,
@@ -577,7 +622,7 @@ void ExtensionSettingsHandler::Observe(
        base::MessageLoop::current()->PostTask(
            FROM_HERE,
            base::Bind(&ExtensionSettingsHandler::MaybeUpdateAfterNotification,
-                      base::Unretained(this)));
+                      AsWeakPtr()));
        break;
     default:
       NOTREACHED();
@@ -664,9 +709,10 @@ void ExtensionSettingsHandler::HandleRequestExtensionsData(
   ExtensionWarningService* warnings =
       ExtensionSystem::Get(profile)->warning_service();
 
-  const ExtensionSet* extensions = extension_service_->extensions();
-  for (ExtensionSet::const_iterator extension = extensions->begin();
-       extension != extensions->end(); ++extension) {
+  ExtensionRegistry* registry = ExtensionRegistry::Get(profile);
+  const ExtensionSet& enabled_set = registry->enabled_extensions();
+  for (ExtensionSet::const_iterator extension = enabled_set.begin();
+       extension != enabled_set.end(); ++extension) {
     if ((*extension)->ShouldDisplayInExtensionSettings()) {
       extensions_list->Append(CreateExtensionDetailValue(
           extension->get(),
@@ -674,9 +720,9 @@ void ExtensionSettingsHandler::HandleRequestExtensionsData(
           warnings));
     }
   }
-  extensions = extension_service_->disabled_extensions();
-  for (ExtensionSet::const_iterator extension = extensions->begin();
-       extension != extensions->end(); ++extension) {
+  const ExtensionSet& disabled_set = registry->disabled_extensions();
+  for (ExtensionSet::const_iterator extension = disabled_set.begin();
+       extension != disabled_set.end(); ++extension) {
     if ((*extension)->ShouldDisplayInExtensionSettings()) {
       extensions_list->Append(CreateExtensionDetailValue(
           extension->get(),
@@ -684,10 +730,10 @@ void ExtensionSettingsHandler::HandleRequestExtensionsData(
           warnings));
     }
   }
-  extensions = extension_service_->terminated_extensions();
+  const ExtensionSet& terminated_set = registry->terminated_extensions();
   std::vector<ExtensionPage> empty_pages;
-  for (ExtensionSet::const_iterator extension = extensions->begin();
-       extension != extensions->end(); ++extension) {
+  for (ExtensionSet::const_iterator extension = terminated_set.begin();
+       extension != terminated_set.end(); ++extension) {
     if ((*extension)->ShouldDisplayInExtensionSettings()) {
       extensions_list->Append(CreateExtensionDetailValue(
           extension->get(),
@@ -703,9 +749,6 @@ void ExtensionSettingsHandler::HandleRequestExtensionsData(
       profile->GetPrefs()->GetBoolean(prefs::kExtensionsUIDeveloperMode);
   results.SetBoolean("profileIsManaged", is_managed);
   results.SetBoolean("developerMode", developer_mode);
-  results.SetBoolean(
-      "appsDevToolsEnabled",
-      CommandLine::ForCurrentProcess()->HasSwitch(switches::kAppsDevtool));
 
   bool load_unpacked_disabled =
       extension_service_->extension_prefs()->ExtensionsBlacklistedByDefault();
@@ -715,6 +758,10 @@ void ExtensionSettingsHandler::HandleRequestExtensionsData(
       "extensions.ExtensionSettings.returnExtensionsData", results);
 
   MaybeRegisterForNotifications();
+  if (should_do_verification_check_) {
+    should_do_verification_check_ = false;
+    extension_service_->VerifyAllExtensions();
+  }
 }
 
 void ExtensionSettingsHandler::HandleToggleDeveloperMode(
@@ -727,24 +774,6 @@ void ExtensionSettingsHandler::HandleToggleDeveloperMode(
       !profile->GetPrefs()->GetBoolean(prefs::kExtensionsUIDeveloperMode);
   profile->GetPrefs()->SetBoolean(prefs::kExtensionsUIDeveloperMode,
                                   developer_mode);
-
-  if (!CommandLine::ForCurrentProcess()->HasSwitch(switches::kAppsDevtool))
-    return;
-
-  base::FilePath apps_debugger_path(FILE_PATH_LITERAL("apps_debugger"));
-  if (developer_mode) {
-    profile->GetExtensionService()->component_loader()->Add(
-        IDR_APPS_DEBUGGER_MANIFEST,
-        apps_debugger_path);
-  } else {
-    std::string extension_id =
-        profile->GetExtensionService()->component_loader()->GetExtensionID(
-            IDR_APPS_DEBUGGER_MANIFEST,
-            apps_debugger_path);
-    scoped_refptr<const Extension> extension(
-        profile->GetExtensionService()->GetInstalledExtension(extension_id));
-    profile->GetExtensionService()->component_loader()->Remove(extension_id);
-  }
 }
 
 void ExtensionSettingsHandler::HandleInspectMessage(
@@ -768,8 +797,10 @@ void ExtensionSettingsHandler::HandleInspectMessage(
     const Extension* extension =
         extension_service_->extensions()->GetByID(extension_id);
     DCHECK(extension);
-    devtools_util::InspectBackgroundPage(extension,
-                                         Profile::FromWebUI(web_ui()));
+    Profile* profile = Profile::FromWebUI(web_ui());
+    if (incognito)
+      profile = profile->GetOffTheRecordProfile();
+    devtools_util::InspectBackgroundPage(extension, profile);
     return;
   }
 
@@ -790,15 +821,14 @@ void ExtensionSettingsHandler::HandleLaunchMessage(
   CHECK(args->GetString(0, &extension_id));
   const Extension* extension =
       extension_service_->GetExtensionById(extension_id, false);
-  OpenApplication(AppLaunchParams(extension_service_->profile(),
-                                  extension,
-                                  extension_misc::LAUNCH_WINDOW,
+  OpenApplication(AppLaunchParams(extension_service_->profile(), extension,
+                                  extensions::LAUNCH_CONTAINER_WINDOW,
                                   NEW_WINDOW));
 }
 
 void ExtensionSettingsHandler::HandleReloadMessage(
     const base::ListValue* args) {
-  std::string extension_id = UTF16ToUTF8(ExtractStringValue(args));
+  std::string extension_id = base::UTF16ToUTF8(ExtractStringValue(args));
   CHECK(!extension_id.empty());
   extension_service_->ReloadExtension(extension_id);
 }
@@ -869,9 +899,9 @@ void ExtensionSettingsHandler::HandleEnableIncognitoMessage(
   // Bug: http://crbug.com/41384
   base::AutoReset<bool> auto_reset_ignore_notifications(
       &ignore_notifications_, true);
-  extension_util::SetIsIncognitoEnabled(extension->id(),
-                                        extension_service_,
-                                        enable_str == "true");
+  util::SetIsIncognitoEnabled(extension->id(),
+                              extension_service_->profile(),
+                              enable_str == "true");
 }
 
 void ExtensionSettingsHandler::HandleAllowFileAccessMessage(
@@ -892,8 +922,8 @@ void ExtensionSettingsHandler::HandleAllowFileAccessMessage(
     return;
   }
 
-  extension_util::SetAllowFileAccess(
-      extension, extension_service_, allow_str == "true");
+  util::SetAllowFileAccess(
+      extension_id, extension_service_->profile(), allow_str == "true");
 }
 
 void ExtensionSettingsHandler::HandleUninstallMessage(
@@ -931,10 +961,12 @@ void ExtensionSettingsHandler::HandleOptionsMessage(
 
 void ExtensionSettingsHandler::HandlePermissionsMessage(
     const base::ListValue* args) {
-  std::string extension_id(UTF16ToUTF8(ExtractStringValue(args)));
+  std::string extension_id(base::UTF16ToUTF8(ExtractStringValue(args)));
   CHECK(!extension_id.empty());
   const Extension* extension =
       extension_service_->GetExtensionById(extension_id, true);
+  if (!extension)
+    extension = extension_service_->GetTerminatedExtension(extension_id);
   if (!extension)
     return;
 
@@ -980,7 +1012,7 @@ void ExtensionSettingsHandler::HandleLoadUnpackedExtensionMessage(
     const base::ListValue* args) {
   DCHECK(args->empty());
 
-  string16 select_title =
+  base::string16 select_title =
       l10n_util::GetStringUTF16(IDS_EXTENSION_LOAD_FROM_DIRECTORY);
 
   const int kFileTypeIndex = 0;  // No file type information to index.
@@ -1009,7 +1041,7 @@ void ExtensionSettingsHandler::ShowAlert(const std::string& message) {
 
 const Extension* ExtensionSettingsHandler::GetActiveExtension(
     const base::ListValue* args) {
-  std::string extension_id = UTF16ToUTF8(ExtractStringValue(args));
+  std::string extension_id = base::UTF16ToUTF8(ExtractStringValue(args));
   CHECK(!extension_id.empty());
   return extension_service_->GetExtensionById(extension_id, false);
 }
@@ -1067,10 +1099,10 @@ void ExtensionSettingsHandler::MaybeRegisterForNotifications() {
 
   base::Closure callback = base::Bind(
       &ExtensionSettingsHandler::MaybeUpdateAfterNotification,
-      base::Unretained(this));
+      AsWeakPtr());
 
   pref_registrar_.Init(profile->GetPrefs());
-  pref_registrar_.Add(prefs::kExtensionInstallDenyList, callback);
+  pref_registrar_.Add(pref_names::kInstallDenyList, callback);
 }
 
 std::vector<ExtensionPage>
@@ -1079,7 +1111,7 @@ ExtensionSettingsHandler::GetInspectablePagesForExtension(
   std::vector<ExtensionPage> result;
 
   // Get the extension process's active views.
-  ExtensionProcessManager* process_manager =
+  extensions::ProcessManager* process_manager =
       ExtensionSystem::Get(extension_service_->profile())->process_manager();
   GetInspectablePagesForExtensionProcess(
       extension,
@@ -1105,8 +1137,10 @@ ExtensionSettingsHandler::GetInspectablePagesForExtension(
   // Repeat for the incognito process, if applicable. Don't try to get
   // shell windows for incognito processes.
   if (extension_service_->profile()->HasOffTheRecordProfile() &&
-      IncognitoInfo::IsSplitMode(extension)) {
-    ExtensionProcessManager* process_manager =
+      IncognitoInfo::IsSplitMode(extension) &&
+      util::IsIncognitoEnabled(extension->id(),
+                               extension_service_->profile())) {
+    extensions::ProcessManager* process_manager =
         ExtensionSystem::Get(extension_service_->profile()->
             GetOffTheRecordProfile())->process_manager();
     GetInspectablePagesForExtensionProcess(
@@ -1210,7 +1244,7 @@ void ExtensionSettingsHandler::OnRequirementsChecked(
     extension_service_->EnableExtension(extension_id);
   } else {
     ExtensionErrorReporter::GetInstance()->ReportError(
-        UTF8ToUTF16(JoinString(requirement_errors, ' ')),
+        base::UTF8ToUTF16(JoinString(requirement_errors, ' ')),
         true /* be noisy */);
   }
   requirements_checker_.reset();

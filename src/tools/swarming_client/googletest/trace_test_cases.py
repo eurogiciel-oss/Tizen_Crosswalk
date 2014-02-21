@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Traces each test cases of a google-test executable individually.
 
@@ -19,9 +19,8 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if not ROOT_DIR in sys.path:
   sys.path.insert(0, ROOT_DIR)
 
-import run_test_cases
 import trace_inputs
-
+from googletest import run_test_cases
 from utils import threading_utils
 from utils import tools
 
@@ -142,7 +141,7 @@ def write_details(logname, outfile, root_dir, blacklist, results):
     }
 
   # Make it dense if there is more than 20 results.
-  trace_inputs.write_json(
+  tools.write_json(
       outfile,
       results_processed,
       len(results_processed) > 20)
@@ -198,7 +197,7 @@ def main():
       options.jobs,
       logname)
   print('Reading trace logs...')
-  blacklist = trace_inputs.gen_blacklist(options.trace_blacklist)
+  blacklist = tools.gen_blacklist(options.trace_blacklist)
   write_details(logname, options.out, options.root_dir, blacklist, results)
   return 0
 

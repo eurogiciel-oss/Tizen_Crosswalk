@@ -31,9 +31,8 @@
 #ifndef WebStorageQuotaCallbacksImpl_h
 #define WebStorageQuotaCallbacksImpl_h
 
-#include "modules/quota/StorageErrorCallback.h"
-#include "modules/quota/StorageQuotaCallback.h"
-#include "modules/quota/StorageUsageCallback.h"
+#include "bindings/v8/DOMRequestState.h"
+#include "bindings/v8/ScriptPromiseResolver.h"
 #include "public/platform/WebStorageQuotaCallbacks.h"
 #include "wtf/OwnPtr.h"
 #include "wtf/PassRefPtr.h"
@@ -41,34 +40,27 @@
 
 namespace WebCore {
 
-class WebStorageQuotaCallbacksImpl : public WebKit::WebStorageQuotaCallbacks {
+class WebStorageQuotaCallbacksImpl FINAL : public blink::WebStorageQuotaCallbacks {
 public:
     // The class is self-destructed and thus we have leakedPtr constructors.
-    static WebStorageQuotaCallbacksImpl* createLeakedPtr(PassRefPtr<StorageUsageCallback> success, PassRefPtr<StorageErrorCallback> error)
+    static WebStorageQuotaCallbacksImpl* createLeakedPtr(PassRefPtr<ScriptPromiseResolver> resolver, ExecutionContext* context)
     {
-        OwnPtr<WebStorageQuotaCallbacksImpl> callbacks = adoptPtr(new WebStorageQuotaCallbacksImpl(success, error));
-        return callbacks.leakPtr();
-    }
-
-    static WebStorageQuotaCallbacksImpl* createLeakedPtr(PassRefPtr<StorageQuotaCallback> success, PassRefPtr<StorageErrorCallback> error)
-    {
-        OwnPtr<WebStorageQuotaCallbacksImpl> callbacks = adoptPtr(new WebStorageQuotaCallbacksImpl(success, error));
+        OwnPtr<WebStorageQuotaCallbacksImpl> callbacks = adoptPtr(new WebStorageQuotaCallbacksImpl(resolver, context));
         return callbacks.leakPtr();
     }
 
     virtual ~WebStorageQuotaCallbacksImpl();
 
-    virtual void didQueryStorageUsageAndQuota(unsigned long long usageInBytes, unsigned long long quotaInBytes);
-    virtual void didGrantStorageQuota(unsigned long long grantedQuotaInBytes);
-    virtual void didFail(WebKit::WebStorageQuotaError);
+    virtual void didQueryStorageUsageAndQuota(unsigned long long usageInBytes, unsigned long long quotaInBytes) OVERRIDE;
+    virtual void didGrantStorageQuota(unsigned long long usageInBytes, unsigned long long grantedQuotaInBytes) OVERRIDE;
+    virtual void didFail(blink::WebStorageQuotaError) OVERRIDE;
 
 private:
-    WebStorageQuotaCallbacksImpl(PassRefPtr<StorageUsageCallback>, PassRefPtr<StorageErrorCallback>);
-    WebStorageQuotaCallbacksImpl(PassRefPtr<StorageQuotaCallback>, PassRefPtr<StorageErrorCallback>);
+    WebStorageQuotaCallbacksImpl(PassRefPtr<ScriptPromiseResolver>, ExecutionContext*);
 
-    RefPtr<StorageUsageCallback> m_usageCallback;
-    RefPtr<StorageQuotaCallback> m_quotaCallback;
-    RefPtr<StorageErrorCallback> m_errorCallback;
+    RefPtr<ScriptPromiseResolver> m_resolver;
+    DOMRequestState m_requestState;
+    WTF_MAKE_NONCOPYABLE(WebStorageQuotaCallbacksImpl);
 };
 
 } // namespace

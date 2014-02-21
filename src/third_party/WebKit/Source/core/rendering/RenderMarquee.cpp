@@ -49,9 +49,10 @@
 #include "HTMLNames.h"
 #include "core/html/HTMLMarqueeElement.h"
 #include "core/frame/FrameView.h"
-#include "core/page/UseCounter.h"
+#include "core/frame/UseCounter.h"
 #include "core/rendering/RenderLayer.h"
 #include "core/rendering/RenderView.h"
+#include "platform/LengthFunctions.h"
 
 using namespace std;
 
@@ -59,11 +60,11 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-RenderMarquee::RenderMarquee(Element* element)
+RenderMarquee::RenderMarquee(HTMLMarqueeElement* element)
     : RenderBlockFlow(element)
     , m_currentLoop(0)
     , m_totalLoops(0)
-    , m_timer(this, &RenderMarquee::timerFired)
+    , m_timer(element, &HTMLMarqueeElement::timerFired)
     , m_start(0)
     , m_end(0)
     , m_speed(0)
@@ -259,14 +260,14 @@ void RenderMarquee::styleDidChange(StyleDifference difference, const RenderStyle
         m_timer.stop();
 }
 
-void RenderMarquee::layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight)
+void RenderMarquee::layoutBlock(bool relayoutChildren)
 {
-    RenderBlockFlow::layoutBlock(relayoutChildren, pageLogicalHeight);
+    RenderBlockFlow::layoutBlock(relayoutChildren);
 
     updateMarqueePosition();
 }
 
-void RenderMarquee::timerFired(Timer<RenderMarquee>*)
+void RenderMarquee::timerFired()
 {
     // FIXME: Why do we need to check the view and not just the RenderMarquee itself?
     if (view()->needsLayout())

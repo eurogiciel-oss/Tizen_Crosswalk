@@ -4,18 +4,18 @@
 
 #include "ash/host/root_window_host_factory.h"
 
-#include "ui/aura/root_window_host.h"
+#include "ui/aura/window_tree_host.h"
 
 namespace {
 
-class RootWindowHostFactoryImpl : public ash::RootWindowHostFactory {
+class WindowTreeHostFactoryImpl : public ash::WindowTreeHostFactory {
  public:
-  RootWindowHostFactoryImpl() {}
+  WindowTreeHostFactoryImpl() {}
 
-  // Overridden from RootWindowHostFactory:
-  virtual aura::RootWindowHost* CreateRootWindowHost(
+  // Overridden from WindowTreeHostFactory:
+  virtual aura::WindowTreeHost* CreateWindowTreeHost(
       const gfx::Rect& initial_bounds) OVERRIDE {
-    return aura::RootWindowHost::Create(initial_bounds);
+    return aura::WindowTreeHost::Create(initial_bounds);
   }
 };
 
@@ -24,8 +24,8 @@ class RootWindowHostFactoryImpl : public ash::RootWindowHostFactory {
 namespace ash {
 
 // static
-RootWindowHostFactory* RootWindowHostFactory::Create() {
-  return new RootWindowHostFactoryImpl;
+WindowTreeHostFactory* WindowTreeHostFactory::Create() {
+  return new WindowTreeHostFactoryImpl;
 }
 
 }  // namespace ash

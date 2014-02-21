@@ -38,7 +38,6 @@
 #include "core/dom/Document.h"
 #include "core/dom/Element.h"
 #include "core/dom/NodeTraversal.h"
-#include "core/html/HTMLHtmlElement.h"
 #include "core/page/EventHandler.h"
 #include "core/frame/Frame.h"
 #include "core/frame/FrameView.h"
@@ -59,11 +58,11 @@ static IntRect boundingBoxForEventNodes(Node* eventNode)
     while (node) {
         // Skip the whole sub-tree if the node doesn't propagate events.
         if (node != eventNode && node->willRespondToMouseClickEvents()) {
-            node = NodeTraversal::nextSkippingChildren(node, eventNode);
+            node = NodeTraversal::nextSkippingChildren(*node, eventNode);
             continue;
         }
         result.unite(node->pixelSnappedBoundingBox());
-        node = NodeTraversal::next(node, eventNode);
+        node = NodeTraversal::next(*node, eventNode);
     }
     return eventNode->document().view()->contentsToWindow(result);
 }
@@ -126,7 +125,7 @@ void findGoodTouchTargets(const IntRect& touchBox, Frame* mainFrame, Vector<IntR
         for (Node* node = it->get(); node; node = node->parentNode()) {
             if (blackList.contains(node))
                 continue;
-            if (node->isDocumentNode() || isHTMLHtmlElement(node) || node->hasTagName(HTMLNames::bodyTag))
+            if (node->isDocumentNode() || node->hasTagName(HTMLNames::htmlTag) || node->hasTagName(HTMLNames::bodyTag))
                 break;
             if (node->willRespondToMouseClickEvents()) {
                 TouchTargetData& targetData = touchTargets.add(node, TouchTargetData()).iterator->value;

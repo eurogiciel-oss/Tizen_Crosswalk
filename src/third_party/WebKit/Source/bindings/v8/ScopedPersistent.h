@@ -58,12 +58,13 @@ public:
     }
 
     template<typename P>
-    void makeWeak(P* parameters, void (*callback)(v8::Isolate*, v8::Persistent<T>*, P*))
+    void setWeak(P* parameters, void (*callback)(const v8::WeakCallbackData<T, P>&))
     {
-        m_handle.MakeWeak(parameters, callback);
+        m_handle.SetWeak(parameters, callback);
     }
 
     bool isEmpty() const { return m_handle.IsEmpty(); }
+    bool isWeak() const { return m_handle.IsWeak(); }
 
     void set(v8::Isolate* isolate, v8::Handle<T> handle)
     {
@@ -73,15 +74,18 @@ public:
     // Note: This is clear in the OwnPtr sense, not the v8::Handle sense.
     void clear()
     {
-        if (m_handle.IsEmpty())
-            return;
-        m_handle.Dispose();
-        m_handle.Clear();
+        m_handle.Reset();
     }
 
     bool operator==(const ScopedPersistent<T>& other)
     {
         return m_handle == other.m_handle;
+    }
+
+    template <class S>
+    bool operator==(const v8::Handle<S> other) const
+    {
+        return m_handle == other;
     }
 
 private:

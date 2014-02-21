@@ -25,6 +25,7 @@
       'standalone_static_library': 1,
       'dependencies': [
         'core.gyp:*',
+        'effects.gyp:*'
       ],
       'include_dirs': [
         '../src/core',
@@ -51,6 +52,7 @@
             '../src/opts/SkBitmapFilter_opts_SSE2.cpp',
             '../src/opts/SkBlitRow_opts_SSE2.cpp',
             '../src/opts/SkBlitRect_opts_SSE2.cpp',
+            '../src/opts/SkBlurImage_opts_SSE2.cpp',
             '../src/opts/SkMorphology_opts_SSE2.cpp',
             '../src/opts/SkUtils_opts_SSE2.cpp',
             '../src/opts/SkXfermode_opts_none.cpp',
@@ -78,7 +80,6 @@
             '../src/opts/SkBlitMask_opts_arm.cpp',
             '../src/opts/SkBlitRow_opts_arm.cpp',
             '../src/opts/SkBlitRow_opts_arm.h',
-            '../src/opts/SkMorphology_opts_none.cpp',
             '../src/opts/SkXfermode_opts_arm.cpp',
           ],
           'conditions': [
@@ -97,11 +98,12 @@
             }],
           ],
         }],
-        [ '(skia_arch_type == "arm" and arm_version < 7) or (skia_os == "ios")', {
+        [ '(skia_arch_type == "mips") or (skia_arch_type == "arm" and arm_version < 7) or (skia_os == "ios")', {
           'sources': [
             '../src/opts/SkBitmapProcState_opts_none.cpp',
             '../src/opts/SkBlitMask_opts_none.cpp',
             '../src/opts/SkBlitRow_opts_none.cpp',
+            '../src/opts/SkBlurImage_opts_none.cpp',
             '../src/opts/SkMorphology_opts_none.cpp',
             '../src/opts/SkUtils_opts_none.cpp',
             '../src/opts/SkXfermode_opts_none.cpp',
@@ -120,6 +122,7 @@
       'standalone_static_library': 1,
       'dependencies': [
         'core.gyp:*',
+        'effects.gyp:*'
       ],
       'include_dirs': [
         '../src/core',
@@ -149,6 +152,7 @@
       'standalone_static_library': 1,
       'dependencies': [
         'core.gyp:*',
+        'effects.gyp:*'
       ],
       'include_dirs': [
         '../src/core',
@@ -175,15 +179,12 @@
         '../src/opts/SkBitmapProcState_matrixProcs_neon.cpp',
         '../src/opts/SkBitmapProcState_matrix_clamp_neon.h',
         '../src/opts/SkBitmapProcState_matrix_repeat_neon.h',
+        '../src/opts/SkBlitMask_opts_arm_neon.cpp',
         '../src/opts/SkBlitRow_opts_arm_neon.cpp',
+        '../src/opts/SkBlurImage_opts_neon.cpp',
+        '../src/opts/SkMorphology_opts_neon.cpp',
         '../src/opts/SkXfermode_opts_arm_neon.cpp',
       ],
     },
   ],
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

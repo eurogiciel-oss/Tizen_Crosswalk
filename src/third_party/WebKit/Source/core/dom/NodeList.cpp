@@ -31,6 +31,8 @@
 #include "config.h"
 #include "core/dom/NodeList.h"
 
+#include "core/dom/EmptyNodeList.h"
+#include "core/dom/LiveNodeList.h"
 #include "core/dom/Node.h"
 
 namespace WebCore {
@@ -51,6 +53,15 @@ void NodeList::anonymousNamedGetter(const AtomicString& name, bool& returnValue0
 
     returnValue0Enabled = true;
     returnValue0 = result;
+}
+
+Node* NodeList::ownerNode() const
+{
+    if (isLiveNodeList())
+        return static_cast<const LiveNodeList*>(this)->ownerNode();
+    if (isEmptyNodeList())
+        return static_cast<const EmptyNodeList*>(this)->ownerNode();
+    return 0;
 }
 
 

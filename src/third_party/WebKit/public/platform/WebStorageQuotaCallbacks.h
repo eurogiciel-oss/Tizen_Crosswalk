@@ -33,7 +33,7 @@
 
 #include "WebStorageQuotaError.h"
 
-namespace WebKit {
+namespace blink {
 
 class WebStorageQuotaCallbacks {
 public:
@@ -42,7 +42,7 @@ public:
 
     // Callback for WebFrameClient::requestStorageQuota.
     // This may return a smaller amount of quota than the requested.
-    virtual void didGrantStorageQuota(unsigned long long grantedQuotaInBytes) = 0;
+    virtual void didGrantStorageQuota(unsigned long long usageInBytes, unsigned long long grantedQuotaInBytes) = 0;
 
     virtual void didFail(WebStorageQuotaError) = 0;
 
@@ -50,6 +50,6 @@ protected:
     virtual ~WebStorageQuotaCallbacks() { }
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif // WebStorageQuotaCallbacks_h

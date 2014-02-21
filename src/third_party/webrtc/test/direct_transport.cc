@@ -12,6 +12,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 #include "webrtc/call.h"
+#include "webrtc/system_wrappers/interface/clock.h"
 
 namespace webrtc {
 namespace test {
@@ -20,8 +21,21 @@ DirectTransport::DirectTransport()
     : lock_(CriticalSectionWrapper::CreateCriticalSection()),
       packet_event_(EventWrapper::Create()),
       thread_(ThreadWrapper::CreateThread(NetworkProcess, this)),
+      clock_(Clock::GetRealTimeClock()),
       shutting_down_(false),
-      receiver_(NULL) {
+      fake_network_(FakeNetworkPipe::Config()) {
+  unsigned int thread_id;
+  EXPECT_TRUE(thread_->Start(thread_id));
+}
+
+DirectTransport::DirectTransport(
+    const FakeNetworkPipe::Config& config)
+    : lock_(CriticalSectionWrapper::CreateCriticalSection()),
+      packet_event_(EventWrapper::Create()),
+      thread_(ThreadWrapper::CreateThread(NetworkProcess, this)),
+      clock_(Clock::GetRealTimeClock()),
+      shutting_down_(false),
+      fake_network_(config) {
   unsigned int thread_id;
   EXPECT_TRUE(thread_->Start(thread_id));
 }
@@ -39,32 +53,19 @@ void DirectTransport::StopSending() {
 }
 
 void DirectTransport::SetReceiver(PacketReceiver* receiver) {
-  receiver_ = receiver;
+  fake_network_.SetReceiver(receiver);
 }
 
-bool DirectTransport::SendRTP(const uint8_t* data, size_t length) {
-  QueuePacket(data, length);
-  return true;
-}
-
-bool DirectTransport::SendRTCP(const uint8_t* data, size_t length) {
-  QueuePacket(data, length);
-  return true;
-}
-
-DirectTransport::Packet::Packet() : length(0) {}
-
-DirectTransport::Packet::Packet(const uint8_t* data, size_t length)
-    : length(length) {
-  EXPECT_LE(length, sizeof(this->data));
-  memcpy(this->data, data, length);
-}
-
-void DirectTransport::QueuePacket(const uint8_t* data, size_t length) {
-  CriticalSectionScoped crit(lock_.get());
-  EXPECT_TRUE(receiver_ != NULL);
-  packet_queue_.push_back(Packet(data, length));
+bool DirectTransport::SendRtp(const uint8_t* data, size_t length) {
+  fake_network_.SendPacket(data, length);
   packet_event_->Set();
+  return true;
+}
+
+bool DirectTransport::SendRtcp(const uint8_t* data, size_t length) {
+  fake_network_.SendPacket(data, length);
+  packet_event_->Set();
+  return true;
 }
 
 bool DirectTransport::NetworkProcess(void* transport) {
@@ -72,29 +73,20 @@ bool DirectTransport::NetworkProcess(void* transport) {
 }
 
 bool DirectTransport::SendPackets() {
-  while (true) {
-    Packet p;
-    {
-      CriticalSectionScoped crit(lock_.get());
-      if (packet_queue_.empty())
+  fake_network_.Process();
+  int wait_time_ms = fake_network_.TimeUntilNextProcess();
+  if (wait_time_ms > 0) {
+    switch (packet_event_->Wait(wait_time_ms)) {
+      case kEventSignaled:
+        packet_event_->Reset();
         break;
-      p = packet_queue_.front();
-      packet_queue_.pop_front();
+      case kEventTimeout:
+        break;
+      case kEventError:
+        // TODO(pbos): Log a warning here?
+        return true;
     }
-    receiver_->DeliverPacket(p.data, p.length);
   }
-
-  switch (packet_event_->Wait(WEBRTC_EVENT_INFINITE)) {
-    case kEventSignaled:
-      packet_event_->Reset();
-      break;
-    case kEventTimeout:
-      break;
-    case kEventError:
-      // TODO(pbos): Log a warning here?
-      return true;
-  }
-
   CriticalSectionScoped crit(lock_.get());
   return shutting_down_ ? false : true;
 }

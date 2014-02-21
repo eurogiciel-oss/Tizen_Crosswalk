@@ -68,9 +68,9 @@ public:
     AudioScheduledSourceNode(AudioContext*, float sampleRate);
 
     // Scheduling.
-    void start(ExceptionState& es) { start(0.0, es); }
+    void start(ExceptionState& exceptionState) { start(0.0, exceptionState); }
     void start(double when, ExceptionState&);
-    void stop(ExceptionState& es) { stop(0.0, es); }
+    void stop(ExceptionState& exceptionState) { stop(0.0, exceptionState); }
     void stop(double when, ExceptionState&);
 
     unsigned short playbackState() const { return static_cast<unsigned short>(m_playbackState); }
@@ -109,7 +109,6 @@ protected:
     double m_endTime; // in seconds
 
     bool m_hasEndedListener;
-    bool m_stopCalled;
 
     static const double UnknownTime;
 };

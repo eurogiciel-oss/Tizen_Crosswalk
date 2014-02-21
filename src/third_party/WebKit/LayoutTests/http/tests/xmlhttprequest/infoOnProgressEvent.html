@@ -27,12 +27,6 @@ function onProgress(e) {
         testRunner.notifyDone();
 }
 
-function onError(e) {
-  alert("Error " + e.target.status + " occurred while receiving the document.");
-}
-
-var shouldNotify = false;
-
 if (window.testRunner) {
     testRunner.dumpAsText();
     testRunner.waitUntilDone();

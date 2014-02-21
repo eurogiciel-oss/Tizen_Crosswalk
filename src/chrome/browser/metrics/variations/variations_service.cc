@@ -6,21 +6,16 @@
 
 #include <set>
 
-#include "base/base64.h"
 #include "base/build_time.h"
 #include "base/command_line.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/metrics/histogram.h"
 #include "base/metrics/sparse_histogram.h"
 #include "base/prefs/pref_registry_simple.h"
 #include "base/prefs/pref_service.h"
-#include "base/sha1.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/version.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/network_time/network_time_tracker.h"
 #include "chrome/common/chrome_switches.h"
-#include "chrome/common/metrics/variations/variations_util.h"
 #include "chrome/common/pref_names.h"
 #include "components/variations/proto/variations_seed.pb.h"
 #include "components/variations/variations_seed_processor.h"
@@ -34,6 +29,7 @@
 #include "net/http/http_util.h"
 #include "net/url_request/url_fetcher.h"
 #include "net/url_request/url_request_status.h"
+#include "ui/base/device_form_factor.h"
 #include "url/gurl.h"
 
 #if defined(OS_CHROMEOS)
@@ -108,11 +104,6 @@ std::string GetPlatformString() {
 #endif
 }
 
-// Converts |date_time| in Study date format to base::Time.
-base::Time ConvertStudyDateToBaseTime(int64 date_time) {
-  return base::Time::UnixEpoch() + base::TimeDelta::FromSeconds(date_time);
-}
-
 // Gets the restrict parameter from |local_state| or from Chrome OS settings in
 // the case of that platform.
 std::string GetRestrictParameterPref(PrefService* local_state) {
@@ -127,16 +118,13 @@ std::string GetRestrictParameterPref(PrefService* local_state) {
   return parameter;
 }
 
-// Computes a hash of the serialized variations seed data.
-std::string HashSeed(const std::string& seed_data) {
-  const std::string sha1 = base::SHA1HashString(seed_data);
-  return base::HexEncode(sha1.data(), sha1.size());
-}
-
 enum ResourceRequestsAllowedState {
   RESOURCE_REQUESTS_ALLOWED,
   RESOURCE_REQUESTS_NOT_ALLOWED,
   RESOURCE_REQUESTS_ALLOWED_NOTIFIED,
+  RESOURCE_REQUESTS_NOT_ALLOWED_EULA_NOT_ACCEPTED,
+  RESOURCE_REQUESTS_NOT_ALLOWED_NETWORK_DOWN,
+  RESOURCE_REQUESTS_NOT_ALLOWED_COMMAND_LINE_DISABLED,
   RESOURCE_REQUESTS_ALLOWED_ENUM_SIZE,
 };
 
@@ -146,22 +134,45 @@ void RecordRequestsAllowedHistogram(ResourceRequestsAllowedState state) {
                             RESOURCE_REQUESTS_ALLOWED_ENUM_SIZE);
 }
 
-enum VariationSeedEmptyState {
-  VARIATIONS_SEED_NOT_EMPTY,
-  VARIATIONS_SEED_EMPTY,
-  VARIATIONS_SEED_CORRUPT,
-  VARIATIONS_SEED_EMPTY_ENUM_SIZE,
-};
+// Converts ResourceRequestAllowedNotifier::State to the corresponding
+// ResourceRequestsAllowedState value.
+ResourceRequestsAllowedState ResourceRequestStateToHistogramValue(
+    ResourceRequestAllowedNotifier::State state) {
+  switch (state) {
+    case ResourceRequestAllowedNotifier::DISALLOWED_EULA_NOT_ACCEPTED:
+      return RESOURCE_REQUESTS_NOT_ALLOWED_EULA_NOT_ACCEPTED;
+    case ResourceRequestAllowedNotifier::DISALLOWED_NETWORK_DOWN:
+      return RESOURCE_REQUESTS_NOT_ALLOWED_NETWORK_DOWN;
+    case ResourceRequestAllowedNotifier::DISALLOWED_COMMAND_LINE_DISABLED:
+      return RESOURCE_REQUESTS_NOT_ALLOWED_COMMAND_LINE_DISABLED;
+    case ResourceRequestAllowedNotifier::ALLOWED:
+      return RESOURCE_REQUESTS_ALLOWED;
+  }
+  NOTREACHED();
+  return RESOURCE_REQUESTS_NOT_ALLOWED;
+}
 
-void RecordVariationSeedEmptyHistogram(VariationSeedEmptyState state) {
-  UMA_HISTOGRAM_ENUMERATION("Variations.SeedEmpty", state,
-                            VARIATIONS_SEED_EMPTY_ENUM_SIZE);
+
+// Get current form factor and convert it from enum DeviceFormFactor to enum
+// Study_FormFactor.
+Study_FormFactor GetCurrentFormFactor() {
+  switch (ui::GetDeviceFormFactor()) {
+    case ui::DEVICE_FORM_FACTOR_PHONE:
+      return Study_FormFactor_PHONE;
+    case ui::DEVICE_FORM_FACTOR_TABLET:
+      return Study_FormFactor_TABLET;
+    case ui::DEVICE_FORM_FACTOR_DESKTOP:
+      return Study_FormFactor_DESKTOP;
+  }
+  NOTREACHED();
+  return Study_FormFactor_DESKTOP;
 }
 
 }  // namespace
 
 VariationsService::VariationsService(PrefService* local_state)
     : local_state_(local_state),
+      seed_store_(local_state),
       variations_server_url_(GetVariationsServerURL(local_state)),
       create_trials_from_seed_called_(false),
       initial_request_completed_(false),
@@ -173,6 +184,7 @@ VariationsService::VariationsService(PrefService* local_state)
 VariationsService::VariationsService(ResourceRequestAllowedNotifier* notifier,
                                      PrefService* local_state)
     : local_state_(local_state),
+      seed_store_(local_state),
       variations_server_url_(GetVariationsServerURL(NULL)),
       create_trials_from_seed_called_(false),
       initial_request_completed_(false),
@@ -187,7 +199,7 @@ bool VariationsService::CreateTrialsFromSeed() {
   create_trials_from_seed_called_ = true;
 
   VariationsSeed seed;
-  if (!LoadVariationsSeedFromPref(&seed))
+  if (!seed_store_.LoadSeed(&seed))
     return false;
 
   const int64 date_value = local_state_->GetInt64(prefs::kVariationsSeedDate);
@@ -209,7 +221,7 @@ bool VariationsService::CreateTrialsFromSeed() {
 
   VariationsSeedProcessor().CreateTrialsFromSeed(
       seed, g_browser_process->GetApplicationLocale(), reference_date,
-      current_version, GetChannelForVariations());
+      current_version, GetChannelForVariations(), GetCurrentFormFactor());
 
   // Log the "freshness" of the seed that was just used. The freshness is the
   // time between the last successful seed download and now.
@@ -284,10 +296,7 @@ std::string VariationsService::GetDefaultVariationsServerURLForTesting() {
 
 // static
 void VariationsService::RegisterPrefs(PrefRegistrySimple* registry) {
-  registry->RegisterStringPref(prefs::kVariationsSeed, std::string());
-  registry->RegisterStringPref(prefs::kVariationsSeedHash, std::string());
-  registry->RegisterInt64Pref(prefs::kVariationsSeedDate,
-                              base::Time().ToInternalValue());
+  VariationsSeedStore::RegisterPrefs(registry);
   registry->RegisterInt64Pref(prefs::kVariationsLastFetchTime, 0);
   registry->RegisterStringPref(prefs::kVariationsRestrictParameter,
                                std::string());
@@ -316,9 +325,9 @@ void VariationsService::DoActualFetch() {
   pending_seed_request_->SetRequestContext(
       g_browser_process->system_request_context());
   pending_seed_request_->SetMaxRetriesOn5xx(kMaxRetrySeedFetch);
-  if (!variations_serial_number_.empty()) {
-    pending_seed_request_->AddExtraRequestHeader("If-Match:" +
-                                                 variations_serial_number_);
+  if (!seed_store_.variations_serial_number().empty()) {
+    pending_seed_request_->AddExtraRequestHeader(
+        "If-Match:" + seed_store_.variations_serial_number());
   }
   pending_seed_request_->Start();
 
@@ -336,13 +345,14 @@ void VariationsService::DoActualFetch() {
 void VariationsService::FetchVariationsSeed() {
   DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
 
-  if (!resource_request_allowed_notifier_->ResourceRequestsAllowed()) {
-    RecordRequestsAllowedHistogram(RESOURCE_REQUESTS_NOT_ALLOWED);
+  const ResourceRequestAllowedNotifier::State state =
+      resource_request_allowed_notifier_->GetResourceRequestsAllowedState();
+  RecordRequestsAllowedHistogram(ResourceRequestStateToHistogramValue(state));
+  if (state != ResourceRequestAllowedNotifier::ALLOWED) {
     DVLOG(1) << "Resource requests were not allowed. Waiting for notification.";
     return;
   }
 
-  RecordRequestsAllowedHistogram(RESOURCE_REQUESTS_ALLOWED);
   DoActualFetch();
 }
 
@@ -412,7 +422,12 @@ void VariationsService::OnURLFetchComplete(const net::URLFetcher* source) {
   bool success = request->GetResponseAsString(&seed_data);
   DCHECK(success);
 
-  StoreSeedData(seed_data, response_date);
+  std::string seed_signature;
+  request->GetResponseHeaders()->EnumerateHeader(NULL,
+                                                 "X-Seed-Signature",
+                                                 &seed_signature);
+  if (seed_store_.StoreSeedData(seed_data, seed_signature, response_date))
+    RecordLastFetchTime();
 }
 
 void VariationsService::OnResourceRequestsAllowed() {
@@ -429,67 +444,6 @@ void VariationsService::OnResourceRequestsAllowed() {
   // This service must have created a scheduler in order for this to be called.
   DCHECK(request_scheduler_.get());
   request_scheduler_->Reset();
-}
-
-bool VariationsService::StoreSeedData(const std::string& seed_data,
-                                      const base::Time& seed_date) {
-  if (seed_data.empty()) {
-    VLOG(1) << "Variations Seed data from server is empty, rejecting the seed.";
-    return false;
-  }
-
-  // Only store the seed data if it parses correctly.
-  VariationsSeed seed;
-  if (!seed.ParseFromString(seed_data)) {
-    VLOG(1) << "Variations Seed data from server is not in valid proto format, "
-            << "rejecting the seed.";
-    return false;
-  }
-
-  std::string base64_seed_data;
-  if (!base::Base64Encode(seed_data, &base64_seed_data)) {
-    VLOG(1) << "Variations Seed data from server fails Base64Encode, rejecting "
-            << "the seed.";
-    return false;
-  }
-
-  local_state_->SetString(prefs::kVariationsSeed, base64_seed_data);
-  local_state_->SetString(prefs::kVariationsSeedHash, HashSeed(seed_data));
-  local_state_->SetInt64(prefs::kVariationsSeedDate,
-                         seed_date.ToInternalValue());
-  variations_serial_number_ = seed.serial_number();
-
-  RecordLastFetchTime();
-
-  return true;
-}
-
-bool VariationsService::LoadVariationsSeedFromPref(VariationsSeed* seed) {
-  const std::string base64_seed_data =
-      local_state_->GetString(prefs::kVariationsSeed);
-  if (base64_seed_data.empty()) {
-    RecordVariationSeedEmptyHistogram(VARIATIONS_SEED_EMPTY);
-    return false;
-  }
-
-  const std::string hash_from_pref =
-      local_state_->GetString(prefs::kVariationsSeedHash);
-  // If the decode process fails, assume the pref value is corrupt and clear it.
-  std::string seed_data;
-  if (!base::Base64Decode(base64_seed_data, &seed_data) ||
-      (!hash_from_pref.empty() && HashSeed(seed_data) != hash_from_pref) ||
-      !seed->ParseFromString(seed_data)) {
-    VLOG(1) << "Variations seed data in local pref is corrupt, clearing the "
-            << "pref.";
-    local_state_->ClearPref(prefs::kVariationsSeed);
-    local_state_->ClearPref(prefs::kVariationsSeedDate);
-    local_state_->ClearPref(prefs::kVariationsSeedHash);
-    RecordVariationSeedEmptyHistogram(VARIATIONS_SEED_CORRUPT);
-    return false;
-  }
-  variations_serial_number_ = seed->serial_number();
-  RecordVariationSeedEmptyHistogram(VARIATIONS_SEED_NOT_EMPTY);
-  return true;
 }
 
 void VariationsService::RecordLastFetchTime() {

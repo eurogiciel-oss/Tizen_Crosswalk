@@ -33,6 +33,11 @@ const char kAshDebugShortcuts[] = "ash-debug-shortcuts";
 const char kAshDebugShowPreferredNetworks[] =
     "ash-debug-show-preferred-networks";
 
+// Indicates that the wallpaper images specified by
+// kAshDefaultWallpaper{Large,Small} are OEM-specific (i.e. they are not
+// downloadable from Google).
+const char kAshDefaultWallpaperIsOem[] = "ash-default-wallpaper-is-oem";
+
 // Default wallpaper to use (as paths to trusted, non-user-writable JPEG files).
 const char kAshDefaultWallpaperLarge[] = "ash-default-wallpaper-large";
 const char kAshDefaultWallpaperSmall[] = "ash-default-wallpaper-small";
@@ -61,6 +66,19 @@ const char kAshDisableAutoMaximizing[] = "ash-disable-auto-maximizing";
 const char kAshDisableDisplayChangeLimiter[] =
     "ash-disable-display-change-limiter";
 
+// Disable ability to dock windows at the desktop edge.
+const char kAshDisableDockedWindows[] = "ash-disable-docked-windows";
+
+// Disallow items to be dragged from the app launcher list into the launcher.
+const char kAshDisableDragAndDropAppListToLauncher[] =
+    "ash-disable-drag-and-drop-applist-to-launcher";
+
+// Disable dragging items off the shelf to unpin them.
+const char kAshDisableDragOffShelf[] = "ash-disable-drag-off-shelf";
+
+// Disables overview mode for window switching.
+const char kAshDisableOverviewMode[] = "ash-disable-overview-mode";
+
 #if defined(OS_CHROMEOS)
 // Disable the notification when a low-power USB charger is connected.
 const char kAshDisableUsbChargerNotification[] =
@@ -78,9 +96,7 @@ const char kAshEnableAdvancedGestures[] = "ash-enable-advanced-gestures";
 // Use alternate visual style for the caption buttons (minimize, maximize,
 // restore, close). The alternate style:
 // - Adds a dedicated button for minimize.
-// - Increases the height of the maximized header.
 // - Removes the maximize button's help bubble.
-// - Switches snapping a window left/right to be always 50%.
 const char kAshEnableAlternateFrameCaptionButtonStyle[] =
     "ash-enable-alternate-caption-button";
 
@@ -88,33 +104,37 @@ const char kAshEnableAlternateFrameCaptionButtonStyle[] =
 // main monitor as internal.
 const char kAshEnableBrightnessControl[] = "ash-enable-brightness-control";
 
-// Enable the dock area on a desktop.
-const char kAshEnableDockedWindows[] = "ash-enable-docked-windows";
+// Enables putting all windows into immersive fullscreen via <F4>.
+const char kAshEnableImmersiveFullscreenForAllWindows[] =
+    "ash-enable-immersive-all-windows";
 
-// Disable dragging items off the shelf to unpin them.
-const char kAshDisableDragOffShelf[] = "ash-disable-drag-off-shelf";
-
-#if defined(OS_CHROMEOS)
-// Enables the "full multi profile mode" - as it was in M-31.
-const char kAshEnableFullMultiProfileMode[] =
-    "ash-enable-full-multi-profile-mode";
-#endif
+// Enables putting only browser windows into immersive fullscreen via <F4>.
+// <F4> puts all other windows into non-immersive fullscreen.
+const char kAshEnableImmersiveFullscreenForBrowserOnly[] =
+    "ash-enable-immersive-browser-only";
 
 #if defined(OS_LINUX)
 // Enable memory monitoring.
 const char kAshEnableMemoryMonitor[] = "ash-enable-memory-monitor";
 #endif
+
+#if defined(OS_CHROMEOS)
+// Enables the multi user icons in the system tray.
+const char kAshEnableMultiUserTray[] = "ash-enable-multi-user-tray";
+#endif
+
 // Enables the Oak tree viewer.
 const char kAshEnableOak[] = "ash-enable-oak";
-
-// Disables overview mode for window switching.
-const char kAshDisableOverviewMode[] = "ash-disable-overview-mode";
 
 // Enables software based mirroring.
 const char kAshEnableSoftwareMirroring[] = "ash-enable-software-mirroring";
 
 // Enables "sticky" edges instead of "snap-to-edge"
 const char kAshEnableStickyEdges[] = "ash-enable-sticky-edges";
+
+// When this flag is set, system sounds will be played whether the
+// ChromeVox is enabled or not.
+const char kAshEnableSystemSounds[] = "ash-enable-system-sounds";
 
 // Enables showing the tray bubble by dragging on the shelf.
 const char kAshEnableTrayDragging[] = "ash-enable-tray-dragging";
@@ -138,10 +158,6 @@ const char kAshHideNotificationsForFactory[] =
 // "1024x768*2" sets the scale factor to 2 for a high DPI display.
 const char kAshHostWindowBounds[] = "ash-host-window-bounds";
 
-// OEM-supplied wallpaper (as paths to trusted, non-user-writable JPEG files).
-const char kAshOemWallpaperLarge[] = "ash-oem-wallpaper-large";
-const char kAshOemWallpaperSmall[] = "ash-oem-wallpaper-small";
-
 // Specifies the delay in milliseconds before beginning overview mode after
 // getting an alt tab keypress.
 const char kAshOverviewDelayOnAltTab[] = "ash-overview-delay-on-alt-tab";
@@ -151,6 +167,11 @@ const char kAshOverviewDelayOnAltTab[] = "ash-overview-delay-on-alt-tab";
 // b=BOTTOM and L=LEFT. For example, 'r,-100' means the secondary display
 // is positioned on the right with -100 offset. (above than primary)
 const char kAshSecondaryDisplayLayout[] = "ash-secondary-display-layout";
+
+// Use the old behavior where the user can pick the width of a side maximized
+// window. The user selects the width of the side maximized window based on how
+// far off the edge of the work area they drag the window.
+const char kAshMultipleSnapWindowWidths[] = "ash-multiple-snap-window-widths";
 
 // Enables the heads-up display for tracking touch points.
 const char kAshTouchHud[] = "ash-touch-hud";
@@ -162,10 +183,6 @@ const char kAshTouchHud[] = "ash-touch-hud";
 // more visible state indication for background on status area.
 // crbug's [244983, 244990, 244994, 245005, 245012]
 const char kAshUseAlternateShelfLayout[] = "ash-use-alternate-shelf";
-
-// Flags explicitly show or hide the shelf alignment menu.
-const char kShowShelfAlignmentMenu[] = "show-launcher-alignment-menu";
-const char kHideShelfAlignmentMenu[] = "hide-launcher-alignment-menu";
 
 // Uses the 1st display in --ash-host-window-bounds as internal display.
 // This is for debugging on linux desktop.
@@ -185,13 +202,16 @@ const char kForceAshToDesktop[] = "ash-force-desktop";
 
 #endif
 
-// Disallow items to be dragged from the app launcher list into the launcher.
-const char kAshDisableDragAndDropAppListToLauncher[] =
-    "ash-disable-drag-and-drop-applist-to-launcher";
+// Flags explicitly show or hide the shelf alignment menu.
+const char kShowShelfAlignmentMenu[] = "show-launcher-alignment-menu";
+const char kHideShelfAlignmentMenu[] = "hide-launcher-alignment-menu";
 
 bool UseAlternateFrameCaptionButtonStyle() {
-  return CommandLine::ForCurrentProcess()->
-      HasSwitch(kAshEnableAlternateFrameCaptionButtonStyle);
+  // For the sake of simplicity, the alternate caption button style is only
+  // used if snapped windows are always 50% of the screen's width.
+  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  return command_line->HasSwitch(kAshEnableAlternateFrameCaptionButtonStyle) &&
+      !command_line->HasSwitch(kAshMultipleSnapWindowWidths);
 }
 
 bool UseAlternateShelfLayout() {
@@ -204,16 +224,21 @@ bool UseDragOffShelf() {
       HasSwitch(kAshDisableDragOffShelf);
 }
 
+bool UseImmersiveFullscreenForAllWindows() {
+  return !CommandLine::ForCurrentProcess()->HasSwitch(
+      kAshEnableImmersiveFullscreenForBrowserOnly);
+}
+
 bool ShowShelfAlignmentMenu() {
   return !CommandLine::ForCurrentProcess()->
       HasSwitch(kHideShelfAlignmentMenu);
 }
 
-// Returns true if the full multi profile mode (M-31 version) is active.
-bool UseFullMultiProfileMode() {
+bool UseMultiUserTray() {
 #if defined(OS_CHROMEOS)
-  return CommandLine::ForCurrentProcess()->
-      HasSwitch(kAshEnableFullMultiProfileMode);
+  // TODO(skuhne): If this gets removed for good, remove also
+  // |SystemTray::user_items_| and the use of it.
+  return CommandLine::ForCurrentProcess()->HasSwitch(kAshEnableMultiUserTray);
 #else
   return false;
 #endif
@@ -221,6 +246,10 @@ bool UseFullMultiProfileMode() {
 
 bool UseOverviewMode() {
   return !CommandLine::ForCurrentProcess()->HasSwitch(kAshDisableOverviewMode);
+}
+
+bool UseDockedWindows() {
+  return !CommandLine::ForCurrentProcess()->HasSwitch(kAshDisableDockedWindows);
 }
 
 #if defined(OS_CHROMEOS)

@@ -19,6 +19,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/message_loop/message_loop.h"
 #include "base/strings/string16.h"
+#include "base/win/scoped_gdi_object.h"
 #include "base/win/win_util.h"
 #include "ui/base/accessibility/accessibility_types.h"
 #include "ui/base/ui_base_types.h"
@@ -102,7 +103,7 @@ const int WM_NCUAHDRAWFRAME = 0xAF;
 // An object that handles messages for a HWND that implements the views
 // "Custom Frame" look. The purpose of this class is to isolate the windows-
 // specific message handling from the code that wraps it. It is intended to be
-// used by both a views::NativeWidget and an aura::RootWindowHost
+// used by both a views::NativeWidget and an aura::WindowTreeHost
 // implementation.
 // TODO(beng): This object should eventually *become* the WindowImpl.
 class VIEWS_EXPORT HWNDMessageHandler :
@@ -122,6 +123,9 @@ class VIEWS_EXPORT HWNDMessageHandler :
   gfx::Rect GetWindowBoundsInScreen() const;
   gfx::Rect GetClientAreaBoundsInScreen() const;
   gfx::Rect GetRestoredBounds() const;
+  // This accounts for the case where the widget size is the client size.
+  gfx::Rect GetClientAreaBounds() const;
+
   void GetWindowPlacement(gfx::Rect* bounds,
                           ui::WindowShowState* show_state) const;
 
@@ -136,8 +140,6 @@ class VIEWS_EXPORT HWNDMessageHandler :
 
   void Show();
   void ShowWindowWithState(ui::WindowShowState show_state);
-  // TODO(beng): distinguish from ShowWindowWithState().
-  void Show(int show_state);
   void ShowMaximizedWithBounds(const gfx::Rect& bounds);
   void Hide();
 
@@ -174,16 +176,13 @@ class VIEWS_EXPORT HWNDMessageHandler :
 
   void SetVisibilityChangedAnimationsEnabled(bool enabled);
 
-  void SetTitle(const string16& title);
+  // Returns true if the title changed.
+  bool SetTitle(const base::string16& title);
 
   void SetCursor(HCURSOR cursor);
 
   void FrameTypeChanged();
 
-  // Disable Layered Window updates by setting to false.
-  void set_can_update_layered_window(bool can_update_layered_window) {
-    can_update_layered_window_ = can_update_layered_window;
-  }
   void SchedulePaintInRect(const gfx::Rect& rect);
   void SetOpacity(BYTE opacity);
 
@@ -254,6 +253,11 @@ class VIEWS_EXPORT HWNDMessageHandler :
   // frame windows.
   void ResetWindowRegion(bool force, bool redraw);
 
+  // Enables or disables rendering of the non-client (glass) area by DWM,
+  // under Vista and above, depending on whether the caller has requested a
+  // custom frame.
+  void UpdateDwmNcRenderingPolicy();
+
   // Calls DefWindowProc, safely wrapping the call in a ScopedRedrawLock to
   // prevent frame flicker. DefWindowProc handling can otherwise render the
   // classic-look window title bar directly.
@@ -279,6 +283,10 @@ class VIEWS_EXPORT HWNDMessageHandler :
   // Synchronously updates the invalid contents of the Widget. Valid for
   // layered windows only.
   void RedrawLayeredWindowContents();
+
+  // Attempts to force the window to be redrawn, ensuring that it gets
+  // onscreen.
+  void ForceRedrawWindow(int attempts);
 
   // Message Handlers ----------------------------------------------------------
 
@@ -343,6 +351,8 @@ class VIEWS_EXPORT HWNDMessageHandler :
     MSG_WM_CREATE(OnCreate)
     MSG_WM_DESTROY(OnDestroy)
     MSG_WM_DISPLAYCHANGE(OnDisplayChange)
+    MSG_WM_ENTERMENULOOP(OnEnterMenuLoop)
+    MSG_WM_EXITMENULOOP(OnExitMenuLoop)
     MSG_WM_ENTERSIZEMOVE(OnEnterSizeMove)
     MSG_WM_ERASEBKGND(OnEraseBkgnd)
     MSG_WM_EXITSIZEMOVE(OnExitSizeMove)
@@ -366,6 +376,7 @@ class VIEWS_EXPORT HWNDMessageHandler :
     MSG_WM_THEMECHANGED(OnThemeChanged)
     MSG_WM_WINDOWPOSCHANGED(OnWindowPosChanged)
     MSG_WM_WINDOWPOSCHANGING(OnWindowPosChanging)
+    MSG_WM_WTSSESSION_CHANGE(OnSessionChange)
   END_MSG_MAP()
 
   // Message Handlers.
@@ -384,8 +395,10 @@ class VIEWS_EXPORT HWNDMessageHandler :
   void OnDestroy();
   void OnDisplayChange(UINT bits_per_pixel, const CSize& screen_size);
   LRESULT OnDwmCompositionChanged(UINT msg, WPARAM w_param, LPARAM l_param);
+  void OnEnterMenuLoop(BOOL from_track_popup_menu);
   void OnEnterSizeMove();
   LRESULT OnEraseBkgnd(HDC dc);
+  void OnExitMenuLoop(BOOL is_shortcut_menu);
   void OnExitSizeMove();
   void OnGetMinMaxInfo(MINMAXINFO* minmax_info);
   LRESULT OnGetObject(UINT message, WPARAM w_param, LPARAM l_param);
@@ -408,6 +421,7 @@ class VIEWS_EXPORT HWNDMessageHandler :
   void OnPaint(HDC dc);
   LRESULT OnReflectedMessage(UINT message, WPARAM w_param, LPARAM l_param);
   LRESULT OnScrollMessage(UINT message, WPARAM w_param, LPARAM l_param);
+  void OnSessionChange(WPARAM status_code, PWTSSESSION_NOTIFICATION session_id);
   LRESULT OnSetCursor(UINT message, WPARAM w_param, LPARAM l_param);
   void OnSetFocus(HWND last_focused_window);
   LRESULT OnSetIcon(UINT size_type, HICON new_icon);
@@ -444,6 +458,9 @@ class VIEWS_EXPORT HWNDMessageHandler :
   // Whether all ancestors have been enabled. This is only used if is_modal_ is
   // true.
   bool restored_enabled_;
+
+  // The current cursor.
+  HCURSOR current_cursor_;
 
   // The last cursor that was active before the current one was selected. Saved
   // so that we can restore it.
@@ -514,12 +531,14 @@ class VIEWS_EXPORT HWNDMessageHandler :
   // Set to true when waiting for RedrawLayeredWindowContents().
   bool waiting_for_redraw_layered_window_contents_;
 
-  // True if we are allowed to update the layered window from the DIB backing
-  // store if necessary.
-  bool can_update_layered_window_;
-
   // True the first time nccalc is called on a sizable widget
   bool is_first_nccalc_;
+
+  // Copy of custom window region specified via SetRegion(), if any.
+  base::win::ScopedRegion custom_window_region_;
+
+  // If > 0 indicates a menu is running (we're showing a native menu).
+  int menu_depth_;
 
   // A factory used to lookup appbar autohide edges.
   base::WeakPtrFactory<HWNDMessageHandler> autohide_factory_;

@@ -16,7 +16,6 @@
 #include "content/browser/renderer_host/media/web_contents_capture_util.h"
 #include "content/browser/renderer_host/render_view_host_factory.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
-#include "content/browser/renderer_host/test_render_view_host.h"
 #include "content/port/browser/render_widget_host_view_frame_subscriber.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
@@ -24,6 +23,7 @@
 #include "content/public/test/test_browser_context.h"
 #include "content/public/test/test_browser_thread_bundle.h"
 #include "content/public/test/test_utils.h"
+#include "content/test/test_render_view_host.h"
 #include "content/test/test_web_contents.h"
 #include "media/base/video_util.h"
 #include "media/base/yuv_convert.h"
@@ -192,7 +192,7 @@ class CaptureTestView : public TestRenderWidgetHostView {
 
   // Simulate a compositor paint event for our subscriber.
   void SimulateUpdate() {
-    const base::Time present_time = base::Time::Now();
+    const base::TimeTicks present_time = base::TimeTicks::Now();
     RenderWidgetHostViewFrameSubscriber::DeliverFrameCallback callback;
     scoped_refptr<media::VideoFrame> target;
     if (subscriber_ && subscriber_->ShouldCaptureFrame(present_time,
@@ -315,33 +315,45 @@ class StubClient : public media::VideoCaptureDevice::Client {
   }
   virtual ~StubClient() {}
 
-  virtual scoped_refptr<media::VideoFrame> ReserveOutputBuffer(
-      const gfx::Size& size) OVERRIDE {
+  virtual scoped_refptr<media::VideoCaptureDevice::Client::Buffer>
+  ReserveOutputBuffer(media::VideoFrame::Format format,
+                      const gfx::Size& dimensions) OVERRIDE {
+    const size_t frame_bytes =
+        media::VideoFrame::AllocationSize(format, dimensions);
     int buffer_id_to_drop = VideoCaptureBufferPool::kInvalidId;  // Ignored.
-    return buffer_pool_->ReserveI420VideoFrame(size, 0, &buffer_id_to_drop);
+    int buffer_id =
+        buffer_pool_->ReserveForProducer(frame_bytes, &buffer_id_to_drop);
+    if (buffer_id == VideoCaptureBufferPool::kInvalidId)
+      return NULL;
+    void* data;
+    size_t size;
+    buffer_pool_->GetBufferInfo(buffer_id, &data, &size);
+    return scoped_refptr<media::VideoCaptureDevice::Client::Buffer>(
+        new PoolBuffer(buffer_pool_, buffer_id, data, size));
   }
 
   virtual void OnIncomingCapturedFrame(
       const uint8* data,
       int length,
-      base::Time timestamp,
+      base::TimeTicks timestamp,
       int rotation,
-      bool flip_vert,
-      bool flip_horiz) OVERRIDE {
+      const media::VideoCaptureFormat& frame_format) OVERRIDE {
     FAIL();
   }
 
-  virtual void OnIncomingCapturedVideoFrame(
-      const scoped_refptr<media::VideoFrame>& frame,
-      base::Time timestamp) OVERRIDE {
-    EXPECT_EQ(gfx::Size(kTestWidth, kTestHeight), frame->coded_size());
-    EXPECT_EQ(media::VideoFrame::I420, frame->format());
-    EXPECT_LE(
-        0,
-        buffer_pool_->RecognizeReservedBuffer(frame->shared_memory_handle()));
+  virtual void OnIncomingCapturedBuffer(const scoped_refptr<Buffer>& buffer,
+                                        media::VideoFrame::Format format,
+                                        const gfx::Size& dimensions,
+                                        base::TimeTicks timestamp,
+                                        int frame_rate) OVERRIDE {
+    EXPECT_EQ(gfx::Size(kTestWidth, kTestHeight), dimensions);
+    EXPECT_EQ(media::VideoFrame::I420, format);
     uint8 yuv[3];
+    size_t offset = 0;
     for (int plane = 0; plane < 3; ++plane) {
-      yuv[plane] = frame->data(plane)[0];
+      yuv[plane] = reinterpret_cast<uint8*>(buffer->data())[offset];
+      offset += media::VideoFrame::PlaneAllocationSize(
+          media::VideoFrame::I420, plane, dimensions);
     }
     // TODO(nick): We just look at the first pixel presently, because if
     // the analysis is too slow, the backlog of frames will grow without bound
@@ -349,15 +361,24 @@ class StubClient : public media::VideoCaptureDevice::Client {
     color_callback_.Run((SkColorSetRGB(yuv[0], yuv[1], yuv[2])));
   }
 
-  virtual void OnError() OVERRIDE {
+  virtual void OnError(const std::string& reason) OVERRIDE {
     error_callback_.Run();
   }
 
-  virtual void OnFrameInfo(const media::VideoCaptureCapability& info) OVERRIDE {
-    EXPECT_EQ(kTestFramesPerSecond, info.frame_rate);
-  }
-
  private:
+  class PoolBuffer : public media::VideoCaptureDevice::Client::Buffer {
+   public:
+    PoolBuffer(const scoped_refptr<VideoCaptureBufferPool>& pool,
+               int buffer_id,
+               void* data,
+               size_t size)
+        : Buffer(buffer_id, data, size), pool_(pool) {}
+
+   private:
+    virtual ~PoolBuffer() { pool_->RelinquishProducerReservation(id()); }
+    const scoped_refptr<VideoCaptureBufferPool> pool_;
+  };
+
   scoped_refptr<VideoCaptureBufferPool> buffer_pool_;
   base::Callback<void(SkColor)> color_callback_;
   base::Closure error_callback_;
@@ -571,14 +592,12 @@ TEST_F(WebContentsVideoCaptureDeviceTest, InvalidInitialWebContentsError) {
   // practice; we should be able to recover gracefully.
   ResetWebContents();
 
-  media::VideoCaptureCapability capture_format(
-      kTestWidth,
-      kTestHeight,
-      kTestFramesPerSecond,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
-  device()->AllocateAndStart(
-      capture_format, client_observer()->PassClient());
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(kTestWidth, kTestHeight);
+  capture_params.requested_format.frame_rate = kTestFramesPerSecond;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
+  device()->AllocateAndStart(capture_params, client_observer()->PassClient());
   ASSERT_NO_FATAL_FAILURE(client_observer()->WaitForError());
   device()->StopAndDeAllocate();
 }
@@ -586,14 +605,12 @@ TEST_F(WebContentsVideoCaptureDeviceTest, InvalidInitialWebContentsError) {
 TEST_F(WebContentsVideoCaptureDeviceTest, WebContentsDestroyed) {
   // We'll simulate the tab being closed after the capture pipeline is up and
   // running.
-  media::VideoCaptureCapability capture_format(
-      kTestWidth,
-      kTestHeight,
-      kTestFramesPerSecond,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
-  device()->AllocateAndStart(
-      capture_format, client_observer()->PassClient());
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(kTestWidth, kTestHeight);
+  capture_params.requested_format.frame_rate = kTestFramesPerSecond;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
+  device()->AllocateAndStart(capture_params, client_observer()->PassClient());
   // Do one capture to prove
   source()->SetSolidColor(SK_ColorRED);
   SimulateDrawEvent();
@@ -612,14 +629,12 @@ TEST_F(WebContentsVideoCaptureDeviceTest, WebContentsDestroyed) {
 
 TEST_F(WebContentsVideoCaptureDeviceTest,
        StopDeviceBeforeCaptureMachineCreation) {
-  media::VideoCaptureCapability capture_format(
-      kTestWidth,
-      kTestHeight,
-      kTestFramesPerSecond,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
-  device()->AllocateAndStart(
-      capture_format, client_observer()->PassClient());
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(kTestWidth, kTestHeight);
+  capture_params.requested_format.frame_rate = kTestFramesPerSecond;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
+  device()->AllocateAndStart(capture_params, client_observer()->PassClient());
 
   // Make a point of not running the UI messageloop here.
   device()->StopAndDeAllocate();
@@ -636,14 +651,12 @@ TEST_F(WebContentsVideoCaptureDeviceTest, StopWithRendererWorkToDo) {
   // Set up the test to use RGB copies and an normal
   source()->SetCanCopyToVideoFrame(false);
   source()->SetUseFrameSubscriber(false);
-  media::VideoCaptureCapability capture_format(
-      kTestWidth,
-      kTestHeight,
-      kTestFramesPerSecond,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
-  device()->AllocateAndStart(
-      capture_format, client_observer()->PassClient());
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(kTestWidth, kTestHeight);
+  capture_params.requested_format.frame_rate = kTestFramesPerSecond;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
+  device()->AllocateAndStart(capture_params, client_observer()->PassClient());
 
   base::RunLoop().RunUntilIdle();
 
@@ -658,14 +671,12 @@ TEST_F(WebContentsVideoCaptureDeviceTest, StopWithRendererWorkToDo) {
 }
 
 TEST_F(WebContentsVideoCaptureDeviceTest, DeviceRestart) {
-  media::VideoCaptureCapability capture_format(
-      kTestWidth,
-      kTestHeight,
-      kTestFramesPerSecond,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
-  device()->AllocateAndStart(
-      capture_format, client_observer()->PassClient());
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(kTestWidth, kTestHeight);
+  capture_params.requested_format.frame_rate = kTestFramesPerSecond;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
+  device()->AllocateAndStart(capture_params, client_observer()->PassClient());
   base::RunLoop().RunUntilIdle();
   source()->SetSolidColor(SK_ColorRED);
   SimulateDrawEvent();
@@ -684,7 +695,7 @@ TEST_F(WebContentsVideoCaptureDeviceTest, DeviceRestart) {
   base::RunLoop().RunUntilIdle();
 
   StubClientObserver observer2;
-  device()->AllocateAndStart(capture_format, observer2.PassClient());
+  device()->AllocateAndStart(capture_params, observer2.PassClient());
   source()->SetSolidColor(SK_ColorBLUE);
   SimulateDrawEvent();
   ASSERT_NO_FATAL_FAILURE(observer2.WaitForNextColor(SK_ColorBLUE));
@@ -699,14 +710,12 @@ TEST_F(WebContentsVideoCaptureDeviceTest, DeviceRestart) {
 // consumer. The test will alternate between the three capture paths, simulating
 // falling in and out of accelerated compositing.
 TEST_F(WebContentsVideoCaptureDeviceTest, GoesThroughAllTheMotions) {
-  media::VideoCaptureCapability capture_format(
-      kTestWidth,
-      kTestHeight,
-      kTestFramesPerSecond,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
-  device()->AllocateAndStart(
-      capture_format, client_observer()->PassClient());
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(kTestWidth, kTestHeight);
+  capture_params.requested_format.frame_rate = kTestFramesPerSecond;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
+  device()->AllocateAndStart(capture_params, client_observer()->PassClient());
 
   for (int i = 0; i < 6; i++) {
     const char* name = NULL;
@@ -752,18 +761,17 @@ TEST_F(WebContentsVideoCaptureDeviceTest, GoesThroughAllTheMotions) {
 }
 
 TEST_F(WebContentsVideoCaptureDeviceTest, RejectsInvalidAllocateParams) {
-  media::VideoCaptureCapability capture_format(
-      1280,
-      720,
-      -2,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(1280, 720);
+  capture_params.requested_format.frame_rate = -2;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
   BrowserThread::PostTask(
       BrowserThread::UI,
       FROM_HERE,
       base::Bind(&media::VideoCaptureDevice::AllocateAndStart,
                  base::Unretained(device()),
-                 capture_format,
+                 capture_params,
                  base::Passed(client_observer()->PassClient())));
   ASSERT_NO_FATAL_FAILURE(client_observer()->WaitForError());
   BrowserThread::PostTask(
@@ -775,17 +783,15 @@ TEST_F(WebContentsVideoCaptureDeviceTest, RejectsInvalidAllocateParams) {
 }
 
 TEST_F(WebContentsVideoCaptureDeviceTest, BadFramesGoodFrames) {
-  media::VideoCaptureCapability capture_format(
-      kTestWidth,
-      kTestHeight,
-      kTestFramesPerSecond,
-      media::PIXEL_FORMAT_I420,
-      media::ConstantResolutionVideoCaptureDevice);
+  media::VideoCaptureParams capture_params;
+  capture_params.requested_format.frame_size.SetSize(kTestWidth, kTestHeight);
+  capture_params.requested_format.frame_rate = kTestFramesPerSecond;
+  capture_params.requested_format.pixel_format = media::PIXEL_FORMAT_I420;
+  capture_params.allow_resolution_change = false;
   // 1x1 is too small to process; we intend for this to result in an error.
   source()->SetCopyResultSize(1, 1);
   source()->SetSolidColor(SK_ColorRED);
-  device()->AllocateAndStart(
-      capture_format, client_observer()->PassClient());
+  device()->AllocateAndStart(capture_params, client_observer()->PassClient());
 
   // These frames ought to be dropped during the Render stage. Let
   // several captures to happen.

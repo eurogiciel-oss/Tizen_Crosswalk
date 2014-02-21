@@ -1,12 +1,16 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <script>window.enablePixelTesting = true;</script>
-<script src="../../fast/js/resources/js-test-pre.js"></script>
+<script src="../../resources/js-test.js"></script>
 <script src="../../fast/repaint/resources/repaint.js"></script>
 </head>
 <body style="margin: 0px">
 
 <script type="text/javascript">
+    window.jsTestIsAsync = true;
+    if (window.testRunner)
+        testRunner.waitUntilDone();
+
     function test1() {
         object1 = document.getElementsByTagName("object")[0];
         debug("Check initial &lt;object&gt; size, before external resource loaded");
@@ -23,9 +27,6 @@
         shouldBeEqualToString("document.defaultView.getComputedStyle(object1).width", "400px");
         shouldBeEqualToString("document.defaultView.getComputedStyle(object1).height", "200px");
 
-        window.jsTestIsAsync = true;
-        if (window.testRunner)
-            testRunner.waitUntilDone();
         requestSizeChange();
     }
 

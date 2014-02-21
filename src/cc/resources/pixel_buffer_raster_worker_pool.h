@@ -9,6 +9,7 @@
 #include <set>
 #include <vector>
 
+#include "base/cancelable_callback.h"
 #include "base/containers/hash_tables.h"
 #include "cc/resources/raster_worker_pool.h"
 
@@ -20,27 +21,26 @@ class CC_EXPORT PixelBufferRasterWorkerPool : public RasterWorkerPool {
 
   static scoped_ptr<RasterWorkerPool> Create(
       ResourceProvider* resource_provider,
-      size_t num_threads,
+      ContextProvider* context_provider,
       size_t max_transfer_buffer_usage_bytes) {
-    return make_scoped_ptr<RasterWorkerPool>(
-        new PixelBufferRasterWorkerPool(resource_provider,
-                                        num_threads,
-                                        max_transfer_buffer_usage_bytes));
+    return make_scoped_ptr<RasterWorkerPool>(new PixelBufferRasterWorkerPool(
+        resource_provider, context_provider, max_transfer_buffer_usage_bytes));
   }
 
   // Overridden from WorkerPool:
   virtual void Shutdown() OVERRIDE;
-  virtual void CheckForCompletedTasks() OVERRIDE;
 
   // Overridden from RasterWorkerPool:
   virtual void ScheduleTasks(RasterTask::Queue* queue) OVERRIDE;
+  virtual unsigned GetResourceTarget() const OVERRIDE;
   virtual ResourceFormat GetResourceFormat() const OVERRIDE;
+  virtual void CheckForCompletedTasks() OVERRIDE;
   virtual void OnRasterTasksFinished() OVERRIDE;
   virtual void OnRasterTasksRequiredForActivationFinished() OVERRIDE;
 
  private:
   PixelBufferRasterWorkerPool(ResourceProvider* resource_provider,
-                              size_t num_threads,
+                              ContextProvider* context_provider,
                               size_t max_transfer_buffer_usage_bytes);
 
   void FlushUploads();
@@ -48,10 +48,9 @@ class CC_EXPORT PixelBufferRasterWorkerPool : public RasterWorkerPool {
   void ScheduleCheckForCompletedRasterTasks();
   void CheckForCompletedRasterTasks();
   void ScheduleMoreTasks();
-  void OnRasterTaskCompleted(
-      scoped_refptr<internal::RasterWorkerPoolTask> task,
-      bool was_canceled,
-      bool needs_upload);
+  void OnRasterTaskCompleted(scoped_refptr<internal::RasterWorkerPoolTask> task,
+                             bool was_canceled,
+                             bool needs_upload);
   void DidCompleteRasterTask(internal::RasterWorkerPoolTask* task);
   unsigned PendingRasterTaskCount() const;
   bool HasPendingTasks() const;
@@ -64,13 +63,9 @@ class CC_EXPORT PixelBufferRasterWorkerPool : public RasterWorkerPool {
   bool shutdown_;
 
   TaskMap pixel_buffer_tasks_;
-
-  typedef std::deque<scoped_refptr<internal::RasterWorkerPoolTask> > TaskDeque;
-  TaskDeque tasks_with_pending_upload_;
-  TaskDeque completed_tasks_;
-
-  typedef base::hash_set<internal::RasterWorkerPoolTask*> TaskSet;
-  TaskSet tasks_required_for_activation_;
+  RasterTaskDeque tasks_with_pending_upload_;
+  RasterTaskDeque completed_tasks_;
+  RasterTaskSet tasks_required_for_activation_;
 
   size_t scheduled_raster_task_count_;
   size_t bytes_pending_upload_;
@@ -81,6 +76,8 @@ class CC_EXPORT PixelBufferRasterWorkerPool : public RasterWorkerPool {
 
   bool should_notify_client_if_no_tasks_are_pending_;
   bool should_notify_client_if_no_tasks_required_for_activation_are_pending_;
+  bool raster_finished_task_pending_;
+  bool raster_required_for_activation_finished_task_pending_;
   ResourceFormat format_;
 
   DISALLOW_COPY_AND_ASSIGN(PixelBufferRasterWorkerPool);

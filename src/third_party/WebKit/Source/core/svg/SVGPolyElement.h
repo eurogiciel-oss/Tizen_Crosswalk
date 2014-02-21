@@ -23,52 +23,43 @@
 
 #include "SVGNames.h"
 #include "core/svg/SVGAnimatedBoolean.h"
-#include "core/svg/SVGExternalResourcesRequired.h"
-#include "core/svg/SVGGraphicsElement.h"
-#include "core/svg/SVGPointList.h"
+#include "core/svg/SVGAnimatedPointList.h"
+#include "core/svg/SVGGeometryElement.h"
 
 namespace WebCore {
 
-class SVGPolyElement : public SVGGraphicsElement
-                     , public SVGExternalResourcesRequired {
+class SVGPolyElement : public SVGGeometryElement {
 public:
-    SVGListPropertyTearOff<SVGPointList>* points();
-    SVGListPropertyTearOff<SVGPointList>* animatedPoints();
+    SVGAnimatedPointList* points() { return m_points.get(); }
 
-    SVGPointList& pointList() const { return m_points.value; }
-
-    static const SVGPropertyInfo* pointsPropertyInfo();
+    PassRefPtr<SVGPointListTearOff> pointsFromJavascript() { return m_points->baseVal(); }
+    PassRefPtr<SVGPointListTearOff> animatedPoints() { return m_points->animVal(); }
 
 protected:
     SVGPolyElement(const QualifiedName&, Document&);
 
 private:
-    virtual bool isValid() const { return SVGTests::isValid(); }
-    virtual bool supportsFocus() const OVERRIDE { return hasFocusEventListeners(); }
+    virtual bool supportsFocus() const OVERRIDE FINAL { return hasFocusEventListeners(); }
 
     bool isSupportedAttribute(const QualifiedName&);
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual void svgAttributeChanged(const QualifiedName&);
+    virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE FINAL;
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE FINAL;
 
-    virtual bool supportsMarkers() const { return true; }
+    virtual bool supportsMarkers() const OVERRIDE FINAL { return true; }
 
-    // Custom 'points' property
-    static void synchronizePoints(SVGElement* contextElement);
-    static PassRefPtr<SVGAnimatedProperty> lookupOrCreatePointsWrapper(SVGElement* contextElement);
+private:
+    RefPtr<SVGAnimatedPointList> m_points;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGPolyElement)
-        DECLARE_ANIMATED_BOOLEAN(ExternalResourcesRequired, externalResourcesRequired)
     END_DECLARE_ANIMATED_PROPERTIES
-
-protected:
-    mutable SVGSynchronizableAnimatedProperty<SVGPointList> m_points;
 };
 
-inline SVGPolyElement* toSVGPolyElement(SVGElement* element)
+inline bool isSVGPolyElement(const Node& node)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(!element || element->hasTagName(SVGNames::polygonTag) || element->hasTagName(SVGNames::polylineTag));
-    return static_cast<SVGPolyElement*>(element);
+    return node.hasTagName(SVGNames::polygonTag) || node.hasTagName(SVGNames::polylineTag);
 }
+
+DEFINE_NODE_TYPE_CASTS_WITH_FUNCTION(SVGPolyElement);
 
 } // namespace WebCore
 

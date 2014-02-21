@@ -9,13 +9,13 @@ InspectorTest.timelinePropertyFormatters = {
     stackTrace: "formatAsTypeName",
     url: "formatAsURL",
     scriptName: "formatAsTypeName",
-    usedHeapSize: "formatAsTypeName",
     usedHeapSizeDelta: "skip",
     mimeType: "formatAsTypeName",
     id: "formatAsTypeName",
     counters: "formatAsTypeName",
     timerId: "formatAsTypeName",
     scriptLine: "formatAsTypeName",
+    layerId: "formatAsTypeName",
     lineNumber: "formatAsTypeName",
     frameId: "formatAsTypeName",
     encodedDataLength: "formatAsTypeName",
@@ -28,6 +28,11 @@ InspectorTest.timelinePropertyFormatters = {
     networkTime: "formatAsTypeName",
     thread: "formatAsTypeName"
 };
+
+InspectorTest.timelinePresentationModel = function()
+{
+    return WebInspector.panels.timeline._currentView._presentationModel;
+}
 
 InspectorTest.startTimeline = function(callback)
 {
@@ -122,7 +127,7 @@ InspectorTest.printTimelineRecords = function(typeName, formatter)
 
 InspectorTest.printTimestampRecords = function(typeName, formatter)
 {
-    InspectorTest.innerPrintTimelineRecords(WebInspector.panels.timeline._presentationModel.eventDividerRecords().select("_record"), typeName, formatter);
+    InspectorTest.innerPrintTimelineRecords(InspectorTest.timelinePresentationModel().eventDividerRecords().select("_record"), typeName, formatter);
 };
 
 InspectorTest.innerPrintTimelineRecords = function(records, typeName, formatter)
@@ -136,7 +141,7 @@ InspectorTest.innerPrintTimelineRecords = function(records, typeName, formatter)
 };
 
 // Dump just the record name, indenting output on separate lines for subrecords
-InspectorTest.dumpTimelineRecord = function(record, level) 
+InspectorTest.dumpTimelineRecord = function(record, detailsCallback, level)
 {
     if (typeof level !== "number")
         level = 0;
@@ -153,12 +158,14 @@ InspectorTest.dumpTimelineRecord = function(record, level)
         || record.type === WebInspector.TimelineModel.RecordType.TimeEnd) {
         suffix = " : " + record.data.message;
     }
+    if (detailsCallback)
+        suffix += " " + detailsCallback(record);
     InspectorTest.addResult(prefix + InspectorTest._timelineAgentTypeToString(record.type) + suffix);
 
     var numChildren = record.children ? record.children.length : 0;
     for (var i = 0; i < numChildren; ++i)
-        InspectorTest.dumpTimelineRecord(record.children[i], level + 1);
-};
+        InspectorTest.dumpTimelineRecord(record.children[i], detailsCallback, level + 1);
+}
 
 InspectorTest.dumpTimelineRecords = function(timelineRecords)
 {
@@ -192,7 +199,7 @@ InspectorTest.findPresentationRecord = function(type)
         result = record;
         return true;
     }
-    var records = WebInspector.panel("timeline")._rootRecord().children;
+    var records = WebInspector.panel("timeline")._currentView._rootRecord().children;
     WebInspector.TimelinePresentationModel.forAllRecords(records, findByType);
     return result;
 }

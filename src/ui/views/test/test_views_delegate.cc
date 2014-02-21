@@ -13,12 +13,19 @@
 #include "ui/views/widget/native_widget_aura.h"
 #endif
 
+#if defined(USE_AURA)
+#include "ui/views/corewm/wm_state.h"
+#endif
+
 namespace views {
 
 TestViewsDelegate::TestViewsDelegate()
     : use_transparent_windows_(false) {
   DCHECK(!ViewsDelegate::views_delegate);
   ViewsDelegate::views_delegate = this;
+#if defined(USE_AURA)
+  wm_state_.reset(new views::corewm::WMState);
+#endif
 }
 
 TestViewsDelegate::~TestViewsDelegate() {
@@ -43,13 +50,15 @@ bool TestViewsDelegate::GetSavedWindowPlacement(
   return false;
 }
 
+#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+gfx::ImageSkia* TestViewsDelegate::GetDefaultWindowIcon() const {
+  return NULL;
+}
+#endif
+
 NonClientFrameView* TestViewsDelegate::CreateDefaultNonClientFrameView(
     Widget* widget) {
   return NULL;
-}
-
-bool TestViewsDelegate::UseTransparentWindows() const {
-  return use_transparent_windows_;
 }
 
 content::WebContents* TestViewsDelegate::CreateWebContents(
@@ -61,6 +70,12 @@ content::WebContents* TestViewsDelegate::CreateWebContents(
 void TestViewsDelegate::OnBeforeWidgetInit(
     Widget::InitParams* params,
     internal::NativeWidgetDelegate* delegate) {
+  if (params->opacity == Widget::InitParams::INFER_OPACITY) {
+    if (use_transparent_windows_)
+      params->opacity = Widget::InitParams::TRANSLUCENT_WINDOW;
+    else
+      params->opacity = Widget::InitParams::OPAQUE_WINDOW;
+  }
 }
 
 base::TimeDelta TestViewsDelegate::GetDefaultTextfieldObscuredRevealDuration() {

@@ -30,13 +30,12 @@
 #include "core/html/canvas/CanvasStyle.h"
 
 #include "CSSPropertyNames.h"
-#include "core/css/CSSParser.h"
+#include "core/css/parser/BisonCSSParser.h"
 #include "core/css/StylePropertySet.h"
 #include "core/html/HTMLCanvasElement.h"
 #include "core/html/canvas/CanvasGradient.h"
 #include "core/html/canvas/CanvasPattern.h"
-#include "core/platform/graphics/GraphicsContext.h"
-#include "wtf/Assertions.h"
+#include "platform/graphics/GraphicsContext.h"
 #include "wtf/PassRefPtr.h"
 
 namespace WebCore {
@@ -47,9 +46,9 @@ static ColorParseResult parseColor(RGBA32& parsedColor, const String& colorStrin
 {
     if (equalIgnoringCase(colorString, "currentcolor"))
         return ParsedCurrentColor;
-    if (CSSParser::parseColor(parsedColor, colorString))
+    if (BisonCSSParser::parseColor(parsedColor, colorString))
         return ParsedRGBA;
-    if (CSSParser::parseSystemColor(parsedColor, colorString, document))
+    if (BisonCSSParser::parseSystemColor(parsedColor, colorString, document))
         return ParsedSystemColor;
     return ParseFailed;
 }
@@ -59,7 +58,7 @@ RGBA32 currentColor(HTMLCanvasElement* canvas)
     if (!canvas || !canvas->inDocument() || !canvas->inlineStyle())
         return Color::black;
     RGBA32 rgba = Color::black;
-    CSSParser::parseColor(rgba, canvas->inlineStyle()->getPropertyValue(CSSPropertyColor));
+    BisonCSSParser::parseColor(rgba, canvas->inlineStyle()->getPropertyValue(CSSPropertyColor));
     return rgba;
 }
 

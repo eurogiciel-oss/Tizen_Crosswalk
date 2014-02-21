@@ -13,7 +13,7 @@
 
 #include "base/compiler_specific.h"
 #include "base/memory/scoped_ptr.h"
-#include "base/message_loop/message_loop.h"
+#include "base/message_loop/message_pump_dispatcher.h"
 #include "base/timer/timer.h"
 #include "ui/events/event_constants.h"
 #include "ui/views/controls/menu/menu_delegate.h"
@@ -45,7 +45,7 @@ class MenuRunnerImpl;
 // MenuController is used internally by the various menu classes to manage
 // showing, selecting and drag/drop for menus. All relevant events are
 // forwarded to the MenuController from SubmenuView and MenuHost.
-class VIEWS_EXPORT MenuController : public base::MessageLoop::Dispatcher,
+class VIEWS_EXPORT MenuController : public base::MessagePumpDispatcher,
                                     public WidgetObserver {
  public:
   // Enumeration of how the menu should exit.
@@ -416,8 +416,8 @@ class VIEWS_EXPORT MenuController : public base::MessageLoop::Dispatcher,
   // |match_function| is used to determine which menus match.
   SelectByCharDetails FindChildForMnemonic(
       MenuItemView* parent,
-      char16 key,
-      bool (*match_function)(MenuItemView* menu, char16 mnemonic));
+      base::char16 key,
+      bool (*match_function)(MenuItemView* menu, base::char16 mnemonic));
 
   // Selects or accepts the appropriate menu item based on |details|. Returns
   // true if |Accept| was invoked (which happens if there aren't multiple item
@@ -426,7 +426,7 @@ class VIEWS_EXPORT MenuController : public base::MessageLoop::Dispatcher,
 
   // Selects by mnemonic, and if that doesn't work tries the first character of
   // the title. Returns true if a match was selected and the menu should exit.
-  bool SelectByChar(char16 key);
+  bool SelectByChar(base::char16 key);
 
   // For Windows and Aura we repost an event for some events that dismiss
   // the context menu. The event is then reprocessed to cause its result

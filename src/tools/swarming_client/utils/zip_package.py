@@ -1,6 +1,6 @@
-# Copyright 2013 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2013 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Utilities to work with importable python zip packages."""
 
@@ -265,7 +265,7 @@ def extract_resource(package, resource):
   data = pkgutil.get_data(package.__name__, resource)
   if data is None:
     raise ValueError('No such resource in zipped %s: %s' % (package, resource))
-  fd, path = tempfile.mkstemp()
+  fd, path = tempfile.mkstemp(prefix='zip_package')
   with os.fdopen(fd, 'w') as stream:
     stream.write(data)
 

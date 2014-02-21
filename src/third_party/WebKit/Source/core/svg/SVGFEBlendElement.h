@@ -21,9 +21,9 @@
 #ifndef SVGFEBlendElement_h
 #define SVGFEBlendElement_h
 
-#include "core/platform/graphics/filters/FEBlend.h"
 #include "core/svg/SVGAnimatedEnumeration.h"
 #include "core/svg/SVGFilterPrimitiveStandardAttributes.h"
+#include "platform/graphics/filters/FEBlend.h"
 
 namespace WebCore {
 
@@ -70,16 +70,16 @@ struct SVGPropertyTraits<BlendModeType> {
 
 class SVGFEBlendElement FINAL : public SVGFilterPrimitiveStandardAttributes {
 public:
-    static PassRefPtr<SVGFEBlendElement> create(const QualifiedName&, Document&);
+    static PassRefPtr<SVGFEBlendElement> create(Document&);
 
 private:
-    SVGFEBlendElement(const QualifiedName&, Document&);
+    explicit SVGFEBlendElement(Document&);
 
     bool isSupportedAttribute(const QualifiedName&);
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) OVERRIDE;
-    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName& attrName);
-    virtual void svgAttributeChanged(const QualifiedName&);
-    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*);
+    virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName& attrName) OVERRIDE;
+    virtual void svgAttributeChanged(const QualifiedName&) OVERRIDE;
+    virtual PassRefPtr<FilterEffect> build(SVGFilterBuilder*, Filter*) OVERRIDE;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEBlendElement)
         DECLARE_ANIMATED_STRING(In1, in1)

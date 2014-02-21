@@ -16,10 +16,13 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
   // Maximum Gaia loading time in seconds.
   /** @const */ var MAX_GAIA_LOADING_TIME_SEC = 60;
 
+  /** @const */ var HELP_TOPIC_ENTERPRISE_REPORTING = 2535613;
+
   return {
     EXTERNAL_API: [
       'loadAuthExtension',
       'updateAuthExtension',
+      'setAuthenticatedUserEmail',
       'doReload',
       'onFrameError'
     ],
@@ -37,13 +40,6 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
      * @private
      */
     gaiaAuthParams_: null,
-
-    /**
-     * Whether extension should be loaded silently.
-     * @type {boolean}
-     * @private
-     */
-    silentLoad_: false,
 
     /**
      * Whether local version of Gaia page is used.
@@ -77,12 +73,20 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
       this.gaiaAuthHost_ = new cr.login.GaiaAuthHost($('signin-frame'));
       this.gaiaAuthHost_.addEventListener(
           'ready', this.onAuthReady_.bind(this));
+      this.gaiaAuthHost_.retrieveAuthenticatedUserEmailCallback =
+          this.onRetrieveAuthenticatedUserEmail_.bind(this);
       this.gaiaAuthHost_.confirmPasswordCallback =
           this.onAuthConfirmPassword_.bind(this);
       this.gaiaAuthHost_.noPasswordCallback =
           this.onAuthNoPassword_.bind(this);
-      this.gaiaAuthHost_.authPageLoadedCallback =
-          this.onAuthPageLoaded_.bind(this);
+      this.gaiaAuthHost_.addEventListener('authFlowChange',
+          this.onAuthFlowChange_.bind(this));
+
+      $('enterprise-info-hint-link').addEventListener('click', function(e) {
+        chrome.send('launchHelpApp', [HELP_TOPIC_ENTERPRISE_REPORTING]);
+        e.preventDefault();
+      });
+
 
       this.updateLocalizedContent();
     },
@@ -221,7 +225,6 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
      * @private
      */
     loadAuthExtension: function(data) {
-      this.silentLoad_ = data.silentLoad;
       this.isLocal = data.isLocal;
       this.email = '';
       this.classList.toggle('saml', false);
@@ -296,13 +299,43 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
     },
 
     /**
-     * Invoked when the auth host notifies about an auth page is loaded.
-     * @param {boolean} isSAML True if the loaded auth page is SAML.
+     * Sends the authenticated user's e-mail address to the auth extension.
+     * @param {number} attemptToken The opaque token provided to
+     *     onRetrieveAuthenticatedUserEmail_.
+     * @param {string} email The authenticated user's e-mail address.
      */
-    onAuthPageLoaded_: function(isSAML) {
+    setAuthenticatedUserEmail: function(attemptToken, email) {
+      this.gaiaAuthHost_.setAuthenticatedUserEmail(attemptToken, email);
+    },
+
+    /**
+     * Whether the current auth flow is SAML.
+     */
+    isSAML: function() {
+       return this.gaiaAuthHost_.authFlow ==
+           cr.login.GaiaAuthHost.AuthFlow.SAML;
+    },
+
+    /**
+     * Invoked when the authFlow property is changed no the gaia host.
+     * @param {Event} e Property change event.
+     */
+    onAuthFlowChange_: function(e) {
+      var isSAML = this.isSAML();
+
+      if (isSAML) {
+        $('saml-notice-message').textContent = loadTimeData.getStringF(
+            'samlNotice',
+            this.gaiaAuthHost_.authDomain);
+      }
+
       this.classList.toggle('saml', isSAML);
-      if (Oobe.getInstance().currentScreen === this)
+      $('saml-notice-container').hidden = !isSAML;
+
+      if (Oobe.getInstance().currentScreen === this) {
         Oobe.getInstance().updateScreenSize(this);
+        $('login-header-bar').allowCancel = isSAML || this.cancelAllowed_;
+      }
     },
 
     /**
@@ -324,6 +357,17 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
 
       // Warm up the user images screen.
       Oobe.getInstance().preloadScreen({id: SCREEN_USER_IMAGE_PICKER});
+    },
+
+    /**
+     * Invoked when the auth host needs the authenticated user's e-mail to be
+     * retrieved.
+     * @param {number} attemptToken Opaque token to be passed to
+     *     setAuthenticatedUserEmail along with the e-mail address.
+     * @private
+     */
+    onRetrieveAuthenticatedUserEmail_: function(attemptToken) {
+      chrome.send('retrieveAuthenticatedUserEmail', [attemptToken]);
     },
 
     /**
@@ -378,7 +422,9 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
                      credentials.authCode]);
       } else {
         chrome.send('completeLogin',
-                    [credentials.email, credentials.password]);
+                    [credentials.email,
+                     credentials.password,
+                     credentials.usingSAML]);
       }
 
       this.loading = true;
@@ -435,15 +481,18 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
             'createLocallyManagedUser',
             '<a id="createManagedUserLink" class="signin-link" href="#">',
             '</a>');
-      $('createAccountLink').onclick = function() {
+      $('createAccountLink').addEventListener('click', function(e) {
         chrome.send('createAccount');
-      };
-      $('guestSigninLink').onclick = function() {
+        e.preventDefault();
+      });
+      $('guestSigninLink').addEventListener('click', function(e) {
         chrome.send('launchIncognito');
-      };
-      $('createManagedUserLink').onclick = function() {
+        e.preventDefault();
+      });
+      $('createManagedUserLink').addEventListener('click', function(e) {
         chrome.send('showLocallyManagedUserCreationScreen');
-      };
+        e.preventDefault();
+      });
     },
 
     /**
@@ -479,8 +528,16 @@ login.createScreen('GaiaSigninScreen', 'gaia-signin', function() {
      * Called when user canceled signin.
      */
     cancel: function() {
-      if (!this.cancelAllowed_)
+      if (!this.cancelAllowed_) {
+        // In OOBE signin screen, cancel is not allowed because there is
+        // no other screen to show. If user is in middle of a saml flow,
+        // reset signin screen to get out of the saml flow.
+        if (this.isSAML())
+          Oobe.resetSigninUI(true);
+
         return;
+      }
+
       $('pod-row').loadLastWallpaper();
       Oobe.showScreen({id: SCREEN_ACCOUNT_PICKER});
       Oobe.resetSigninUI(true);

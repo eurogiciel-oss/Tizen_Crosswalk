@@ -50,7 +50,11 @@ def DeviceInfo(serial, options):
   device_build_type = device_adb.GetBuildType()
   device_product_name = device_adb.GetProductName()
 
-  battery = device_adb.GetBatteryInfo()
+  try:
+    battery = device_adb.GetBatteryInfo()
+  except Exception as e:
+    battery = None
+    logging.error('Unable to obtain battery info for %s, %s', serial, e)
 
   def _GetData(re_expression, line, lambda_function=lambda x:x):
     if not line:
@@ -221,7 +225,7 @@ def RestartUsb():
   if not os.path.isfile('/usr/bin/restart_usb'):
     print ('ERROR: Could not restart usb. /usr/bin/restart_usb not installed '
            'on host (see BUG=305769).')
-    return 1
+    return False
 
   lsusb_proc = bb_utils.SpawnCmd(['lsusb'], stdout=subprocess.PIPE)
   lsusb_output, _ = lsusb_proc.communicate()
@@ -232,7 +236,7 @@ def RestartUsb():
   usb_devices = [re.findall('Bus (\d\d\d) Device (\d\d\d)', lsusb_line)[0]
                  for lsusb_line in lsusb_output.strip().split('\n')]
 
-  failed_restart = False
+  all_restarted = True
   # Walk USB devices from leaves up (i.e reverse sorted) restarting the
   # connection. If a parent node (e.g. usb hub) is restarted before the
   # devices connected to it, the (bus, dev) for the hub can change, making the
@@ -243,14 +247,11 @@ def RestartUsb():
       return_code = bb_utils.RunCmd(['/usr/bin/restart_usb', bus, dev])
       if return_code:
         print 'Error restarting USB device /dev/bus/usb/%s/%s' % (bus, dev)
-        failed_restart = True
+        all_restarted = False
       else:
         print 'Restarted USB device /dev/bus/usb/%s/%s' % (bus, dev)
 
-  if failed_restart:
-    return 1
-
-  return 0
+  return all_restarted
 
 
 def KillAllAdb():
@@ -295,16 +296,24 @@ def main():
   if options.restart_usb:
     expected_devices = GetLastDevices(os.path.abspath(options.out_dir))
     devices = android_commands.GetAttachedDevices()
-    # Only restart usb if devices are missing
+    # Only restart usb if devices are missing.
     if set(expected_devices) != set(devices):
       KillAllAdb()
-      if RestartUsb():
-        return 1
       retries = 5
+      usb_restarted = True
+      if not RestartUsb():
+        usb_restarted = False
+        bb_annotations.PrintWarning()
+        print 'USB reset stage failed, wait for any device to come back.'
       while retries:
         time.sleep(1)
         devices = android_commands.GetAttachedDevices()
         if set(expected_devices) == set(devices):
+          # All devices are online, keep going.
+          break
+        if not usb_restarted and devices:
+          # The USB wasn't restarted, but there's at least one device online.
+          # No point in trying to wait for all devices.
           break
         retries -= 1
 

@@ -4,13 +4,15 @@ var mockLatitude = 51.478;
 var mockLongitude = -0.166;
 var mockAccuracy = 100;
 
-if (window.testRunner) {
-    testRunner.setGeolocationPermission(true);
-    testRunner.setMockGeolocationPosition(mockLatitude,
-                                                    mockLongitude,
-                                                    mockAccuracy);
-} else
-    debug('This test can not be run without the testRunner');
+if (!window.testRunner || !window.internals)
+    debug('This test can not run without testRunner or internals');
+
+internals.setGeolocationClientMock(document);
+internals.setGeolocationPermission(document, true);
+internals.setGeolocationPosition(document,
+                                 mockLatitude,
+                                 mockLongitude,
+                                 mockAccuracy);
 
 var position;
 navigator.geolocation.getCurrentPosition(function(p) {
@@ -22,6 +24,7 @@ navigator.geolocation.getCurrentPosition(function(p) {
     // Yield to allow for the error callback to be invoked. The timer
     // must be started before the exception is thrown.
     window.setTimeout(assertWeGotException, 0);
+    expectError();
     throw new Error('Exception in success callback');
 }, function(e) {
     testFailed('Error callback invoked unexpectedly');

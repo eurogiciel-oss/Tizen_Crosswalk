@@ -31,7 +31,7 @@ var allBufferTypes =
     ["Uint16", Uint16Array, 2],
     ["Float32", Float32Array, 4],
     ["Float64", Float64Array, 8],
-    ["DataView", DataView, 1] 
+    ["DataView", DataView, 1]
 ];
 
 function isTypedArray(view)
@@ -53,6 +53,11 @@ function isDataView(view)
 function isArrayBuffer(buffer)
 {
     return (buffer instanceof ArrayBuffer);
+}
+
+function isDataCloneError(e)
+{
+    return (e.name === "DataCloneError");
 }
 
 function assertBufferClosed(testName, buffer)
@@ -257,6 +262,10 @@ function wrapFailSend(testName, message, xfer)
     try {
         window.postMessage(message, '*', xfer);
     } catch (e) {
+        if (!isDataCloneError(e)) {
+            testFailed(testName + ": expected postMessage to throw DataCloneError but it didn't.");
+            return false;
+        }
         return true;
     }
     testFailed(testName + ": expected postMessage to fail but it didn't.");
@@ -319,8 +328,10 @@ var testList = [{
 }, {
     name: "transfer list multiple",
     send: function(name) {
+        var buffer0 = createBuffer(arraySize);
+        wrapFailSend(name, { buffer : buffer0 }, [buffer0, buffer0]);
         var buffer = createBuffer(arraySize);
-        wrapSend(name, { buffer : buffer }, [buffer,buffer]);
+        wrapSend(name, { buffer : buffer }, [buffer]);
         assertBufferClosed(name, buffer);
         wrapFailSend(name, [buffer], [buffer]);
         wrapFailSend(name, [], [buffer]);

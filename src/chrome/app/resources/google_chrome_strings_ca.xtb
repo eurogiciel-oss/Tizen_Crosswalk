@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="ca">
+<translation id="3234920859344197194">Aquest lloc fa servir el connector Chrome Frame, que aviat deixarà de rebre actualitzacions d'estabilitat i de seguretat. Desinstal·leu-lo i actualitzeu el navegador a una versió més moderna.</translation>
 <translation id="8914504000324227558">Torna a iniciar Chrome</translation>
 <translation id="8000275528373650868">Google Chrome requereix Windows Vista o Windows XP amb SP2 o superior.</translation>
 <translation id="8485767968786176057">En aquest cas, l'adreça que apareix al certificat no coincideix amb la del lloc web al qual el vostre navegador ha provat d'accedir. És possible que un atacant hagi interceptat les comunicacions i que presenti un certificat per a un lloc web diferent, la qual cosa provocaria un error de coincidència. També pot ser que el servidor estigui configurat per retornar el mateix certificat per a diversos llocs web, inclòs el que esteu provant de visitar, malgrat que aquest certificat no sigui vàlid per a tots els llocs web. Google Chrome pot assegurar-vos que heu arribat a &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, però no pot verificar que sigui el mateix lloc que &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, que és on voleu arribar. Si continueu, Chrome no comprovarà cap més error en la coincidència de noms.</translation>
@@ -23,13 +24,12 @@
 <translation id="4891791193823137474">Permet que Google Chrome s'executi en procés de fons</translation>
 <translation id="2896252579017640304">Inicia les aplicacions de Chrome</translation>
 <translation id="2370289711218562573">Google Chrome està important els preferits/les adreces d'interès.</translation>
-<translation id="8762286861469007470">Detector de Captive Portal a Chrome</translation>
 <translation id="2721687379934343312">En un Mac, les contrasenyes es desen a Keychain i altres usuaris de Chrome que comparteixin aquest compte d'OS X poden accedir-hi i sincronitzar-les.</translation>
 <translation id="1761870329818521071">No es pot instal·lar la mateixa versió de Google Chrome Frame que s'executa actualment. Tanqueu Google Chrome Frame i torneu-ho a provar.</translation>
 <translation id="6014844626092547096">Heu iniciat la sessió a Chrome. El vostre administrador ha desactivat la sincronització.</translation>
 <translation id="3140883423282498090">Els canvis es faran efectius la propera vegada que reinicieu Google Chrome.</translation>
 <translation id="1773601347087397504">Obtén ajuda per a l'ús de Chrome OS</translation>
-<translation id="6982337800632491844"><ph name="DOMAIN"/> exigeix que llegiu i accepteu els Termes i condicions següents abans no utilitzeu el dispositiu. Aquestes condicions no amplien, modifiquen ni restringeixen les condicions de Google Chrome OS.</translation>
+<translation id="6982337800632491844"><ph name="DOMAIN"/> exigeix que llegiu i accepteu les Condicions del servei següents abans no utilitzeu el dispositiu. Aquestes condicions no amplien, modifiquen ni restringeixen les condicions de Google Chrome OS.</translation>
 <translation id="4309555186815777032">(cal <ph name="BEGIN_BUTTON"/>reiniciar<ph name="END_BUTTON"/> Chrome)</translation>
 <translation id="8030318113982266900">S'està actualitzant el vostre dispositiu al canal <ph name="CHANNEL_NAME"/>...</translation>
 <translation id="5339639696978861456">Chrome Frame s'ha actualitzat. Torneu a iniciar el navegador. Versió de Chrome: <ph name="TODO_0001"/>; versió de Chrome Frame: <ph name="TODO_0002"/></translation>
@@ -51,16 +51,16 @@
 <translation id="8227755444512189073">Google Chrome ha d'iniciar una aplicació externa per gestionar els enllaços <ph name="SCHEME"/>. L'enllaç sol·licitat és <ph name="PROTOLINK"/>.</translation>
 <translation id="8290100596633877290">Google Chrome s'ha bloquejat. Voleu tornar-lo a iniciar?</translation>
 <translation id="1480489203462860648">Prova'l, ja està instal·lat</translation>
-<translation id="5204098752394657250"><ph name="TERMS_OF_SERVICE_LINK"/>Termes i condicions<ph name="END_TERMS_OF_SERVICE_LINK"/> de Google Chrome</translation>
+<translation id="5204098752394657250"><ph name="TERMS_OF_SERVICE_LINK"/>Condicions del servei<ph name="END_TERMS_OF_SERVICE_LINK"/> de Google Chrome</translation>
 <translation id="1393853151966637042">Obtén ajuda per a l'ús de Chrome</translation>
 <translation id="7398801000654795464">Teníeu la sessió iniciada a Chrome com a <ph name="USER_EMAIL_ADDRESS"/>. Utilitzeu el mateix compte per tornar-hi a iniciar la sessió.</translation>
 <translation id="1697213158865901863">Google Chrome Frame</translation>
 <translation id="4513711165509885787">Els detalls de facturació s'han desat a Chrome.</translation>
 <translation id="7098166902387133879">Google Chrome està utilitzant el micròfon.</translation>
-<translation id="3590194807845837023">Desbloqueja el perfil i torna a iniciar</translation>
 <translation id="4053720452172726777">Personalitza i controla Google Chrome</translation>
 <translation id="6423071462708908582">Heu provat d'accedir a &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, però el servidor ha presentat un certificat caducat. No hi ha informació disponible que indiqui si el certificat s'ha posat en perill des del seu venciment. Això vol dir que  Google Chrome no pot garantir que no us estigueu comunicant amb un atacant en comptes del domini &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;. El rellotge del vostre equip està definit en aquest moment a <ph name="CURRENT_TIME"/>. És l'hora correcta? Si no, hauríeu de corregir l'error i d'actualitzar aquesta pàgina.</translation>
 <translation id="3197823471738295152">El dispositiu està actualitzat.</translation>
+<translation id="8286862437124483331">Google Chrome està provant de mostrar contrasenyes. Escriviu la vostra contrasenya de Windows per permetre-ho.</translation>
 <translation id="3889417619312448367">Desinstal·la Google Chrome</translation>
 <translation id="1434626383986940139">Aplicacions de Chrome Canary</translation>
 <translation id="8551886023433311834">L'actualització està a punt d'acabar. Reinicieu el dispositiu per completar-la.</translation>
@@ -179,7 +179,6 @@ En iniciar la sessió, sigui amb l'usuari que sigui, es combinarà amb <ph name=
 <translation id="2189123953385179981">Google ChromeOS no és compatible amb l'inici d'una aplicació externa per gestionar els enllaços <ph name="SCHEME"/>. L'enllaç sol·licitat és <ph name="PROTOLINK"/>.</translation>
 <translation id="7396375882099008034">Configureu el tallafoc o l'antivirus per permetre que Chrome accedeixi a la xarxa.</translation>
 <translation id="9102715433345326100">Aquest fitxer és maliciós i Chrome l'ha bloquejat.</translation>
-<translation id="3170677364322086041">Aquest lloc utilitza un connector de Chrome Frame que ja s'ha retirat i no rep actualitzacions de seguretat ni d'estabilitat. Desinstal·leu-lo i instal·leu un navegador més modern.</translation>
 <translation id="8205111949707227942">Opcional: ajudeu a millorar Chrome OS; envieu-nos automàticament les estadístiques d'ús i els informes de bloqueig a Google.</translation>
 <translation id="7253415505590551024">En aquests moments hi ha baixades en curs. Voleu sortir de Google Chrome i cancel·lar les baixades?</translation>
 <translation id="7196020411877309443">Per què veig aquest missatge?</translation>
@@ -196,6 +195,7 @@ En iniciar la sessió, sigui amb l'usuari que sigui, es combinarà amb <ph name=
           Configuració de LAN
           i desmarqueu Utilitza un servidor intermediari per a la LAN.</translation>
 <translation id="7825851276765848807">La instal·lació ha fallat a causa d'un error no especificat. Torneu a baixar Google Chrome.</translation>
+<translation id="4919523385405675060">Aquest lloc fa servir el connector Chrome Frame, que aviat deixarà de rebre actualitzacions d'estabilitat i de seguretat. Desinstal·leu-lo i baixeu un navegador compatible.</translation>
 <translation id="1061257178446858647">Heu iniciat la sessió a Chrome. S'estan sincronitzant les adreces d'interès, l'historial i altres opcions de configuració amb el vostre compte de Google.</translation>
 <translation id="3335672657969596251">Google Chrome no és compatible amb <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Tanqueu la sessió i torneu a iniciar-la perquè aquest canvi es faci efectiu.</translation>

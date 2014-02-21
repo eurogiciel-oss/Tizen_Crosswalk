@@ -9,9 +9,6 @@
 #include "SkFlattenableBuffers.h"
 #include "SkThread.h"
 
-SK_DEFINE_INST_COUNT(SkPixelRef)
-
-
 #ifdef SK_USE_POSIX_THREADS
 
     static SkBaseMutex gPixelRefMutexRing[] = {
@@ -85,21 +82,37 @@ void SkPixelRef::setMutex(SkBaseMutex* mutex) {
 // just need a > 0 value, so pick a funny one to aid in debugging
 #define SKPIXELREF_PRELOCKED_LOCKCOUNT     123456789
 
-SkPixelRef::SkPixelRef(SkBaseMutex* mutex) {
-    this->setMutex(mutex);
-    fPixels = NULL;
-    fColorTable = NULL; // we do not track ownership of this
+SkPixelRef::SkPixelRef(const SkImageInfo& info) : fInfo(info) {
+    this->setMutex(NULL);
+    fRec.zero();
     fLockCount = 0;
     this->needsNewGenID();
     fIsImmutable = false;
     fPreLocked = false;
 }
 
-SkPixelRef::SkPixelRef(SkFlattenableReadBuffer& buffer, SkBaseMutex* mutex)
-        : INHERITED(buffer) {
+
+SkPixelRef::SkPixelRef(const SkImageInfo& info, SkBaseMutex* mutex) : fInfo(info) {
     this->setMutex(mutex);
-    fPixels = NULL;
-    fColorTable = NULL; // we do not track ownership of this
+    fRec.zero();
+    fLockCount = 0;
+    this->needsNewGenID();
+    fIsImmutable = false;
+    fPreLocked = false;
+}
+
+static SkImageInfo read_info(SkFlattenableReadBuffer& buffer) {
+    SkImageInfo info;
+    info.unflatten(buffer);
+    return info;
+}
+
+SkPixelRef::SkPixelRef(SkFlattenableReadBuffer& buffer, SkBaseMutex* mutex)
+        : INHERITED(buffer)
+        , fInfo(read_info(buffer))
+{
+    this->setMutex(mutex);
+    fRec.zero();
     fLockCount = 0;
     fIsImmutable = buffer.readBool();
     fGenerationID = buffer.readUInt();
@@ -123,12 +136,13 @@ void SkPixelRef::cloneGenID(const SkPixelRef& that) {
     that.fUniqueGenerationID = false;
 }
 
-void SkPixelRef::setPreLocked(void* pixels, SkColorTable* ctable) {
+void SkPixelRef::setPreLocked(void* pixels, size_t rowBytes, SkColorTable* ctable) {
 #ifndef SK_IGNORE_PIXELREF_SETPRELOCKED
     // only call me in your constructor, otherwise fLockCount tracking can get
     // out of sync.
-    fPixels = pixels;
-    fColorTable = ctable;
+    fRec.fPixels = pixels;
+    fRec.fColorTable = ctable;
+    fRec.fRowBytes = rowBytes;
     fLockCount = SKPIXELREF_PRELOCKED_LOCKCOUNT;
     fPreLocked = true;
 #endif
@@ -136,6 +150,7 @@ void SkPixelRef::setPreLocked(void* pixels, SkColorTable* ctable) {
 
 void SkPixelRef::flatten(SkFlattenableWriteBuffer& buffer) const {
     this->INHERITED::flatten(buffer);
+    fInfo.flatten(buffer);
     buffer.writeBool(fIsImmutable);
     // We write the gen ID into the picture for within-process recording. This
     // is safe since the same genID will never refer to two different sets of
@@ -150,16 +165,30 @@ void SkPixelRef::flatten(SkFlattenableWriteBuffer& buffer) const {
     }
 }
 
-void SkPixelRef::lockPixels() {
+bool SkPixelRef::lockPixels(LockRec* rec) {
     SkASSERT(!fPreLocked || SKPIXELREF_PRELOCKED_LOCKCOUNT == fLockCount);
 
     if (!fPreLocked) {
         SkAutoMutexAcquire  ac(*fMutex);
 
         if (1 == ++fLockCount) {
-            fPixels = this->onLockPixels(&fColorTable);
+            SkASSERT(fRec.isZero());
+
+            LockRec rec;
+            if (!this->onNewLockPixels(&rec)) {
+                return false;
+            }
+            SkASSERT(!rec.isZero());    // else why did onNewLock return true?
+            fRec = rec;
         }
     }
+    *rec = fRec;
+    return true;
+}
+
+bool SkPixelRef::lockPixels() {
+    LockRec rec;
+    return this->lockPixels(&rec);
 }
 
 void SkPixelRef::unlockPixels() {
@@ -170,9 +199,13 @@ void SkPixelRef::unlockPixels() {
 
         SkASSERT(fLockCount > 0);
         if (0 == --fLockCount) {
-            this->onUnlockPixels();
-            fPixels = NULL;
-            fColorTable = NULL;
+            // don't call onUnlockPixels unless onLockPixels succeeded
+            if (fRec.fPixels) {
+                this->onUnlockPixels();
+                fRec.zero();
+            } else {
+                SkASSERT(fRec.isZero());
+            }
         }
     }
 }
@@ -246,6 +279,33 @@ bool SkPixelRef::onReadPixels(SkBitmap* dst, const SkIRect* subset) {
 SkData* SkPixelRef::onRefEncodedData() {
     return NULL;
 }
+
+size_t SkPixelRef::getAllocatedSizeInBytes() const {
+    return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+#ifdef SK_SUPPORT_LEGACY_ONLOCKPIXELS
+
+void* SkPixelRef::onLockPixels(SkColorTable** ctable) {
+    return NULL;
+}
+
+bool SkPixelRef::onNewLockPixels(LockRec* rec) {
+    SkColorTable* ctable = NULL;    // for legacy clients who forget to set this
+    void* pixels = this->onLockPixels(&ctable);
+    if (!pixels) {
+        return false;
+    }
+
+    rec->fPixels = pixels;
+    rec->fColorTable = ctable;
+    rec->fRowBytes = 0; // callers don't currently need this (thank goodness)
+    return true;
+}
+
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 

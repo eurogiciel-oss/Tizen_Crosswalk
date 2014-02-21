@@ -41,7 +41,7 @@ WebGLBuffer::WebGLBuffer(WebGLRenderingContext* ctx)
     , m_target(0)
 {
     ScriptWrappable::init(this);
-    setObject(ctx->graphicsContext3D()->createBuffer());
+    setObject(ctx->webGraphicsContext3D()->createBuffer());
 }
 
 WebGLBuffer::~WebGLBuffer()
@@ -49,17 +49,17 @@ WebGLBuffer::~WebGLBuffer()
     deleteObject(0);
 }
 
-void WebGLBuffer::deleteObjectImpl(GraphicsContext3D* context3d, Platform3DObject object)
+void WebGLBuffer::deleteObjectImpl(blink::WebGraphicsContext3D* context3d, Platform3DObject object)
 {
       context3d->deleteBuffer(object);
 }
 
-void WebGLBuffer::setTarget(GC3Denum target)
+void WebGLBuffer::setTarget(GLenum target)
 {
     // In WebGL, a buffer is bound to one target in its lifetime
     if (m_target)
         return;
-    if (target == GraphicsContext3D::ARRAY_BUFFER || target == GraphicsContext3D::ELEMENT_ARRAY_BUFFER)
+    if (target == GL_ARRAY_BUFFER || target == GL_ELEMENT_ARRAY_BUFFER)
         m_target = target;
 }
 

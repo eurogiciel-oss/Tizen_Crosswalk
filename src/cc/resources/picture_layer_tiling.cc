@@ -102,7 +102,7 @@ void PictureLayerTiling::CreateTile(int i,
 }
 
 Region PictureLayerTiling::OpaqueRegionInContentRect(
-    gfx::Rect content_rect) const {
+    const gfx::Rect& content_rect) const {
   Region opaque_region;
   // TODO(enne): implement me
   return opaque_region;
@@ -195,7 +195,7 @@ PictureLayerTiling::CoverageIterator::CoverageIterator()
 PictureLayerTiling::CoverageIterator::CoverageIterator(
     const PictureLayerTiling* tiling,
     float dest_scale,
-    gfx::Rect dest_rect)
+    const gfx::Rect& dest_rect)
     : tiling_(tiling),
       dest_rect_(dest_rect),
       dest_to_content_scale_(0),
@@ -342,8 +342,8 @@ void PictureLayerTiling::Reset() {
 void PictureLayerTiling::UpdateTilePriorities(
     WhichTree tree,
     gfx::Size device_viewport,
-    gfx::Rect viewport_in_layer_space,
-    gfx::Rect visible_layer_rect,
+    const gfx::Rect& viewport_in_layer_space,
+    const gfx::Rect& visible_layer_rect,
     gfx::Size last_layer_bounds,
     gfx::Size current_layer_bounds,
     float last_layer_contents_scale,
@@ -391,7 +391,7 @@ void PictureLayerTiling::UpdateTilePriorities(
         current_frame_time_in_seconds - last_impl_frame_time_in_seconds_;
   }
 
-  gfx::Rect view_rect(device_viewport);
+  gfx::RectF view_rect(device_viewport);
   float current_scale = current_layer_contents_scale / contents_scale_;
   float last_scale = last_layer_contents_scale / contents_scale_;
 
@@ -426,7 +426,7 @@ void PictureLayerTiling::UpdateTilePriorities(
           last_scale) + last_offset;
 
       float distance_to_visible_in_pixels =
-          TilePriority::manhattanDistance(current_screen_rect, view_rect);
+          current_screen_rect.ManhattanInternalDistance(view_rect);
 
       float time_to_visible_in_seconds =
           TilePriority::TimeForBoundsToIntersect(
@@ -506,7 +506,7 @@ void PictureLayerTiling::UpdateTilePriorities(
           last_tile_origin + last_vertical).BoundingBox();
 
       float distance_to_visible_in_pixels =
-          TilePriority::manhattanDistance(current_screen_rect, view_rect);
+          current_screen_rect.ManhattanInternalDistance(view_rect);
 
       float time_to_visible_in_seconds =
           TilePriority::TimeForBoundsToIntersect(
@@ -541,7 +541,7 @@ void PictureLayerTiling::UpdateTilePriorities(
           last_screen_transform, last_layer_content_rect);
 
       float distance_to_visible_in_pixels =
-          TilePriority::manhattanDistance(current_screen_rect, view_rect);
+          current_screen_rect.ManhattanInternalDistance(view_rect);
 
       float time_to_visible_in_seconds =
           TilePriority::TimeForBoundsToIntersect(
@@ -559,7 +559,7 @@ void PictureLayerTiling::UpdateTilePriorities(
 }
 
 void PictureLayerTiling::SetLiveTilesRect(
-    gfx::Rect new_live_tiles_rect) {
+    const gfx::Rect& new_live_tiles_rect) {
   DCHECK(new_live_tiles_rect.IsEmpty() ||
          ContentRect().Contains(new_live_tiles_rect));
   if (live_tiles_rect_ == new_live_tiles_rect)
@@ -676,9 +676,9 @@ int ComputeExpansionDelta(int num_x_edges, int num_y_edges,
 }  // namespace
 
 gfx::Rect PictureLayerTiling::ExpandRectEquallyToAreaBoundedBy(
-    gfx::Rect starting_rect,
+    const gfx::Rect& starting_rect,
     int64 target_area,
-    gfx::Rect bounding_rect,
+    const gfx::Rect& bounding_rect,
     RectExpansionCache* cache) {
   if (starting_rect.IsEmpty())
     return starting_rect;

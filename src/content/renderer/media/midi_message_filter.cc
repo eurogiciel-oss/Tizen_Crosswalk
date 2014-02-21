@@ -72,7 +72,7 @@ void MIDIMessageFilter::OnChannelClosing() {
   channel_ = NULL;
 }
 
-void MIDIMessageFilter::StartSession(WebKit::WebMIDIAccessorClient* client) {
+void MIDIMessageFilter::StartSession(blink::WebMIDIAccessorClient* client) {
   // Generate and keep track of a "client id" which is sent to the browser
   // to ask permission to talk to MIDI hardware.
   // This id is handed back when we receive the answer in OnAccessApproved().
@@ -90,7 +90,7 @@ void MIDIMessageFilter::StartSessionOnIOThread(int client_id) {
   Send(new MIDIHostMsg_StartSession(client_id));
 }
 
-void MIDIMessageFilter::RemoveClient(WebKit::WebMIDIAccessorClient* client) {
+void MIDIMessageFilter::RemoveClient(blink::WebMIDIAccessorClient* client) {
   ClientsMap::iterator i = clients_.find(client);
   if (i != clients_.end())
     clients_.erase(i);
@@ -115,7 +115,7 @@ void MIDIMessageFilter::HandleSessionStarted(
     bool success,
     MIDIPortInfoList inputs,
     MIDIPortInfoList outputs) {
-  WebKit::WebMIDIAccessorClient* client = GetClientFromId(client_id);
+  blink::WebMIDIAccessorClient* client = GetClientFromId(client_id);
   if (!client)
     return;
 
@@ -123,24 +123,24 @@ void MIDIMessageFilter::HandleSessionStarted(
     // Add the client's input and output ports.
     for (size_t i = 0; i < inputs.size(); ++i) {
       client->didAddInputPort(
-          UTF8ToUTF16(inputs[i].id),
-          UTF8ToUTF16(inputs[i].manufacturer),
-          UTF8ToUTF16(inputs[i].name),
-          UTF8ToUTF16(inputs[i].version));
+          base::UTF8ToUTF16(inputs[i].id),
+          base::UTF8ToUTF16(inputs[i].manufacturer),
+          base::UTF8ToUTF16(inputs[i].name),
+          base::UTF8ToUTF16(inputs[i].version));
     }
 
     for (size_t i = 0; i < outputs.size(); ++i) {
       client->didAddOutputPort(
-          UTF8ToUTF16(outputs[i].id),
-          UTF8ToUTF16(outputs[i].manufacturer),
-          UTF8ToUTF16(outputs[i].name),
-          UTF8ToUTF16(outputs[i].version));
+          base::UTF8ToUTF16(outputs[i].id),
+          base::UTF8ToUTF16(outputs[i].manufacturer),
+          base::UTF8ToUTF16(outputs[i].name),
+          base::UTF8ToUTF16(outputs[i].version));
     }
   }
   client->didStartSession(success);
 }
 
-WebKit::WebMIDIAccessorClient*
+blink::WebMIDIAccessorClient*
 MIDIMessageFilter::GetClientFromId(int client_id) {
   // Iterating like this seems inefficient, but in practice there generally
   // will be very few clients (usually one).  Additionally, this lookup

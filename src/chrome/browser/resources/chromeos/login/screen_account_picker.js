@@ -24,18 +24,42 @@ login.createScreen('AccountPickerScreen', 'account-picker', function() {
     EXTERNAL_API: [
       'loadUsers',
       'updateUserImage',
-      'updateUserGaiaNeeded',
+      'forceOnlineSignin',
       'setCapsLockState',
-      'forceLockedUserPodFocus'
+      'forceLockedUserPodFocus',
+      'removeUser',
+      'showBannerMessage',
+      'showUserPodButton',
     ],
+
+    preferredWidth_: 0,
+    preferredHeight_: 0,
+
+    // Whether this screen is shown for the first time.
+    firstShown_: true,
 
     /** @override */
     decorate: function() {
       login.PodRow.decorate($('pod-row'));
     },
 
-    // Whether this screen is shown for the first time.
-    firstShown_: true,
+    /** @override */
+    getPreferredSize: function() {
+      return {width: this.preferredWidth_, height: this.preferredHeight_};
+    },
+
+    /** @override */
+    onWindowResize: function() {
+      $('pod-row').onWindowResize();
+    },
+
+    /**
+     * Sets preferred size for account picker screen.
+     */
+    setPreferredSize: function(width, height) {
+      this.preferredWidth_ = width;
+      this.preferredHeight_ = height;
+    },
 
     /**
      * When the account picker is being used to lock the screen, pressing the
@@ -49,6 +73,13 @@ login.createScreen('AccountPickerScreen', 'account-picker', function() {
         $('sign-out-user-button').disabled = true;
         chrome.send('signOutUser');
       }
+    },
+
+    /* Cancel user adding if ESC was pressed.
+     */
+    cancel: function() {
+      if (Oobe.getInstance().displayType() == DISPLAY_TYPE.USER_ADDING)
+        chrome.send('cancelUserAdding');
     },
 
     /**
@@ -138,7 +169,7 @@ login.createScreen('AccountPickerScreen', 'account-picker', function() {
     },
 
     /**
-     * Loads givens users in pod row.
+     * Loads given users in pod row.
      * @param {array} users Array of user.
      * @param {boolean} animated Whether to use init animation.
      * @param {boolean} showGuest Whether to show guest session button.
@@ -166,11 +197,12 @@ login.createScreen('AccountPickerScreen', 'account-picker', function() {
     },
 
     /**
-     * Updates user to use gaia login.
-     * @param {string} username User for which to state the state.
+     * Indicates that the given user must authenticate against GAIA during the
+     * next sign-in.
+     * @param {string} username User for whom to enforce GAIA sign-in.
      */
-    updateUserGaiaNeeded: function(username) {
-      $('pod-row').resetUserOAuthTokenStatus(username);
+    forceOnlineSignin: function(username) {
+      $('pod-row').forceOnlineSigninForUser(username);
     },
 
     /**
@@ -188,6 +220,36 @@ login.createScreen('AccountPickerScreen', 'account-picker', function() {
       var row = $('pod-row');
       if (row.lockedPod)
         row.focusPod(row.lockedPod, true);
+    },
+
+    /**
+     * Remove given user from pod row if it is there.
+     * @param {string} user name.
+     */
+    removeUser: function(username) {
+      $('pod-row').removeUserPod(username);
+    },
+
+    /**
+     * Displays a banner containing |message|. If the banner is already present
+     * this function updates the message in the banner. This function is used
+     * by the chrome.screenlockPrivate.showMessage API.
+     * @param {string} message Text to be displayed
+     */
+    showBannerMessage: function(message) {
+      var banner = $('signin-banner');
+      banner.textContent = message;
+      banner.classList.toggle('message-set', true);
+    },
+
+    /**
+     * Shows a button with an icon on the user pod of |username|. This function
+     * is used by the chrome.screenlockPrivate API.
+     * @param {string} username Username of pod to add button
+     * @param {string} iconURL URL of the button icon
+     */
+    showUserPodButton: function(username, iconURL) {
+      $('pod-row').showUserPodButton(username, iconURL);
     }
   };
 });

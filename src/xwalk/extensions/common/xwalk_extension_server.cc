@@ -12,7 +12,6 @@
 #include "base/stl_util.h"
 #include "content/public/browser/render_process_host.h"
 #include "ipc/ipc_sender.h"
-#include "xwalk/extensions/common/xwalk_extension.h"
 #include "xwalk/extensions/common/xwalk_extension_messages.h"
 #include "xwalk/extensions/common/xwalk_external_extension.h"
 
@@ -20,7 +19,8 @@ namespace xwalk {
 namespace extensions {
 
 XWalkExtensionServer::XWalkExtensionServer()
-    : sender_(NULL) {}
+    : sender_(NULL),
+      permissions_delegate_(NULL) {}
 
 XWalkExtensionServer::~XWalkExtensionServer() {
   DeleteInstanceMap();
@@ -337,11 +337,11 @@ void XWalkExtensionServer::Invalidate() {
 namespace {
 base::FilePath::StringType GetNativeLibraryPattern() {
   const base::string16 library_pattern = base::GetNativeLibraryName(
-      UTF8ToUTF16("*"));
+      base::UTF8ToUTF16("*"));
 #if defined(OS_WIN)
   return library_pattern;
 #else
-  return UTF16ToUTF8(library_pattern);
+  return base::UTF16ToUTF8(library_pattern);
 #endif
 }
 }  // namespace
@@ -369,6 +369,8 @@ std::vector<std::string> RegisterExternalExtensionsInDirectory(
     if (extension->is_valid()) {
       registered_extensions.push_back(extension->name());
       extension->set_runtime_variables(runtime_variables);
+      if (server->permissions_delegate())
+        extension->set_permissions_delegate(server->permissions_delegate());
       server->RegisterExtension(extension.PassAs<XWalkExtension>());
     }
   }

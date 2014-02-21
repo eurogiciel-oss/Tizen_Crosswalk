@@ -58,7 +58,6 @@ public abstract class BaseC2DMReceiver extends IntentService {
   protected void onHandleIntent(Intent intent) {
     logger.fine("Handle intent: %s", intent);
     if (intent == null) {
-      logger.warning("Ignoring null intent");
       return;
     }
     try {

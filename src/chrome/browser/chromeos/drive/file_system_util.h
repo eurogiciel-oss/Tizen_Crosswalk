@@ -26,19 +26,18 @@ namespace drive {
 class DriveAppRegistry;
 class DriveServiceInterface;
 class FileSystemInterface;
-class ResourceEntry;
+
 
 namespace util {
 
-// Special resource IDs introduced to manage pseudo directory tree locally.
-// These strings are supposed to be different from any resource ID used on the
-// server, and are never sent to the server. Practical resource IDs used so far
-// have only alphabets/numbers ([a-zA-Z0-9]) and ':'.
-// Hence '<' and '>' around the directory name have been added to make them
-// different from normal server-side IDs.
-const char kDriveGrandRootSpecialResourceId[] = "<drive>";
+// "drive" diretory's local ID is fixed to this value.
+const char kDriveGrandRootLocalId[] = "<drive>";
 
-const char kDriveOtherDirSpecialResourceId[] = "<other>";
+// "drive/other" diretory's local ID is fixed to this value.
+const char kDriveOtherDirLocalId[] = "<other>";
+
+// "drive/trash" diretory's local ID is fixed to this value.
+const char kDriveTrashDirLocalId[] = "<trash>";
 
 // The directory names used for the Google Drive file system tree. These names
 // are used in URLs for the file manager, hence user-visible.
@@ -50,6 +49,9 @@ const base::FilePath::CharType kDriveMyDriveRootDirName[] =
 
 const base::FilePath::CharType kDriveOtherDirName[] =
     FILE_PATH_LITERAL("other");
+
+const base::FilePath::CharType kDriveTrashDirName[] =
+    FILE_PATH_LITERAL("trash");
 
 // Returns the path of the top root of the pseudo tree.
 const base::FilePath& GetDriveGrandRootPath();
@@ -82,16 +84,6 @@ DriveAppRegistry* GetDriveAppRegistryByProfile(Profile* profile);
 // or disabled), returns NULL.
 DriveServiceInterface* GetDriveServiceByProfile(Profile* profile);
 
-// Checks if the resource ID is a special one, which is effective only in our
-// implementation and is not supposed to be sent to the server.
-bool IsSpecialResourceId(const std::string& resource_id);
-
-// Returns a ResourceEntry for "/drive/root" directory.
-ResourceEntry CreateMyDriveRootEntry(const std::string& root_resource_id);
-
-// Returns the Drive mount path as string.
-const std::string& GetDriveMountPointPathAsString();
-
 // Returns the gdata file resource url formatted as "drive:<path>"
 GURL FilePathToDriveURL(const base::FilePath& path);
 
@@ -103,15 +95,6 @@ void MaybeSetDriveURL(Profile* profile, const base::FilePath& path, GURL* url);
 
 // Returns true if the given path is under the Drive mount point.
 bool IsUnderDriveMountPoint(const base::FilePath& path);
-
-// Returns true if the given path is under the Drive mount point and needs to be
-// migrated to the new namespace. http://crbug.com/174233.
-bool NeedsNamespaceMigration(const base::FilePath& path);
-
-// Returns new FilePath with a namespace "root" inserted at the 3rd component.
-// e.g. "/special/drive/root/dir" for "/special/drive/dir".
-// NeedsNamespaceMigration(path) should be true (after the TODOs are resolved).
-base::FilePath ConvertToMyDriveNamespace(const base::FilePath& path);
 
 // Extracts the Drive path from the given path located under the Drive mount
 // point. Returns an empty path if |path| is not under the Drive mount point.
@@ -133,7 +116,8 @@ std::string UnescapeCacheFileName(const std::string& filename);
 
 // Converts the given string to a form suitable as a file name. Specifically,
 // - Normalizes in Unicode Normalization Form C.
-// - Replaces slashes '/' with \u2215 that pretty much looks the same in UI.
+// - Replaces slashes '/' with '_'.
+// - Replaces the whole input with "_" if the all input characters are '.'.
 // |input| must be a valid UTF-8 encoded string.
 std::string NormalizeFileName(const std::string& input);
 
@@ -153,6 +137,12 @@ typedef base::Callback<void (FileError, const base::FilePath& path)>
 void PrepareWritableFileAndRun(Profile* profile,
                                const base::FilePath& path,
                                const PrepareWritableFileCallback& callback);
+
+// Checks whether a directory exists at the given Drive path |directory|.
+// Must be called from UI thread. The result will be called back to |callback|.
+void CheckDirectoryExists(Profile* profile,
+                          const base::FilePath& directory,
+                          const FileOperationCallback& callback);
 
 // Ensures the existence of |directory| of '/special/drive/foo'.  This will
 // create |directory| and its ancestors if they don't exist.  |callback| is
@@ -198,12 +188,27 @@ GURL ReadUrlFromGDocFile(const base::FilePath& file_path);
 // Reads resource ID from a GDoc file.
 std::string ReadResourceIdFromGDocFile(const base::FilePath& file_path);
 
-// Returns the (base-16 encoded) MD5 digest of the file content at |file_path|,
-// or an empty string if an error is found.
-std::string GetMd5Digest(const base::FilePath& file_path);
-
 // Returns true if Drive is enabled for the given Profile.
 bool IsDriveEnabledForProfile(Profile* profile);
+
+// Enum type for describing the current connection status to Drive.
+enum ConnectionStatusType {
+  // Disconnected because Drive service is unavailable for this account (either
+  // disabled by a flag or the account has no Google account (e.g., guests)).
+  DRIVE_DISCONNECTED_NOSERVICE,
+  // Disconnected because no network is available.
+  DRIVE_DISCONNECTED_NONETWORK,
+  // Disconnected because authentication is not ready.
+  DRIVE_DISCONNECTED_NOTREADY,
+  // Connected by cellular network. Background sync is disabled.
+  DRIVE_CONNECTED_METERED,
+  // Connected without condition (WiFi, Ethernet, or cellular with the
+  // disable-sync preference turned off.)
+  DRIVE_CONNECTED,
+};
+
+// Returns the Drive connection status for the |profile|.
+ConnectionStatusType GetDriveConnectionStatus(Profile* profile);
 
 }  // namespace util
 }  // namespace drive

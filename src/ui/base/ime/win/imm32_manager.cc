@@ -24,7 +24,7 @@
 
 // Following code requires wchar_t to be same as char16. It should always be
 // true on Windows.
-COMPILE_ASSERT(sizeof(wchar_t) == sizeof(char16), wchar_t__char16_diff);
+COMPILE_ASSERT(sizeof(wchar_t) == sizeof(base::char16), wchar_t__char16_diff);
 
 ///////////////////////////////////////////////////////////////////////////////
 // IMM32Manager
@@ -368,7 +368,7 @@ void IMM32Manager::GetCompositionInfo(HIMC imm_context, LPARAM lparam,
 bool IMM32Manager::GetString(HIMC imm_context,
                          WPARAM lparam,
                          int type,
-                         string16* result) {
+                         base::string16* result) {
   if (!(lparam & type))
     return false;
   LONG string_size = ::ImmGetCompositionString(imm_context, type, NULL, 0);
@@ -381,7 +381,7 @@ bool IMM32Manager::GetString(HIMC imm_context,
 }
 
 bool IMM32Manager::GetResult(
-    HWND window_handle, LPARAM lparam, string16* result) {
+    HWND window_handle, LPARAM lparam, base::string16* result) {
   bool ret = false;
   HIMC imm_context = ::ImmGetContext(window_handle);
   if (imm_context) {
@@ -487,7 +487,7 @@ std::string IMM32Manager::GetInputLanguageName() const {
     return std::string();
 
   std::string language;
-  WideToUTF8(buffer, length - 1, &language);
+  base::WideToUTF8(buffer, length - 1, &language);
   if (SUBLANGID(input_language_id_) == SUBLANG_NEUTRAL)
     return language;
 
@@ -498,13 +498,8 @@ std::string IMM32Manager::GetInputLanguageName() const {
     return language;
 
   std::string region;
-  WideToUTF8(buffer, length - 1, &region);
+  base::WideToUTF8(buffer, length - 1, &region);
   return language.append(1, '-').append(region);
-}
-
-base::i18n::TextDirection IMM32Manager::GetTextDirection() const {
-  return IsRTLPrimaryLangID(PRIMARYLANGID(input_language_id_)) ?
-      base::i18n::RIGHT_TO_LEFT : base::i18n::LEFT_TO_RIGHT;
 }
 
 void IMM32Manager::SetTextInputMode(HWND window_handle,
@@ -605,6 +600,10 @@ bool IMM32Manager::IsCtrlShiftPressed(base::i18n::TextDirection* direction) {
   keystate[VK_CONTROL] = 0;
   keystate[VK_RCONTROL] = 0;
   keystate[VK_LCONTROL] = 0;
+  // Oddly, pressing F10 in another application seemingly breaks all subsequent
+  // calls to GetKeyboardState regarding the state of the F22 key. Perhaps this
+  // defect is limited to my keyboard driver, but ignoring F22 should be okay.
+  keystate[VK_F22] = 0;
   for (int i = 0; i <= VK_PACKET; ++i) {
     if (keystate[i] & kKeyDownMask)
       return false;

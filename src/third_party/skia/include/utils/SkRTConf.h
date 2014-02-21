@@ -52,10 +52,17 @@ protected:
 
 #ifdef SK_DEVELOPER
 #define SK_CONF_DECLARE(confType, varName, confName, defaultValue, description) static SkRTConf<confType> varName(confName, defaultValue, description)
-#define SK_CONF_SET(confname, value) skRTConfRegistry().set(confname, value)
+#define SK_CONF_SET(confname, value) \
+    skRTConfRegistry().set(confname, value, true)
+/* SK_CONF_TRY_SET() is like SK_CONF_SET(), but doesn't complain if
+   confname can't be found.  This is useful if the SK_CONF_DECLARE is
+   inside a source file whose linkage is dependent on the system. */
+#define SK_CONF_TRY_SET(confname, value) \
+    skRTConfRegistry().set(confname, value, false)
 #else
 #define SK_CONF_DECLARE(confType, varName, confName, defaultValue, description) static confType varName = defaultValue
 #define SK_CONF_SET(confname, value) (void) confname, (void) value
+#define SK_CONF_TRY_SET(confname, value) (void) confname, (void) value
 #endif
 
 /** \class SkRTConfRegistry
@@ -68,11 +75,14 @@ class SkRTConfRegistry {
 public:
     SkRTConfRegistry();
     void printAll(const char *fname = NULL) const;
+    bool hasNonDefault() const;
     void printNonDefault(const char *fname = NULL) const;
     const char *configFileLocation() const;
     void possiblyDumpFile() const;
     void validate() const;
-    template <typename T> void set(const char *confname, T value);
+    template <typename T> void set(const char *confname,
+                                   T value,
+                                   bool warnIfNotFound = true);
 #ifdef SK_SUPPORT_UNITTEST
     static void UnitTest();
 #endif

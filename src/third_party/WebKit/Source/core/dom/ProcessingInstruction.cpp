@@ -39,7 +39,6 @@ namespace WebCore {
 inline ProcessingInstruction::ProcessingInstruction(Document& document, const String& target, const String& data)
     : CharacterData(document, data, CreateOther)
     , m_target(target)
-    , m_resource(0)
     , m_loading(false)
     , m_alternate(false)
     , m_createdByParser(false)
@@ -58,9 +57,6 @@ ProcessingInstruction::~ProcessingInstruction()
 {
     if (m_sheet)
         m_sheet->clearOwnerNode();
-
-    if (m_resource)
-        m_resource->removeClient(this);
 
     if (inDocument())
         document().styleEngine()->removeStyleSheetCandidateNode(this);
@@ -123,35 +119,28 @@ void ProcessingInstruction::checkStyleSheet()
                 m_loading = false;
             }
         } else {
-            if (m_resource) {
-                m_resource->removeClient(this);
-                m_resource = 0;
-            }
+            clearResource();
 
             String url = document().completeURL(href).string();
             if (!dispatchBeforeLoadEvent(url))
                 return;
 
-            m_loading = true;
-            document().styleEngine()->addPendingSheet();
+            ResourcePtr<StyleSheetResource> resource;
             FetchRequest request(ResourceRequest(document().completeURL(href)), FetchInitiatorTypeNames::processinginstruction);
-            if (m_isXSL)
-                m_resource = document().fetcher()->fetchXSLStyleSheet(request);
-            else
-            {
+            if (m_isXSL) {
+                resource = document().fetcher()->fetchXSLStyleSheet(request);
+            } else {
                 String charset = attrs.get("charset");
                 if (charset.isEmpty())
                     charset = document().charset();
                 request.setCharset(charset);
-
-                m_resource = document().fetcher()->fetchCSSStyleSheet(request);
+                resource = document().fetcher()->fetchCSSStyleSheet(request);
             }
-            if (m_resource)
-                m_resource->addClient(this);
-            else {
-                // The request may have been denied if (for example) the stylesheet is local and the document is remote.
-                m_loading = false;
-                document().styleEngine()->removePendingSheet(this);
+
+            if (resource) {
+                m_loading = true;
+                document().styleEngine()->addPendingSheet();
+                setResource(resource);
             }
         }
     }
@@ -210,37 +199,26 @@ void ProcessingInstruction::setXSLStyleSheet(const String& href, const KURL& bas
 void ProcessingInstruction::parseStyleSheet(const String& sheet)
 {
     if (m_isCSS)
-        static_cast<CSSStyleSheet*>(m_sheet.get())->contents()->parseString(sheet);
+        toCSSStyleSheet(m_sheet.get())->contents()->parseString(sheet);
     else if (m_isXSL)
-        static_cast<XSLStyleSheet*>(m_sheet.get())->parseString(sheet);
+        toXSLStyleSheet(m_sheet.get())->parseString(sheet);
 
-    if (m_resource)
-        m_resource->removeClient(this);
-    m_resource = 0;
-
+    clearResource();
     m_loading = false;
 
     if (m_isCSS)
-        static_cast<CSSStyleSheet*>(m_sheet.get())->contents()->checkLoaded();
+        toCSSStyleSheet(m_sheet.get())->contents()->checkLoaded();
     else if (m_isXSL)
-        static_cast<XSLStyleSheet*>(m_sheet.get())->checkLoaded();
+        toXSLStyleSheet(m_sheet.get())->checkLoaded();
 }
 
 void ProcessingInstruction::setCSSStyleSheet(PassRefPtr<CSSStyleSheet> sheet)
 {
-    ASSERT(!m_resource);
+    ASSERT(!resource());
     ASSERT(!m_loading);
     m_sheet = sheet;
     sheet->setTitle(m_title);
     sheet->setDisabled(m_alternate);
-}
-
-void ProcessingInstruction::addSubresourceAttributeURLs(ListHashSet<KURL>& urls) const
-{
-    if (!sheet())
-        return;
-
-    addSubresourceURL(urls, sheet()->baseURL());
 }
 
 Node::InsertionNotificationRequest ProcessingInstruction::insertedInto(ContainerNode* insertionPoint)
@@ -272,12 +250,6 @@ void ProcessingInstruction::removedFrom(ContainerNode* insertionPoint)
     // If we're in document teardown, then we don't need to do any notification of our sheet's removal.
     if (document().isActive())
         document().removedStyleSheet(removedSheet.get());
-}
-
-void ProcessingInstruction::finishParsingChildren()
-{
-    m_createdByParser = false;
-    CharacterData::finishParsingChildren();
 }
 
 } // namespace

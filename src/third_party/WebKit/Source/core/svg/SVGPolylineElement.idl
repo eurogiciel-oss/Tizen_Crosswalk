@@ -23,10 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-interface SVGPolylineElement : SVGGraphicsElement {
-    readonly attribute SVGPointList points;
+interface SVGPolylineElement : SVGGeometryElement {
+    [ImplementedAs=pointsFromJavascript] readonly attribute SVGPointList points;
     readonly attribute SVGPointList animatedPoints;
 };
-
-SVGPolylineElement implements SVGExternalResourcesRequired;
 

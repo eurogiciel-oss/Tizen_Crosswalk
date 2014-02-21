@@ -27,6 +27,7 @@
 #define Storage_h
 
 #include "bindings/v8/ScriptWrappable.h"
+#include "bindings/v8/V8Binding.h"
 #include "core/frame/DOMWindowProperty.h"
 #include "core/storage/StorageArea.h"
 #include "wtf/Forward.h"
@@ -38,10 +39,10 @@ namespace WebCore {
 class ExceptionState;
 class Frame;
 
-class Storage : public ScriptWrappable, public RefCounted<Storage>, public DOMWindowProperty {
+class Storage FINAL : public ScriptWrappable, public RefCounted<Storage>, public DOMWindowProperty {
 public:
     static PassRefPtr<Storage> create(Frame*, PassOwnPtr<StorageArea>);
-    ~Storage();
+    virtual ~Storage();
 
     unsigned length(ExceptionState& ec) const { return m_storageArea->length(ec, m_frame); }
     String key(unsigned index, ExceptionState& ec) const { return m_storageArea->key(index, ec, m_frame); }
@@ -57,8 +58,8 @@ public:
     String anonymousNamedGetter(const AtomicString&, ExceptionState&);
     bool anonymousNamedSetter(const AtomicString& name, const AtomicString& value, ExceptionState&);
     bool anonymousIndexedSetter(unsigned, const AtomicString&, ExceptionState&);
-    bool anonymousNamedDeleter(const AtomicString&, ExceptionState&);
-    bool anonymousIndexedDeleter(unsigned, ExceptionState&);
+    DeleteResult anonymousNamedDeleter(const AtomicString&, ExceptionState&);
+    DeleteResult anonymousIndexedDeleter(unsigned, ExceptionState&);
     void namedPropertyEnumerator(Vector<String>&, ExceptionState&);
     bool namedPropertyQuery(const AtomicString&, ExceptionState&);
 

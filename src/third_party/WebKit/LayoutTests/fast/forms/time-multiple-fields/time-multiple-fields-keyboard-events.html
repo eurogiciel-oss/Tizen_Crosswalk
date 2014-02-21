@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body>
 <p id="description"></p>
@@ -26,9 +26,9 @@ if (window.internals)
     internals.settings.setLangAttributeAwareFormControlUIEnabled(true);
 var input = document.getElementById("input");
 
-function partOfFocusedSubField(host)
+function shadowPseudoIdOfFocusedSubField(host)
 {
-    return internals.youngestShadowRoot(host).activeElement.getAttribute("part")
+    return internals.shadowPseudoId(internals.youngestShadowRoot(host).activeElement);
 }
 
 function keyDown(key, modifiers)
@@ -84,19 +84,6 @@ keyDown('6'); // -> 05:06 [--]
 keyDown('\b'); // -> 05:06 [--]
 keyDown('P'); // -> 05:06 [PM]
 shouldBeEqualToString('input.value', '17:06');
-
-// FIXME: We should test type ahead time out. When event.leapForward() affects
-// keyboard event time stamp, we can uncomment this fragment.
-/*
-beginTest('Digit keys with type ahead timeout');
-keyDown('1');
-leapForward(1100);
-keyDown('1');
-keyDown('5');
-keyDown('6');
-keyDown('A');
-shouldBeEqualToString('input.value', '01:56');
-*/
 
 beginTest('Left/Right keys', '01:24');
 keyDown('rightArrow');
@@ -155,16 +142,16 @@ input.value = '01:01';
 input.readOnly = true;
 keyDown('\t');
 shouldBeEqualToString('document.activeElement.id', 'input');
-shouldBeEqualToString('partOfFocusedSubField(input)', '-webkit-datetime-edit-hour-field');
+shouldBeEqualToString('shadowPseudoIdOfFocusedSubField(input)', '-webkit-datetime-edit-hour-field');
 shouldBeEqualToString('keyDown("upArrow"); input.value', '01:01');
 shouldBeEqualToString('keyDown("downArrow"); input.value', '01:01');
 keyDown('rightArrow');
-shouldBeEqualToString('partOfFocusedSubField(input)', '-webkit-datetime-edit-minute-field');
+shouldBeEqualToString('shadowPseudoIdOfFocusedSubField(input)', '-webkit-datetime-edit-minute-field');
 shouldBeEqualToString('keyDown("3"); input.value', '01:01');
 keyDown('\t');
-shouldBeEqualToString('partOfFocusedSubField(input)', '-webkit-datetime-edit-ampm-field');
+shouldBeEqualToString('shadowPseudoIdOfFocusedSubField(input)', '-webkit-datetime-edit-ampm-field');
 keyDown('leftArrow');
-shouldBeEqualToString('partOfFocusedSubField(input)', '-webkit-datetime-edit-minute-field');
+shouldBeEqualToString('shadowPseudoIdOfFocusedSubField(input)', '-webkit-datetime-edit-minute-field');
 keyDown('\t');
 keyDown('\t');
 shouldBeEqualToString('document.activeElement.id', 'another');

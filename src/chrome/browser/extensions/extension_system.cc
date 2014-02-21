@@ -14,20 +14,13 @@
 #include "chrome/browser/extensions/blacklist.h"
 #include "chrome/browser/extensions/component_loader.h"
 #include "chrome/browser/extensions/error_console/error_console.h"
-#include "chrome/browser/extensions/event_router.h"
 #include "chrome/browser/extensions/extension_error_reporter.h"
-#include "chrome/browser/extensions/extension_info_map.h"
-#include "chrome/browser/extensions/extension_pref_store.h"
-#include "chrome/browser/extensions/extension_pref_value_map.h"
-#include "chrome/browser/extensions/extension_pref_value_map_factory.h"
-#include "chrome/browser/extensions/extension_prefs.h"
-#include "chrome/browser/extensions/extension_process_manager.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/extension_warning_badge_service.h"
 #include "chrome/browser/extensions/extension_warning_set.h"
-#include "chrome/browser/extensions/management_policy.h"
+#include "chrome/browser/extensions/install_verifier.h"
 #include "chrome/browser/extensions/navigation_observer.h"
 #include "chrome/browser/extensions/standard_management_policy_provider.h"
 #include "chrome/browser/extensions/state_store.h"
@@ -38,13 +31,29 @@
 #include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/chrome_version_info.h"
-#include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/features/feature_channel.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/url_data_source.h"
+#include "extensions/browser/event_router.h"
+#include "extensions/browser/extension_pref_store.h"
+#include "extensions/browser/extension_pref_value_map.h"
+#include "extensions/browser/extension_pref_value_map_factory.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/extension_registry.h"
+#include "extensions/browser/info_map.h"
 #include "extensions/browser/lazy_background_task_queue.h"
+#include "extensions/browser/management_policy.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/browser/runtime_data.h"
 #include "extensions/common/constants.h"
+#include "extensions/common/extension.h"
 #include "extensions/common/manifest.h"
+
+#if defined(ENABLE_NOTIFICATIONS)
+#include "chrome/browser/notifications/desktop_notification_service.h"
+#include "chrome/browser/notifications/desktop_notification_service_factory.h"
+#include "ui/message_center/notifier_settings.h"
+#endif
 
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/app_mode/app_mode_utils.h"
@@ -146,6 +155,8 @@ void ExtensionSystemImpl::Shared::RegisterManagementPolicyProviders() {
   }
 #endif  // defined (OS_CHROMEOS)
 
+  management_policy_->RegisterProvider(install_verifier_.get());
+
 #endif  // defined(ENABLE_EXTENSIONS)
 }
 
@@ -158,6 +169,9 @@ void ExtensionSystemImpl::Shared::Init(bool extensions_enabled) {
   ExtensionErrorReporter::Init(allow_noisy_errors);
 
   user_script_master_ = new UserScriptMaster(profile_);
+
+  // ExtensionService depends on RuntimeData.
+  runtime_data_.reset(new RuntimeData(ExtensionRegistry::Get(profile_)));
 
   bool autoupdate_enabled = true;
 #if defined(OS_CHROMEOS)
@@ -180,6 +194,10 @@ void ExtensionSystemImpl::Shared::Init(bool extensions_enabled) {
   // These services must be registered before the ExtensionService tries to
   // load any extensions.
   {
+    install_verifier_.reset(new InstallVerifier(ExtensionPrefs::Get(profile_),
+                                                profile_->GetRequestContext()));
+    install_verifier_->Init();
+
     management_policy_.reset(new ManagementPolicy);
     RegisterManagementPolicyProviders();
   }
@@ -188,7 +206,10 @@ void ExtensionSystemImpl::Shared::Init(bool extensions_enabled) {
 #if defined(OS_CHROMEOS)
   // Skip loading session extensions if we are not in a user session.
   skip_session_extensions = !chromeos::LoginState::Get()->IsUserLoggedIn();
-  if (!chrome::IsRunningInForcedAppMode()) {
+  if (chrome::IsRunningInForcedAppMode()) {
+    extension_service_->component_loader()->
+        AddDefaultComponentExtensionsForKioskMode(skip_session_extensions);
+  } else {
     extension_service_->component_loader()->AddDefaultComponentExtensions(
         skip_session_extensions);
   }
@@ -213,6 +234,16 @@ void ExtensionSystemImpl::Shared::Init(bool extensions_enabled) {
   }
   extension_service_->Init();
 
+  // Make the chrome://extension-icon/ resource available.
+  content::URLDataSource::Add(profile_, new ExtensionIconSource(profile_));
+
+  extension_warning_service_.reset(new ExtensionWarningService(profile_));
+  extension_warning_badge_service_.reset(
+      new ExtensionWarningBadgeService(profile_));
+  extension_warning_service_->AddObserver(
+      extension_warning_badge_service_.get());
+  error_console_.reset(new ErrorConsole(profile_, extension_service_.get()));
+
   if (extensions_enabled) {
     // Load any extensions specified with --load-extension.
     // TODO(yoz): Seems like this should move into ExtensionService::Init.
@@ -230,16 +261,6 @@ void ExtensionSystemImpl::Shared::Init(bool extensions_enabled) {
       }
     }
   }
-
-  // Make the chrome://extension-icon/ resource available.
-  content::URLDataSource::Add(profile_, new ExtensionIconSource(profile_));
-
-  extension_warning_service_.reset(new ExtensionWarningService(profile_));
-  extension_warning_badge_service_.reset(
-      new ExtensionWarningBadgeService(profile_));
-  extension_warning_service_->AddObserver(
-      extension_warning_badge_service_.get());
-  error_console_.reset(new ErrorConsole(profile_, extension_service_.get()));
 }
 
 void ExtensionSystemImpl::Shared::Shutdown() {
@@ -263,6 +284,10 @@ ExtensionService* ExtensionSystemImpl::Shared::extension_service() {
   return extension_service_.get();
 }
 
+RuntimeData* ExtensionSystemImpl::Shared::runtime_data() {
+  return runtime_data_.get();
+}
+
 ManagementPolicy* ExtensionSystemImpl::Shared::management_policy() {
   return management_policy_.get();
 }
@@ -271,9 +296,9 @@ UserScriptMaster* ExtensionSystemImpl::Shared::user_script_master() {
   return user_script_master_.get();
 }
 
-ExtensionInfoMap* ExtensionSystemImpl::Shared::info_map() {
+InfoMap* ExtensionSystemImpl::Shared::info_map() {
   if (!extension_info_map_.get())
-    extension_info_map_ = new ExtensionInfoMap();
+    extension_info_map_ = new InfoMap();
   return extension_info_map_.get();
 }
 
@@ -298,6 +323,10 @@ ErrorConsole* ExtensionSystemImpl::Shared::error_console() {
   return error_console_.get();
 }
 
+InstallVerifier* ExtensionSystemImpl::Shared::install_verifier() {
+  return install_verifier_.get();
+}
+
 //
 // ExtensionSystemImpl
 //
@@ -307,7 +336,7 @@ ExtensionSystemImpl::ExtensionSystemImpl(Profile* profile)
   shared_ = ExtensionSystemSharedFactory::GetForProfile(profile);
 
   if (profile->IsOffTheRecord()) {
-    extension_process_manager_.reset(ExtensionProcessManager::Create(profile));
+    process_manager_.reset(ProcessManager::Create(profile));
   } else {
     shared_->InitPrefs();
   }
@@ -317,30 +346,28 @@ ExtensionSystemImpl::~ExtensionSystemImpl() {
 }
 
 void ExtensionSystemImpl::Shutdown() {
-  extension_process_manager_.reset();
+  process_manager_.reset();
 }
 
-void ExtensionSystemImpl::InitForRegularProfile(
-    bool extensions_enabled,
-    bool defer_background_creation) {
+void ExtensionSystemImpl::InitForRegularProfile(bool extensions_enabled) {
   DCHECK(!profile_->IsOffTheRecord());
   if (user_script_master() || extension_service())
     return;  // Already initialized.
 
-  // The ExtensionInfoMap needs to be created before the
-  // ExtensionProcessManager.
+  // The InfoMap needs to be created before the ProcessManager.
   shared_->info_map();
 
-  extension_process_manager_.reset(ExtensionProcessManager::Create(profile_));
-
-  extension_process_manager_->DeferBackgroundHostCreation(
-      defer_background_creation);
+  process_manager_.reset(ProcessManager::Create(profile_));
 
   shared_->Init(extensions_enabled);
 }
 
 ExtensionService* ExtensionSystemImpl::extension_service() {
   return shared_->extension_service();
+}
+
+RuntimeData* ExtensionSystemImpl::runtime_data() {
+  return shared_->runtime_data();
 }
 
 ManagementPolicy* ExtensionSystemImpl::management_policy() {
@@ -351,8 +378,8 @@ UserScriptMaster* ExtensionSystemImpl::user_script_master() {
   return shared_->user_script_master();
 }
 
-ExtensionProcessManager* ExtensionSystemImpl::process_manager() {
-  return extension_process_manager_.get();
+ProcessManager* ExtensionSystemImpl::process_manager() {
+  return process_manager_.get();
 }
 
 StateStore* ExtensionSystemImpl::state_store() {
@@ -363,9 +390,7 @@ StateStore* ExtensionSystemImpl::rules_store() {
   return shared_->rules_store();
 }
 
-ExtensionInfoMap* ExtensionSystemImpl::info_map() {
-  return shared_->info_map();
-}
+InfoMap* ExtensionSystemImpl::info_map() { return shared_->info_map(); }
 
 LazyBackgroundTaskQueue* ExtensionSystemImpl::lazy_background_task_queue() {
   return shared_->lazy_background_task_queue();
@@ -391,6 +416,10 @@ ErrorConsole* ExtensionSystemImpl::error_console() {
   return shared_->error_console();
 }
 
+InstallVerifier* ExtensionSystemImpl::install_verifier() {
+  return shared_->install_verifier();
+}
+
 void ExtensionSystemImpl::RegisterExtensionWithRequestContexts(
     const Extension* extension) {
   base::Time install_time;
@@ -398,22 +427,34 @@ void ExtensionSystemImpl::RegisterExtensionWithRequestContexts(
     install_time = ExtensionPrefs::Get(profile_)->
         GetInstallTime(extension->id());
   }
-  bool incognito_enabled =
-      extension_util::IsIncognitoEnabled(extension->id(), extension_service());
+  bool incognito_enabled = util::IsIncognitoEnabled(extension->id(), profile_);
+
+  bool notifications_disabled = false;
+#if defined(ENABLE_NOTIFICATIONS)
+  message_center::NotifierId notifier_id(
+      message_center::NotifierId::APPLICATION,
+      extension->id());
+
+  DesktopNotificationService* notification_service =
+      DesktopNotificationServiceFactory::GetForProfile(profile_);
+  notifications_disabled =
+      !notification_service->IsNotifierEnabled(notifier_id);
+#endif
+
   BrowserThread::PostTask(
       BrowserThread::IO, FROM_HERE,
-      base::Bind(&ExtensionInfoMap::AddExtension, info_map(),
+      base::Bind(&InfoMap::AddExtension, info_map(),
                  make_scoped_refptr(extension), install_time,
-                 incognito_enabled));
+                 incognito_enabled, notifications_disabled));
 }
 
 void ExtensionSystemImpl::UnregisterExtensionWithRequestContexts(
     const std::string& extension_id,
     const UnloadedExtensionInfo::Reason reason) {
   BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
-      base::Bind(&ExtensionInfoMap::RemoveExtension, info_map(),
-                 extension_id, reason));
+      BrowserThread::IO,
+      FROM_HERE,
+      base::Bind(&InfoMap::RemoveExtension, info_map(), extension_id, reason));
 }
 
 }  // namespace extensions

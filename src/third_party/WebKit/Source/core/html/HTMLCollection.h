@@ -31,43 +31,45 @@
 
 namespace WebCore {
 
-class HTMLCollection : public LiveNodeListBase {
+class HTMLCollection : public ScriptWrappable, public RefCounted<HTMLCollection>, public LiveNodeListBase {
 public:
-    static PassRefPtr<HTMLCollection> create(Node* base, CollectionType);
+    static PassRefPtr<HTMLCollection> create(ContainerNode* base, CollectionType);
     virtual ~HTMLCollection();
+    virtual void invalidateCache() const OVERRIDE;
 
     // DOM API
     virtual Node* namedItem(const AtomicString& name) const;
 
     // Non-DOM API
-    virtual bool hasNamedItem(const AtomicString& name) const;
     void namedItems(const AtomicString& name, Vector<RefPtr<Node> >&) const;
     bool isEmpty() const
     {
         if (isLengthCacheValid())
             return !cachedLength();
-        if (isItemCacheValid())
-            return !cachedItem();
+        if (cachedItem())
+            return false;
         return !item(0);
     }
     bool hasExactlyOneItem() const
     {
         if (isLengthCacheValid())
             return cachedLength() == 1;
-        if (isItemCacheValid())
-            return cachedItem() && !cachedItemOffset() && !item(1);
+        if (cachedItem())
+            return !cachedItemOffset() && !item(1);
         return item(0) && !item(1);
     }
 
-    virtual Element* virtualItemAfter(unsigned& offsetInArray, Element*) const;
+    virtual Element* virtualItemAfter(Element*) const;
 
-    Element* traverseFirstElement(unsigned& offsetInArray, ContainerNode* root) const;
-    Element* traverseForwardToOffset(unsigned offset, Element* currentElement, unsigned& currentOffset, unsigned& offsetInArray, ContainerNode* root) const;
+    Element* traverseToFirstElement(const ContainerNode& root) const;
+    Element* traverseForwardToOffset(unsigned offset, Element& currentElement, unsigned& currentOffset, const ContainerNode& root) const;
 
 protected:
-    HTMLCollection(Node* base, CollectionType, ItemAfterOverrideType);
+    HTMLCollection(ContainerNode* base, CollectionType, ItemAfterOverrideType);
 
     virtual void updateNameCache() const;
+    bool hasNameCache() const { return m_isNameCacheValid; }
+    void setHasNameCache() const { m_isNameCacheValid = true; }
 
     typedef HashMap<StringImpl*, OwnPtr<Vector<Element*> > > NodeCacheMap;
     Vector<Element*>* idCache(const AtomicString& name) const { return m_idCache.get(name.impl()); }
@@ -76,16 +78,20 @@ protected:
     void appendNameCache(const AtomicString& name, Element* element) const { append(m_nameCache, name, element); }
 
 private:
-    bool checkForNameMatch(Element*, bool checkName, const AtomicString& name) const;
-    Element* traverseNextElement(unsigned& offsetInArray, Element* previous, ContainerNode* root) const;
-
-    virtual bool isLiveNodeList() const OVERRIDE { ASSERT_NOT_REACHED(); return true; }
+    bool checkForNameMatch(const Element&, bool checkName, const AtomicString& name) const;
+    Element* traverseNextElement(Element& previous, const ContainerNode& root) const;
 
     static void append(NodeCacheMap&, const AtomicString&, Element*);
+    void invalidateIdNameCacheMaps() const
+    {
+        m_idCache.clear();
+        m_nameCache.clear();
+        m_isNameCacheValid = false;
+    }
 
+    mutable unsigned m_isNameCacheValid : 1;
     mutable NodeCacheMap m_idCache;
     mutable NodeCacheMap m_nameCache;
-    mutable unsigned m_cachedElementsArrayOffset;
 
     friend class LiveNodeListBase;
 };

@@ -31,6 +31,7 @@ IndexedDBCursor::~IndexedDBCursor() {
 }
 
 void IndexedDBCursor::Continue(scoped_ptr<IndexedDBKey> key,
+                               scoped_ptr<IndexedDBKey> primary_key,
                                scoped_refptr<IndexedDBCallbacks> callbacks) {
   IDB_TRACE("IndexedDBCursor::Continue");
 
@@ -39,6 +40,7 @@ void IndexedDBCursor::Continue(scoped_ptr<IndexedDBKey> key,
       base::Bind(&IndexedDBCursor::CursorIterationOperation,
                  this,
                  base::Passed(&key),
+                 base::Passed(&primary_key),
                  callbacks));
 }
 
@@ -68,17 +70,19 @@ void IndexedDBCursor::CursorAdvanceOperation(
 
 void IndexedDBCursor::CursorIterationOperation(
     scoped_ptr<IndexedDBKey> key,
+    scoped_ptr<IndexedDBKey> primary_key,
     scoped_refptr<IndexedDBCallbacks> callbacks,
     IndexedDBTransaction* /*transaction*/) {
   IDB_TRACE("IndexedDBCursor::CursorIterationOperation");
   if (!cursor_ ||
-      !cursor_->Continue(key.get(), IndexedDBBackingStore::Cursor::SEEK)) {
+      !cursor_->Continue(
+           key.get(), primary_key.get(), IndexedDBBackingStore::Cursor::SEEK)) {
     cursor_.reset();
     callbacks->OnSuccess(static_cast<std::string*>(NULL));
     return;
   }
 
-  callbacks->OnSuccess(this->key(), primary_key(), Value());
+  callbacks->OnSuccess(this->key(), this->primary_key(), Value());
 }
 
 void IndexedDBCursor::PrefetchContinue(
@@ -104,8 +108,7 @@ void IndexedDBCursor::CursorPrefetchIterationOperation(
   std::vector<IndexedDBKey> found_primary_keys;
   std::vector<std::string> found_values;
 
-  if (cursor_)
-    saved_cursor_.reset(cursor_->Clone());
+  saved_cursor_.reset();
   const size_t max_size_estimate = 10 * 1024 * 1024;
   size_t size_estimate = 0;
 
@@ -113,6 +116,12 @@ void IndexedDBCursor::CursorPrefetchIterationOperation(
     if (!cursor_ || !cursor_->Continue()) {
       cursor_.reset();
       break;
+    }
+
+    if (i == 0) {
+      // First prefetched result is always used, so that's the position
+      // a cursor should be reset to if the prefetch is invalidated.
+      saved_cursor_.reset(cursor_->Clone());
     }
 
     found_keys.push_back(cursor_->key());
@@ -124,7 +133,7 @@ void IndexedDBCursor::CursorPrefetchIterationOperation(
         break;
       case indexed_db::CURSOR_KEY_AND_VALUE: {
         std::string value;
-        value.swap(*cursor_->Value());
+        value.swap(*cursor_->value());
         size_estimate += value.size();
         found_values.push_back(value);
         break;
@@ -148,7 +157,8 @@ void IndexedDBCursor::CursorPrefetchIterationOperation(
       found_keys, found_primary_keys, found_values);
 }
 
-void IndexedDBCursor::PrefetchReset(int used_prefetches, int) {
+void IndexedDBCursor::PrefetchReset(int used_prefetches,
+                                    int /* unused_prefetches */) {
   IDB_TRACE("IndexedDBCursor::PrefetchReset");
   cursor_.swap(saved_cursor_);
   saved_cursor_.reset();
@@ -156,7 +166,9 @@ void IndexedDBCursor::PrefetchReset(int used_prefetches, int) {
   if (closed_)
     return;
   if (cursor_) {
-    for (int i = 0; i < used_prefetches; ++i) {
+    // First prefetched result is always used.
+    DCHECK_GT(used_prefetches, 0);
+    for (int i = 0; i < used_prefetches - 1; ++i) {
       bool ok = cursor_->Continue();
       DCHECK(ok);
     }

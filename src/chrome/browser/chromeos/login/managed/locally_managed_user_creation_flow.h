@@ -20,6 +20,7 @@ class LocallyManagedUserCreationFlow : public ExtendedUserFlow {
   explicit LocallyManagedUserCreationFlow(const std::string& manager_id);
   virtual ~LocallyManagedUserCreationFlow();
 
+  virtual bool CanLockScreen() OVERRIDE;
   virtual bool ShouldShowSettings() OVERRIDE;
   virtual bool ShouldLaunchBrowser() OVERRIDE;
   virtual bool ShouldSkipPostLoginScreens() OVERRIDE;
@@ -30,7 +31,7 @@ class LocallyManagedUserCreationFlow : public ExtendedUserFlow {
   virtual void LaunchExtraSteps(Profile* profile) OVERRIDE;
  private:
   // Display name for user being created.
-  string16 name_;
+  base::string16 name_;
   // Password for user being created.
   std::string password_;
 

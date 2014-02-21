@@ -5,6 +5,7 @@
 import os
 
 from telemetry.core import browser_credentials
+from telemetry.core import exceptions
 from telemetry.core import extension_dict
 from telemetry.core import platform
 from telemetry.core import tab_list
@@ -13,6 +14,7 @@ from telemetry.core import wpr_modes
 from telemetry.core import wpr_server
 from telemetry.core.backends import browser_backend
 from telemetry.core.platform.profiler import profiler_finder
+
 
 class Browser(object):
   """A running browser instance that can be controlled in a limited way.
@@ -42,6 +44,7 @@ class Browser(object):
     self._profilers_states = {}
 
   def __enter__(self):
+    self.Start()
     return self
 
   def __exit__(self, *args):
@@ -93,42 +96,40 @@ class Browser(object):
     result = {
         'Browser': dict(pid_stats_function(browser_pid), **{'ProcessCount': 1}),
         'Renderer': {'ProcessCount': 0},
-        'Gpu': {'ProcessCount': 0}
+        'Gpu': {'ProcessCount': 0},
+        'Other': {'ProcessCount': 0}
     }
-    child_process_count = 0
+    process_count = 1
     for child_pid in self._platform_backend.GetChildPids(browser_pid):
-      child_process_count += 1
-      # Process type detection is causing exceptions.
-      # http://crbug.com/240951
       try:
         child_cmd_line = self._platform_backend.GetCommandLine(child_pid)
-        child_process_name = self._browser_backend.GetProcessName(
-            child_cmd_line)
-      except Exception:
-        # The cmd line was unavailable, assume it'll be impossible to track
-        # any further stats about this process.
+        child_stats = pid_stats_function(child_pid)
+      except exceptions.ProcessGoneException:
+        # It is perfectly fine for a process to have gone away between calling
+        # GetChildPids() and then further examining it.
         continue
+      child_process_name = self._browser_backend.GetProcessName(child_cmd_line)
       process_name_type_key_map = {'gpu-process': 'Gpu', 'renderer': 'Renderer'}
       if child_process_name in process_name_type_key_map:
         child_process_type_key = process_name_type_key_map[child_process_name]
       else:
         # TODO: identify other process types (zygote, plugin, etc), instead of
-        # lumping them in with renderer processes.
-        child_process_type_key = 'Renderer'
-      child_stats = pid_stats_function(child_pid)
+        # lumping them in a single category.
+        child_process_type_key = 'Other'
       result[child_process_type_key]['ProcessCount'] += 1
       for k, v in child_stats.iteritems():
         if k in result[child_process_type_key]:
           result[child_process_type_key][k] += v
         else:
           result[child_process_type_key][k] = v
+      process_count += 1
     for v in result.itervalues():
       if v['ProcessCount'] > 1:
         for k in v.keys():
           if k.endswith('Peak'):
             del v[k]
       del v['ProcessCount']
-    result['ProcessCount'] = child_process_count
+    result['ProcessCount'] = process_count
     return result
 
   @property
@@ -163,6 +164,7 @@ class Browser(object):
     }
     Any of the above keys may be missing on a per-platform basis.
     """
+    self._platform_backend.PurgeUnpinnedMemory()
     result = self._GetStatsCommon(self._platform_backend.GetMemoryStats)
     result['SystemCommitCharge'] = \
         self._platform_backend.GetSystemCommitCharge()

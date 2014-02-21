@@ -36,21 +36,15 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-HTMLMapElement::HTMLMapElement(const QualifiedName& tagName, Document& document)
-    : HTMLElement(tagName, document)
+HTMLMapElement::HTMLMapElement(Document& document)
+    : HTMLElement(mapTag, document)
 {
-    ASSERT(hasTagName(mapTag));
     ScriptWrappable::init(this);
 }
 
 PassRefPtr<HTMLMapElement> HTMLMapElement::create(Document& document)
 {
-    return adoptRef(new HTMLMapElement(mapTag, document));
-}
-
-PassRefPtr<HTMLMapElement> HTMLMapElement::create(const QualifiedName& tagName, Document& document)
-{
-    return adoptRef(new HTMLMapElement(tagName, document));
+    return adoptRef(new HTMLMapElement(document));
 }
 
 HTMLMapElement::~HTMLMapElement()
@@ -61,8 +55,8 @@ bool HTMLMapElement::mapMouseEvent(LayoutPoint location, const LayoutSize& size,
 {
     HTMLAreaElement* defaultArea = 0;
     Element* element = this;
-    while ((element = ElementTraversal::next(element, this))) {
-        if (isHTMLAreaElement(element)) {
+    while ((element = ElementTraversal::next(*element, this))) {
+        if (element->hasTagName(areaTag)) {
             HTMLAreaElement* areaElt = toHTMLAreaElement(element);
             if (areaElt->isDefault()) {
                 if (!defaultArea)
@@ -114,7 +108,7 @@ void HTMLMapElement::parseAttribute(const QualifiedName& name, const AtomicStrin
         String mapName = value;
         if (mapName[0] == '#')
             mapName = mapName.substring(1);
-        m_name = document().isHTMLDocument() ? mapName.lower() : mapName;
+        m_name = AtomicString(document().isHTMLDocument() ? mapName.lower() : mapName);
         if (inDocument())
             treeScope().addImageMap(this);
 

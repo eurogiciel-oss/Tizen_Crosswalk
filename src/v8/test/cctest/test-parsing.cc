@@ -108,6 +108,7 @@ TEST(ScanKeywords) {
 TEST(ScanHTMLEndComments) {
   v8::V8::Initialize();
   v8::Isolate* isolate = CcTest::isolate();
+  v8::HandleScope handles(isolate);
 
   // Regression test. See:
   //    http://code.google.com/p/chromium/issues/detail?id=53548
@@ -144,15 +145,20 @@ TEST(ScanHTMLEndComments) {
       reinterpret_cast<uintptr_t>(&marker) - 128 * 1024);
 
   for (int i = 0; tests[i]; i++) {
-    v8::ScriptData* data =
-        v8::ScriptData::PreCompile(isolate, tests[i], i::StrLength(tests[i]));
+    v8::Handle<v8::String> source = v8::String::NewFromUtf8(
+        isolate, tests[i], v8::String::kNormalString, i::StrLength(tests[i]));
+    v8::ScriptData* data = v8::ScriptData::PreCompile(source);
     CHECK(data != NULL && !data->HasError());
     delete data;
   }
 
   for (int i = 0; fail_tests[i]; i++) {
-    v8::ScriptData* data = v8::ScriptData::PreCompile(
-        isolate, fail_tests[i], i::StrLength(fail_tests[i]));
+    v8::Handle<v8::String> source =
+        v8::String::NewFromUtf8(isolate,
+                                fail_tests[i],
+                                v8::String::kNormalString,
+                                i::StrLength(fail_tests[i]));
+    v8::ScriptData* data = v8::ScriptData::PreCompile(source);
     CHECK(data == NULL || data->HasError());
     delete data;
   }
@@ -199,14 +205,15 @@ TEST(Preparsing) {
   const char* error_source = "var x = y z;";
   int error_source_length = i::StrLength(error_source);
 
-  v8::ScriptData* preparse =
-      v8::ScriptData::PreCompile(isolate, source, source_length);
+  v8::ScriptData* preparse = v8::ScriptData::PreCompile(v8::String::NewFromUtf8(
+      isolate, source, v8::String::kNormalString, source_length));
   CHECK(!preparse->HasError());
   bool lazy_flag = i::FLAG_lazy;
   {
     i::FLAG_lazy = true;
     ScriptResource* resource = new ScriptResource(source, source_length);
-    v8::Local<v8::String> script_source = v8::String::NewExternal(resource);
+    v8::Local<v8::String> script_source =
+        v8::String::NewExternal(isolate, resource);
     v8::Script::Compile(script_source, NULL, preparse);
   }
 
@@ -214,15 +221,19 @@ TEST(Preparsing) {
     i::FLAG_lazy = false;
 
     ScriptResource* resource = new ScriptResource(source, source_length);
-    v8::Local<v8::String> script_source = v8::String::NewExternal(resource);
+    v8::Local<v8::String> script_source =
+        v8::String::NewExternal(isolate, resource);
     v8::Script::New(script_source, NULL, preparse, v8::Local<v8::String>());
   }
   delete preparse;
   i::FLAG_lazy = lazy_flag;
 
   // Syntax error.
-  v8::ScriptData* error_preparse =
-      v8::ScriptData::PreCompile(isolate, error_source, error_source_length);
+  v8::ScriptData* error_preparse = v8::ScriptData::PreCompile(
+      v8::String::NewFromUtf8(isolate,
+                              error_source,
+                              v8::String::kNormalString,
+                              error_source_length));
   CHECK(error_preparse->HasError());
   i::ScriptDataImpl *pre_impl =
       reinterpret_cast<i::ScriptDataImpl*>(error_preparse);
@@ -388,13 +399,13 @@ TEST(PreParseOverflow) {
 
   size_t kProgramSize = 1024 * 1024;
   i::SmartArrayPointer<char> program(i::NewArray<char>(kProgramSize + 1));
-  memset(*program, '(', kProgramSize);
+  memset(program.get(), '(', kProgramSize);
   program[kProgramSize] = '\0';
 
   uintptr_t stack_limit = CcTest::i_isolate()->stack_guard()->real_climit();
 
   i::Utf8ToUtf16CharacterStream stream(
-      reinterpret_cast<const i::byte*>(*program),
+      reinterpret_cast<const i::byte*>(program.get()),
       static_cast<unsigned>(kProgramSize));
   i::CompleteParserRecorder log;
   i::Scanner scanner(CcTest::i_isolate()->unicode_cache());
@@ -445,7 +456,7 @@ void TestCharacterStream(const char* ascii_source,
   i::Vector<const char> ascii_vector(ascii_source, static_cast<int>(length));
   i::Handle<i::String> ascii_string(
       factory->NewStringFromAscii(ascii_vector));
-  TestExternalResource resource(*uc16_buffer, length);
+  TestExternalResource resource(uc16_buffer.get(), length);
   i::Handle<i::String> uc16_string(
       factory->NewExternalStringFromTwoByte(&resource));
 
@@ -1050,15 +1061,14 @@ i::Handle<i::String> FormatMessage(i::ScriptDataImpl* data) {
   i::Factory* factory = isolate->factory();
   const char* message = data->BuildMessage();
   i::Handle<i::String> format = v8::Utils::OpenHandle(
-                                    *v8::String::New(message));
+      *v8::String::NewFromUtf8(CcTest::isolate(), message));
   i::Vector<const char*> args = data->BuildArgs();
   i::Handle<i::JSArray> args_array = factory->NewJSArray(args.length());
   for (int i = 0; i < args.length(); i++) {
-    i::JSArray::SetElement(args_array,
-                           i,
-                           v8::Utils::OpenHandle(*v8::String::New(args[i])),
-                           NONE,
-                           i::kNonStrictMode);
+    i::JSArray::SetElement(
+        args_array, i, v8::Utils::OpenHandle(*v8::String::NewFromUtf8(
+                                                  CcTest::isolate(), args[i])),
+        NONE, i::kNonStrictMode);
   }
   i::Handle<i::JSObject> builtins(isolate->js_builtins_object());
   i::Handle<i::Object> format_fun =
@@ -1151,7 +1161,7 @@ void TestParserSyncWithFlags(i::Handle<i::String> source,
           "with error:\n"
           "\t%s\n"
           "However, the preparser succeeded",
-          *source->ToCString(), *message_string->ToCString());
+          source->ToCString().get(), message_string->ToCString().get());
       CHECK(false);
     }
     // Check that preparser and parser produce the same error.
@@ -1163,9 +1173,9 @@ void TestParserSyncWithFlags(i::Handle<i::String> source,
           "However, found the following error messages\n"
           "\tparser:    %s\n"
           "\tpreparser: %s\n",
-          *source->ToCString(),
-          *message_string->ToCString(),
-          *preparser_message->ToCString());
+          source->ToCString().get(),
+          message_string->ToCString().get(),
+          preparser_message->ToCString().get());
       CHECK(false);
     }
   } else if (data.has_error()) {
@@ -1175,7 +1185,7 @@ void TestParserSyncWithFlags(i::Handle<i::String> source,
         "with error:\n"
         "\t%s\n"
         "However, the parser succeeded",
-        *source->ToCString(), *FormatMessage(&data)->ToCString());
+        source->ToCString().get(), FormatMessage(&data)->ToCString().get());
     CHECK(false);
   }
 }
@@ -1329,7 +1339,7 @@ TEST(PreparserStrictOctal) {
       "    01;               \n"
       "  };                  \n"
       "};                    \n";
-  v8::Script::Compile(v8::String::New(script));
+  v8::Script::Compile(v8::String::NewFromUtf8(CcTest::isolate(), script));
   CHECK(try_catch.HasCaught());
   v8::String::Utf8Value exception(try_catch.Exception());
   CHECK_EQ("SyntaxError: Octal literals are not allowed in strict mode.",

@@ -143,17 +143,17 @@ void Step::evaluate(Node* context, NodeSet& nodes) const
     }
 }
 
+#if !ASSERT_DISABLED
 static inline Node::NodeType primaryNodeType(Step::Axis axis)
 {
     switch (axis) {
         case Step::AttributeAxis:
             return Node::ATTRIBUTE_NODE;
-        case Step::NamespaceAxis:
-            return Node::XPATH_NAMESPACE_NODE;
         default:
             return Node::ELEMENT_NODE;
     }
 }
+#endif
 
 // Evaluate NodeTest without considering merged predicates.
 static inline bool nodeMatchesBasicTest(Node* node, Step::Axis axis, const Step::NodeTest& nodeTest)
@@ -252,7 +252,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
             if (context->isAttributeNode()) // In XPath model, attribute nodes do not have children.
                 return;
 
-            for (Node* n = context->firstChild(); n; n = NodeTraversal::next(n, context))
+            for (Node* n = context->firstChild(); n; n = NodeTraversal::next(*n, context))
                 if (nodeMatches(n, DescendantAxis, m_nodeTest))
                     nodes.append(n);
             return;
@@ -281,8 +281,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
             return;
         }
         case FollowingSiblingAxis:
-            if (context->nodeType() == Node::ATTRIBUTE_NODE ||
-                 context->nodeType() == Node::XPATH_NAMESPACE_NODE)
+            if (context->nodeType() == Node::ATTRIBUTE_NODE)
                 return;
 
             for (Node* n = context->nextSibling(); n; n = n->nextSibling())
@@ -290,8 +289,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
                     nodes.append(n);
             return;
         case PrecedingSiblingAxis:
-            if (context->nodeType() == Node::ATTRIBUTE_NODE ||
-                 context->nodeType() == Node::XPATH_NAMESPACE_NODE)
+            if (context->nodeType() == Node::ATTRIBUTE_NODE)
                 return;
 
             for (Node* n = context->previousSibling(); n; n = n->previousSibling())
@@ -303,7 +301,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
         case FollowingAxis:
             if (context->isAttributeNode()) {
                 Node* p = toAttr(context)->ownerElement();
-                while ((p = NodeTraversal::next(p))) {
+                while ((p = NodeTraversal::next(*p))) {
                     if (nodeMatches(p, FollowingAxis, m_nodeTest))
                         nodes.append(p);
                 }
@@ -312,7 +310,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
                     for (Node* n = p->nextSibling(); n; n = n->nextSibling()) {
                         if (nodeMatches(n, FollowingAxis, m_nodeTest))
                             nodes.append(n);
-                        for (Node* c = n->firstChild(); c; c = NodeTraversal::next(c, n))
+                        for (Node* c = n->firstChild(); c; c = NodeTraversal::next(*c, n))
                             if (nodeMatches(c, FollowingAxis, m_nodeTest))
                                 nodes.append(c);
                     }
@@ -325,7 +323,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
 
             Node* n = context;
             while (ContainerNode* parent = n->parentNode()) {
-                for (n = NodeTraversal::previous(n); n != parent; n = NodeTraversal::previous(n))
+                for (n = NodeTraversal::previous(*n); n != parent; n = NodeTraversal::previous(*n))
                     if (nodeMatches(n, PrecedingAxis, m_nodeTest))
                         nodes.append(n);
                 n = parent;
@@ -360,7 +358,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
             return;
         }
         case NamespaceAxis:
-            // XPath namespace nodes are not implemented yet.
+            // XPath namespace nodes are not implemented.
             return;
         case SelfAxis:
             if (nodeMatches(context, SelfAxis, m_nodeTest))
@@ -372,7 +370,7 @@ void Step::nodesInAxis(Node* context, NodeSet& nodes) const
             if (context->isAttributeNode()) // In XPath model, attribute nodes do not have children.
                 return;
 
-            for (Node* n = context->firstChild(); n; n = NodeTraversal::next(n, context))
+            for (Node* n = context->firstChild(); n; n = NodeTraversal::next(*n, context))
             if (nodeMatches(n, DescendantOrSelfAxis, m_nodeTest))
                 nodes.append(n);
             return;

@@ -9,6 +9,8 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "content/browser/frame_host/frame_tree.h"
+#include "content/browser/frame_host/navigator_delegate.h"
+#include "content/browser/frame_host/render_frame_host_delegate.h"
 #include "content/browser/renderer_host/render_view_host_delegate.h"
 #include "content/browser/renderer_host/render_widget_host_delegate.h"
 #include "content/public/browser/interstitial_page.h"
@@ -36,8 +38,10 @@ class CONTENT_EXPORT InterstitialPageImpl
     : public NON_EXPORTED_BASE(InterstitialPage),
       public NotificationObserver,
       public WebContentsObserver,
+      public NON_EXPORTED_BASE(RenderFrameHostDelegate),
       public RenderViewHostDelegate,
-      public RenderWidgetHostDelegate {
+      public RenderWidgetHostDelegate,
+      public NON_EXPORTED_BASE(NavigatorDelegate) {
  public:
   // The different state of actions the user can take in an interstitial.
   enum ActionState {
@@ -98,6 +102,9 @@ class CONTENT_EXPORT InterstitialPageImpl
   virtual void NavigationEntryCommitted(
       const LoadCommittedDetails& load_details) OVERRIDE;
 
+  // RenderFrameHostDelegate implementation:
+  virtual void RenderFrameCreated(RenderFrameHost* render_frame_host) OVERRIDE;
+
   // RenderViewHostDelegate implementation:
   virtual RenderViewHostDelegateView* GetDelegateView() OVERRIDE;
   virtual const GURL& GetURL() const OVERRIDE;
@@ -109,20 +116,23 @@ class CONTENT_EXPORT InterstitialPageImpl
       const ViewHostMsg_FrameNavigate_Params& params) OVERRIDE;
   virtual void UpdateTitle(RenderViewHost* render_view_host,
                            int32 page_id,
-                           const string16& title,
+                           const base::string16& title,
                            base::i18n::TextDirection title_direction) OVERRIDE;
   virtual RendererPreferences GetRendererPrefs(
       BrowserContext* browser_context) const OVERRIDE;
   virtual WebPreferences GetWebkitPrefs() OVERRIDE;
   virtual gfx::Rect GetRootWindowResizerRect() const OVERRIDE;
   virtual void CreateNewWindow(
+      int render_process_id,
       int route_id,
       int main_frame_route_id,
       const ViewHostMsg_CreateWindow_Params& params,
       SessionStorageNamespace* session_storage_namespace) OVERRIDE;
-  virtual void CreateNewWidget(int route_id,
-                               WebKit::WebPopupType popup_type) OVERRIDE;
-  virtual void CreateNewFullscreenWidget(int route_id) OVERRIDE;
+  virtual void CreateNewWidget(int render_process_id,
+                               int route_id,
+                               blink::WebPopupType popup_type) OVERRIDE;
+  virtual void CreateNewFullscreenWidget(int render_process_id,
+                                         int route_id) OVERRIDE;
   virtual void ShowCreatedWindow(int route_id,
                                  WindowOpenDisposition disposition,
                                  const gfx::Rect& initial_pos,
@@ -144,7 +154,7 @@ class CONTENT_EXPORT InterstitialPageImpl
       bool* is_keyboard_shortcut) OVERRIDE;
   virtual void HandleKeyboardEvent(
       const NativeWebKeyboardEvent& event) OVERRIDE;
-#if defined(OS_WIN) && defined(USE_AURA)
+#if defined(OS_WIN)
   virtual gfx::NativeViewAccessible GetParentNativeViewAccessible() OVERRIDE;
 #endif
 
@@ -171,8 +181,8 @@ class CONTENT_EXPORT InterstitialPageImpl
   // - any command sent by the RenderViewHost will be ignored.
   void Disable();
 
-  // Shutdown the RVH.  We will be deleted by the time this method returns.
-  void Shutdown(RenderViewHostImpl* render_view_host);
+  // Delete ourselves, causing Shutdown on the RVH to be called.
+  void Shutdown();
 
   void OnNavigatingAwayOrTabClosing();
 
@@ -220,6 +230,8 @@ class CONTENT_EXPORT InterstitialPageImpl
   // The RenderViewHost displaying the interstitial contents.  This is valid
   // until Hide is called, at which point it will be set to NULL, signifying
   // that shutdown has started.
+  // TODO(creis): This is now owned by the FrameTree.  We should route things
+  // through the tree's root RenderFrameHost instead.
   RenderViewHostImpl* render_view_host_;
 
   // The frame tree structure of the current page.
@@ -243,7 +255,7 @@ class CONTENT_EXPORT InterstitialPageImpl
 
   // The original title of the contents that should be reverted to when the
   // interstitial is hidden.
-  string16 original_web_contents_title_;
+  base::string16 original_web_contents_title_;
 
   // Our RenderViewHostViewDelegate, necessary for accelerators to work.
   scoped_ptr<InterstitialPageRVHDelegateView> rvh_delegate_view_;

@@ -8,22 +8,24 @@
 #include "ui/base/accessibility/accessible_view_state.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/views/controls/button/label_button_border.h"
+#include "ui/views/painter.h"
 
 namespace views {
 
 // static
 const char Checkbox::kViewClassName[] = "Checkbox";
 
-Checkbox::Checkbox(const string16& label)
+Checkbox::Checkbox(const base::string16& label)
     : LabelButton(NULL, label),
       checked_(false) {
   SetHorizontalAlignment(gfx::ALIGN_LEFT);
-  LabelButtonBorder* button_border = static_cast<LabelButtonBorder*>(border());
+  scoped_ptr<LabelButtonBorder> button_border(new LabelButtonBorder(style()));
   button_border->SetPainter(false, STATE_HOVERED, NULL);
   button_border->SetPainter(false, STATE_PRESSED, NULL);
   // Inset the trailing side by a couple pixels for the focus border.
   button_border->set_insets(gfx::Insets(0, 0, 0, 2));
-  set_focusable(true);
+  SetBorder(button_border.PassAs<Border>());
+  SetFocusable(true);
 
   ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
 
@@ -79,11 +81,13 @@ void Checkbox::SetChecked(bool checked) {
 void Checkbox::Layout() {
   LabelButton::Layout();
 
-  // Construct a focus border that only surrounds the label area.
+  // Construct a focus painter that only surrounds the label area.
   gfx::Rect rect = label()->GetMirroredBounds();
   rect.Inset(-2, 3);
-  set_focus_border(FocusBorder::CreateDashedFocusBorder(
-      rect.x(), rect.y(), width() - rect.right(), height() - rect.bottom()));
+  SetFocusPainter(Painter::CreateDashedFocusPainterWithInsets(
+                      gfx::Insets(rect.y(), rect.x(),
+                                  height() - rect.bottom(),
+                                  width() - rect.right())));
 }
 
 const char* Checkbox::GetClassName() const {
@@ -97,10 +101,12 @@ void Checkbox::GetAccessibleState(ui::AccessibleViewState* state) {
 }
 
 void Checkbox::OnFocus() {
+  LabelButton::OnFocus();
   UpdateImage();
 }
 
 void Checkbox::OnBlur() {
+  LabelButton::OnBlur();
   UpdateImage();
 }
 

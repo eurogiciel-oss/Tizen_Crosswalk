@@ -37,21 +37,17 @@ public:
     }
 
 private:
-    virtual bool isIdentity() const { return true; }
-    virtual OperationType getOperationType() const { return Identity; }
-    virtual bool isSameType(const TransformOperation& o) const { return o.getOperationType() == Identity; }
+    virtual bool isIdentity() const OVERRIDE FINAL { return true; }
+    virtual OperationType type() const OVERRIDE { return Identity; }
 
-    virtual bool operator==(const TransformOperation& o) const
+    virtual bool operator==(const TransformOperation& o) const OVERRIDE
     {
         return isSameType(o);
     }
 
-    virtual bool apply(TransformationMatrix&, const FloatSize&) const
-    {
-        return false;
-    }
+    virtual void apply(TransformationMatrix&, const FloatSize&) const OVERRIDE { }
 
-    virtual PassRefPtr<TransformOperation> blend(const TransformOperation*, double, bool = false)
+    virtual PassRefPtr<TransformOperation> blend(const TransformOperation*, double, bool = false) OVERRIDE
     {
         return this;
     }

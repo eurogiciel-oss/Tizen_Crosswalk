@@ -8,11 +8,12 @@ button {
     -webkit-appearance: none;
 }
 </style>
-<button autofocus onclick="this.disabled = true;">Button</button>
-<script src="../../js/resources/js-test-pre.js"></script>
+<button onclick="this.disabled = true;">Button</button>
+<script src="../../../resources/js-test.js"></script>
 <script>
 jsTestIsAsync = true;
 var button = document.querySelector('button');
+button.focus();
 shouldBe('document.activeElement', 'button');
 debug('Clicking a button makes the button disabled.');
 window.onload = function() {
@@ -24,6 +25,7 @@ window.onload = function() {
     // Need to wait until CheckFocusedElementTask is unqueued.
     setTimeout(function() {
         button.click();
+        document.body.offsetTop;
     }, 20);
     setTimeout(function() {
         testFailed('No blur event.');

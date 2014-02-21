@@ -14,6 +14,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "sync/internal_api/public/base/unique_position.h"
+#include "sync/protocol/app_list_specifics.pb.h"
 #include "sync/protocol/app_notification_specifics.pb.h"
 #include "sync/protocol/app_setting_specifics.pb.h"
 #include "sync/protocol/app_specifics.pb.h"
@@ -54,9 +55,7 @@ base::StringValue* MakeInt64Value(int64 x) {
 // that instead of a StringValue.
 base::StringValue* MakeBytesValue(const std::string& bytes) {
   std::string bytes_base64;
-  if (!base::Base64Encode(bytes, &bytes_base64)) {
-    NOTREACHED();
-  }
+  base::Base64Encode(bytes, &bytes_base64);
   return new base::StringValue(bytes_base64);
 }
 
@@ -203,6 +202,7 @@ base::DictionaryValue* TabNavigationToValue(
   SET_ENUM(blocked_state, GetBlockedStateString);
   SET_STR_REP(content_pack_categories);
   SET_INT32(http_status_code);
+  SET_INT32(referrer_policy);
   return value;
 }
 
@@ -349,6 +349,19 @@ base::DictionaryValue* CoalescedNotificationToValue(
   return value;
 }
 
+base::DictionaryValue* AppListSpecificsToValue(
+    const sync_pb::AppListSpecifics& proto) {
+  base::DictionaryValue* value = new base::DictionaryValue();
+  SET_STR(item_id);
+  SET_ENUM(item_type, GetAppListItemTypeString);
+  SET_STR(item_name);
+  SET_STR(parent_id);
+  SET_STR(page_ordinal);
+  SET_STR(item_ordinal);
+
+  return value;
+}
+
 base::DictionaryValue* AppNotificationToValue(
     const sync_pb::AppNotification& proto) {
   base::DictionaryValue* value = new base::DictionaryValue();
@@ -376,6 +389,7 @@ base::DictionaryValue* AppSpecificsToValue(
   SET(notification_settings, AppSettingsToValue);
   SET_STR(app_launch_ordinal);
   SET_STR(page_ordinal);
+  SET_ENUM(launch_type, GetLaunchTypeString);
 
   return value;
 }
@@ -409,7 +423,19 @@ base::DictionaryValue* AutofillProfileSpecificsToValue(
   SET_STR(address_home_zip);
   SET_STR(address_home_country);
 
+  SET_STR(address_home_street_address);
+  SET_STR(address_home_sorting_code);
+  SET_STR(address_home_dependent_locality);
+
   SET_STR_REP(phone_home_whole_number);
+  return value;
+}
+
+base::DictionaryValue* MetaInfoToValue(
+    const sync_pb::MetaInfo& proto) {
+  base::DictionaryValue* value = new base::DictionaryValue();
+  SET_STR(key);
+  SET_STR(value);
   return value;
 }
 
@@ -421,6 +447,7 @@ base::DictionaryValue* BookmarkSpecificsToValue(
   SET_STR(title);
   SET_INT64(creation_time_us);
   SET_STR(icon_url);
+  SET_REP(meta_info, &MetaInfoToValue);
   return value;
 }
 
@@ -546,6 +573,16 @@ base::DictionaryValue* ManagedUserSpecificsToValue(
   return value;
 }
 
+base::DictionaryValue* ManagedUserSharedSettingSpecificsToValue(
+    const sync_pb::ManagedUserSharedSettingSpecifics& proto) {
+  base::DictionaryValue* value = new base::DictionaryValue();
+  SET_STR(mu_id);
+  SET_STR(key);
+  SET_STR(value);
+  SET_BOOL(acknowledged);
+  return value;
+}
+
 base::DictionaryValue* NigoriSpecificsToValue(
     const sync_pb::NigoriSpecifics& proto) {
   base::DictionaryValue* value = new base::DictionaryValue();
@@ -565,6 +602,7 @@ base::DictionaryValue* NigoriSpecificsToValue(
   SET_BOOL(encrypt_search_engines);
   SET_BOOL(encrypt_dictionary);
   SET_BOOL(encrypt_articles);
+  SET_BOOL(encrypt_app_list);
   SET_BOOL(encrypt_everything);
   SET_BOOL(sync_tab_favicons);
   SET_ENUM(passphrase_type, PassphraseTypeString);
@@ -687,6 +725,7 @@ base::DictionaryValue* EntitySpecificsToValue(
     const sync_pb::EntitySpecifics& specifics) {
   base::DictionaryValue* value = new base::DictionaryValue();
   SET_FIELD(app, AppSpecificsToValue);
+  SET_FIELD(app_list, AppListSpecificsToValue);
   SET_FIELD(app_notification, AppNotificationToValue);
   SET_FIELD(app_setting, AppSettingSpecificsToValue);
   SET_FIELD(article, ArticleSpecificsToValue);
@@ -702,6 +741,8 @@ base::DictionaryValue* EntitySpecificsToValue(
   SET_FIELD(favicon_tracking, FaviconTrackingSpecificsToValue);
   SET_FIELD(history_delete_directive, HistoryDeleteDirectiveSpecificsToValue);
   SET_FIELD(managed_user_setting, ManagedUserSettingSpecificsToValue);
+  SET_FIELD(managed_user_shared_setting,
+            ManagedUserSharedSettingSpecificsToValue);
   SET_FIELD(managed_user, ManagedUserSpecificsToValue);
   SET_FIELD(nigori, NigoriSpecificsToValue);
   SET_FIELD(password, PasswordSpecificsToValue);
@@ -986,6 +1027,13 @@ base::DictionaryValue* ClientConfigParamsToValue(
   base::DictionaryValue* value = new base::DictionaryValue();
   SET_INT32_REP(enabled_type_ids);
   SET_BOOL(tabs_datatype_enabled);
+  return value;
+}
+
+base::DictionaryValue* SyncAttachmentIdToValue(
+    const sync_pb::SyncAttachmentId& proto) {
+  base::DictionaryValue* value = new base::DictionaryValue();
+  SET_STR(unique_id);
   return value;
 }
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script src="resources/shadow-dom.js"></script>
 </head>
 <body>
@@ -10,6 +10,14 @@
 <pre id="console"></pre>
 <script>
 var sandbox = document.getElementById('sandbox');
+
+function click(path) {
+    debug('');
+    debug('click #' + path);
+    var clickEvent = document.createEvent("MouseEvents");
+    clickEvent.initMouseEvent('click', true, false, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+    getNodeInTreeOfTrees(path).dispatchEvent(clickEvent);
+}
 
 sandbox.appendChild(
     createDOM('div', {'id': 'A'},
@@ -20,18 +28,18 @@ sandbox.appendChild(
                                          createDOM('content', {'id': 'F'}))),
               createShadowRoot({'id': 'G'},
                                createDOM('div', {'id': 'H'},
-                                         createDOM('shadow', {'id': 'I'},
-                                                   createDOM('content', {'id': 'J'}))))));
+                                         createDOM('shadow', {'id': 'I'})))));
 
-['A', 'B', 'C', 'A/', 'A/E', 'A/F', 'A//', 'A//H', 'A//I', 'A//J'].forEach(function(path) {
+['A', 'B', 'C', 'A/', 'A/E', 'A/F', 'A//', 'A//H', 'A//I'].forEach(function(path) {
     getNodeInTreeOfTrees(path).addEventListener('click', function(event) {
-        debug('\nevent.path on node ' + dumpNode(event.currentTarget));
+        debug('\nevent.path on node ' + dumpNode(event.currentTarget) + ' (target: ' + dumpNode(event.target) + ')');
         debug(dumpNodeList(event.path));
     });
 });
-var clickEvent = document.createEvent("MouseEvents");
-clickEvent.initMouseEvent('click', true, false, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
-document.getElementById('C').dispatchEvent(clickEvent);
+
+click('C');
+click('A/E');
+click('A//H');
 </script>
 </body>
 </html>

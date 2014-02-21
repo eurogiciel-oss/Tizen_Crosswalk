@@ -19,15 +19,12 @@ PASS SVGLengthList.toString() is 'function SVGLengthList() { [native code] }'
 PASS SVGAnimatedLengthList.toString() is 'function SVGAnimatedLengthList() { [native code] }'
 PASS SVGAngle.toString() is 'function SVGAngle() { [native code] }'
 PASS SVGAnimatedAngle.toString() is 'function SVGAnimatedAngle() { [native code] }'
-PASS SVGColor.toString() is 'function SVGColor() { [native code] }'
-FAIL SVGICCColor.toString() should be function SVGICCColor() { [native code] }. Threw exception ReferenceError: SVGICCColor is not defined
 PASS SVGRect.toString() is 'function SVGRect() { [native code] }'
 PASS SVGAnimatedRect.toString() is 'function SVGAnimatedRect() { [native code] }'
 FAIL SVGStylable.toString() should be function SVGStylable() { [native code] }. Threw exception ReferenceError: SVGStylable is not defined
 FAIL SVGLocatable.toString() should be function SVGLocatable() { [native code] }. Threw exception ReferenceError: SVGLocatable is not defined
 FAIL SVGTransformable.toString() should be function SVGTransformable() { [native code] }. Threw exception ReferenceError: SVGTransformable is not defined
 FAIL SVGTests.toString() should be function SVGTests() { [native code] }. Threw exception ReferenceError: SVGTests is not defined
-FAIL SVGLangSpace.toString() should be function SVGLangSpace() { [native code] }. Threw exception ReferenceError: SVGLangSpace is not defined
 PASS SVGViewSpec.toString() is 'function SVGViewSpec() { [native code] }'
 FAIL SVGURIReference.toString() should be function SVGURIReference() { [native code] }. Threw exception ReferenceError: SVGURIReference is not defined
 FAIL SVGCSSRule.toString() should be function SVGCSSRule() { [native code] }. Threw exception ReferenceError: SVGCSSRule is not defined
@@ -36,6 +33,7 @@ PASS SVGSVGElement.toString() is 'function SVGSVGElement() { [native code] }'
 PASS SVGGElement.toString() is 'function SVGGElement() { [native code] }'
 PASS SVGDefsElement.toString() is 'function SVGDefsElement() { [native code] }'
 PASS SVGDescElement.toString() is 'function SVGDescElement() { [native code] }'
+PASS SVGDiscardElement.toString() is 'function SVGDiscardElement() { [native code] }'
 PASS SVGTitleElement.toString() is 'function SVGTitleElement() { [native code] }'
 PASS SVGSymbolElement.toString() is 'function SVGSymbolElement() { [native code] }'
 PASS SVGUseElement.toString() is 'function SVGUseElement() { [native code] }'
@@ -91,7 +89,6 @@ PASS SVGAltGlyphElement.toString() is 'function SVGAltGlyphElement() { [native c
 PASS SVGAltGlyphDefElement.toString() is 'function SVGAltGlyphDefElement() { [native code] }'
 PASS SVGAltGlyphItemElement.toString() is 'function SVGAltGlyphItemElement() { [native code] }'
 PASS SVGGlyphRefElement.toString() is 'function SVGGlyphRefElement() { [native code] }'
-PASS SVGPaint.toString() is 'function SVGPaint() { [native code] }'
 PASS SVGMarkerElement.toString() is 'function SVGMarkerElement() { [native code] }'
 FAIL SVGColorProfileElement.toString() should be function SVGColorProfileElement() { [native code] }. Threw exception ReferenceError: SVGColorProfileElement is not defined
 FAIL SVGColorProfileRule.toString() should be function SVGColorProfileRule() { [native code] }. Threw exception ReferenceError: SVGColorProfileRule is not defined
@@ -140,7 +137,7 @@ PASS SVGAnimateElement.toString() is 'function SVGAnimateElement() { [native cod
 PASS SVGSetElement.toString() is 'function SVGSetElement() { [native code] }'
 PASS SVGAnimateMotionElement.toString() is 'function SVGAnimateMotionElement() { [native code] }'
 PASS SVGMPathElement.toString() is 'function SVGMPathElement() { [native code] }'
-PASS SVGAnimateColorElement.toString() is 'function SVGAnimateColorElement() { [native code] }'
+FAIL SVGAnimateColorElement.toString() should be function SVGAnimateColorElement() { [native code] }. Threw exception ReferenceError: SVGAnimateColorElement is not defined
 PASS SVGAnimateTransformElement.toString() is 'function SVGAnimateTransformElement() { [native code] }'
 PASS SVGFontElement.toString() is 'function SVGFontElement() { [native code] }'
 PASS SVGGlyphElement.toString() is 'function SVGGlyphElement() { [native code] }'

@@ -17,21 +17,23 @@
 #include "media/cast/cast_environment.h"
 #include "media/cast/cast_receiver.h"
 #include "media/cast/rtcp/rtcp.h"
-#include "media/cast/rtp_common/rtp_defines.h"
 #include "media/cast/rtp_receiver/rtp_receiver.h"
+#include "media/cast/rtp_receiver/rtp_receiver_defines.h"
+
+namespace crypto {
+class Encryptor;
+class SymmetricKey;
+}
 
 namespace media {
 namespace cast {
-
 class Framer;
 class LocalRtpVideoData;
 class LocalRtpVideoFeedback;
-class PacedPacketSender;
 class PeerVideoReceiver;
 class Rtcp;
 class RtpReceiverStatistics;
 class VideoDecoder;
-
 
 // Should only be called from the Main cast thread.
 class VideoReceiver : public base::NonThreadSafe,
@@ -39,7 +41,7 @@ class VideoReceiver : public base::NonThreadSafe,
  public:
   VideoReceiver(scoped_refptr<CastEnvironment> cast_environment,
                 const VideoReceiverConfig& video_config,
-                PacedPacketSender* const packet_sender);
+                transport::PacedPacketSender* const packet_sender);
 
   virtual ~VideoReceiver();
 
@@ -54,12 +56,12 @@ class VideoReceiver : public base::NonThreadSafe,
                       const base::Closure callback);
 
  protected:
-  void IncomingRtpPacket(const uint8* payload_data,
-                         size_t payload_size,
-                         const RtpCastHeader& rtp_header);
+  void IncomingParsedRtpPacket(const uint8* payload_data,
+                               size_t payload_size,
+                               const RtpCastHeader& rtp_header);
 
   void DecodeVideoFrameThread(
-      scoped_ptr<EncodedVideoFrame> encoded_frame,
+      scoped_ptr<transport::EncodedVideoFrame> encoded_frame,
       const base::TimeTicks render_time,
       const VideoFrameDecodedCallback& frame_decoded_callback);
 
@@ -68,21 +70,25 @@ class VideoReceiver : public base::NonThreadSafe,
   friend class LocalRtpVideoFeedback;
 
   void CastFeedback(const RtcpCastMessage& cast_message);
-  void RequestKeyFrame();
 
   void DecodeVideoFrame(const VideoFrameDecodedCallback& callback,
-                        scoped_ptr<EncodedVideoFrame> encoded_frame,
+                        scoped_ptr<transport::EncodedVideoFrame> encoded_frame,
                         const base::TimeTicks& render_time);
 
-  bool PullEncodedVideoFrame(uint32 rtp_timestamp,
-                             bool next_frame,
-                             scoped_ptr<EncodedVideoFrame>* encoded_frame,
-                             base::TimeTicks* render_time);
+  bool DecryptVideoFrame(scoped_ptr<transport::EncodedVideoFrame>* video_frame);
+
+  bool PullEncodedVideoFrame(
+      uint32 rtp_timestamp,
+      bool next_frame,
+      scoped_ptr<transport::EncodedVideoFrame>* encoded_frame,
+      base::TimeTicks* render_time);
 
   void PlayoutTimeout();
 
   // Returns Render time based on current time and the rtp timestamp.
   base::TimeTicks GetRenderTime(base::TimeTicks now, uint32 rtp_timestamp);
+
+  void InitializeTimers();
 
   // Schedule timing for the next cast message.
   void ScheduleNextCastMessage();
@@ -99,8 +105,7 @@ class VideoReceiver : public base::NonThreadSafe,
   scoped_ptr<VideoDecoder> video_decoder_;
   scoped_refptr<CastEnvironment> cast_environment_;
   scoped_ptr<Framer> framer_;
-  const VideoCodec codec_;
-  const uint32 incoming_ssrc_;
+  const transport::VideoCodec codec_;
   base::TimeDelta target_delay_delta_;
   base::TimeDelta frame_delay_;
   scoped_ptr<LocalRtpVideoData> incoming_payload_callback_;
@@ -109,10 +114,15 @@ class VideoReceiver : public base::NonThreadSafe,
   scoped_ptr<Rtcp> rtcp_;
   scoped_ptr<RtpReceiverStatistics> rtp_video_receiver_statistics_;
   base::TimeTicks time_last_sent_cast_message_;
-  // Sender-receiver offset estimation.
-  base::TimeDelta time_offset_;
-
+  base::TimeDelta time_offset_;  // Sender-receiver offset estimation.
+  scoped_ptr<crypto::Encryptor> decryptor_;
+  scoped_ptr<crypto::SymmetricKey> decryption_key_;
+  std::string iv_mask_;
   std::list<VideoFrameEncodedCallback> queued_encoded_callbacks_;
+  bool time_incoming_packet_updated_;
+  base::TimeTicks time_incoming_packet_;
+  uint32 incoming_rtp_timestamp_;
+  base::TimeTicks last_render_time_;
 
   base::WeakPtrFactory<VideoReceiver> weak_factory_;
 

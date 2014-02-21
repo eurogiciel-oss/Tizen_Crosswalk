@@ -83,7 +83,7 @@ ALERT: PASS: window.SyntaxError should be 'function SyntaxError() { [native code
 ALERT: PASS: window.Text should be 'function Text() { [native code] }' and is.
 ALERT: PASS: window.TypeError should be 'function TypeError() { [native code] }' and is.
 ALERT: PASS: window.URIError should be 'function URIError() { [native code] }' and is.
-ALERT: PASS: window.XMLDocument should be 'function Document() { [native code] }' and is.
+ALERT: PASS: window.XMLDocument should be 'function XMLDocument() { [native code] }' and is.
 ALERT: PASS: window.XMLSerializer should be 'function XMLSerializer() { [native code] }' and is.
 ALERT: PASS: window.XPathEvaluator should be 'function XPathEvaluator() { [native code] }' and is.
 ALERT: PASS: window.XPathResult should be 'function XPathResult() { [native code] }' and is.
@@ -97,7 +97,7 @@ ALERT: PASS: window.devicePixelRatio should be '1' and is.
 ALERT: PASS: window.document should be '[object HTMLDocument]' and is.
 ALERT: PASS: window.embeds should be 'undefined' and is.
 ALERT: PASS: window.event should be 'undefined' and is.
-ALERT: PASS: 'window.frameElement' threw 'SecurityError: Blocked a frame with origin "http://localhost:8000" from accessing a cross-origin frame.'.
+ALERT: PASS: 'window.frameElement' threw 'SecurityError: Failed to read the 'frame' property from 'Window': Blocked a frame with origin "http://localhost:8000" from accessing a cross-origin frame.'.
 ALERT: PASS: window.frames should be '[object Window]' and is.
 ALERT: PASS: window.history should be '[object History]' and is.
 ALERT: PASS: window.images should be 'undefined' and is.
@@ -289,12 +289,12 @@ PASS: Unable to set property document: SecurityError: Blocked a frame with origi
 PASS: Unable to set property embeds: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property event: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property frameElement: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
-PASS: Unable to set property frames: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
+PASS: Unable to set property frames: SecurityError: Failed to set the 'frames' property on 'Window': Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property history: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property images: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property innerHeight: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property innerWidth: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
-PASS: Unable to set property length: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
+PASS: Unable to set property length: SecurityError: Failed to set the 'length' property on 'Window': Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property locationbar: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property menubar: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property name: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
@@ -325,7 +325,7 @@ PASS: Unable to set property onsearch: SecurityError: Blocked a frame with origi
 PASS: Unable to set property onselect: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property onsubmit: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property onunload: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
-PASS: Unable to set property opener: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
+PASS: Unable to set property opener: SecurityError: Failed to set the 'opener' property on 'Window': Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property outerHeight: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property outerWidth: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property pageXOffset: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
@@ -340,12 +340,12 @@ PASS: Unable to set property screenY: SecurityError: Blocked a frame with origin
 PASS: Unable to set property scrollbars: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property scrollX: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property scrollY: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
-PASS: Unable to set property self: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
+PASS: Unable to set property self: SecurityError: Failed to set the 'self' property on 'Window': Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property status: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property statusbar: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property toolbar: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property window: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
-PASS: Unable to set property parent: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
+PASS: Unable to set property parent: SecurityError: Failed to set the 'parent' property on 'Window': Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property addEventListener: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property alert: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.
 PASS: Unable to set property atob: SecurityError: Blocked a frame with origin "http://127.0.0.1:8000" from accessing a cross-origin frame.

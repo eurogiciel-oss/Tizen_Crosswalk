@@ -1,19 +1,19 @@
 This tests XMLSerializer.serializeToString() throwing exception when node value is invalid and passing otherwise.
 
 1. Verifying XMLSerializer.serializeToString() should THROW exception with node value = null
-Exception thrown = [TypeError: Invalid node value.]
+Exception thrown = [TypeError: Failed to execute 'serializeToString' on 'XMLSerializer': Invalid node value.]
 PASS
 
 2. Verifying XMLSerializer.serializeToString() should THROW exception with node value = undefined
-Exception thrown = [TypeError: Invalid node value.]
+Exception thrown = [TypeError: Failed to execute 'serializeToString' on 'XMLSerializer': Invalid node value.]
 PASS
 
 3. Verifying XMLSerializer.serializeToString() should THROW exception with node value = <html><title>Hello World</title></html>
-Exception thrown = [TypeError: Invalid node value.]
+Exception thrown = [TypeError: Failed to execute 'serializeToString' on 'XMLSerializer': Invalid node value.]
 PASS
 
 4. Verifying XMLSerializer.serializeToString() should THROW exception with node value = [object HTMLCollection]
-Exception thrown = [TypeError: Invalid node value.]
+Exception thrown = [TypeError: Failed to execute 'serializeToString' on 'XMLSerializer': Invalid node value.]
 PASS
 
 5. Verifying XMLSerializer.serializeToString() should NOT-THROW exception with node value = [object HTMLDocument]
@@ -40,7 +40,7 @@ PASS
 12. Verifying XMLSerializer.serializeToString() should NOT-THROW exception with node value = [object HTMLHtmlElement]
 PASS
 
-13. Verifying XMLSerializer.serializeToString() should NOT-THROW exception with node value = [object Document]
+13. Verifying XMLSerializer.serializeToString() should NOT-THROW exception with node value = [object XMLDocument]
 PASS
 
 14. Verifying XMLSerializer.serializeToString() should NOT-THROW exception with node value = [object Element]

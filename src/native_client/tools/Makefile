@@ -557,7 +557,7 @@ endif
 # by the Native Client threads package build.
 ##################################################################
 
-NEWLIB_CFLAGS = -O2 -D_I386MACH_ALLOW_HW_INTERRUPTS -mtls-use-call
+NEWLIB_CFLAGS = -O2 -mtls-use-call
 
 BUILD/stamp-$(CROSSARCH)-newlib: | SRC/newlib BUILD newlib-libc-script
 	rm -rf BUILD/build-newlib-$(CROSSARCH)
@@ -567,8 +567,8 @@ BUILD/stamp-$(CROSSARCH)-newlib: | SRC/newlib BUILD newlib-libc-script
 	  ../../SRC/newlib/configure \
 		      --disable-libgloss \
 		      --enable-newlib-iconv \
-		      --enable-newlib-iconv-from-encodings=UTF-8,UTF-16,UCS-4 \
-		      --enable-newlib-iconv-to-encodings=UTF-8,UTF-16,UCS-4 \
+		      --enable-newlib-iconv-from-encodings=UTF-8,UTF-16LE,UCS-4LE,UTF-16,UCS-4 \
+		      --enable-newlib-iconv-to-encodings=UTF-8,UTF-16LE,UCS-4LE,UTF-16,UCS-4 \
 		      --enable-newlib-io-long-long \
 		      --enable-newlib-io-long-double \
 		      --enable-newlib-io-c99-formats \
@@ -581,12 +581,20 @@ BUILD/stamp-$(CROSSARCH)-newlib: | SRC/newlib BUILD newlib-libc-script
 	  $(MAKE) && \
 	  $(MAKE) DESTDIR=$(DESTDIR) install
 ifeq ($(CANNED_REVISION), no)
-	rm $(DESTDIR)$(PREFIX)/$(CROSSARCH)/include/pthread.h
+# The buildbot script that creates the source tarball adds all the headers to
+# the tarball itself (see buildbot/buildbot_linux-glibc-makefile.sh)
+	cp -f $(addprefix ../src/untrusted/pthread/, pthread.h semaphore.h) \
+	  $(DESTDIR)$(PREFIX)/$(CROSSARCH)/include
 endif
 	for bits in 32 64; do \
 	  mv $(DESTDIR)$(PREFIX)/$(CROSSARCH)/lib$$bits/libc.a \
 	     $(DESTDIR)$(PREFIX)/$(CROSSARCH)/lib$$bits/libcrt_common.a; \
-	  sed "s/@OBJFORMAT@/elf$${bits}-nacl/" newlib-libc-script \
+	  if [[ "$$bits" = "32" ]]; then \
+	    objformat=elf32-i386-nacl ; \
+	  else \
+	    objformat=elf64-x86-64-nacl ; \
+	  fi ; \
+	  sed "s/@OBJFORMAT@/$$objformat/" newlib-libc-script \
 	    > $(DESTDIR)$(PREFIX)/$(CROSSARCH)/lib$$bits/libc.a; \
 	done
 	touch $@
@@ -631,6 +639,7 @@ BUILD/stamp-glibc32: BUILD/stamp-$(CROSSARCH)-pregcc-standalone | SRC/glibc
 	    libc_cv_forced_unwind=yes \
 	    libc_cv_c_cleanup=yes \
 	    libc_cv_slibdir=/lib32 \
+	    libc_cv_z_combreloc=no \
 	    --prefix= \
 	    --libdir=/lib32 \
 	    --host=i486-linux-gnu \
@@ -653,6 +662,7 @@ BUILD/stamp-glibc64: BUILD/stamp-$(CROSSARCH)-pregcc-standalone | SRC/glibc
 	    libc_cv_forced_unwind=yes \
 	    libc_cv_c_cleanup=yes \
 	    libc_cv_slibdir=/lib \
+	    libc_cv_z_combreloc=no \
 	    --prefix= \
 	    --libdir=/lib \
 	    --host=x86_64-linux-gnu \

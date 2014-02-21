@@ -37,7 +37,7 @@
 
 struct GrGLInterface;
 
-namespace WebKit {
+namespace blink {
 
 // WGC3D types match the corresponding GL types as defined in OpenGL ES 2.0
 // header file gl2.h from khronos.org.
@@ -92,6 +92,7 @@ public:
             , shareResources(true)
             , preferDiscreteGPU(false)
             , noAutomaticFlushes(false)
+            , failIfMajorPerformanceCaveat(false)
         {
         }
 
@@ -105,6 +106,7 @@ public:
         bool shareResources;
         bool preferDiscreteGPU;
         bool noAutomaticFlushes;
+        bool failIfMajorPerformanceCaveat;
         // FIXME: ideally this would be a WebURL, but it is currently not
         // possible to pass a WebURL by value across the WebKit API boundary.
         // See https://bugs.webkit.org/show_bug.cgi?id=103793#c13 .
@@ -200,12 +202,6 @@ public:
 
     // GL_CHROMIUM_rate_limit_offscreen_context
     virtual void rateLimitOffscreenContextCHROMIUM() { }
-
-    // GL_CHROMIUM_stream_texture
-    // Returns the stream end point identifier created for the given texture.
-    virtual WebGLId createStreamTextureCHROMIUM(WebGLId texture) { return 0; }
-    // Destroys the stream for the given texture.
-    virtual void destroyStreamTextureCHROMIUM(WebGLId texture) { }
 
     // GL_CHROMIUM_lose_context
     virtual void loseContextCHROMIUM(WGC3Denum current, WGC3Denum other) { }
@@ -471,8 +467,12 @@ public:
     virtual void drawArraysInstancedANGLE(WGC3Denum mode, WGC3Dint first, WGC3Dsizei count, WGC3Dsizei primcount) { }
     virtual void drawElementsInstancedANGLE(WGC3Denum mode, WGC3Dsizei count, WGC3Denum type, WGC3Dintptr offset, WGC3Dsizei primcount) { }
     virtual void vertexAttribDivisorANGLE(WGC3Duint index, WGC3Duint divisor) { }
+
+    // GL_EXT_multisampled_render_to_texture
+    virtual void framebufferTexture2DMultisampleEXT(WGC3Denum target, WGC3Denum attachment, WGC3Denum textarget, WebGLId texture, WGC3Dint level, WGC3Dsizei samples) { }
+    virtual void renderbufferStorageMultisampleEXT(WGC3Denum target, WGC3Dsizei samples, WGC3Denum internalformat, WGC3Dsizei width, WGC3Dsizei height) { };
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

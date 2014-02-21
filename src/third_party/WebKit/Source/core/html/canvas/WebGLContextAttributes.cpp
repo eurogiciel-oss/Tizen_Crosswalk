@@ -35,20 +35,28 @@ PassRefPtr<WebGLContextAttributes> WebGLContextAttributes::create()
     return adoptRef(new WebGLContextAttributes());
 }
 
-PassRefPtr<WebGLContextAttributes> WebGLContextAttributes::create(GraphicsContext3D::Attributes attributes)
+PassRefPtr<WebGLContextAttributes> WebGLContextAttributes::create(blink::WebGraphicsContext3D::Attributes attributes)
 {
     return adoptRef(new WebGLContextAttributes(attributes));
 }
 
 WebGLContextAttributes::WebGLContextAttributes()
     : CanvasContextAttributes()
+    , m_preserveDrawingBuffer(false)
 {
+    ASSERT(m_attrs.alpha);
+    ASSERT(m_attrs.depth);
+    ASSERT(m_attrs.antialias);
+    ASSERT(m_attrs.premultipliedAlpha);
+    ASSERT(!m_attrs.failIfMajorPerformanceCaveat);
+    m_attrs.stencil = false;
     ScriptWrappable::init(this);
 }
 
-WebGLContextAttributes::WebGLContextAttributes(GraphicsContext3D::Attributes attributes)
+WebGLContextAttributes::WebGLContextAttributes(blink::WebGraphicsContext3D::Attributes attributes)
     : CanvasContextAttributes()
     , m_attrs(attributes)
+    , m_preserveDrawingBuffer(false)
 {
     ScriptWrappable::init(this);
 }
@@ -109,15 +117,25 @@ void WebGLContextAttributes::setPremultipliedAlpha(bool premultipliedAlpha)
 
 bool WebGLContextAttributes::preserveDrawingBuffer() const
 {
-    return m_attrs.preserveDrawingBuffer;
+    return m_preserveDrawingBuffer;
 }
 
 void WebGLContextAttributes::setPreserveDrawingBuffer(bool preserveDrawingBuffer)
 {
-    m_attrs.preserveDrawingBuffer = preserveDrawingBuffer;
+    m_preserveDrawingBuffer = preserveDrawingBuffer;
 }
 
-GraphicsContext3D::Attributes WebGLContextAttributes::attributes() const
+bool WebGLContextAttributes::failIfMajorPerformanceCaveat() const
+{
+    return m_attrs.failIfMajorPerformanceCaveat;
+}
+
+void WebGLContextAttributes::setFailIfMajorPerformanceCaveat(bool failIfMajorPerformanceCaveat)
+{
+    m_attrs.failIfMajorPerformanceCaveat = failIfMajorPerformanceCaveat;
+}
+
+blink::WebGraphicsContext3D::Attributes WebGLContextAttributes::attributes() const
 {
     return m_attrs;
 }

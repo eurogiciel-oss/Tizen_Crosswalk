@@ -45,15 +45,19 @@ public:
     }
 
 private:
-    virtual bool isIdentity() const { return false; }
+    virtual bool isIdentity() const OVERRIDE { return false; }
 
-    virtual OperationType getOperationType() const { return Interpolated; }
-    virtual bool isSameType(const TransformOperation& o) const { return o.getOperationType() == Interpolated; }
+    virtual OperationType type() const OVERRIDE { return Interpolated; }
 
-    virtual bool operator==(const TransformOperation&) const;
-    virtual bool apply(TransformationMatrix&, const FloatSize& borderBoxSize) const;
+    virtual bool operator==(const TransformOperation&) const OVERRIDE;
+    virtual void apply(TransformationMatrix&, const FloatSize& borderBoxSize) const OVERRIDE;
 
-    virtual PassRefPtr<TransformOperation> blend(const TransformOperation* from, double progress, bool blendToIdentity = false);
+    virtual PassRefPtr<TransformOperation> blend(const TransformOperation* from, double progress, bool blendToIdentity = false) OVERRIDE;
+
+    virtual bool dependsOnBoxSize() const OVERRIDE
+    {
+        return from.dependsOnBoxSize() || to.dependsOnBoxSize();
+    }
 
     InterpolatedTransformOperation(const TransformOperations& from, const TransformOperations& to, double progress)
         : from(from)

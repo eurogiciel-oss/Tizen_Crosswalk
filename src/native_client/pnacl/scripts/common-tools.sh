@@ -40,7 +40,6 @@ if [ "${BUILD_PLATFORM}" == "linux" ] ; then
   SCONS_BUILD_PLATFORM=linux
   BUILD_ARCH=${BUILD_ARCH:-$(uname -m)}
   EXEC_EXT=
-  SO_PREFIX=lib
   SO_EXT=.so
   SO_DIR=lib
 elif [[ "${BUILD_PLATFORM}" =~ cygwin_nt ]]; then
@@ -51,7 +50,6 @@ elif [[ "${BUILD_PLATFORM}" =~ cygwin_nt ]]; then
   HOST_ARCH=${HOST_ARCH:-x86_32}
   BUILD_ARCH=${BUILD_ARCH:-x86_32}
   EXEC_EXT=.exe
-  SO_PREFIX=cyg
   SO_EXT=.dll
   SO_DIR=bin  # On Windows, DLLs are placed in bin/
               # because the dynamic loader searches %PATH%
@@ -64,7 +62,6 @@ elif [ "${BUILD_PLATFORM}" == "darwin" ] ; then
   HOST_ARCH=${HOST_ARCH:-x86_64}
   BUILD_ARCH=${BUILD_ARCH:-x86_64}
   EXEC_EXT=
-  SO_PREFIX=lib
   SO_EXT=.dylib
   SO_DIR=lib
 else
@@ -77,7 +74,6 @@ readonly BUILD_PLATFORM_LINUX
 readonly BUILD_PLATFORM_MAC
 readonly BUILD_PLATFORM_WIN
 readonly SCONS_BUILD_PLATFORM
-readonly SO_PREFIX
 readonly SO_EXT
 readonly SO_DIR
 
@@ -143,11 +139,10 @@ if [ "${BUILD_ARCH}" != "${HOST_ARCH}" ]; then
 fi
 
 if ${BUILD_PLATFORM_WIN}; then
-   # TODO(robertm): switch this to svn.bat, hg.bat, git.bat,  gclient.bat
-   readonly GCLIENT="gclient"
-   readonly GIT="git"
-   readonly HG="hg"
-   readonly SVN="svn"
+   readonly GCLIENT="gclient.bat"
+   readonly GIT="git.bat"
+   readonly HG="hg.bat"
+   readonly SVN="svn.bat"
 else
    readonly GCLIENT="gclient"
    readonly GIT="git"

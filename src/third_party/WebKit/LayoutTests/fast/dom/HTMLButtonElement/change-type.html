@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 </head>
 <body onload="runTests()">
 <script>
@@ -58,7 +58,7 @@ function testTypeValue()
     shouldBe("btn.getAttribute('type')", "' b u t t o n '");
     
     shouldBe("btn.type = null; btn.type", "'submit'");
-    shouldBe("btn.getAttribute('type')", "null");
+    shouldBe("btn.getAttribute('type')", "'null'");
     
     shouldBe("btn.type = undefined; btn.type", "'submit'");
     shouldBe("btn.getAttribute('type')", "'undefined'");

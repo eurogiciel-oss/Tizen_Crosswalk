@@ -7,8 +7,6 @@
 
 # some output incorrect
 sphereflake
-alacconvert-encode
-alacconvert-decode
 
 # FP nan/inf handling
 voronoi
@@ -33,9 +31,6 @@ SingleSource/UnitTests/Vector/multiplies
 SingleSource/UnitTests/Vector/simple
 SingleSource/UnitTests/Vector/sumarray
 SingleSource/UnitTests/Vector/sumarray-dbl
-
-# The following test uses computed gotos, which PNaCl's ABI checker rejects.
-SingleSource/Regression/C/2004-03-15-IndirectGoto
 
 # The following test uses packed bitfield structs which get turned into
 # operations on i128 operands, which get rejected by PNaCl's ABI checker.
@@ -62,6 +57,4 @@ SingleSource/Regression/C++/EH/throw_rethrow_test
 # New failures in updated LLVM test suite, still to be triaged
 ############################################################################
 # exec failures on ARM
-SingleSource/Benchmarks/SmallPT/smallpt arm
 MultiSource/Benchmarks/SciMark2-C/scimark2 arm
-SingleSource/Benchmarks/CoyoteBench/almabench arm

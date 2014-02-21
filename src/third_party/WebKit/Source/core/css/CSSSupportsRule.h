@@ -36,7 +36,7 @@ namespace WebCore {
 class CSSRule;
 class StyleRuleSupports;
 
-class CSSSupportsRule : public CSSGroupingRule {
+class CSSSupportsRule FINAL : public CSSGroupingRule {
 public:
     static PassRefPtr<CSSSupportsRule> create(StyleRuleSupports* rule, CSSStyleSheet* sheet)
     {
@@ -53,6 +53,8 @@ public:
 private:
     CSSSupportsRule(StyleRuleSupports*, CSSStyleSheet*);
 };
+
+DEFINE_CSS_RULE_TYPE_CASTS(CSSSupportsRule, SUPPORTS_RULE);
 
 } // namespace WebCore
 

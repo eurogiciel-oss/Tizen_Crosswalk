@@ -18,12 +18,12 @@ class AudioDeviceListenerWin;
 // the AudioManager class.
 class MEDIA_EXPORT AudioManagerWin : public AudioManagerBase {
  public:
-  AudioManagerWin();
+  AudioManagerWin(AudioLogFactory* audio_log_factory);
 
   // Implementation of AudioManager.
   virtual bool HasAudioOutputDevices() OVERRIDE;
   virtual bool HasAudioInputDevices() OVERRIDE;
-  virtual string16 GetAudioInputDeviceModel() OVERRIDE;
+  virtual base::string16 GetAudioInputDeviceModel() OVERRIDE;
   virtual void ShowAudioInputSettings() OVERRIDE;
   virtual void GetAudioInputDeviceNames(
       AudioDeviceNames* device_names) OVERRIDE;
@@ -79,9 +79,10 @@ class MEDIA_EXPORT AudioManagerWin : public AudioManagerBase {
       const AudioParameters& params,
       const std::string& device_id);
 
-  // Helper methods for constructing AudioDeviceListenerWin on the audio thread.
-  void CreateDeviceListener();
-  void DestroyDeviceListener();
+  // Helper methods for performing expensive initialization tasks on the audio
+  // thread instead of on the UI thread which AudioManager is constructed on.
+  void InitializeOnAudioThread();
+  void ShutdownOnAudioThread();
 
   void GetAudioDeviceNamesImpl(bool input, AudioDeviceNames* device_names);
 

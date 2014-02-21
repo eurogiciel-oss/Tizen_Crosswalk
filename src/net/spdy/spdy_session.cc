@@ -110,15 +110,6 @@ base::Value* NetLogSpdySynReplyOrHeadersReceivedCallback(
   return dict;
 }
 
-base::Value* NetLogSpdyCredentialCallback(size_t slot,
-                                          const std::string* origin,
-                                          NetLog::LogLevel /* log_level */) {
-  base::DictionaryValue* dict = new base::DictionaryValue();
-  dict->SetInteger("slot", slot);
-  dict->SetString("origin", *origin);
-  return dict;
-}
-
 base::Value* NetLogSpdySessionCloseCallback(int net_error,
                                             const std::string* description,
                                             NetLog::LogLevel /* log_level */) {
@@ -267,6 +258,68 @@ class RequestEquals {
 const size_t kMaxConcurrentStreamLimit = 256;
 
 }  // namespace
+
+SpdyProtocolErrorDetails MapFramerErrorToProtocolError(
+    SpdyFramer::SpdyError err) {
+  switch(err) {
+    case SpdyFramer::SPDY_NO_ERROR:
+      return SPDY_ERROR_NO_ERROR;
+    case SpdyFramer::SPDY_INVALID_CONTROL_FRAME:
+      return SPDY_ERROR_INVALID_CONTROL_FRAME;
+    case SpdyFramer::SPDY_CONTROL_PAYLOAD_TOO_LARGE:
+      return SPDY_ERROR_CONTROL_PAYLOAD_TOO_LARGE;
+    case SpdyFramer::SPDY_ZLIB_INIT_FAILURE:
+      return SPDY_ERROR_ZLIB_INIT_FAILURE;
+    case SpdyFramer::SPDY_UNSUPPORTED_VERSION:
+      return SPDY_ERROR_UNSUPPORTED_VERSION;
+    case SpdyFramer::SPDY_DECOMPRESS_FAILURE:
+      return SPDY_ERROR_DECOMPRESS_FAILURE;
+    case SpdyFramer::SPDY_COMPRESS_FAILURE:
+      return SPDY_ERROR_COMPRESS_FAILURE;
+    case SpdyFramer::SPDY_GOAWAY_FRAME_CORRUPT:
+      return SPDY_ERROR_GOAWAY_FRAME_CORRUPT;
+    case SpdyFramer::SPDY_RST_STREAM_FRAME_CORRUPT:
+      return SPDY_ERROR_RST_STREAM_FRAME_CORRUPT;
+    case SpdyFramer::SPDY_INVALID_DATA_FRAME_FLAGS:
+      return SPDY_ERROR_INVALID_DATA_FRAME_FLAGS;
+    case SpdyFramer::SPDY_INVALID_CONTROL_FRAME_FLAGS:
+      return SPDY_ERROR_INVALID_CONTROL_FRAME_FLAGS;
+    default:
+      NOTREACHED();
+      return static_cast<SpdyProtocolErrorDetails>(-1);
+  }
+}
+
+SpdyProtocolErrorDetails MapRstStreamStatusToProtocolError(
+    SpdyRstStreamStatus status) {
+  switch(status) {
+    case RST_STREAM_PROTOCOL_ERROR:
+      return STATUS_CODE_PROTOCOL_ERROR;
+    case RST_STREAM_INVALID_STREAM:
+      return STATUS_CODE_INVALID_STREAM;
+    case RST_STREAM_REFUSED_STREAM:
+      return STATUS_CODE_REFUSED_STREAM;
+    case RST_STREAM_UNSUPPORTED_VERSION:
+      return STATUS_CODE_UNSUPPORTED_VERSION;
+    case RST_STREAM_CANCEL:
+      return STATUS_CODE_CANCEL;
+    case RST_STREAM_INTERNAL_ERROR:
+      return STATUS_CODE_INTERNAL_ERROR;
+    case RST_STREAM_FLOW_CONTROL_ERROR:
+      return STATUS_CODE_FLOW_CONTROL_ERROR;
+    case RST_STREAM_STREAM_IN_USE:
+      return STATUS_CODE_STREAM_IN_USE;
+    case RST_STREAM_STREAM_ALREADY_CLOSED:
+      return STATUS_CODE_STREAM_ALREADY_CLOSED;
+    case RST_STREAM_INVALID_CREDENTIALS:
+      return STATUS_CODE_INVALID_CREDENTIALS;
+    case RST_STREAM_FRAME_TOO_LARGE:
+      return STATUS_CODE_FRAME_TOO_LARGE;
+    default:
+      NOTREACHED();
+      return static_cast<SpdyProtocolErrorDetails>(-1);
+  }
+}
 
 SpdyStreamRequest::SpdyStreamRequest() : weak_ptr_factory_(this) {
   Reset();
@@ -418,6 +471,7 @@ SpdySession::SpdySession(
       pings_in_flight_(0),
       next_ping_id_(1),
       last_activity_time_(time_func()),
+      last_compressed_frame_len_(0),
       check_ping_status_pending_(false),
       send_connection_header_prefix_(false),
       flow_control_state_(FLOW_CONTROL_NONE),
@@ -769,7 +823,7 @@ void SpdySession::AddPooledAlias(const SpdySessionKey& alias_key) {
   pooled_aliases_.insert(alias_key);
 }
 
-int SpdySession::GetProtocolVersion() const {
+SpdyMajorVersion SpdySession::GetProtocolVersion() const {
   DCHECK(buffered_spdy_framer_.get());
   return buffered_spdy_framer_->protocol_version();
 }
@@ -822,7 +876,7 @@ scoped_ptr<SpdyFrame> SpdySession::CreateSynStream(
   scoped_ptr<SpdyFrame> syn_frame(
       buffered_spdy_framer_->CreateSynStream(
           stream_id, 0, spdy_priority,
-          credential_slot, flags, enable_compression_, &headers));
+          credential_slot, flags, &headers));
 
   base::StatsCounter spdy_requests("spdy.requests");
   spdy_requests.Increment();
@@ -1090,8 +1144,7 @@ void SpdySession::EnqueueResetStreamFrame(SpdyStreamId stream_id,
       buffered_spdy_framer_->CreateRstStream(stream_id, status));
 
   EnqueueSessionWrite(priority, RST_STREAM, rst_frame.Pass());
-  RecordProtocolErrorHistogram(
-      static_cast<SpdyProtocolErrorDetails>(status + STATUS_CODE_INVALID));
+  RecordProtocolErrorHistogram(MapRstStreamStatusToProtocolError(status));
 }
 
 void SpdySession::PumpReadLoop(ReadState expected_read_state, int result) {
@@ -1787,8 +1840,7 @@ void SpdySession::OnError(SpdyFramer::SpdyError error_code) {
   if (availability_state_ == STATE_CLOSED)
     return;
 
-  RecordProtocolErrorHistogram(
-      static_cast<SpdyProtocolErrorDetails>(error_code));
+  RecordProtocolErrorHistogram(MapFramerErrorToProtocolError(error_code));
   std::string description = base::StringPrintf(
       "SPDY_ERROR error_code: %d.", error_code);
   CloseSessionResult result =
@@ -1813,6 +1865,28 @@ void SpdySession::OnStreamError(SpdyStreamId stream_id,
   }
 
   ResetStreamIterator(it, RST_STREAM_PROTOCOL_ERROR, description);
+}
+
+void SpdySession::OnDataFrameHeader(SpdyStreamId stream_id,
+                                    size_t length,
+                                    bool fin) {
+  CHECK(in_io_loop_);
+
+  if (availability_state_ == STATE_CLOSED)
+    return;
+
+  ActiveStreamMap::iterator it = active_streams_.find(stream_id);
+
+  // By the time data comes in, the stream may already be inactive.
+  if (it == active_streams_.end())
+    return;
+
+  SpdyStream* stream = it->second.stream;
+  CHECK_EQ(stream->stream_id(), stream_id);
+
+  DCHECK(buffered_spdy_framer_);
+  size_t header_len = buffered_spdy_framer_->GetDataFrameMinimumSize();
+  stream->IncrementRawReceivedBytes(header_len);
 }
 
 void SpdySession::OnStreamFrameData(SpdyStreamId stream_id,
@@ -1859,6 +1933,8 @@ void SpdySession::OnStreamFrameData(SpdyStreamId stream_id,
 
   SpdyStream* stream = it->second.stream;
   CHECK_EQ(stream->stream_id(), stream_id);
+
+  stream->IncrementRawReceivedBytes(len);
 
   if (it->second.waiting_for_syn_reply) {
     const std::string& error = "Data received before SYN_REPLY.";
@@ -1930,6 +2006,13 @@ void SpdySession::OnSendCompressedFrame(
   }
 }
 
+void SpdySession::OnReceiveCompressedFrame(
+    SpdyStreamId stream_id,
+    SpdyFrameType type,
+    size_t frame_len) {
+  last_compressed_frame_len_ = frame_len;
+}
+
 int SpdySession::OnInitialResponseHeadersReceived(
     const SpdyHeaderBlock& response_headers,
     base::Time response_time,
@@ -1993,7 +2076,10 @@ void SpdySession::OnSynStream(SpdyStreamId stream_id,
     return;
   }
 
-  if (associated_stream_id == 0) {
+  // TODO(jgraettinger): SpdyFramer simulates OnSynStream() from HEADERS
+  // frames, which don't convey associated stream ID. Disable this check
+  // for now, and re-enable when PUSH_PROMISE is implemented properly.
+  if (associated_stream_id == 0 && GetProtocolVersion() < SPDY4) {
     std::string description = base::StringPrintf(
         "Received invalid OnSyn associated stream id %d for stream %d",
         associated_stream_id, stream_id);
@@ -2018,7 +2104,8 @@ void SpdySession::OnSynStream(SpdyStreamId stream_id,
   // Verify we have a valid stream association.
   ActiveStreamMap::iterator associated_it =
       active_streams_.find(associated_stream_id);
-  if (associated_it == active_streams_.end()) {
+  // TODO(jgraettinger): (See PUSH_PROMISE comment above).
+  if (GetProtocolVersion() < SPDY4 && associated_it == active_streams_.end()) {
     EnqueueResetStreamFrame(
         stream_id, request_priority, RST_STREAM_INVALID_STREAM,
         base::StringPrintf(
@@ -2039,7 +2126,8 @@ void SpdySession::OnSynStream(SpdyStreamId stream_id,
               "Rejected push of Cross Origin HTTPS content %d",
               associated_stream_id));
     }
-  } else {
+  } else if (GetProtocolVersion() < SPDY4) {
+    // TODO(jgraettinger): (See PUSH_PROMISE comment above).
     GURL associated_url(associated_it->second.stream->GetUrlFromHeaders());
     if (associated_url.GetOrigin() != gurl.GetOrigin()) {
       EnqueueResetStreamFrame(
@@ -2070,6 +2158,8 @@ void SpdySession::OnSynStream(SpdyStreamId stream_id,
                      stream_initial_recv_window_size_,
                      net_log_));
   stream->set_stream_id(stream_id);
+  stream->IncrementRawReceivedBytes(last_compressed_frame_len_);
+  last_compressed_frame_len_ = 0;
 
   DeleteExpiredPushedStreams();
   PushedStreamMap::iterator inserted_pushed_it =
@@ -2158,11 +2248,21 @@ void SpdySession::OnSynReply(SpdyStreamId stream_id,
   SpdyStream* stream = it->second.stream;
   CHECK_EQ(stream->stream_id(), stream_id);
 
+  stream->IncrementRawReceivedBytes(last_compressed_frame_len_);
+  last_compressed_frame_len_ = 0;
+
+  if (GetProtocolVersion() >= SPDY4) {
+    const std::string& error =
+        "SPDY4 wasn't expecting SYN_REPLY.";
+    stream->LogStreamError(ERR_SPDY_PROTOCOL_ERROR, error);
+    ResetStreamIterator(it, RST_STREAM_PROTOCOL_ERROR, error);
+    return;
+  }
   if (!it->second.waiting_for_syn_reply) {
     const std::string& error =
         "Received duplicate SYN_REPLY for stream.";
     stream->LogStreamError(ERR_SPDY_PROTOCOL_ERROR, error);
-    ResetStreamIterator(it, RST_STREAM_STREAM_IN_USE, error);
+    ResetStreamIterator(it, RST_STREAM_PROTOCOL_ERROR, error);
     return;
   }
   it->second.waiting_for_syn_reply = false;
@@ -2196,10 +2296,29 @@ void SpdySession::OnHeaders(SpdyStreamId stream_id,
   SpdyStream* stream = it->second.stream;
   CHECK_EQ(stream->stream_id(), stream_id);
 
-  int rv = stream->OnAdditionalResponseHeadersReceived(headers);
-  if (rv < 0) {
-    DCHECK_NE(rv, ERR_IO_PENDING);
-    DCHECK(active_streams_.find(stream_id) == active_streams_.end());
+  stream->IncrementRawReceivedBytes(last_compressed_frame_len_);
+  last_compressed_frame_len_ = 0;
+
+  if (it->second.waiting_for_syn_reply) {
+    if (GetProtocolVersion() < SPDY4) {
+      const std::string& error =
+          "Was expecting SYN_REPLY, not HEADERS.";
+      stream->LogStreamError(ERR_SPDY_PROTOCOL_ERROR, error);
+      ResetStreamIterator(it, RST_STREAM_PROTOCOL_ERROR, error);
+      return;
+    }
+    base::Time response_time = base::Time::Now();
+    base::TimeTicks recv_first_byte_time = time_func_();
+
+    it->second.waiting_for_syn_reply = false;
+    ignore_result(OnInitialResponseHeadersReceived(
+        headers, response_time, recv_first_byte_time, stream));
+  } else {
+    int rv = stream->OnAdditionalResponseHeadersReceived(headers);
+    if (rv < 0) {
+      DCHECK_NE(rv, ERR_IO_PENDING);
+      DCHECK(active_streams_.find(stream_id) == active_streams_.end());
+    }
   }
 }
 

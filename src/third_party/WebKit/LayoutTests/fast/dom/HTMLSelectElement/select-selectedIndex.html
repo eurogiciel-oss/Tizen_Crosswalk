@@ -1,7 +1,7 @@
 <select id="test" size="3">
 </select>
 <div id="console"></div>
-<script src="../../js/resources/js-test-pre.js"></script>
+<script src="../../../resources/js-test.js"></script>
 <script>
 function reset(mySelect) {
     mySelect.length = 0;
@@ -134,6 +134,11 @@ shouldBe("mySelect.selectedIndex", "-1");
 
 debug((++i) + ") trying to set a option element using an invalid index: positive infinity");
 mySelect.options[1/0] = document.createElement("option");
+shouldBe("mySelect.options.length", "10");
+shouldBe("mySelect.selectedIndex", "-1");
+
+debug((++i) + ") trying to add a non-option element");
+shouldThrow("mySelect.options.add({})");
 shouldBe("mySelect.options.length", "10");
 shouldBe("mySelect.selectedIndex", "-1");
 

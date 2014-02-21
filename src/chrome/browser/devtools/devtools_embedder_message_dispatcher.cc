@@ -158,14 +158,14 @@ DevToolsEmbedderMessageDispatcher::DevToolsEmbedderMessageDispatcher(
   RegisterHandler("closeWindow",
       BindToListParser(base::Bind(&Delegate::CloseWindow,
                                   base::Unretained(delegate))));
-  RegisterHandler("setWindowBounds",
-      BindToListParser(base::Bind(&Delegate::SetWindowBounds,
+  RegisterHandler("setContentsInsets",
+      BindToListParser(base::Bind(&Delegate::SetContentsInsets,
                                   base::Unretained(delegate))));
   RegisterHandler("moveWindowBy",
       BindToListParser(base::Bind(&Delegate::MoveWindow,
                                   base::Unretained(delegate))));
-  RegisterHandler("requestSetDockSide",
-      BindToListParser(base::Bind(&Delegate::SetDockSide,
+  RegisterHandler("setIsDocked",
+      BindToListParser(base::Bind(&Delegate::SetIsDocked,
                                   base::Unretained(delegate))));
   RegisterHandler("openInNewTab",
       BindToListParser(base::Bind(&Delegate::OpenInNewTab,
@@ -185,6 +185,10 @@ DevToolsEmbedderMessageDispatcher::DevToolsEmbedderMessageDispatcher(
   RegisterHandler("removeFileSystem",
       BindToListParser(base::Bind(&Delegate::RemoveFileSystem,
                                   base::Unretained(delegate))));
+  RegisterHandler("upgradeDraggedFileSystemPermissions",
+                  BindToListParser(
+                      base::Bind(&Delegate::UpgradeDraggedFileSystemPermissions,
+                                 base::Unretained(delegate))));
   RegisterHandler("indexPath",
       BindToListParser(base::Bind(&Delegate::IndexPath,
                                   base::Unretained(delegate))));

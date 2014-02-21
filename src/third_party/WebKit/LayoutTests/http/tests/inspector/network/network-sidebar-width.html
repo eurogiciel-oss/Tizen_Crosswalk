@@ -5,6 +5,7 @@
 <script>
 function test()
 {
+    InspectorTest.recordNetwork();
     InspectorTest.makeSimpleXHR("GET", "resources/resource.php", true, step2);
 
     var oldSetting;
@@ -19,12 +20,12 @@ function test()
 
         setting.set(undefined);
         panel._showRequest(request);
-        InspectorTest.addResult("Sidebar width: " + panel.sidebarElement.offsetWidth);
+        InspectorTest.addResult("Sidebar width: " + panel.splitView.sidebarElement().offsetWidth);
         panel._toggleGridMode();
 
         setting.set(242);
         panel._showRequest(request);
-        InspectorTest.addResult("Sidebar width: " + panel.sidebarElement.offsetWidth);
+        InspectorTest.addResult("Sidebar width: " + panel.splitView.sidebarElement().offsetWidth);
         panel._closeVisibleRequest(request);
 
         setting.set(oldSetting);

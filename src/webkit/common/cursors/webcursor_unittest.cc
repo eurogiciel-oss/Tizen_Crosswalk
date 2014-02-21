@@ -4,10 +4,10 @@
 
 #include "base/pickle.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/WebKit/public/web/WebCursorInfo.h"
+#include "third_party/WebKit/public/platform/WebCursorInfo.h"
 #include "webkit/common/cursors/webcursor.h"
 
-using WebKit::WebCursorInfo;
+using blink::WebCursorInfo;
 
 TEST(WebCursorTest, OKCursorSerialization) {
   WebCursor custom_cursor;
@@ -133,20 +133,6 @@ TEST(WebCursorTest, BrokenCursorSerialization) {
   iter = PickleIterator(scale_tiny_custom_pickle);
   EXPECT_FALSE(custom_cursor.Deserialize(&iter));
 }
-
-#if defined(OS_WIN) && !defined(USE_AURA)
-TEST(WebCursorTest, WindowsCursorConversion) {
-  WebCursor custom_cursor;
-  Pickle win32_custom_pickle;
-  WebCursor win32_custom_cursor;
-  win32_custom_cursor.InitFromExternalCursor(
-      reinterpret_cast<HCURSOR>(1000));
-  EXPECT_TRUE(win32_custom_cursor.Serialize(&win32_custom_pickle));
-  PickleIterator iter(win32_custom_pickle);
-  EXPECT_TRUE(custom_cursor.Deserialize(&iter));
-  EXPECT_EQ(reinterpret_cast<HCURSOR>(1000), custom_cursor.GetCursor(NULL));
-}
-#endif  // OS_WIN
 
 TEST(WebCursorTest, ClampHotspot) {
   WebCursor custom_cursor;

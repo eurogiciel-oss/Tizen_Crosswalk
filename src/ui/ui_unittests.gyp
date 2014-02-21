@@ -13,8 +13,8 @@
         '../base/base.gyp:base',
         '../skia/skia.gyp:skia',
         '../testing/gtest.gyp:gtest',
-        'events/events.gyp:events',
         'gfx/gfx.gyp:gfx',
+        'gfx/gfx.gyp:gfx_geometry',
       ],
       'sources': [
         'base/test/cocoa_test_event_utils.h',
@@ -28,8 +28,6 @@
         'base/test/ui_controls_internal_win.h',
         'base/test/ui_controls_mac.mm',
         'base/test/ui_controls_win.cc',
-        'gfx/test/color_util.cc',
-        'gfx/test/color_util.h',
       ],
       'include_dirs': [
         '../',
@@ -56,23 +54,10 @@
         }],
         ['use_aura==1', {
           'sources!': [
+            'base/test/ui_controls_mac.mm',
             'base/test/ui_controls_win.cc',
           ],
         }],
-      ],
-    },
-    {
-      'target_name': 'run_ui_unittests',
-      'type': 'static_library',
-      'dependencies': [
-        '../base/base.gyp:base',
-        '../base/base.gyp:test_support_base',
-        'ui.gyp:ui',
-      ],
-      'sources': [
-        'test/test_suite.cc',
-        'test/test_suite.h',
-        'test/run_all_unittests.cc',
       ],
     },
     {
@@ -81,6 +66,7 @@
       'dependencies': [
         '../base/base.gyp:base',
         '../base/base.gyp:test_support_base',
+        '../chrome/chrome_resources.gyp:packed_resources',
         '../skia/skia.gyp:skia',
         '../testing/gmock.gyp:gmock',
         '../testing/gtest.gyp:gtest',
@@ -89,12 +75,12 @@
         '../third_party/libpng/libpng.gyp:libpng',
         '../url/url.gyp:url_lib',
         'base/strings/ui_strings.gyp:ui_strings',
-        'events/events.gyp:events',
-        'run_ui_unittests',
+        'events/events.gyp:events_base',
+        'gfx/gfx.gyp:gfx_geometry_unittests',
+        'gfx/gfx.gyp:gfx_test_support',
+        'resources/ui_resources.gyp:ui_resources',
         'shell_dialogs/shell_dialogs.gyp:shell_dialogs',
-        'ui.gyp:keycode_converter',
         'ui.gyp:ui',
-        'ui.gyp:ui_resources',
         'ui_test_support',
       ],
       # iOS uses a small subset of ui. common_sources are the only files that
@@ -109,11 +95,11 @@
         'base/resource/data_pack_literal.cc',
         'base/resource/data_pack_unittest.cc',
         'base/resource/resource_bundle_unittest.cc',
+        'base/test/run_all_unittests.cc',
         'gfx/animation/animation_container_unittest.cc',
         'gfx/animation/animation_unittest.cc',
         'gfx/animation/multi_animation_unittest.cc',
         'gfx/animation/slide_animation_unittest.cc',
-        'gfx/box_unittest.cc',
         'gfx/codec/png_codec_unittest.cc',
         'gfx/color_utils_unittest.cc',
         'gfx/display_unittest.cc',
@@ -125,24 +111,15 @@
         'gfx/image/image_unittest_util.h',
         'gfx/image/image_unittest_util_ios.mm',
         'gfx/image/image_unittest_util_mac.mm',
-        'gfx/insets_unittest.cc',
-        'gfx/matrix3_unittest.cc',
-        'gfx/point_unittest.cc',
-        'gfx/point3_unittest.cc',
-        'gfx/quad_unittest.cc',
         'gfx/range/range_mac_unittest.mm',
         'gfx/range/range_unittest.cc',
         'gfx/range/range_win_unittest.cc',
-        'gfx/rect_unittest.cc',
-        'gfx/safe_integer_conversions_unittest.cc',
         'gfx/screen_unittest.cc',
         'gfx/shadow_value_unittest.cc',
-        'gfx/size_unittest.cc',
         'gfx/skbitmap_operations_unittest.cc',
+        'gfx/skrect_conversion_unittest.cc',
         'gfx/text_elider_unittest.cc',
         'gfx/text_utils_unittest.cc',
-        'gfx/vector2d_unittest.cc',
-        'gfx/vector3d_unittest.cc',
       ],
       'all_sources': [
         '<@(_common_sources)',
@@ -155,7 +132,6 @@
         'base/cocoa/controls/blue_label_button_unittest.mm',
         'base/cocoa/controls/hover_image_menu_button_unittest.mm',
         'base/cocoa/controls/hyperlink_button_cell_unittest.mm',
-        'base/cocoa/events_mac_unittest.mm',
         'base/cocoa/focus_tracker_unittest.mm',
         'base/cocoa/fullscreen_window_manager_unittest.mm',
         'base/cocoa/hover_image_button_unittest.mm',
@@ -164,7 +140,6 @@
         'base/cocoa/tracking_area_unittest.mm',
         'base/dragdrop/os_exchange_data_provider_aurax11_unittest.cc',
         'base/gtk/gtk_expanded_container_unittest.cc',
-        'base/keycodes/keycode_converter_unittest.cc',
         'base/models/list_model_unittest.cc',
         'base/models/list_selection_model_unittest.cc',
         'base/models/tree_node_model_unittest.cc',
@@ -172,11 +147,7 @@
         'base/text/bytes_formatting_unittest.cc',
         'base/view_prop_unittest.cc',
         'base/webui/web_ui_util_unittest.cc',
-        'events/event_dispatcher_unittest.cc',
-        'events/event_unittest.cc',
-        'events/latency_info_unittest.cc',
-        'events/ozone/evdev/key_event_converter_unittest.cc',
-        'events/ozone/evdev/touch_event_converter_unittest.cc',
+        'base/x/x11_util_unittest.cc',
         'gfx/animation/tween_unittest.cc',
         'gfx/blit_unittest.cc',
         'gfx/break_list_unittest.cc',
@@ -187,9 +158,9 @@
         'gfx/font_list_unittest.cc',
         'gfx/image/image_mac_unittest.mm',
         'gfx/image/image_util_unittest.cc',
-        'gfx/ozone/impl/hardware_display_controller_ozone_unittest.cc',
-        'gfx/ozone/impl/software_surface_factory_ozone_unittest.cc',
-        'gfx/ozone/impl/software_surface_ozone_unittest.cc',
+        'gfx/ozone/dri/hardware_display_controller_unittest.cc',
+        'gfx/ozone/dri/dri_surface_factory_unittest.cc',
+        'gfx/ozone/dri/dri_surface_unittest.cc',
         'gfx/platform_font_mac_unittest.mm',
         'gfx/render_text_unittest.cc',
         'gfx/sequential_id_generator_unittest.cc',
@@ -251,11 +222,6 @@
           # TODO(jschuh): crbug.com/167187 fix size_t to int truncations.
           'msvs_disabled_warnings': [ 4267, ],
         }],
-        ['OS == "linux" and toolkit_views==1', {
-          'sources': [
-            'events/x/events_x_unittest.cc',
-          ],
-        }],
         ['OS != "mac" and OS != "ios"', {
           'sources': [
             'gfx/transform_unittest.cc',
@@ -267,7 +233,7 @@
             '../testing/android/native_test.gyp:native_test_native_code',
           ],
         }],
-        ['use_glib == 1 or OS == "ios"', {
+        ['desktop_linux == 1 or chromeos == 1 or OS == "ios"', {
           'dependencies': [
             'base/strings/ui_strings.gyp:ui_unittest_strings',
           ],
@@ -324,12 +290,11 @@
         ['use_aura==1 or toolkit_views==1',  {
           'sources': [
             'base/dragdrop/os_exchange_data_unittest.cc',
-            'events/gestures/velocity_calculator_unittest.cc',
           ],
-        }, {
-          'sources!': [
-            'events/event_dispatcher_unittest.cc',
-            'events/event_unittest.cc',
+          'dependencies': [
+            'events/events.gyp:events',
+            'events/events.gyp:events_base',
+            'events/events.gyp:events_test_support',
           ],
         }],
         ['use_aura==1', {
@@ -342,6 +307,15 @@
         ['use_ozone==1', {
           'dependencies': [
           '<(DEPTH)/build/linux/system.gyp:dridrm',
+          ],
+        }],
+        ['use_ozone==1 and use_pango==0', {
+          'sources!': [
+            'gfx/text_elider_unittest.cc',
+            'gfx/font_unittest.cc',
+            'gfx/font_list_unittest.cc',
+            'gfx/render_text_unittest.cc',
+            'gfx/canvas_unittest.cc',
           ],
         }],
         ['chromeos==1', {

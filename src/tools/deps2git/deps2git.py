@@ -5,9 +5,11 @@
 
 """Convert SVN based DEPS into .DEPS.git for use with NewGit."""
 
+import json
 import optparse
 import os
 import sys
+import time
 
 import deps_utils
 import git_tools
@@ -107,11 +109,21 @@ def ConvertDepsToGit(deps, options, deps_vars, svn_deps_vars):
         raise Exception('No match found for %s' % dep_url)
 
     if options.verify:
-      print >> sys.stderr, 'checking '  + git_url + '...',
-      if git_tools.Ping(git_url):
-        print >> sys.stderr, ' success'
-      else:
+      delay = 0.5
+      success = False
+      for try_index in range(1, 6):
+        print >> sys.stderr, 'checking %s (try #%d) ...' % (git_url, try_index),
+        if git_tools.Ping(git_url, verbose=True):
+          print >> sys.stderr, ' success'
+          success = True
+          break
+
         print >> sys.stderr, ' failure'
+        print >> sys.stderr, 'sleeping for %.01f seconds ...' % delay
+        time.sleep(delay)
+        delay *= 2
+
+      if not success:
         bad_git_urls.update([git_url])
 
     # Get the Git hash based off the SVN rev.
@@ -163,6 +175,8 @@ def main():
                     help='top level of a git-based gclient checkout')
   parser.add_option('--verify', action='store_true',
                     help='ping each Git repo to make sure it exists')
+  parser.add_option('--json',
+                    help='path to a JSON file for machine-readable output')
   options = parser.parse_args()[0]
 
   # Get the content of the DEPS file.
@@ -194,6 +208,10 @@ def main():
     deps_os[os_dep], os_bad_deps = ConvertDepsToGit(
         deps_os[os_dep], options, deps_vars, svn_deps_vars)
     baddeps = baddeps.union(os_bad_deps)
+
+  if options.json:
+    with open(options.json, 'w') as f:
+      json.dump(list(baddeps), f, sort_keys=True, indent=2)
 
   if baddeps:
     print >> sys.stderr, ('\nUnable to resolve the following repositories. '

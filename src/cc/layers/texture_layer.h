@@ -13,8 +13,6 @@
 #include "cc/layers/layer.h"
 #include "cc/resources/texture_mailbox.h"
 
-namespace WebKit { class WebGraphicsContext3D; }
-
 namespace cc {
 class BlockingTaskRunner;
 class SingleReleaseCallback;
@@ -101,7 +99,7 @@ class CC_EXPORT TextureLayer : public Layer {
   void SetFlipped(bool flipped);
 
   // Sets a UV transform to be used at draw time. Defaults to (0, 0) and (1, 1).
-  void SetUV(gfx::PointF top_left, gfx::PointF bottom_right);
+  void SetUV(const gfx::PointF& top_left, const gfx::PointF& bottom_right);
 
   // Sets an opacity value per vertex. It will be multiplied by the layer
   // opacity value.

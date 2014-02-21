@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_PREFS_CHROME_PREF_SERVICE_FACTORY_H_
 
 #include "base/memory/ref_counted.h"
+#include "base/memory/scoped_ptr.h"
 
 namespace base {
 class FilePath;
@@ -21,6 +22,7 @@ class PrefRegistrySyncable;
 }
 
 class ManagedUserSettingsService;
+class PrefHashStore;
 class PrefRegistry;
 class PrefService;
 class PrefServiceSyncable;
@@ -43,21 +45,29 @@ namespace chrome_prefs {
 // guaranteed that in asynchronous version initialization happens after this
 // function returned.
 
-PrefService* CreateLocalState(
+scoped_ptr<PrefService> CreateLocalState(
     const base::FilePath& pref_filename,
     base::SequencedTaskRunner* pref_io_task_runner,
     policy::PolicyService* policy_service,
     const scoped_refptr<PrefRegistry>& pref_registry,
     bool async);
 
-PrefServiceSyncable* CreateProfilePrefs(
+scoped_ptr<PrefServiceSyncable> CreateProfilePrefs(
     const base::FilePath& pref_filename,
     base::SequencedTaskRunner* pref_io_task_runner,
     policy::PolicyService* policy_service,
     ManagedUserSettingsService* managed_user_settings,
+    scoped_ptr<PrefHashStore> pref_hash_store,
     const scoped_refptr<PrefStore>& extension_prefs,
     const scoped_refptr<user_prefs::PrefRegistrySyncable>& pref_registry,
     bool async);
+
+// Initializes a preference hash store for the profile preferences file at
+// |pref_filename| without actually loading the profile.
+void InitializeHashStoreForPrefFile(
+    const base::FilePath& pref_filename,
+    base::SequencedTaskRunner* pref_io_task_runner,
+    scoped_ptr<PrefHashStore> pref_hash_store);
 
 }  // namespace chrome_prefs
 

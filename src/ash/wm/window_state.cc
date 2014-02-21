@@ -4,14 +4,17 @@
 
 #include "ash/wm/window_state.h"
 
+#include "ash/ash_switches.h"
 #include "ash/root_window_controller.h"
-#include "ash/screen_ash.h"
+#include "ash/screen_util.h"
 #include "ash/shell_window_ids.h"
 #include "ash/wm/window_properties.h"
 #include "ash/wm/window_state_delegate.h"
 #include "ash/wm/window_state_observer.h"
 #include "ash/wm/window_util.h"
 #include "ash/wm/wm_types.h"
+#include "base/auto_reset.h"
+#include "base/command_line.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_delegate.h"
@@ -21,15 +24,8 @@
 namespace ash {
 namespace wm {
 
-// static
-bool WindowState::IsMaximizedOrFullscreenState(ui::WindowShowState show_state) {
-  return show_state == ui::SHOW_STATE_FULLSCREEN ||
-      show_state == ui::SHOW_STATE_MAXIMIZED;
-}
-
 WindowState::WindowState(aura::Window* window)
     : window_(window),
-      tracked_by_workspace_(true),
       window_position_managed_(false),
       bounds_changed_by_user_(false),
       panel_attached_(true),
@@ -37,16 +33,29 @@ WindowState::WindowState(aura::Window* window)
       ignored_by_shelf_(false),
       can_consume_system_keys_(false),
       top_row_keys_are_function_keys_(false),
-      window_resizer_(NULL),
       always_restores_to_restore_bounds_(false),
       hide_shelf_when_fullscreen_(true),
       animate_to_fullscreen_(true),
       minimum_visibility_(false),
+      in_set_window_show_type_(false),
       window_show_type_(ToWindowShowType(GetShowState())) {
   window_->AddObserver(this);
+
+#if defined(OS_CHROMEOS)
+  // NOTE(pkotwicz): Animating to immersive fullscreen does not look good. When
+  // switches::UseImmersiveFullscreenForAllWindows() returns true, most windows
+  // can be put into immersive fullscreen. It is not worth the added complexity
+  // to only animate to fullscreen if the window is put into immersive
+  // fullscreen.
+  animate_to_fullscreen_ = !switches::UseImmersiveFullscreenForAllWindows();
+#endif
 }
 
 WindowState::~WindowState() {
+}
+
+bool WindowState::HasDelegate() const {
+  return delegate_;
 }
 
 void WindowState::SetDelegate(scoped_ptr<WindowStateDelegate> delegate) {
@@ -71,7 +80,9 @@ bool WindowState::IsFullscreen() const {
 }
 
 bool WindowState::IsMaximizedOrFullscreen() const {
-  return IsMaximizedOrFullscreenState(GetShowState());
+  ui::WindowShowState show_state(GetShowState());
+  return show_state == ui::SHOW_STATE_FULLSCREEN ||
+      show_state == ui::SHOW_STATE_MAXIMIZED;
 }
 
 bool WindowState::IsNormalShowState() const {
@@ -86,6 +97,11 @@ bool WindowState::IsActive() const {
 bool WindowState::IsDocked() const {
   return window_->parent() &&
       window_->parent()->id() == internal::kShellWindowId_DockedContainer;
+}
+
+bool WindowState::IsSnapped() const {
+  return window_show_type_ == SHOW_TYPE_LEFT_SNAPPED ||
+      window_show_type_ == SHOW_TYPE_RIGHT_SNAPPED;
 }
 
 bool WindowState::CanMaximize() const {
@@ -114,9 +130,8 @@ bool WindowState::CanActivate() const {
 }
 
 bool WindowState::CanSnap() const {
-  if (!CanResize() ||
-      window_->type() == aura::client::WINDOW_TYPE_PANEL ||
-      window_->transient_parent())
+  if (!CanResize() || window_->type() == ui::wm::WINDOW_TYPE_PANEL ||
+      views::corewm::GetTransientParent(window_))
     return false;
   // If a window has a maximum size defined, snapping may make it too big.
   return window_->delegate() ? window_->delegate()->GetMaximumSize().IsEmpty() :
@@ -136,7 +151,7 @@ void WindowState::SnapLeft(const gfx::Rect& bounds) {
 }
 
 void WindowState::SnapRight(const gfx::Rect& bounds) {
-  SnapWindow(SHOW_TYPE_LEFT_SNAPPED, bounds);
+  SnapWindow(SHOW_TYPE_RIGHT_SNAPPED, bounds);
 }
 
 void WindowState::Minimize() {
@@ -188,14 +203,14 @@ void WindowState::ToggleFullscreen() {
 void WindowState::SetBoundsInScreen(
     const gfx::Rect& bounds_in_screen) {
   gfx::Rect bounds_in_parent =
-      ScreenAsh::ConvertRectFromScreen(window_->parent(),
+      ScreenUtil::ConvertRectFromScreen(window_->parent(),
                                        bounds_in_screen);
   window_->SetBounds(bounds_in_parent);
 }
 
 void WindowState::SaveCurrentBoundsForRestore() {
   gfx::Rect bounds_in_screen =
-      ScreenAsh::ConvertRectToScreen(window_->parent(),
+      ScreenUtil::ConvertRectToScreen(window_->parent(),
                                      window_->bounds());
   SetRestoreBoundsInScreen(bounds_in_screen);
 }
@@ -205,7 +220,7 @@ gfx::Rect WindowState::GetRestoreBoundsInScreen() const {
 }
 
 gfx::Rect WindowState::GetRestoreBoundsInParent() const {
-  return ScreenAsh::ConvertRectFromScreen(window_->parent(),
+  return ScreenUtil::ConvertRectFromScreen(window_->parent(),
                                           GetRestoreBoundsInScreen());
 }
 
@@ -215,7 +230,7 @@ void WindowState::SetRestoreBoundsInScreen(const gfx::Rect& bounds) {
 
 void WindowState::SetRestoreBoundsInParent(const gfx::Rect& bounds) {
   SetRestoreBoundsInScreen(
-      ScreenAsh::ConvertRectToScreen(window_->parent(), bounds));
+      ScreenUtil::ConvertRectToScreen(window_->parent(), bounds));
 }
 
 void WindowState::ClearRestoreBounds() {
@@ -235,54 +250,76 @@ void WindowState::RemoveObserver(WindowStateObserver* observer) {
   observer_list_.RemoveObserver(observer);
 }
 
-void WindowState::SetTrackedByWorkspace(bool tracked_by_workspace) {
-  if (tracked_by_workspace_ == tracked_by_workspace)
-    return;
-  bool old = tracked_by_workspace_;
-  tracked_by_workspace_ = tracked_by_workspace;
-  FOR_EACH_OBSERVER(WindowStateObserver, observer_list_,
-                    OnTrackedByWorkspaceChanged(this, old));
+bool WindowState::CreateDragDetails(aura::Window* window,
+                                    const gfx::Point& point_in_parent,
+                                    int window_component,
+                                    aura::client::WindowMoveSource source) {
+  scoped_ptr<DragDetails> details(new DragDetails(
+        window, point_in_parent, window_component, source));
+  if (!details->is_resizable)
+    return false;
+  drag_details_ = details.Pass();
+  return true;
+}
+
+void WindowState::DeleteDragDetails() {
+  drag_details_.reset();
 }
 
 void WindowState::OnWindowPropertyChanged(aura::Window* window,
                                           const void* key,
                                           intptr_t old) {
   DCHECK_EQ(window, window_);
-  if (key == aura::client::kShowStateKey) {
-    window_show_type_ = ToWindowShowType(GetShowState());
-    ui::WindowShowState old_state = static_cast<ui::WindowShowState>(old);
-    // TODO(oshima): Notify only when the state has changed.
-    // Doing so break a few tests now.
-    FOR_EACH_OBSERVER(
-        WindowStateObserver, observer_list_,
-        OnWindowShowTypeChanged(this, ToWindowShowType(old_state)));
-  }
-}
-
-void WindowState::OnWindowDestroying(aura::Window* window) {
-  window_->RemoveObserver(this);
+  if (key == aura::client::kShowStateKey)
+    SetWindowShowType(ToWindowShowType(GetShowState()));
 }
 
 void WindowState::SnapWindow(WindowShowType left_or_right,
                              const gfx::Rect& bounds) {
-  if (IsMaximizedOrFullscreen()) {
-    // Before we can set the bounds we need to restore the window.
-    // Restoring the window will set the window to its restored bounds.
-    // To avoid an unnecessary bounds changes (which may have side effects)
-    // we set the restore bounds to the bounds we want, restore the window,
-    // then reset the restore bounds. This way no unnecessary bounds
-    // changes occurs and the original restore bounds is remembered.
-    gfx::Rect restore_bounds_in_screen =
-        GetRestoreBoundsInScreen();
-    SetRestoreBoundsInParent(bounds);
-    Restore();
-    SetRestoreBoundsInScreen(restore_bounds_in_screen);
-  } else {
+  if (window_show_type_ == left_or_right) {
     window_->SetBounds(bounds);
+    return;
   }
+
+  // Compute the bounds that the window will restore to. If the window does not
+  // already have restore bounds, it will be restored (when un-snapped) to the
+  // last bounds that it had before getting snapped.
+  gfx::Rect restore_bounds_in_screen(HasRestoreBounds() ?
+      GetRestoreBoundsInScreen() : window_->GetBoundsInScreen());
+  // Set the window's restore bounds so that WorkspaceLayoutManager knows
+  // which width to use when the snapped window is moved to the edge.
+  SetRestoreBoundsInParent(bounds);
+
   DCHECK(left_or_right == SHOW_TYPE_LEFT_SNAPPED ||
          left_or_right == SHOW_TYPE_RIGHT_SNAPPED);
-  window_show_type_ = left_or_right;
+  SetWindowShowType(left_or_right);
+  // TODO(varkha): Ideally the bounds should be changed in a LayoutManager upon
+  // observing the WindowShowType change.
+  // If the window is a child of kShellWindowId_DockedContainer such as during
+  // a drag, the window's bounds are not set in
+  // WorkspaceLayoutManager::OnWindowShowTypeChanged(). Set them here. Skip
+  // setting the bounds otherwise to avoid stopping the slide animation which
+  // was started as a result of OnWindowShowTypeChanged().
+  if (IsDocked())
+    window_->SetBounds(bounds);
+  SetRestoreBoundsInScreen(restore_bounds_in_screen);
+}
+
+void WindowState::SetWindowShowType(WindowShowType new_window_show_type) {
+  if (in_set_window_show_type_)
+    return;
+  base::AutoReset<bool> resetter(&in_set_window_show_type_, true);
+
+  ui::WindowShowState new_window_state =
+      ToWindowShowState(new_window_show_type);
+  if (new_window_state != GetShowState())
+    window_->SetProperty(aura::client::kShowStateKey, new_window_state);
+  WindowShowType old_window_show_type = window_show_type_;
+  window_show_type_ = new_window_show_type;
+  if (old_window_show_type != window_show_type_) {
+    FOR_EACH_OBSERVER(WindowStateObserver, observer_list_,
+                      OnWindowShowTypeChanged(this, old_window_show_type));
+  }
 }
 
 WindowState* GetActiveWindowState() {

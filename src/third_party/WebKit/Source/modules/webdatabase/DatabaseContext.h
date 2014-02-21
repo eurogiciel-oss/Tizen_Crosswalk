@@ -29,8 +29,6 @@
 #define DatabaseContext_h
 
 #include "core/dom/ActiveDOMObject.h"
-#include "modules/webdatabase/DatabaseDetails.h"
-#include "wtf/Assertions.h"
 #include "wtf/PassRefPtr.h"
 #include "wtf/ThreadSafeRefCounted.h"
 
@@ -43,7 +41,7 @@ class DatabaseThread;
 class ExecutionContext;
 class SecurityOrigin;
 
-class DatabaseContext : public ThreadSafeRefCounted<DatabaseContext>, public ActiveDOMObject {
+class DatabaseContext FINAL : public ThreadSafeRefCounted<DatabaseContext>, public ActiveDOMObject {
 public:
     friend class DatabaseManager;
 
@@ -52,14 +50,13 @@ public:
     virtual ~DatabaseContext();
 
     // For life-cycle management (inherited from ActiveDOMObject):
-    virtual void contextDestroyed();
-    virtual void stop();
+    virtual void contextDestroyed() OVERRIDE;
+    virtual void stop() OVERRIDE;
 
     PassRefPtr<DatabaseContext> backend();
     DatabaseThread* databaseThread();
 
     void setHasOpenDatabases() { m_hasOpenDatabases = true; }
-    bool hasOpenDatabases() { return m_hasOpenDatabases; }
 
     // When the database cleanup is done, cleanupSync will be signalled.
     bool stopDatabases(DatabaseTaskSynchronizer*);

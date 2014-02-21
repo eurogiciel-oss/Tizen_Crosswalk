@@ -38,7 +38,7 @@ readonly UP_DOWN_LOAD="buildbot/file_up_down_load.sh"
 readonly PNACL_BUILD="pnacl/build.sh"
 readonly LLVM_TEST="pnacl/scripts/llvm-test.py"
 readonly DRIVER_TESTS="pnacl/driver/tests/driver_tests.py"
-readonly ACCEPTABLE_TOOLCHAIN_SIZE_MB=55
+readonly ACCEPTABLE_TOOLCHAIN_SIZE_MB=56
 
 setup-goma() {
   echo "@@@BUILD_STEP goma_setup@@@"
@@ -73,8 +73,10 @@ tc-compile-toolchain() {
   local build_fat=$1
   echo @@@BUILD_STEP compile_toolchain@@@
   ${PNACL_BUILD} clean
-  ${PNACL_BUILD} sync-sources
-  ${PNACL_BUILD} checkout-git-bundles-for-trybot
+  # Instead of using build.sh's sync-sources, the sources are now synced by
+  # toolchain_build_pnacl.py.
+  ${PNACL_BUILD} llvm-link-clang
+  ${PNACL_BUILD} newlib-nacl-headers
   if ${build_fat}; then
     HOST_ARCH=x86_32 ${PNACL_BUILD} build-all
     HOST_ARCH=x86_64 ${PNACL_BUILD} build-host
@@ -120,7 +122,7 @@ tc-build-translator() {
 tc-archive() {
   local label=$1
   echo @@@BUILD_STEP archive_toolchain@@@
-  ${UP_DOWN_LOAD} UploadPnaclToolchains ${BUILDBOT_GOT_REVISION} \
+  ${UP_DOWN_LOAD} UploadToolchainTarball ${BUILDBOT_GOT_REVISION} \
     ${label} pnacl-toolchain.tgz
 }
 
@@ -141,7 +143,7 @@ tc-prune-translator-pexes() {
 tc-archive-translator() {
   echo @@@BUILD_STEP archive_translator@@@
   ${PNACL_BUILD} translator-tarball pnacl-translator.tgz
-  ${UP_DOWN_LOAD} UploadPnaclToolchains ${BUILDBOT_GOT_REVISION} \
+  ${UP_DOWN_LOAD} UploadToolchainTarball ${BUILDBOT_GOT_REVISION} \
       pnacl_translator pnacl-translator.tgz
 }
 
@@ -371,55 +373,6 @@ scons-stage-noirt() {
 llvm-regression() {
   echo "@@@BUILD_STEP llvm_regression@@@"
   ${LLVM_TEST} --llvm-regression --check-excludes || handle-error
-}
-
-# This function is shared between x86-32 and x86-64. All building and testing
-# is done on the same bot. Try runs are identical to buildbot runs
-#
-# Note: unlike its arm counterparts we do not run trusted tests on these bots.
-# Trusted tests get plenty of coverage by other bots, e.g. nacl-gcc bots.
-# We make the assumption here that there are no "exotic tests" which
-# are trusted in nature but are somehow depedent on the untrusted TC.
-mode-buildbot-x86() {
-  local arch="x86-$1"
-  FAIL_FAST=false
-  clobber
-
-  local flags_build="skip_trusted_tests=1 -k -j8 do_not_run_tests=1"
-  local flags_run="skip_trusted_tests=1 -k -j4"
-  # Normal pexe tests. Build all targets, then run (-j4 is a compromise to try
-  # to reduce cycle times without making output too difficult to follow)
-  # We also intentionally build more than we run for "coverage".
-  # specifying "" as the target which means "build everything"
-
-  scons-stage-noirt "${arch}" "${flags_build}" "${SCONS_EVERYTHING}"
-  scons-stage-noirt "${arch}" "${flags_run}"   "${SCONS_S_M}"
-  # Large tests cannot be run in parallel
-  scons-stage-noirt "${arch}" "${flags_run} -j1"  "large_tests"
-
-  # non-pexe tests (Do the build-everything step just to make sure it all still
-  # builds as non-pexe)
-  scons-stage-noirt "${arch}" "${flags_build} pnacl_generate_pexe=0" \
-      "${SCONS_EVERYTHING}"
-  scons-stage-noirt "${arch}" "${flags_run} pnacl_generate_pexe=0" \
-      "nonpexe_tests"
-
-  # also run some tests with the irt
-  scons-stage-irt "${arch}" "${flags_run}" "${SCONS_S_M_IRT}"
-
-  # sandboxed translation
-  build-sbtc-prerequisites ${arch}
-  scons-stage-irt "${arch}" "${flags_build} use_sandboxed_translator=1" \
-    "${SCONS_EVERYTHING}"
-  scons-stage-irt "${arch}" "${flags_run} use_sandboxed_translator=1" \
-    "${SCONS_S_M_IRT}"
-  scons-stage-irt "${arch}" \
-    "${flags_run} use_sandboxed_translator=1 translate_fast=1" \
-    "toolchain_tests"
-
-  # translator memory consumption regression test
-  scons-stage-irt "${arch}" "${flags_run} use_sandboxed_translator=1" \
-      "large_code"
 }
 
 # QEMU upload bot runs this function, and the hardware download bot runs

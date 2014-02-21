@@ -4,6 +4,7 @@
 
 #include <string>
 
+#include "base/callback_helpers.h"
 #include "base/file_util.h"
 #include "base/files/file_path.h"
 #include "base/files/scoped_temp_dir.h"
@@ -15,8 +16,8 @@
 #include "chrome/browser/chromeos/drive/remove_stale_cache_files.h"
 #include "chrome/browser/chromeos/drive/resource_metadata.h"
 #include "chrome/browser/chromeos/drive/test_util.h"
-#include "chrome/browser/google_apis/test_util.h"
 #include "content/public/test/test_browser_thread_bundle.h"
+#include "google_apis/drive/test_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace drive {
@@ -58,8 +59,7 @@ class RemoveStaleCacheFilesTest : public testing::Test {
 
 TEST_F(RemoveStaleCacheFilesTest, RemoveStaleCacheFiles) {
   base::FilePath dummy_file;
-  ASSERT_TRUE(file_util::CreateTemporaryFileInDir(temp_dir_.path(),
-                                                  &dummy_file));
+  ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(), &dummy_file));
   std::string local_id("pdf:1a2b3c");
   std::string md5("abcdef0123456789");
 
@@ -85,8 +85,7 @@ TEST_F(RemoveStaleCacheFilesTest, RemoveStaleCacheFiles) {
 
 TEST_F(RemoveStaleCacheFilesTest, DirtyCacheFiles) {
   base::FilePath dummy_file;
-  ASSERT_TRUE(file_util::CreateTemporaryFileInDir(temp_dir_.path(),
-                                                  &dummy_file));
+  ASSERT_TRUE(base::CreateTemporaryFileInDir(temp_dir_.path(), &dummy_file));
 
   // Dirty and deleted (= absent in resource_metada) cache entry.
   std::string local_id_1("file:1");
@@ -94,7 +93,8 @@ TEST_F(RemoveStaleCacheFilesTest, DirtyCacheFiles) {
   EXPECT_EQ(FILE_ERROR_OK,
             cache_->Store(local_id_1, md5_1, dummy_file,
                           FileCache::FILE_OPERATION_COPY));
-  EXPECT_EQ(FILE_ERROR_OK, cache_->MarkDirty(local_id_1));
+  scoped_ptr<base::ScopedClosureRunner> file_closer;
+  EXPECT_EQ(FILE_ERROR_OK, cache_->OpenForWrite(local_id_1, &file_closer));
 
   // Dirty and mismatching-MD5 entry.
   std::string md5_2_cache("0123456789abcdef");
@@ -104,14 +104,14 @@ TEST_F(RemoveStaleCacheFilesTest, DirtyCacheFiles) {
   std::string local_id_2;
   entry.set_resource_id("resource_id");
   entry.mutable_file_specific_info()->set_md5(md5_2_metadata);
-  entry.set_parent_local_id(util::kDriveGrandRootSpecialResourceId);
+  entry.set_parent_local_id(util::kDriveGrandRootLocalId);
   entry.set_title("file.txt");
   resource_metadata_->AddEntry(entry, &local_id_2);
 
   EXPECT_EQ(FILE_ERROR_OK,
             cache_->Store(local_id_2, md5_2_cache, dummy_file,
                           FileCache::FILE_OPERATION_COPY));
-  EXPECT_EQ(FILE_ERROR_OK, cache_->MarkDirty(local_id_2));
+  EXPECT_EQ(FILE_ERROR_OK, cache_->OpenForWrite(local_id_2, &file_closer));
 
   // Remove stale cache files.
   RemoveStaleCacheFiles(cache_.get(), resource_metadata_.get());

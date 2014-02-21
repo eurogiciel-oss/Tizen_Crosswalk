@@ -61,7 +61,7 @@ content::WebContents* BalloonHost::GetAssociatedWebContents() const {
   return NULL;
 }
 
-const string16& BalloonHost::GetSource() const {
+const base::string16& BalloonHost::GetSource() const {
   return balloon_->notification().display_source();
 }
 
@@ -178,15 +178,4 @@ void BalloonHost::NotifyDisconnect() {
 
 bool BalloonHost::IsRenderViewReady() const {
   return should_notify_on_disconnect_;
-}
-
-bool BalloonHost::CanLoadDataURLsInWebUI() const {
-#if defined(OS_CHROMEOS)
-  // Chrome OS uses data URLs in WebUI BalloonHosts.  We normally do not allow
-  // data URLs in WebUI renderers, but normal pages cannot target BalloonHosts,
-  // so this should be safe.
-  return true;
-#else
-  return false;
-#endif
 }

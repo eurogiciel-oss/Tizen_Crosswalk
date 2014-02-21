@@ -41,6 +41,7 @@
 #include "core/inspector/InspectorInstrumentation.h"
 #include "core/inspector/ScriptDebugListener.h"
 #include "core/frame/Frame.h"
+#include "core/frame/FrameHost.h"
 #include "core/page/Page.h"
 #include "wtf/OwnPtr.h"
 #include "wtf/PassOwnPtr.h"
@@ -60,7 +61,7 @@ static Frame* retrieveFrameWithGlobalObjectCheck(v8::Handle<v8::Context> context
     if (global.IsEmpty())
         return 0;
 
-    global = global->FindInstanceInPrototypeChain(V8Window::GetTemplate(context->GetIsolate(), worldTypeInMainThread(context->GetIsolate())));
+    global = global->FindInstanceInPrototypeChain(V8Window::domTemplate(context->GetIsolate(), worldTypeInMainThread(context->GetIsolate())));
     if (global.IsEmpty())
         return 0;
 
@@ -102,7 +103,7 @@ void PageScriptDebugServer::addListener(ScriptDebugListener* listener, Page* pag
     if (!m_listenersMap.size()) {
         ensureDebuggerScriptCompiled();
         ASSERT(!debuggerScript->IsUndefined());
-        v8::Debug::SetDebugEventListener2(&PageScriptDebugServer::v8DebugEventCallback, v8::External::New(this));
+        v8::Debug::SetDebugEventListener2(&PageScriptDebugServer::v8DebugEventCallback, v8::External::New(m_isolate, this));
     }
     m_listenersMap.set(page, listener);
 
@@ -110,7 +111,7 @@ void PageScriptDebugServer::addListener(ScriptDebugListener* listener, Page* pag
     if (!shell || !shell->isContextInitialized())
         return;
     v8::Local<v8::Context> context = shell->context();
-    v8::Handle<v8::Function> getScriptsFunction = v8::Local<v8::Function>::Cast(debuggerScript->Get(v8::String::NewSymbol("getScripts")));
+    v8::Handle<v8::Function> getScriptsFunction = v8::Local<v8::Function>::Cast(debuggerScript->Get(v8AtomicString(m_isolate, "getScripts")));
     v8::Handle<v8::Value> argv[] = { context->GetEmbedderData(0) };
     v8::Handle<v8::Value> value = V8ScriptRunner::callInternalFunction(getScriptsFunction, debuggerScript, WTF_ARRAY_LENGTH(argv), argv, m_isolate);
     if (value.IsEmpty())
@@ -118,7 +119,7 @@ void PageScriptDebugServer::addListener(ScriptDebugListener* listener, Page* pag
     ASSERT(!value->IsUndefined() && value->IsArray());
     v8::Handle<v8::Array> scriptsArray = v8::Handle<v8::Array>::Cast(value);
     for (unsigned i = 0; i < scriptsArray->Length(); ++i)
-        dispatchDidParseSource(listener, v8::Handle<v8::Object>::Cast(scriptsArray->Get(v8::Integer::New(i, m_isolate))));
+        dispatchDidParseSource(listener, v8::Handle<v8::Object>::Cast(scriptsArray->Get(v8::Integer::New(m_isolate, i))));
 }
 
 void PageScriptDebugServer::removeListener(ScriptDebugListener* listener, Page* page)
@@ -225,12 +226,12 @@ void PageScriptDebugServer::preprocessBeforeCompile(const v8::Debug::EventDetail
         return;
 
     // The name and source are in the JS event data.
-    String scriptName = toWebCoreStringWithUndefinedOrNullCheck(callDebuggerMethod("getScriptName", WTF_ARRAY_LENGTH(argvEventData), argvEventData));
-    String script = toWebCoreStringWithUndefinedOrNullCheck(callDebuggerMethod("getScriptSource", WTF_ARRAY_LENGTH(argvEventData), argvEventData));
+    String scriptName = toCoreStringWithUndefinedOrNullCheck(callDebuggerMethod("getScriptName", WTF_ARRAY_LENGTH(argvEventData), argvEventData));
+    String script = toCoreStringWithUndefinedOrNullCheck(callDebuggerMethod("getScriptSource", WTF_ARRAY_LENGTH(argvEventData), argvEventData));
 
     String preprocessedSource  = m_scriptPreprocessor->preprocessSourceCode(script, scriptName);
 
-    v8::Handle<v8::Value> argvPreprocessedScript[] = { eventData, v8String(preprocessedSource, debugContext->GetIsolate()) };
+    v8::Handle<v8::Value> argvPreprocessedScript[] = { eventData, v8String(debugContext->GetIsolate(), preprocessedSource) };
     callDebuggerMethod("setScriptSource", WTF_ARRAY_LENGTH(argvPreprocessedScript), argvPreprocessedScript);
 }
 
@@ -247,7 +248,7 @@ bool PageScriptDebugServer::canPreprocess(Frame* frame)
     // Web page to ensure that the debugger's console initialization code has completed.
     if (!m_scriptPreprocessor) {
         TemporaryChange<bool> isPreprocessing(isCreatingPreprocessor, true);
-        m_scriptPreprocessor = adoptPtr(new ScriptPreprocessor(*m_preprocessorSourceCode.get(), frame->script(), frame->page()->console()));
+        m_scriptPreprocessor = adoptPtr(new ScriptPreprocessor(*m_preprocessorSourceCode.get(), frame->script(), frame->host()->console()));
     }
 
     if (m_scriptPreprocessor->isValid())

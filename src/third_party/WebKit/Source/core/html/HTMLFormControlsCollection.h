@@ -38,21 +38,25 @@ class QualifiedName;
 
 class HTMLFormControlsCollection FINAL : public HTMLCollection {
 public:
-    static PassRefPtr<HTMLFormControlsCollection> create(Node*, CollectionType);
+    static PassRefPtr<HTMLFormControlsCollection> create(ContainerNode*, CollectionType);
 
     virtual ~HTMLFormControlsCollection();
 
-    virtual Node* namedItem(const AtomicString& name) const;
+    virtual Node* namedItem(const AtomicString& name) const OVERRIDE;
     void namedGetter(const AtomicString& name, bool&, RefPtr<RadioNodeList>&, bool&, RefPtr<Node>&);
 
 private:
-    explicit HTMLFormControlsCollection(Node*);
+    explicit HTMLFormControlsCollection(ContainerNode*);
 
     virtual void updateNameCache() const OVERRIDE;
 
     const Vector<FormAssociatedElement*>& formControlElements() const;
     const Vector<HTMLImageElement*>& formImageElements() const;
-    virtual Element* virtualItemAfter(unsigned& offsetInArray, Element*) const OVERRIDE;
+    virtual Element* virtualItemAfter(Element*) const OVERRIDE;
+    virtual void invalidateCache() const OVERRIDE;
+
+    mutable Element* m_cachedElement;
+    mutable unsigned m_cachedElementOffsetInArray;
 };
 
 } // namespace

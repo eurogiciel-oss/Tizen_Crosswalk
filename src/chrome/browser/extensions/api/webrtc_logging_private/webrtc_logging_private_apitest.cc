@@ -45,8 +45,8 @@ IN_PROC_BROWSER_TEST_F(WebrtcLoggingPrivateApiTest, TestStartStopDiscard) {
 
   content::WebContents* contents =
       browser()->tab_strip_model()->GetActiveWebContents();
-  ListValue parameters;
-  parameters.AppendInteger(ExtensionTabUtil::GetTabId(contents));
+  base::ListValue parameters;
+  parameters.AppendInteger(extensions::ExtensionTabUtil::GetTabId(contents));
   parameters.AppendString(contents->GetURL().GetOrigin().spec());
   std::string parameter_string;
   base::JSONWriter::Write(&parameters, &parameter_string);
@@ -134,15 +134,15 @@ IN_PROC_BROWSER_TEST_F(WebrtcLoggingPrivateApiTest, TestStartStopUpload) {
 
   content::WebContents* contents =
       browser()->tab_strip_model()->GetActiveWebContents();
-  ListValue parameters;
-  parameters.AppendInteger(ExtensionTabUtil::GetTabId(contents));
+  base::ListValue parameters;
+  parameters.AppendInteger(extensions::ExtensionTabUtil::GetTabId(contents));
   parameters.AppendString(contents->GetURL().GetOrigin().spec());
-  DictionaryValue* meta_data_entry = new DictionaryValue();
+  base::DictionaryValue* meta_data_entry = new base::DictionaryValue();
   meta_data_entry->SetString("key", "app_session_id");
   meta_data_entry->SetString("value", kTestLoggingSessionId);
-  ListValue* meta_data = new ListValue();
+  base::ListValue* meta_data = new base::ListValue();
   meta_data->Append(meta_data_entry);
-  meta_data_entry = new DictionaryValue();
+  meta_data_entry = new base::DictionaryValue();
   meta_data_entry->SetString("key", "url");
   meta_data_entry->SetString("value", kTestLoggingUrl);
   meta_data->Append(meta_data_entry);
@@ -165,7 +165,7 @@ IN_PROC_BROWSER_TEST_F(WebrtcLoggingPrivateApiTest, TestStartStopUpload) {
   start_function->set_has_callback(true);
 
   parameters.Clear();
-  parameters.AppendInteger(ExtensionTabUtil::GetTabId(contents));
+  parameters.AppendInteger(extensions::ExtensionTabUtil::GetTabId(contents));
   parameters.AppendString(contents->GetURL().GetOrigin().spec());
   base::JSONWriter::Write(&parameters, &parameter_string);
 

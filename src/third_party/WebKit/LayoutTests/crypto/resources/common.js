@@ -3,17 +3,20 @@ function importTestKeys()
     var keyFormat = "raw";
     var data = asciiToUint8Array("16 bytes of key!");
     var extractable = true;
-    var keyUsages = ['encrypt', 'decrypt', 'sign', 'verify'];
+    var keyUsages = ['wrapKey', 'unwrapKey', 'encrypt', 'decrypt', 'sign', 'verify'];
 
     var hmacPromise = crypto.subtle.importKey(keyFormat, data, {name: 'hmac', hash: {name: 'sha-1'}}, extractable, keyUsages);
     var aesCbcPromise = crypto.subtle.importKey(keyFormat, data, {name: 'AES-CBC'}, extractable, keyUsages);
     var aesCbcJustDecrypt = crypto.subtle.importKey(keyFormat, data, {name: 'AES-CBC'}, false, ['decrypt']);
+    // FIXME: use AES-CTR key type once it's implemented
+    var aesCtrPromise = crypto.subtle.importKey(keyFormat, data, {name: 'AES-CBC'}, extractable, keyUsages);
 
-    return Promise.all([hmacPromise, aesCbcPromise, aesCbcJustDecrypt]).then(function(results) {
+    return Promise.all([hmacPromise, aesCbcPromise, aesCbcJustDecrypt, aesCtrPromise]).then(function(results) {
         return {
             hmacSha1: results[0],
             aesCbc: results[1],
             aesCbcJustDecrypt: results[2],
+            aesCtr: results[3],
         };
     });
 }
@@ -83,4 +86,63 @@ function failAndFinishJSTest(error)
     if (error)
        debug(error);
     finishJSTest();
+}
+
+numOutstandingTasks = 0;
+
+function addTask(promise)
+{
+    numOutstandingTasks++;
+
+    function taskFinished()
+    {
+        numOutstandingTasks--;
+        completeTestWhenAllTasksDone();
+    }
+
+    promise.then(taskFinished, taskFinished);
+}
+
+function completeTestWhenAllTasksDone()
+{
+    if (numOutstandingTasks == 0) {
+        finishJSTest();
+    }
+}
+
+function shouldRejectPromiseWithNull(code)
+{
+    var promise = eval(code);
+
+    function acceptCallback(result)
+    {
+        debug("FAIL: '" + code + "' accepted with " + result + " but should have been rejected");
+    }
+
+    function rejectCallback(result)
+    {
+        if (result == null)
+            debug("PASS: '" + code + "' rejected with null");
+        else
+            debug("FAIL: '" + code + "' rejected with " + result + " but was expecting null");
+    }
+
+    addTask(promise.then(acceptCallback, rejectCallback));
+}
+
+function shouldAcceptPromise(code)
+{
+    var promise = eval(code);
+
+    function acceptCallback(result)
+    {
+        debug("PASS: '" + code + "' accepted with " + result);
+    }
+
+    function rejectCallback(result)
+    {
+        debug("FAIL: '" + code + "' rejected with " + result);
+    }
+
+    addTask(promise.then(acceptCallback, rejectCallback));
 }

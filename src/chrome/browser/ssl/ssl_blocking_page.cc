@@ -41,6 +41,7 @@
 #include "base/win/windows_version.h"
 #endif
 
+using base::ASCIIToUTF16;
 using base::TimeTicks;
 using content::InterstitialPage;
 using content::NavigationController;
@@ -196,7 +197,7 @@ SSLBlockingPage::~SSLBlockingPage() {
 }
 
 std::string SSLBlockingPage::GetHTMLContents() {
-  DictionaryValue strings;
+  base::DictionaryValue strings;
   int resource_id;
   if (overridable_ && !strict_enforcement_) {
     // Let's build the overridable error page.
@@ -245,7 +246,7 @@ std::string SSLBlockingPage::GetHTMLContents() {
         l10n_util::GetStringUTF16(IDS_SSL_BLOCKING_PAGE_TECH_TITLE));
 
     // Strings that are dependent on the URL.
-    string16 url(ASCIIToUTF16(request_url_.host()));
+    base::string16 url(ASCIIToUTF16(request_url_.host()));
     bool rtl = base::i18n::IsRTL();
     strings.SetString("textDirection", rtl ? "rtl" : "ltr");
     if (rtl)
@@ -265,32 +266,32 @@ std::string SSLBlockingPage::GetHTMLContents() {
     // Strings that are dependent on the error type.
     SSLErrorInfo::ErrorType type =
         SSLErrorInfo::NetErrorToErrorType(cert_error_);
-    string16 errorType;
+    base::string16 errorType;
     if (type == SSLErrorInfo::CERT_REVOKED) {
-      errorType = string16(ASCIIToUTF16("Key revocation"));
+      errorType = base::string16(ASCIIToUTF16("Key revocation"));
       strings.SetString(
           "failure",
           l10n_util::GetStringUTF16(IDS_SSL_BLOCKING_PAGE_REVOKED));
     } else if (type == SSLErrorInfo::CERT_INVALID) {
-      errorType = string16(ASCIIToUTF16("Malformed certificate"));
+      errorType = base::string16(ASCIIToUTF16("Malformed certificate"));
       strings.SetString(
           "failure",
           l10n_util::GetStringUTF16(IDS_SSL_BLOCKING_PAGE_FORMATTED));
     } else if (type == SSLErrorInfo::CERT_PINNED_KEY_MISSING) {
-      errorType = string16(ASCIIToUTF16("Certificate pinning failure"));
+      errorType = base::string16(ASCIIToUTF16("Certificate pinning failure"));
       strings.SetString(
           "failure",
           l10n_util::GetStringFUTF16(IDS_SSL_BLOCKING_PAGE_PINNING,
                                      url.c_str()));
     } else if (type == SSLErrorInfo::CERT_WEAK_KEY_DH) {
-      errorType = string16(ASCIIToUTF16("Weak DH public key"));
+      errorType = base::string16(ASCIIToUTF16("Weak DH public key"));
       strings.SetString(
           "failure",
           l10n_util::GetStringFUTF16(IDS_SSL_BLOCKING_PAGE_WEAK_DH,
                                      url.c_str()));
     } else {
       // HSTS failure.
-      errorType = string16(ASCIIToUTF16("HSTS failure"));
+      errorType = base::string16(ASCIIToUTF16("HSTS failure"));
       strings.SetString(
           "failure",
           l10n_util::GetStringFUTF16(IDS_SSL_BLOCKING_PAGE_HSTS, url.c_str()));
@@ -302,8 +303,10 @@ std::string SSLBlockingPage::GetHTMLContents() {
                                                 errorType.c_str()));
 
     // Strings that display the invalid cert.
-    string16 subject(ASCIIToUTF16(ssl_info_.cert->subject().GetDisplayName()));
-    string16 issuer(ASCIIToUTF16(ssl_info_.cert->issuer().GetDisplayName()));
+    base::string16 subject(
+        ASCIIToUTF16(ssl_info_.cert->subject().GetDisplayName()));
+    base::string16 issuer(
+        ASCIIToUTF16(ssl_info_.cert->issuer().GetDisplayName()));
     std::string hashes;
     for (std::vector<net::HashValue>::iterator it =
             ssl_info_.public_key_hashes.begin();
@@ -311,7 +314,7 @@ std::string SSLBlockingPage::GetHTMLContents() {
          ++it) {
       base::StringAppendF(&hashes, "%s ", it->ToString().c_str());
     }
-    string16 fingerprint(ASCIIToUTF16(hashes));
+    base::string16 fingerprint(ASCIIToUTF16(hashes));
     if (rtl) {
       // These are always going to be LTR.
       base::i18n::WrapStringWithLTRFormatting(&subject);
@@ -414,8 +417,8 @@ void SSLBlockingPage::NotifyAllowCertificate() {
 
 // static
 void SSLBlockingPage::SetExtraInfo(
-    DictionaryValue* strings,
-    const std::vector<string16>& extra_info) {
+    base::DictionaryValue* strings,
+    const std::vector<base::string16>& extra_info) {
   DCHECK_LT(extra_info.size(), 5U);  // We allow 5 paragraphs max.
   const char* keys[5] = {
       "moreInfo1", "moreInfo2", "moreInfo3", "moreInfo4", "moreInfo5"

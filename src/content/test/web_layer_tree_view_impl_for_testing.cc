@@ -24,11 +24,11 @@
 #include "webkit/common/gpu/test_context_provider_factory.h"
 #include "webkit/renderer/compositor_bindings/web_layer_impl.h"
 
-using WebKit::WebColor;
-using WebKit::WebGraphicsContext3D;
-using WebKit::WebRect;
-using WebKit::WebRenderingStats;
-using WebKit::WebSize;
+using blink::WebColor;
+using blink::WebGraphicsContext3D;
+using blink::WebRect;
+using blink::WebRenderingStats;
+using blink::WebSize;
 
 namespace webkit {
 
@@ -36,7 +36,7 @@ WebLayerTreeViewImplForTesting::WebLayerTreeViewImplForTesting() {}
 
 WebLayerTreeViewImplForTesting::~WebLayerTreeViewImplForTesting() {}
 
-bool WebLayerTreeViewImplForTesting::Initialize() {
+void WebLayerTreeViewImplForTesting::Initialize() {
   cc::LayerTreeSettings settings;
 
   // For web contents, layer transforms should scale up the contents of layers
@@ -45,10 +45,9 @@ bool WebLayerTreeViewImplForTesting::Initialize() {
 
   // Accelerated animations are enabled for unit tests.
   settings.accelerated_animation_enabled = true;
-  layer_tree_host_ = cc::LayerTreeHost::Create(this, NULL, settings, NULL);
-  if (!layer_tree_host_)
-    return false;
-  return true;
+  layer_tree_host_ =
+      cc::LayerTreeHost::CreateSingleThreaded(this, this, NULL, settings);
+  DCHECK(layer_tree_host_);
 }
 
 void WebLayerTreeViewImplForTesting::setSurfaceReady() {
@@ -56,7 +55,7 @@ void WebLayerTreeViewImplForTesting::setSurfaceReady() {
 }
 
 void WebLayerTreeViewImplForTesting::setRootLayer(
-    const WebKit::WebLayer& root) {
+    const blink::WebLayer& root) {
   layer_tree_host_->SetRootLayer(
       static_cast<const WebLayerImpl*>(&root)->layer());
 }
@@ -110,17 +109,13 @@ void WebLayerTreeViewImplForTesting::setPageScaleFactorAndLimits(
 }
 
 void WebLayerTreeViewImplForTesting::startPageScaleAnimation(
-    const WebKit::WebPoint& scroll,
+    const blink::WebPoint& scroll,
     bool use_anchor,
     float new_page_scale,
     double duration_sec) {}
 
 void WebLayerTreeViewImplForTesting::setNeedsAnimate() {
   layer_tree_host_->SetNeedsAnimate();
-}
-
-void WebLayerTreeViewImplForTesting::setNeedsRedraw() {
-  layer_tree_host_->SetNeedsRedraw();
 }
 
 bool WebLayerTreeViewImplForTesting::commitRequested() const {
@@ -160,9 +155,6 @@ scoped_ptr<cc::OutputSurface>
 WebLayerTreeViewImplForTesting::CreateOutputSurface(bool fallback) {
   return make_scoped_ptr(
       new cc::OutputSurface(cc::TestContextProvider::Create()));
-}
-
-void WebLayerTreeViewImplForTesting::ScheduleComposite() {
 }
 
 scoped_refptr<cc::ContextProvider>

@@ -31,7 +31,7 @@
 #include "core/fetch/ImageResource.h"
 #include "core/fetch/ImageResourceClient.h"
 #include "core/fetch/ResourcePtr.h"
-#include "core/platform/graphics/Image.h"
+#include "platform/graphics/Image.h"
 
 namespace WebCore {
 
@@ -76,7 +76,7 @@ private:
         , m_cachedToImage(0)
         , m_crossfadeSubimageObserver(this) { }
 
-    class CrossfadeSubimageObserverProxy : public ImageResourceClient {
+    class CrossfadeSubimageObserverProxy FINAL : public ImageResourceClient {
     public:
         CrossfadeSubimageObserverProxy(CSSCrossfadeValue* ownerValue)
         : m_ownerValue(ownerValue)

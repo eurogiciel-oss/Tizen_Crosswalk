@@ -32,7 +32,7 @@
 #define PopupListBox_h
 
 #include "core/dom/Element.h"
-#include "core/platform/chromium/FramelessScrollView.h"
+#include "platform/scroll/FramelessScrollView.h"
 #include "platform/text/TextDirection.h"
 #include "wtf/text/WTFString.h"
 
@@ -49,31 +49,6 @@ class PlatformGestureEvent;
 class PlatformTouchEvent;
 class PlatformWheelEvent;
 class PopupMenuClient;
-
-struct PopupContainerSettings {
-    // Whether the PopupMenuClient should be told to change its text when a
-    // new item is selected by using the arrow keys.
-    bool setTextOnIndexChange;
-
-    // Whether the selection should be accepted when the popup menu is
-    // closed (through ESC being pressed or the focus going away).
-    // Note that when TAB is pressed, the selection is always accepted
-    // regardless of this setting.
-    bool acceptOnAbandon;
-
-    // Whether we should move the selection to the first/last item when
-    // the user presses down/up arrow keys and the last/first item is
-    // selected.
-    bool loopSelectionNavigation;
-
-    // Whether we should restrict the width of the PopupListBox or not.
-    // Autocomplete popups are restricted, combo-boxes (select tags) aren't.
-    bool restrictWidthOfListBox;
-
-    // If the device is a touch screen we increase the height of menu items
-    // to make it easier to unambiguously touch them.
-    bool deviceSupportsTouch;
-};
 
 class PopupContent {
 public:
@@ -109,11 +84,11 @@ struct PopupItem {
 
 // This class uses WebCore code to paint and handle events for a drop-down list
 // box ("combobox" on Windows).
-class PopupListBox : public FramelessScrollView, public PopupContent {
+class PopupListBox FINAL : public FramelessScrollView, public PopupContent {
 public:
-    static PassRefPtr<PopupListBox> create(PopupMenuClient* client, const PopupContainerSettings& settings)
+    static PassRefPtr<PopupListBox> create(PopupMenuClient* client, bool deviceSupportsTouch)
     {
-        return adoptRef(new PopupListBox(client, settings));
+        return adoptRef(new PopupListBox(client, deviceSupportsTouch));
     }
 
     // FramelessScrollView
@@ -128,6 +103,7 @@ public:
 
     // ScrollView
     virtual HostWindow* hostWindow() const OVERRIDE;
+    virtual bool shouldPlaceVerticalScrollbarOnLeft() const OVERRIDE;
 
     // PopupListBox methods
 
@@ -185,7 +161,7 @@ private:
     friend class PopupContainer;
     friend class RefCounted<PopupListBox>;
 
-    PopupListBox(PopupMenuClient*, const PopupContainerSettings&);
+    PopupListBox(PopupMenuClient*, bool deviceSupportsTouch);
 
     virtual ~PopupListBox()
     {
@@ -240,8 +216,9 @@ private:
     void selectPreviousRow();
     void selectNextRow();
 
-    // The settings that specify the behavior for this Popup window.
-    PopupContainerSettings m_settings;
+    // If the device is a touch screen we increase the height of menu items
+    // to make it easier to unambiguously touch them.
+    bool m_deviceSupportsTouch;
 
     // This is the index of the item marked as "selected" - i.e. displayed in
     // the widget on the page.

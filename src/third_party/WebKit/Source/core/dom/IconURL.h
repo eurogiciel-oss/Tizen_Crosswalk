@@ -31,15 +31,9 @@
 #ifndef IconURL_h
 #define IconURL_h
 
-#include "weborigin/KURL.h"
+#include "platform/weborigin/KURL.h"
 
 namespace WebCore {
-
-#if ENABLE(TOUCH_ICON_LOADING)
-#define ICON_COUNT 3
-#else
-#define ICON_COUNT 1
-#endif
 
 enum IconType {
     InvalidIcon = 0,
@@ -70,12 +64,10 @@ struct IconURL {
     {
     }
 
-    static IconURL defaultIconURL(const KURL&, IconType);
+    static IconURL defaultFavicon(const KURL&);
 };
 
 bool operator==(const IconURL&, const IconURL&);
-
-typedef Vector<IconURL, ICON_COUNT> IconURLs;
 
 }
 

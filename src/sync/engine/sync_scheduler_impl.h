@@ -52,7 +52,7 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
   virtual ~SyncSchedulerImpl();
 
   virtual void Start(Mode mode) OVERRIDE;
-  virtual bool ScheduleConfiguration(
+  virtual void ScheduleConfiguration(
       const ConfigurationParams& params) OVERRIDE;
   virtual void Stop() OVERRIDE;
   virtual void ScheduleLocalNudge(
@@ -87,9 +87,12 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
   virtual void OnReceivedSessionsCommitDelay(
       const base::TimeDelta& new_delay) OVERRIDE;
   virtual void OnReceivedClientInvalidationHintBufferSize(int size) OVERRIDE;
-  virtual void OnShouldStopSyncingPermanently() OVERRIDE;
   virtual void OnSyncProtocolError(
       const sessions::SyncSessionSnapshot& snapshot) OVERRIDE;
+  virtual void OnReceivedGuRetryDelay(const base::TimeDelta& delay) OVERRIDE;
+
+  // Returns true if the client is currently in exponential backoff.
+  bool IsBackingOff() const;
 
  private:
   enum JobPriority {
@@ -159,7 +162,7 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
   void DoNudgeSyncSessionJob(JobPriority priority);
 
   // Invoke the syncer to perform a configuration job.
-  bool DoConfigurationSyncSessionJob(JobPriority priority);
+  void DoConfigurationSyncSessionJob(JobPriority priority);
 
   // Helper function for Do{Nudge,Configuration}SyncSessionJob.
   void HandleFailure(
@@ -167,6 +170,12 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
 
   // Invoke the Syncer to perform a poll job.
   void DoPollSyncSessionJob();
+
+  // Invoke the Syncer to perform a retry job.
+  void DoRetrySyncSessionJob();
+
+  // Helper function to calculate poll interval.
+  base::TimeDelta GetPollInterval();
 
   // Adjusts the poll timer to account for new poll interval, and possibly
   // resets the poll interval, depedning on the flag's value.
@@ -189,9 +198,6 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
       const base::TimeDelta& delay,
       const tracked_objects::Location& nudge_location);
 
-  // Returns true if the client is currently in exponential backoff.
-  bool IsBackingOff() const;
-
   // Helper to signal all listeners registered with |session_context_|.
   void Notify(SyncEngineEvent::EventCause cause);
 
@@ -204,6 +210,11 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
   // Looks for pending work and, if it finds any, run this work at "canary"
   // priority.
   void TryCanaryJob();
+
+  // At the moment TrySyncSessionJob just posts call to TrySyncSessionJobImpl on
+  // current thread. In the future it will request access token here.
+  void TrySyncSessionJob();
+  void TrySyncSessionJobImpl();
 
   // Transitions out of the THROTTLED WaitInterval then calls TryCanaryJob().
   void Unthrottle();
@@ -222,6 +233,9 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
 
   // Creates a session for a poll and performs the sync.
   void PollTimerCallback();
+
+  // Creates a session for a retry and performs the sync.
+  void RetryTimerCallback();
 
   // Returns the set of types that are enabled and not currently throttled.
   ModelTypeSet GetEnabledAndUnthrottledTypes();
@@ -310,11 +324,27 @@ class SYNC_EXPORT_PRIVATE SyncSchedulerImpl
   // after credentials are updated.
   bool do_poll_after_credentials_updated_;
 
+  // TryJob might get called for multiple reasons. It should only call
+  // DoPollSyncSessionJob after some time since the last attempt.
+  // last_poll_reset_ keeps track of when was last attempt.
+  base::TimeTicks last_poll_reset_;
+
+  // next_sync_session_job_priority_ defines which priority will be used next
+  // time TrySyncSessionJobImpl is called. CANARY_PRIORITY allows syncer to run
+  // even if scheduler is in exponential backoff. This is needed for events that
+  // have chance of resolving previous error (e.g. network connection change
+  // after NETWORK_UNAVAILABLE error).
+  // It is reset back to NORMAL_PRIORITY on every call to TrySyncSessionJobImpl.
+  JobPriority next_sync_session_job_priority_;
+
   base::WeakPtrFactory<SyncSchedulerImpl> weak_ptr_factory_;
 
   // A second factory specially for weak_handle_this_, to allow the handle
   // to be const and alleviate threading concerns.
   base::WeakPtrFactory<SyncSchedulerImpl> weak_ptr_factory_for_weak_handle_;
+
+  // One-shot timer for scheduling GU retry according to delay set by server.
+  base::OneShotTimer<SyncSchedulerImpl> retry_timer_;
 
   DISALLOW_COPY_AND_ASSIGN(SyncSchedulerImpl);
 };

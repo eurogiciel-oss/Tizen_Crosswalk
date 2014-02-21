@@ -2,8 +2,8 @@ description('Test insertAdjacentHTML exceptions to make sure they match HTML5');
 
 var div = document.createElement("div");
 
-shouldBeUndefined("div.insertAdjacentHTML('beforeBegin', 'text')");
-shouldBeUndefined("div.insertAdjacentHTML('afterEnd', 'text')");
+shouldThrow("div.insertAdjacentHTML('beforeBegin', 'text')", '"NoModificationAllowedError: Failed to execute \'insertAdjacentHTML\' on \'Element\': The element has no parent."');
+shouldThrow("div.insertAdjacentHTML('afterEnd', 'text')", '"NoModificationAllowedError: Failed to execute \'insertAdjacentHTML\' on \'Element\': The element has no parent."');
 
-shouldThrow("div.insertAdjacentHTML('FOO', 'text')", '"SyntaxError: An invalid or illegal string was specified."');
-shouldThrow("document.documentElement.insertAdjacentHTML('afterEnd', 'text')", '"NoModificationAllowedError: An attempt was made to modify an object where modifications are not allowed."');
+shouldThrow("div.insertAdjacentHTML('FOO', 'text')", '"SyntaxError: Failed to execute \'insertAdjacentHTML\' on \'Element\': The value provided (\'FOO\') is not one of \'beforeBegin\', \'afterBegin\', \'beforeEnd\', or \'afterEnd\'."');
+shouldThrow("document.documentElement.insertAdjacentHTML('afterEnd', 'text')", '"NoModificationAllowedError: Failed to execute \'insertAdjacentHTML\' on \'Element\': The element has no parent."');

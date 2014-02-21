@@ -12,8 +12,10 @@
 #include "ui/app_list/views/app_list_folder_view.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/canvas.h"
+#include "ui/views/border.h"
 #include "ui/views/controls/button/image_button.h"
 #include "ui/views/controls/textfield/textfield.h"
+#include "ui/views/painter.h"
 
 namespace app_list {
 
@@ -21,7 +23,7 @@ namespace {
 
 const int kPreferredWidth = 360;
 const int kPreferredHeight = 48;
-const int kIconDimension = 32;
+const int kIconDimension = 24;
 const int kPadding = 14;
 const int kFolderNameWidth = 150;
 const int kFolderNameHeight = 30;
@@ -35,7 +37,11 @@ const SkColor kHintTextColor = SkColorSetRGB(0xA0, 0xA0, 0xA0);
 class FolderHeaderView::FolderNameView : public views::Textfield {
  public:
   FolderNameView() {
-    set_border(views::Border::CreateEmptyBorder(1, 1, 1, 1));
+    SetBorder(views::Border::CreateEmptyBorder(1, 1, 1, 1));
+    const SkColor kFocusBorderColor = SkColorSetRGB(64, 128, 250);
+    SetFocusPainter(views::Painter::CreateSolidFocusPainter(
+          kFocusBorderColor,
+          gfx::Insets(0, 0, 1, 1)));
   }
 
   virtual ~FolderNameView() {
@@ -44,15 +50,6 @@ class FolderHeaderView::FolderNameView : public views::Textfield {
   // Overridden from views::View:
   virtual gfx::Size GetPreferredSize() OVERRIDE {
     return gfx::Size(kFolderNameWidth, kFolderNameHeight);
-  }
-
-  virtual void OnPaintFocusBorder(gfx::Canvas* canvas) OVERRIDE {
-    const SkColor kFocusBorderColor = SkColorSetRGB(64, 128, 250);
-    if (HasFocus() && focusable()) {
-      gfx::Rect rect = GetLocalBounds();
-      rect.Inset(0, 0, 1, 1);
-      canvas->DrawRect(rect, kFocusBorderColor);
-    }
   }
 
  private:
@@ -71,13 +68,14 @@ FolderHeaderView::FolderHeaderView(FolderHeaderViewDelegate* delegate)
       views::ImageButton::ALIGN_MIDDLE);
   AddChildView(back_button_);
 
-  folder_name_view_->SetFont(rb.GetFont(ui::ResourceBundle::MediumFont));
+  folder_name_view_->SetFontList(
+      rb.GetFontList(ui::ResourceBundle::MediumFont));
   folder_name_view_->set_placeholder_text_color(kHintTextColor);
   folder_name_view_->set_placeholder_text(
       rb.GetLocalizedString(IDS_APP_LIST_FOLDER_NAME_PLACEHOLDER));
-  folder_name_view_->RemoveBorder();
+  folder_name_view_->SetBorder(views::Border::NullBorder());
   folder_name_view_->SetBackgroundColor(kContentsBackgroundColor);
-  folder_name_view_->SetController(this);
+  folder_name_view_->set_controller(this);
   AddChildView(folder_name_view_);
 }
 
@@ -102,7 +100,7 @@ void FolderHeaderView::Update() {
   if (!folder_item_)
     return;
 
-  folder_name_view_->SetText(UTF8ToUTF16(folder_item_->title()));
+  folder_name_view_->SetText(base::UTF8ToUTF16(folder_item_->title()));
 }
 
 gfx::Size FolderHeaderView::GetPreferredSize() {
@@ -149,7 +147,7 @@ void FolderHeaderView::ContentsChanged(views::Textfield* sender,
     return;
 
   folder_item_->RemoveObserver(this);
-  std::string name = UTF16ToUTF8(folder_name_view_->text());
+  std::string name = base::UTF16ToUTF8(folder_name_view_->text());
   folder_item_->SetTitleAndFullName(name, name);
   folder_item_->AddObserver(this);
 }

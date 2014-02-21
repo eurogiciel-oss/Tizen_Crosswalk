@@ -17,8 +17,6 @@
 #include "SkImageFilterUtils.h"
 #endif
 
-SK_DEFINE_INST_COUNT(SkImageFilter)
-
 SkImageFilter::SkImageFilter(int inputCount, SkImageFilter** inputs, const CropRect* cropRect)
   : fInputCount(inputCount),
     fInputs(new SkImageFilter*[inputCount]),
@@ -53,20 +51,31 @@ SkImageFilter::~SkImageFilter() {
     delete[] fInputs;
 }
 
-SkImageFilter::SkImageFilter(SkFlattenableReadBuffer& buffer)
-    : fInputCount(buffer.readInt()), fInputs(new SkImageFilter*[fInputCount]) {
-    for (int i = 0; i < fInputCount; i++) {
-        if (buffer.readBool()) {
-            fInputs[i] = buffer.readImageFilter();
-        } else {
-            fInputs[i] = NULL;
+SkImageFilter::SkImageFilter(int inputCount, SkFlattenableReadBuffer& buffer) {
+    fInputCount = buffer.readInt();
+    if (buffer.validate((fInputCount >= 0) && ((inputCount < 0) || (fInputCount == inputCount)))) {
+        fInputs = new SkImageFilter*[fInputCount];
+        for (int i = 0; i < fInputCount; i++) {
+            if (buffer.readBool()) {
+                fInputs[i] = buffer.readImageFilter();
+            } else {
+                fInputs[i] = NULL;
+            }
+            if (!buffer.isValid()) {
+                fInputCount = i; // Do not use fInputs past that point in the destructor
+                break;
+            }
         }
+        SkRect rect;
+        buffer.readRect(&rect);
+        if (buffer.isValid() && buffer.validate(SkIsValidRect(rect))) {
+            uint32_t flags = buffer.readUInt();
+            fCropRect = CropRect(rect, flags);
+        }
+    } else {
+        fInputCount = 0;
+        fInputs = NULL;
     }
-    SkRect rect;
-    buffer.readRect(&rect);
-    uint32_t flags = buffer.readUInt();
-    fCropRect = CropRect(rect, flags);
-    buffer.validate(SkIsValidRect(rect));
 }
 
 void SkImageFilter::flatten(SkFlattenableWriteBuffer& buffer) const {
@@ -84,15 +93,15 @@ void SkImageFilter::flatten(SkFlattenableWriteBuffer& buffer) const {
 
 bool SkImageFilter::filterImage(Proxy* proxy, const SkBitmap& src,
                                 const SkMatrix& ctm,
-                                SkBitmap* result, SkIPoint* loc) {
+                                SkBitmap* result, SkIPoint* offset) {
     SkASSERT(result);
-    SkASSERT(loc);
+    SkASSERT(offset);
     /*
      *  Give the proxy first shot at the filter. If it returns false, ask
      *  the filter to do it.
      */
-    return (proxy && proxy->filterImage(this, src, ctm, result, loc)) ||
-           this->onFilterImage(proxy, src, ctm, result, loc);
+    return (proxy && proxy->filterImage(this, src, ctm, result, offset)) ||
+           this->onFilterImage(proxy, src, ctm, result, offset);
 }
 
 bool SkImageFilter::filterBounds(const SkIRect& src, const SkMatrix& ctm,

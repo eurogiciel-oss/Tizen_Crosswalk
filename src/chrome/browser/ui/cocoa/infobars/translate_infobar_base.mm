@@ -18,7 +18,7 @@
 #import "chrome/browser/ui/cocoa/infobars/infobar_utilities.h"
 #include "chrome/browser/ui/cocoa/infobars/translate_message_infobar_controller.h"
 #include "grit/generated_resources.h"
-#include "third_party/GTM/AppKit/GTMUILocalizerAndLayoutTweaker.h"
+#include "third_party/google_toolbox_for_mac/src/AppKit/GTMUILocalizerAndLayoutTweaker.h"
 #include "ui/base/l10n/l10n_util.h"
 
 using InfoBarUtilities::MoveControl;
@@ -27,11 +27,13 @@ using InfoBarUtilities::VerifyControlOrderAndSpacing;
 using InfoBarUtilities::CreateLabel;
 using InfoBarUtilities::AddMenuItem;
 
-// TranslateInfoBarDelegate views specific method:
-InfoBar* TranslateInfoBarDelegate::CreateInfoBar(InfoBarService* owner) {
-  scoped_ptr<InfoBarCocoa> infobar(new InfoBarCocoa(owner, this));
+// static
+scoped_ptr<InfoBar> TranslateInfoBarDelegate::CreateInfoBar(
+    scoped_ptr<TranslateInfoBarDelegate> delegate) {
+  scoped_ptr<InfoBarCocoa> infobar(
+      new InfoBarCocoa(delegate.PassAs<InfoBarDelegate>()));
   base::scoped_nsobject<TranslateInfoBarControllerBase> infobar_controller;
-  switch (infobar_type_) {
+  switch (infobar->delegate()->AsTranslateInfoBarDelegate()->infobar_type()) {
     case BEFORE_TRANSLATE:
       infobar_controller.reset([[BeforeTranslateInfobarController alloc]
           initWithInfoBar:infobar.get()]);
@@ -49,7 +51,7 @@ InfoBar* TranslateInfoBarDelegate::CreateInfoBar(InfoBarService* owner) {
       NOTREACHED();
   }
   infobar->set_controller(infobar_controller);
-  return infobar.release();
+  return infobar.PassAs<InfoBar>();
 }
 
 @implementation TranslateInfoBarControllerBase (FrameChangeObserver)
@@ -359,12 +361,17 @@ InfoBar* TranslateInfoBarDelegate::CreateInfoBar(InfoBarService* owner) {
   [self updateState];
 }
 
+- (void)infobarWillHide {
+  [[fromLanguagePopUp_ menu] cancelTracking];
+  [[toLanguagePopUp_ menu] cancelTracking];
+  [[optionsPopUp_ menu] cancelTracking];
+  [super infobarWillHide];
+}
+
 - (void)infobarWillClose {
   [self disablePopUpMenu:[fromLanguagePopUp_ menu]];
   [self disablePopUpMenu:[toLanguagePopUp_ menu]];
   [self disablePopUpMenu:[optionsPopUp_ menu]];
-  // [super infobarWillClose] clears the owner field which is relied on by the
-  // notification handler, so remove the handler first.
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [super infobarWillClose];
 }
@@ -458,9 +465,6 @@ InfoBar* TranslateInfoBarDelegate::CreateInfoBar(InfoBarService* owner) {
 }
 
 - (void)dealloc {
-  // Perhaps this was removed as an observer in -infobarWillClose, but there's
-  // no guarantee that that was the case.
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
   [showOriginalButton_ setTarget:nil];
   [translateMessageButton_ setTarget:nil];
   [super dealloc];

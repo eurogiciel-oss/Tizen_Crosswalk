@@ -23,6 +23,7 @@
 class ExtensionGalleriesHost;
 class MediaFileSystemContext;
 class MediaGalleriesPreferences;
+class MediaScanManager;
 class Profile;
 
 namespace content {
@@ -41,7 +42,7 @@ class IsolatedContext;
 // client, including metadata like the name and ID, and API handles like the
 // fsid (filesystem ID) used to hook up the API objects.
 struct MediaFileSystemInfo {
-  MediaFileSystemInfo(const string16& fs_name,
+  MediaFileSystemInfo(const base::string16& fs_name,
                       const base::FilePath& fs_path,
                       const std::string& filesystem_id,
                       MediaGalleryPrefId pref_id,
@@ -51,7 +52,7 @@ struct MediaFileSystemInfo {
   MediaFileSystemInfo();
   ~MediaFileSystemInfo();
 
-  string16 name;
+  base::string16 name;
   base::FilePath path;
   std::string fsid;
   MediaGalleryPrefId pref_id;
@@ -84,6 +85,8 @@ class MediaFileSystemRegistry
   // before use.
   MediaGalleriesPreferences* GetPreferences(Profile* profile);
 
+  MediaScanManager* media_scan_manager();
+
   // RemovableStorageObserver implementation.
   virtual void OnRemovableStorageDetached(const StorageInfo& info) OVERRIDE;
 
@@ -113,6 +116,8 @@ class MediaFileSystemRegistry
   ExtensionGalleriesHostMap extension_hosts_map_;
 
   scoped_ptr<MediaFileSystemContext> file_system_context_;
+
+  scoped_ptr<MediaScanManager> media_scan_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(MediaFileSystemRegistry);
 };

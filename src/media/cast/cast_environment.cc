@@ -4,34 +4,57 @@
 
 #include "media/cast/cast_environment.h"
 
+#include "base/bind.h"
+#include "base/location.h"
 #include "base/logging.h"
 
 using base::TaskRunner;
+
+namespace {
+
+void DeleteLoggingOnMainThread(scoped_ptr<media::cast::LoggingImpl> logging) {
+  logging.reset();
+}
+
+}  // namespace
 
 namespace media {
 namespace cast {
 
 CastEnvironment::CastEnvironment(
-    base::TickClock* clock,
+    scoped_ptr<base::TickClock> clock,
     scoped_refptr<TaskRunner> main_thread_proxy,
     scoped_refptr<TaskRunner> audio_encode_thread_proxy,
     scoped_refptr<TaskRunner> audio_decode_thread_proxy,
     scoped_refptr<TaskRunner> video_encode_thread_proxy,
-    scoped_refptr<TaskRunner> video_decode_thread_proxy)
-    : clock_(clock),
+    scoped_refptr<TaskRunner> video_decode_thread_proxy,
+    scoped_refptr<TaskRunner> transport_thread_proxy,
+    const CastLoggingConfig& config)
+    : clock_(clock.Pass()),
       main_thread_proxy_(main_thread_proxy),
       audio_encode_thread_proxy_(audio_encode_thread_proxy),
       audio_decode_thread_proxy_(audio_decode_thread_proxy),
       video_encode_thread_proxy_(video_encode_thread_proxy),
-      video_decode_thread_proxy_(video_decode_thread_proxy) {
+      video_decode_thread_proxy_(video_decode_thread_proxy),
+      transport_thread_proxy_(transport_thread_proxy),
+      logging_(new LoggingImpl(main_thread_proxy, config)) {
   DCHECK(main_thread_proxy) << "Main thread required";
 }
 
-CastEnvironment::~CastEnvironment() {}
+CastEnvironment::~CastEnvironment() {
+  // Logging must be deleted on the main thread.
+  if (main_thread_proxy_->RunsTasksOnCurrentThread()) {
+    logging_.reset();
+  } else {
+    main_thread_proxy_->PostTask(
+        FROM_HERE,
+        base::Bind(&DeleteLoggingOnMainThread, base::Passed(&logging_)));
+  }
+}
 
 bool CastEnvironment::PostTask(ThreadId identifier,
-                          const tracked_objects::Location& from_here,
-                          const base::Closure& task) {
+                               const tracked_objects::Location& from_here,
+                               const base::Closure& task) {
   scoped_refptr<TaskRunner> task_runner =
       GetMessageTaskRunnerForThread(identifier);
 
@@ -61,8 +84,10 @@ scoped_refptr<TaskRunner> CastEnvironment::GetMessageTaskRunnerForThread(
       return video_encode_thread_proxy_;
     case CastEnvironment::VIDEO_DECODER:
       return video_decode_thread_proxy_;
+    case CastEnvironment::TRANSPORT:
+      return transport_thread_proxy_;
     default:
-      NOTREACHED() << "Invalid Thread ID.";
+      NOTREACHED() << "Invalid Thread identifier";
       return NULL;
   }
 }
@@ -79,14 +104,22 @@ bool CastEnvironment::CurrentlyOn(ThreadId identifier) {
       return video_encode_thread_proxy_->RunsTasksOnCurrentThread();
     case CastEnvironment::VIDEO_DECODER:
       return video_decode_thread_proxy_->RunsTasksOnCurrentThread();
+    case CastEnvironment::TRANSPORT:
+      return transport_thread_proxy_->RunsTasksOnCurrentThread();
     default:
-      NOTREACHED() << "Wrong thread identifier";
+      NOTREACHED() << "Invalid thread identifier";
       return false;
   }
 }
 
-base::TickClock* CastEnvironment::Clock() {
-  return clock_;
+base::TickClock* CastEnvironment::Clock() const {
+  return clock_.get();
+}
+
+LoggingImpl* CastEnvironment::Logging() {
+  DCHECK(CurrentlyOn(CastEnvironment::MAIN)) <<
+      "Must be called from main thread";
+  return logging_.get();
 }
 
 }  // namespace cast

@@ -16,16 +16,19 @@ namespace chromeos {
 
 namespace {
 
+const char kCaptivePortalStatusUnknown[] = "Unknown";
+const char kCaptivePortalStatusOffline[] = "Offline";
+const char kCaptivePortalStatusOnline[]  = "Online";
+const char kCaptivePortalStatusPortal[]  = "Portal";
+const char kCaptivePortalStatusProxyAuthRequired[] =
+    "Proxy authentication required";
+const char kCaptivePortalStatusUnrecognized[] = "Unrecognized";
+
 NetworkPortalDetector* g_network_portal_detector = NULL;
 bool g_network_portal_detector_set_for_testing = false;
 
 bool IsTestMode() {
   return CommandLine::ForCurrentProcess()->HasSwitch(::switches::kTestType);
-}
-
-bool IsEnabledInCommandLine() {
-  return !CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kDisableChromeCaptivePortalDetector);
 }
 
 // Stub implementation of NetworkPortalDetector.
@@ -67,7 +70,7 @@ void NetworkPortalDetector::Initialize() {
     return;
   CHECK(!g_network_portal_detector)
       << "NetworkPortalDetector::Initialize() is called twice";
-  if (!IsEnabledInCommandLine() || IsTestMode()) {
+  if (IsTestMode()) {
     g_network_portal_detector = new NetworkPortalDetectorStubImpl();
   } else {
     CHECK(g_browser_process);
@@ -93,6 +96,26 @@ NetworkPortalDetector* NetworkPortalDetector::Get() {
   CHECK(g_network_portal_detector)
       << "NetworkPortalDetector::Get() called before Initialize()";
   return g_network_portal_detector;
+}
+
+// static
+std::string NetworkPortalDetector::CaptivePortalStatusString(
+    CaptivePortalStatus status) {
+  switch (status) {
+    case NetworkPortalDetectorImpl::CAPTIVE_PORTAL_STATUS_UNKNOWN:
+      return kCaptivePortalStatusUnknown;
+    case NetworkPortalDetectorImpl::CAPTIVE_PORTAL_STATUS_OFFLINE:
+      return kCaptivePortalStatusOffline;
+    case NetworkPortalDetectorImpl::CAPTIVE_PORTAL_STATUS_ONLINE:
+      return kCaptivePortalStatusOnline;
+    case NetworkPortalDetectorImpl::CAPTIVE_PORTAL_STATUS_PORTAL:
+      return kCaptivePortalStatusPortal;
+    case NetworkPortalDetectorImpl::CAPTIVE_PORTAL_STATUS_PROXY_AUTH_REQUIRED:
+      return kCaptivePortalStatusProxyAuthRequired;
+    case NetworkPortalDetectorImpl::CAPTIVE_PORTAL_STATUS_COUNT:
+      NOTREACHED();
+  }
+  return kCaptivePortalStatusUnrecognized;
 }
 
 }  // namespace chromeos

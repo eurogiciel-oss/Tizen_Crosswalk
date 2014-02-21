@@ -13,10 +13,15 @@
 
 namespace ui {
 
+const int kInvalidFileDescriptor = -1;
+const char kTestDevicePath[] = "/dev/input/test-device";
+
 class MockKeyEventConverterEvdev : public KeyEventConverterEvdev {
  public:
   MockKeyEventConverterEvdev(EventModifiersEvdev* modifiers)
-      : KeyEventConverterEvdev(modifiers) {}
+      : KeyEventConverterEvdev(kInvalidFileDescriptor,
+                               base::FilePath(kTestDevicePath),
+                               modifiers) {}
   virtual ~MockKeyEventConverterEvdev() {};
 
   unsigned size() { return dispatched_events_.size(); }

@@ -117,7 +117,6 @@ class ManagedUserRegistrationUtilityTest : public ::testing::Test {
 
   base::MessageLoop message_loop_;
   base::RunLoop run_loop_;
-  base::WeakPtrFactory<ManagedUserRegistrationUtilityTest> weak_ptr_factory_;
   TestingProfile profile_;
   ManagedUserSyncService* service_;
   scoped_ptr<ManagedUserRegistrationUtility> registration_utility_;
@@ -134,14 +133,16 @@ class ManagedUserRegistrationUtilityTest : public ::testing::Test {
   // Hold the registration result (either an error, or a token).
   GoogleServiceAuthError error_;
   std::string token_;
+
+  base::WeakPtrFactory<ManagedUserRegistrationUtilityTest> weak_ptr_factory_;
 };
 
 ManagedUserRegistrationUtilityTest::ManagedUserRegistrationUtilityTest()
-    : weak_ptr_factory_(this),
-      change_processor_(NULL),
+    : change_processor_(NULL),
       sync_data_id_(0),
       received_callback_(false),
-      error_(GoogleServiceAuthError::NUM_STATES) {
+      error_(GoogleServiceAuthError::NUM_STATES),
+      weak_ptr_factory_(this) {
   service_ = ManagedUserSyncServiceFactory::GetForProfile(&profile_);
 }
 
@@ -231,7 +232,7 @@ TEST_F(ManagedUserRegistrationUtilityTest, Register) {
   StartInitialSync();
   GetRegistrationUtility()->Register(
       ManagedUserRegistrationUtility::GenerateNewManagedUserId(),
-      ManagedUserRegistrationInfo(ASCIIToUTF16("Dug"), 0),
+      ManagedUserRegistrationInfo(base::ASCIIToUTF16("Dug"), 0),
       GetRegistrationCallback());
   EXPECT_EQ(1u, prefs()->GetDictionary(prefs::kManagedUsers)->size());
   Acknowledge();
@@ -244,7 +245,7 @@ TEST_F(ManagedUserRegistrationUtilityTest, Register) {
 TEST_F(ManagedUserRegistrationUtilityTest, RegisterBeforeInitialSync) {
   GetRegistrationUtility()->Register(
       ManagedUserRegistrationUtility::GenerateNewManagedUserId(),
-      ManagedUserRegistrationInfo(ASCIIToUTF16("Nemo"), 5),
+      ManagedUserRegistrationInfo(base::ASCIIToUTF16("Nemo"), 5),
       GetRegistrationCallback());
   EXPECT_EQ(1u, prefs()->GetDictionary(prefs::kManagedUsers)->size());
   StartInitialSync();
@@ -259,7 +260,7 @@ TEST_F(ManagedUserRegistrationUtilityTest, SyncServiceShutdownBeforeRegFinish) {
   StartInitialSync();
   GetRegistrationUtility()->Register(
       ManagedUserRegistrationUtility::GenerateNewManagedUserId(),
-      ManagedUserRegistrationInfo(ASCIIToUTF16("Remy"), 12),
+      ManagedUserRegistrationInfo(base::ASCIIToUTF16("Remy"), 12),
       GetRegistrationCallback());
   EXPECT_EQ(1u, prefs()->GetDictionary(prefs::kManagedUsers)->size());
   service()->Shutdown();
@@ -273,7 +274,7 @@ TEST_F(ManagedUserRegistrationUtilityTest, StopSyncingBeforeRegFinish) {
   StartInitialSync();
   GetRegistrationUtility()->Register(
       ManagedUserRegistrationUtility::GenerateNewManagedUserId(),
-      ManagedUserRegistrationInfo(ASCIIToUTF16("Mike"), 17),
+      ManagedUserRegistrationInfo(base::ASCIIToUTF16("Mike"), 17),
       GetRegistrationCallback());
   EXPECT_EQ(1u, prefs()->GetDictionary(prefs::kManagedUsers)->size());
   service()->StopSyncing(MANAGED_USERS);

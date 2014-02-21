@@ -164,7 +164,7 @@ AutocompleteMatch BookmarkProvider::TitleMatchToACMatch(
   // unlikely to be what the user intends.
   AutocompleteMatch match(this, 0, false,
                           AutocompleteMatchType::BOOKMARK_TITLE);
-  const string16& title(title_match.node->GetTitle());
+  const base::string16& title(title_match.node->GetTitle());
   DCHECK(!title.empty());
   const GURL& url(title_match.node->url());
   match.destination_url = url;
@@ -172,7 +172,7 @@ AutocompleteMatch BookmarkProvider::TitleMatchToACMatch(
       net::kFormatUrlOmitAll & net::kFormatUrlOmitHTTP,
       net::UnescapeRule::SPACES, NULL, NULL, NULL);
   match.contents_class.push_back(
-      ACMatchClassification(0, ACMatchClassification::NONE));
+      ACMatchClassification(0, ACMatchClassification::URL));
   match.fill_into_edit =
       AutocompleteInput::FormattedStringWithEquivalentMeaning(url,
                                                               match.contents);

@@ -31,7 +31,7 @@ class CC_EXPORT DelegatedRendererLayerImpl : public LayerImpl {
   virtual RenderPass::Id FirstContributingRenderPassId() const OVERRIDE;
   virtual RenderPass::Id NextContributingRenderPassId(
       RenderPass::Id previous) const OVERRIDE;
-  virtual void DidLoseOutputSurface() OVERRIDE;
+  virtual void ReleaseResources() OVERRIDE;
   virtual bool WillDraw(DrawMode draw_mode,
                         ResourceProvider* resource_provider) OVERRIDE;
   virtual void AppendQuads(QuadSink* quad_sink,
@@ -46,7 +46,7 @@ class CC_EXPORT DelegatedRendererLayerImpl : public LayerImpl {
   void CreateChildIdIfNeeded(const ReturnCallback& return_callback);
 
   void SetFrameData(const DelegatedFrameData* frame_data,
-                    gfx::RectF damage_in_frame);
+                    const gfx::RectF& damage_in_frame);
 
   void SetDisplaySize(gfx::Size size);
 

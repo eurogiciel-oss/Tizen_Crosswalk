@@ -20,7 +20,7 @@
 #include "content/public/browser/web_contents_view.h"
 
 #if defined(USE_ASH)
-#include "ash/launcher/launcher_types.h"
+#include "ash/shelf/shelf_constants.h"
 #endif
 
 #if defined(ENABLE_PRINTING)
@@ -47,7 +47,10 @@ ShellWindowLinkDelegate::~ShellWindowLinkDelegate() {}
 content::WebContents* ShellWindowLinkDelegate::OpenURLFromTab(
     content::WebContents* source,
     const content::OpenURLParams& params) {
-  platform_util::OpenExternal(params.url);
+  if (source) {
+    platform_util::OpenExternal(
+        Profile::FromBrowserContext(source->GetBrowserContext()), params.url);
+  }
   delete source;
   return NULL;
 }
@@ -142,7 +145,7 @@ void ChromeShellWindowDelegate::RequestMediaAccessPermission(
 
 int ChromeShellWindowDelegate::PreferredIconSize() {
 #if defined(USE_ASH)
-  return ash::kLauncherPreferredSize;
+  return ash::kShelfPreferredSize;
 #else
   return extension_misc::EXTENSION_ICON_SMALL;
 #endif

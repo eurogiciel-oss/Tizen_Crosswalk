@@ -37,6 +37,7 @@
     overflow: auto;
     flex: auto;
     display: flex;
+    flex-direction: column;
 }
 
 .tabbed-pane-content.has-no-tabs {
@@ -70,6 +71,7 @@
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
+    cursor: default;
 }
 
 .tabbed-pane-header-tab.measuring {

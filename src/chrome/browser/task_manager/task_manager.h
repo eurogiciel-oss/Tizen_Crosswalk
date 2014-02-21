@@ -153,8 +153,10 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
   int GroupCount() const;
 
   // Methods to return raw resource information.
+  int GetNaClDebugStubPort(int index) const;
   int64 GetNetworkUsage(int index) const;
   double GetCPUUsage(int index) const;
+  int GetIdleWakeupsPerSecond(int index) const;
   base::ProcessId GetProcessId(int index) const;
   base::ProcessHandle GetProcess(int index) const;
   int GetResourceUniqueId(int index) const;
@@ -164,27 +166,29 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
 
   // Catchall method that calls off to the appropriate GetResourceXXX method
   // based on |col_id|. |col_id| is an IDS_ value used to identify the column.
-  string16 GetResourceById(int index, int col_id) const;
+  base::string16 GetResourceById(int index, int col_id) const;
 
   // Methods to return formatted resource information.
-  const string16& GetResourceTitle(int index) const;
-  const string16& GetResourceProfileName(int index) const;
-  string16 GetResourceNetworkUsage(int index) const;
-  string16 GetResourceCPUUsage(int index) const;
-  string16 GetResourcePrivateMemory(int index) const;
-  string16 GetResourceSharedMemory(int index) const;
-  string16 GetResourcePhysicalMemory(int index) const;
-  string16 GetResourceProcessId(int index) const;
-  string16 GetResourceGDIHandles(int index) const;
-  string16 GetResourceUSERHandles(int index) const;
-  string16 GetResourceWebCoreImageCacheSize(int index) const;
-  string16 GetResourceWebCoreScriptsCacheSize(int index) const;
-  string16 GetResourceWebCoreCSSCacheSize(int index) const;
-  string16 GetResourceVideoMemory(int index) const;
-  string16 GetResourceFPS(int index) const;
-  string16 GetResourceSqliteMemoryUsed(int index) const;
-  string16 GetResourceGoatsTeleported(int index) const;
-  string16 GetResourceV8MemoryAllocatedSize(int index) const;
+  const base::string16& GetResourceTitle(int index) const;
+  const base::string16& GetResourceProfileName(int index) const;
+  base::string16 GetResourceNaClDebugStubPort(int index) const;
+  base::string16 GetResourceNetworkUsage(int index) const;
+  base::string16 GetResourceCPUUsage(int index) const;
+  base::string16 GetResourcePrivateMemory(int index) const;
+  base::string16 GetResourceSharedMemory(int index) const;
+  base::string16 GetResourcePhysicalMemory(int index) const;
+  base::string16 GetResourceProcessId(int index) const;
+  base::string16 GetResourceGDIHandles(int index) const;
+  base::string16 GetResourceUSERHandles(int index) const;
+  base::string16 GetResourceWebCoreImageCacheSize(int index) const;
+  base::string16 GetResourceWebCoreScriptsCacheSize(int index) const;
+  base::string16 GetResourceWebCoreCSSCacheSize(int index) const;
+  base::string16 GetResourceVideoMemory(int index) const;
+  base::string16 GetResourceFPS(int index) const;
+  base::string16 GetResourceSqliteMemoryUsed(int index) const;
+  base::string16 GetResourceIdleWakeupsPerSecond(int index) const;
+  base::string16 GetResourceGoatsTeleported(int index) const;
+  base::string16 GetResourceV8MemoryAllocatedSize(int index) const;
 
   // Gets the private memory (in bytes) that should be displayed for the passed
   // resource index. Caches the result since this calculation can take time on
@@ -209,7 +213,7 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
   // Gets the statuses of webkit. Return false if the resource for the given row
   // isn't a renderer.
   bool GetWebCoreCacheStats(int index,
-                            WebKit::WebCache::ResourceTypeStats* result) const;
+                            blink::WebCache::ResourceTypeStats* result) const;
 
   // Gets the GPU memory allocated of the given page.
   bool GetVideoMemory(int index,
@@ -311,7 +315,7 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
 
   void NotifyResourceTypeStats(
         base::ProcessId renderer_id,
-        const WebKit::WebCache::ResourceTypeStats& stats);
+        const blink::WebCache::ResourceTypeStats& stats);
 
   void NotifyFPS(base::ProcessId renderer_id,
                  int routing_id,
@@ -358,11 +362,14 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
     PerResourceValues();
     ~PerResourceValues();
 
+    bool is_nacl_debug_stub_port_valid;
+    int nacl_debug_stub_port;
+
     bool is_title_valid;
-    string16 title;
+    base::string16 title;
 
     bool is_profile_name_valid;
-    string16 profile_name;
+    base::string16 profile_name;
 
     // No is_network_usage since default (0) is fine.
     int64 network_usage;
@@ -374,7 +381,7 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
     int goats_teleported;
 
     bool is_webcore_stats_valid;
-    WebKit::WebCache::ResourceTypeStats webcore_stats;
+    blink::WebCache::ResourceTypeStats webcore_stats;
 
     bool is_fps_valid;
     float fps;
@@ -395,6 +402,9 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
 
     bool is_cpu_usage_valid;
     double cpu_usage;
+
+    bool is_idle_wakeups_valid;
+    int idle_wakeups;
 
     bool is_private_and_shared_valid;
     size_t private_bytes;
@@ -429,22 +439,22 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
   // This struct is used to exchange information between the io and ui threads.
   struct BytesReadParam {
     BytesReadParam(int origin_pid,
-                   int render_process_host_child_id,
-                   int routing_id,
+                   int child_id,
+                   int route_id,
                    int byte_count)
         : origin_pid(origin_pid),
-          render_process_host_child_id(render_process_host_child_id),
-          routing_id(routing_id),
+          child_id(child_id),
+          route_id(route_id),
           byte_count(byte_count) {}
 
     // The process ID that triggered the request.  For plugin requests this
     // will differ from the renderer process ID.
     int origin_pid;
 
-    // The child ID of the RenderProcessHost this request was routed through.
-    int render_process_host_child_id;
+    // The child ID of the process this request was routed through.
+    int child_id;
 
-    int routing_id;
+    int route_id;
     int byte_count;
   };
 
@@ -479,9 +489,13 @@ class TaskManagerModel : public base::RefCountedThreadSafe<TaskManagerModel> {
   // |resource|.
   double GetCPUUsage(task_manager::Resource* resource) const;
 
+  // Returns the idle wakeups that should be displayed for the passed
+  // |resource|.
+  int GetIdleWakeupsPerSecond(task_manager::Resource* resource) const;
+
   // Given a number, this function returns the formatted string that should be
   // displayed in the task manager's memory cell.
-  string16 GetMemCellText(int64 number) const;
+  base::string16 GetMemCellText(int64 number) const;
 
   // Verifies the private and shared memory for |handle| is valid in
   // |per_process_cache_|. Returns true if the data in |per_process_cache_| is

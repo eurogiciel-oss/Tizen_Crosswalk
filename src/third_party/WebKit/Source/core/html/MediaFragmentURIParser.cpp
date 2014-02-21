@@ -26,7 +26,7 @@
 #include "config.h"
 #include "core/html/MediaFragmentURIParser.h"
 
-#include "core/platform/graphics/MediaPlayer.h"
+#include "platform/graphics/media/MediaPlayer.h"
 #include "wtf/text/CString.h"
 #include "wtf/text/StringBuilder.h"
 #include "wtf/text/WTFString.h"
@@ -134,11 +134,11 @@ void MediaFragmentURIParser::parseFragments()
         //     name or value are not valid UTF-8 strings, then remove the name-value pair from the list.
         bool validUTF8 = true;
         if (!name.isEmpty()) {
-            name = name.utf8(String::StrictConversion).data();
+            name = name.utf8(StrictUTF8Conversion).data();
             validUTF8 = !name.isEmpty();
         }
         if (validUTF8 && !value.isEmpty()) {
-            value = value.utf8(String::StrictConversion).data();
+            value = value.utf8(StrictUTF8Conversion).data();
             validUTF8 = !value.isEmpty();
         }
 

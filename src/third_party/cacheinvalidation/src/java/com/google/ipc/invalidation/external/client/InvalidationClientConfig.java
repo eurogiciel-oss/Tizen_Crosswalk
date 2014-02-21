@@ -24,20 +24,20 @@ public class InvalidationClientConfig {
   /** Client type code as assigned by the notification system's backend. */
   public final int clientType;
 
- /** Id/name of the client in the application's own naming scheme. */
- public final byte[] clientName;
+  /** Id/name of the client in the application's own naming scheme. */
+  public final byte[] clientName;
 
- /** Name of the application using the library (for debugging/monitoring) */
- public final String applicationName;
+  /** Name of the application using the library (for debugging/monitoring) */
+  public final String applicationName;
 
- /** If false, invalidateUnknownVersion() is called whenever suppression occurs. */
- public final boolean allowSuppression;
+  /** If false, invalidateUnknownVersion() is called whenever suppression occurs. */
+  public final boolean allowSuppression;
 
- public InvalidationClientConfig(int clientType, byte[] clientName, String applicationName,
-     boolean allowSuppression) {
-   this.clientType = clientType;
-   this.clientName = clientName;
-   this.applicationName = applicationName;
-   this.allowSuppression = allowSuppression;
- }
+  public InvalidationClientConfig(int clientType, byte[] clientName, String applicationName,
+      boolean allowSuppression) {
+    this.clientType = clientType;
+    this.clientName = clientName;
+    this.applicationName = applicationName;
+    this.allowSuppression = allowSuppression;
+  }
 }

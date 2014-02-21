@@ -26,7 +26,6 @@
 
 #include "bindings/v8/ScriptWrappable.h"
 #include "core/dom/DOMTimeStamp.h"
-#include "core/events/EventContext.h"
 #include "core/events/EventPath.h"
 #include "wtf/RefCounted.h"
 #include "wtf/text/AtomicString.h"
@@ -175,7 +174,9 @@ public:
     Event* underlyingEvent() const { return m_underlyingEvent.get(); }
     void setUnderlyingEvent(PassRefPtr<Event>);
 
-    EventPath& eventPath() { return m_eventPath; }
+    EventPath& eventPath() { ASSERT(m_eventPath); return *m_eventPath; }
+    EventPath& ensureEventPath();
+
     PassRefPtr<NodeList> path() const;
 
     virtual Clipboard* clipboard() const { return 0; }
@@ -206,7 +207,7 @@ private:
     RefPtr<EventTarget> m_target;
     DOMTimeStamp m_createTime;
     RefPtr<Event> m_underlyingEvent;
-    EventPath m_eventPath;
+    OwnPtr<EventPath> m_eventPath;
 };
 
 #define DEFINE_EVENT_TYPE_CASTS(typeName) \

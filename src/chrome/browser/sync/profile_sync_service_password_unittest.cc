@@ -18,9 +18,11 @@
 #include "chrome/browser/password_manager/mock_password_store.h"
 #include "chrome/browser/password_manager/password_store.h"
 #include "chrome/browser/password_manager/password_store_factory.h"
+#include "chrome/browser/signin/fake_profile_oauth2_token_service.h"
+#include "chrome/browser/signin/profile_oauth2_token_service.h"
+#include "chrome/browser/signin/profile_oauth2_token_service_factory.h"
 #include "chrome/browser/signin/signin_manager.h"
 #include "chrome/browser/signin/signin_manager_factory.h"
-#include "chrome/browser/signin/token_service_factory.h"
 #include "chrome/browser/sync/abstract_profile_sync_service_test.h"
 #include "chrome/browser/sync/glue/password_change_processor.h"
 #include "chrome/browser/sync/glue/password_data_type_controller.h"
@@ -32,6 +34,7 @@
 #include "chrome/browser/sync/profile_sync_test_util.h"
 #include "chrome/browser/sync/test_profile_sync_service.h"
 #include "chrome/common/pref_names.h"
+#include "chrome/test/base/testing_profile.h"
 #include "components/autofill/core/common/password_form.h"
 #include "content/public/browser/notification_source.h"
 #include "content/public/test/mock_notification_observer.h"
@@ -47,6 +50,7 @@
 
 using autofill::PasswordForm;
 using base::Time;
+using base::UTF8ToUTF16;
 using browser_sync::PasswordChangeProcessor;
 using browser_sync::PasswordDataTypeController;
 using browser_sync::PasswordModelAssociator;
@@ -101,8 +105,7 @@ class PasswordTestProfileSyncService : public TestProfileSyncService {
                                profile,
                                signin,
                                oauth2_token_service,
-                               ProfileSyncService::AUTO_START,
-                               false) {}
+                               ProfileSyncService::AUTO_START) {}
 
   virtual ~PasswordTestProfileSyncService() {}
 
@@ -159,8 +162,9 @@ class ProfileSyncServicePasswordTest : public AbstractProfileSyncServiceTest {
   virtual void SetUp() {
     AbstractProfileSyncServiceTest::SetUp();
     TestingProfile::Builder builder;
-    builder.AddTestingFactory(ProfileOAuth2TokenServiceFactory::GetInstance(),
-                              FakeOAuth2TokenService::BuildTokenService);
+    builder.AddTestingFactory(
+        ProfileOAuth2TokenServiceFactory::GetInstance(),
+        FakeProfileOAuth2TokenService::BuildAutoIssuingTokenService);
     profile_ = builder.Build().Pass();
     invalidation::InvalidationServiceFactory::GetInstance()->
         SetBuildOnlyFakeInvalidatorsForTest(true);
@@ -196,9 +200,6 @@ class ProfileSyncServicePasswordTest : public AbstractProfileSyncServiceTest {
       SigninManagerBase* signin =
           SigninManagerFactory::GetForProfile(profile_.get());
       signin->SetAuthenticatedUsername("test_user@gmail.com");
-      token_service_ = static_cast<TokenService*>(
-          TokenServiceFactory::GetInstance()->SetTestingFactoryAndUse(
-              profile_.get(), BuildTokenService));
 
       PasswordTestProfileSyncService* sync =
           static_cast<PasswordTestProfileSyncService*>(

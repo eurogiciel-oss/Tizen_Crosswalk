@@ -6,16 +6,18 @@
 
 #include "ash/magnifier/magnifier_constants.h"
 #include "base/memory/scoped_ptr.h"
+#include "base/values.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
 #include "chrome/browser/chromeos/accessibility/magnification_manager.h"
 #include "chrome/browser/chromeos/login/wizard_controller.h"
+#include "chrome/browser/chromeos/policy/browser_policy_connector_chromeos.h"
 #include "chrome/browser/chromeos/policy/device_cloud_policy_manager_chromeos.h"
 #include "chrome/browser/chromeos/system/input_device_settings.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/policy/browser_policy_connector.h"
 #include "chrome/browser/ui/webui/chromeos/login/oobe_ui.h"
+#include "chrome/browser/ui/webui/chromeos/login/signin_screen_handler.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_version_info.h"
 #include "chromeos/chromeos_constants.h"
@@ -34,6 +36,7 @@ const char kJsApiEnableLargeCursor[] = "enableLargeCursor";
 const char kJsApiEnableSpokenFeedback[] = "enableSpokenFeedback";
 const char kJsApiScreenStateInitialize[] = "screenStateInitialize";
 const char kJsApiSkipUpdateEnrollAfterEula[] = "skipUpdateEnrollAfterEula";
+const char kJsApiScreenAssetsLoaded[] = "screenAssetsLoaded";
 
 }  // namespace
 
@@ -129,8 +132,10 @@ void CoreOobeHandler::RegisterMessages() {
               &CoreOobeHandler::HandleEnableSpokenFeedback);
   AddCallback("setDeviceRequisition",
               &CoreOobeHandler::HandleSetDeviceRequisition);
-  AddCallback("skipToLoginForTesting",
-              &CoreOobeHandler::HandleSkipToLoginForTesting);
+  AddCallback(kJsApiScreenAssetsLoaded,
+              &CoreOobeHandler::HandleScreenAssetsLoaded);
+  AddRawCallback("skipToLoginForTesting",
+                 &CoreOobeHandler::HandleSkipToLoginForTesting);
 }
 
 void CoreOobeHandler::ShowSignInError(
@@ -138,6 +143,7 @@ void CoreOobeHandler::ShowSignInError(
     const std::string& error_text,
     const std::string& help_link_text,
     HelpAppLauncher::HelpTopic help_topic_id) {
+  LOG(ERROR) << "CoreOobeHandler::ShowSignInError: error_text=" << error_text;
   CallJS("showSignInError", login_attempts, error_text,
          help_link_text, static_cast<int>(help_topic_id));
 }
@@ -229,15 +235,23 @@ void CoreOobeHandler::HandleEnableSpokenFeedback() {
 
 void CoreOobeHandler::HandleSetDeviceRequisition(
     const std::string& requisition) {
-  g_browser_process->browser_policy_connector()->GetDeviceCloudPolicyManager()->
-      SetDeviceRequisition(requisition);
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
+  connector->GetDeviceCloudPolicyManager()->SetDeviceRequisition(requisition);
   // Exit Chrome to force the restart as soon as a new requisition is set.
-  chrome::ExitCleanly();
+  chrome::AttemptRestart();
 }
 
-void CoreOobeHandler::HandleSkipToLoginForTesting() {
+void CoreOobeHandler::HandleScreenAssetsLoaded(
+    const std::string& screen_async_load_id) {
+  oobe_ui_->OnScreenAssetsLoaded(screen_async_load_id);
+}
+
+void CoreOobeHandler::HandleSkipToLoginForTesting(
+    const base::ListValue* args) {
+  LoginScreenContext context(args);
   if (WizardController::default_controller())
-      WizardController::default_controller()->SkipToLoginForTesting();
+      WizardController::default_controller()->SkipToLoginForTesting(context);
 }
 
 void CoreOobeHandler::ShowOobeUI(bool show) {
@@ -294,9 +308,10 @@ void CoreOobeHandler::UpdateLabel(const std::string& id,
 }
 
 void CoreOobeHandler::UpdateDeviceRequisition() {
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
   CallJS("updateDeviceRequisition",
-         g_browser_process->browser_policy_connector()->
-             GetDeviceCloudPolicyManager()->GetDeviceRequisition());
+         connector->GetDeviceCloudPolicyManager()->GetDeviceRequisition());
 }
 
 void CoreOobeHandler::Observe(int type,

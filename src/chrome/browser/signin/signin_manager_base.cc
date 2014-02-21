@@ -16,9 +16,6 @@
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/signin/about_signin_internals.h"
 #include "chrome/browser/signin/about_signin_internals_factory.h"
-#include "chrome/browser/signin/signin_manager_cookie_helper.h"
-#include "chrome/browser/signin/token_service.h"
-#include "chrome/browser/signin/token_service_factory.h"
 #include "chrome/browser/sync/sync_prefs.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
@@ -55,17 +52,6 @@ void SigninManagerBase::Initialize(Profile* profile, PrefService* local_state) {
       prefs::kGoogleServicesUsername);
   if (!user.empty())
     SetAuthenticatedUsername(user);
-
-  InitTokenService();
-}
-
-void SigninManagerBase::InitTokenService() {
-  // TokenService can be null for unit tests.
-  TokenService* token_service = TokenServiceFactory::GetForProfile(profile_);
-  if (token_service)
-    token_service->Initialize(GaiaConstants::kChromeSource, profile_);
-  // Note: ChromeOS will kick off TokenService::LoadTokensFromDB from
-  // OAuthLoginManager once the rest of the Profile is fully initialized.
 }
 
 bool SigninManagerBase::IsInitialized() const {
@@ -78,6 +64,10 @@ bool SigninManagerBase::IsSigninAllowed() const {
 
 const std::string& SigninManagerBase::GetAuthenticatedUsername() const {
   return authenticated_username_;
+}
+
+const std::string& SigninManagerBase::GetAuthenticatedAccountId() const {
+  return GetAuthenticatedUsername();
 }
 
 void SigninManagerBase::SetAuthenticatedUsername(const std::string& username) {
@@ -122,6 +112,14 @@ bool SigninManagerBase::AuthInProgress() const {
 }
 
 void SigninManagerBase::Shutdown() {
+}
+
+void SigninManagerBase::AddObserver(Observer* observer) {
+  observer_list_.AddObserver(observer);
+}
+
+void SigninManagerBase::RemoveObserver(Observer* observer) {
+  observer_list_.RemoveObserver(observer);
 }
 
 void SigninManagerBase::AddSigninDiagnosticsObserver(

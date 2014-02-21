@@ -26,6 +26,7 @@
 #ifndef VisibleSelection_h
 #define VisibleSelection_h
 
+#include "core/editing/SelectionType.h"
 #include "core/editing/TextGranularity.h"
 #include "core/editing/VisiblePosition.h"
 
@@ -39,8 +40,6 @@ enum SelectionDirection { DirectionForward, DirectionBackward, DirectionRight, D
 
 class VisibleSelection {
 public:
-    enum SelectionType { NoSelection, CaretSelection, RangeSelection };
-
     VisibleSelection();
 
     VisibleSelection(const Position&, EAffinity, bool isDirectional = false);
@@ -83,8 +82,6 @@ public:
     bool isBaseFirst() const { return m_baseIsFirst; }
     bool isDirectional() const { return m_isDirectional; }
     void setIsDirectional(bool isDirectional) { m_isDirectional = isDirectional; }
-
-    bool isAll(EditingBoundaryCrossingRule) const;
 
     void appendTrailingWhitespace();
 

@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/fullscreen/fullscreen_controller.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/chrome_version_info.h"
-#include "chrome/common/extensions/feature_switch.h"
 #include "chrome/common/extensions/features/base_feature_provider.h"
 #include "chrome/common/extensions/features/complex_feature.h"
 #include "chrome/common/extensions/features/simple_feature.h"
@@ -28,6 +27,7 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/common/content_switches.h"
+#include "extensions/common/feature_switch.h"
 #include "extensions/common/features/feature.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/perf/perf_test.h"
@@ -99,6 +99,11 @@ class TabCapturePerformanceTest
     return suffix;
   }
 
+  virtual void SetUp() OVERRIDE {
+    EnablePixelOutput();
+    ExtensionApiTest::SetUp();
+  }
+
   virtual void SetUpCommandLine(CommandLine* command_line) OVERRIDE {
     if (!ScalingMethod().empty()) {
       command_line->AppendSwitchASCII(switches::kTabCaptureUpscaleQuality,
@@ -124,8 +129,6 @@ class TabCapturePerformanceTest
     } else {
       command_line->AppendSwitchASCII(switches::kWindowSize, "2000,1500");
     }
-
-    UseRealGLContexts();
 
     if (!HasFlag(kUseGpu)) {
       command_line->AppendSwitch(switches::kDisableGpu);
@@ -154,7 +157,7 @@ class TabCapturePerformanceTest
          trace_analyzer::Query::EventPhaseIs(TRACE_EVENT_PHASE_INSTANT));
     analyzer->FindEvents(query, &events);
     if (events.size() < 20) {
-      LOG(INFO) << "Not enough events of type " << event_name << " found.";
+      LOG(ERROR) << "Not enough events of type " << event_name << " found.";
       return false;
     }
 
@@ -163,7 +166,7 @@ class TabCapturePerformanceTest
                                                  events.end() - 3);
     trace_analyzer::RateStats stats;
     if (!GetRateStats(rate_events, &stats, NULL)) {
-      LOG(INFO) << "GetRateStats failed";
+      LOG(ERROR) << "GetRateStats failed";
       return false;
     }
     double mean_ms = stats.mean_us / 1000.0;
@@ -195,8 +198,7 @@ class TabCapturePerformanceTest
     // but libjingle currently doesn't allow that.
     // page += HasFlag(kDisableVsync) ? "&fps=300" : "&fps=30";
     page += "&fps=30";
-    ASSERT_TRUE(RunExtensionSubtest("tab_capture/experimental", page))
-        << message_;
+    ASSERT_TRUE(RunExtensionSubtest("tab_capture", page)) << message_;
     ASSERT_TRUE(tracing::EndTracing(&json_events));
     scoped_ptr<trace_analyzer::TraceAnalyzer> analyzer;
     analyzer.reset(trace_analyzer::TraceAnalyzer::Create(json_events));

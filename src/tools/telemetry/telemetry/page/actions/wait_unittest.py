@@ -6,9 +6,11 @@ import time
 
 from telemetry.core import util
 from telemetry.page.actions import wait
+from telemetry.unittest import DisabledTestOnCrOS
 from telemetry.unittest import tab_test_case
 
 class WaitActionTest(tab_test_case.TabTestCase):
+  @DisabledTestOnCrOS
   def testWaitAction(self):
     self._browser.SetHTTPServerDirectories(util.GetUnittestDataDir())
     self._tab.Navigate(
@@ -22,7 +24,7 @@ class WaitActionTest(tab_test_case.TabTestCase):
 
     start_time = time.time()
     i.RunAction(None, self._tab, None)
-    self.assertAlmostEqual(time.time() - start_time, 1, places=1)
+    self.assertTrue(time.time() - start_time >= 1.0)
 
   def testWaitActionTimeout(self):
     wait_action = wait.WaitAction({

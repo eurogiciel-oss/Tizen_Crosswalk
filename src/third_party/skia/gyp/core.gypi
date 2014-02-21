@@ -8,13 +8,11 @@
 {
     'sources': [
         '<(skia_src_path)/core/ARGB32_Clamp_Bilinear_BitmapShader.h',
-        '<(skia_src_path)/core/Sk64.cpp',
         '<(skia_src_path)/core/SkAAClip.cpp',
         '<(skia_src_path)/core/SkAnnotation.cpp',
         '<(skia_src_path)/core/SkAdvancedTypefaceMetrics.cpp',
         '<(skia_src_path)/core/SkAlphaRuns.cpp',
         '<(skia_src_path)/core/SkAntiRun.h',
-        '<(skia_src_path)/core/SkBBoxHierarchy.cpp',
         '<(skia_src_path)/core/SkBBoxHierarchy.h',
         '<(skia_src_path)/core/SkBBoxRecord.cpp',
         '<(skia_src_path)/core/SkBBoxRecord.h',
@@ -44,7 +42,6 @@
         '<(skia_src_path)/core/SkBlitRow_D32.cpp',
         '<(skia_src_path)/core/SkBlitter.h',
         '<(skia_src_path)/core/SkBlitter.cpp',
-        '<(skia_src_path)/core/SkBlitter_A1.cpp',
         '<(skia_src_path)/core/SkBlitter_A8.cpp',
         '<(skia_src_path)/core/SkBlitter_ARGB32.cpp',
         '<(skia_src_path)/core/SkBlitter_RGB16.cpp',
@@ -61,8 +58,6 @@
         '<(skia_src_path)/core/SkConfig8888.h',
         '<(skia_src_path)/core/SkConvolver.cpp',
         '<(skia_src_path)/core/SkConvolver.h',
-        '<(skia_src_path)/core/SkCordic.cpp',
-        '<(skia_src_path)/core/SkCordic.h',
         '<(skia_src_path)/core/SkCoreBlitters.h',
         '<(skia_src_path)/core/SkCubicClipper.cpp',
         '<(skia_src_path)/core/SkCubicClipper.h',
@@ -73,6 +68,8 @@
         '<(skia_src_path)/core/SkDevice.cpp',
         '<(skia_src_path)/core/SkDeviceLooper.cpp',
         '<(skia_src_path)/core/SkDeviceProfile.cpp',
+        '<(skia_src_path)/lazy/SkDiscardableMemoryPool.cpp',
+        '<(skia_src_path)/lazy/SkDiscardablePixelRef.cpp',
         '<(skia_src_path)/core/SkDither.cpp',
         '<(skia_src_path)/core/SkDraw.cpp',
         '<(skia_src_path)/core/SkDrawLooper.cpp',
@@ -83,7 +80,6 @@
         '<(skia_src_path)/core/SkEdge.h',
         '<(skia_src_path)/core/SkError.cpp',
         '<(skia_src_path)/core/SkErrorInternals.h',
-        '<(skia_src_path)/core/SkFP.h',
         '<(skia_src_path)/core/SkFilterProc.cpp',
         '<(skia_src_path)/core/SkFilterProc.h',
         '<(skia_src_path)/core/SkFilterShader.cpp',
@@ -106,6 +102,7 @@
         '<(skia_src_path)/core/SkInstCnt.cpp',
         '<(skia_src_path)/core/SkImageFilter.cpp',
         '<(skia_src_path)/core/SkImageFilterUtils.cpp',
+        '<(skia_src_path)/core/SkImageInfo.cpp',
         '<(skia_src_path)/core/SkLineClipper.cpp',
         '<(skia_src_path)/core/SkMallocPixelRef.cpp',
         '<(skia_src_path)/core/SkMask.cpp',
@@ -117,7 +114,6 @@
         '<(skia_src_path)/core/SkMessageBus.h',
         '<(skia_src_path)/core/SkMetaData.cpp',
         '<(skia_src_path)/core/SkMipMap.cpp',
-        '<(skia_src_path)/core/SkOnce.h',
         '<(skia_src_path)/core/SkOrderedReadBuffer.cpp',
         '<(skia_src_path)/core/SkOrderedWriteBuffer.cpp',
         '<(skia_src_path)/core/SkPackBits.cpp',
@@ -149,7 +145,6 @@
         '<(skia_src_path)/core/SkRasterClip.cpp',
         '<(skia_src_path)/core/SkRasterizer.cpp',
         '<(skia_src_path)/core/SkRect.cpp',
-        '<(skia_src_path)/core/SkRefCnt.cpp',
         '<(skia_src_path)/core/SkRefDict.cpp',
         '<(skia_src_path)/core/SkRegion.cpp',
         '<(skia_src_path)/core/SkRegionPriv.h',
@@ -202,7 +197,6 @@
 
         '<(skia_src_path)/doc/SkDocument.cpp',
 
-        '<(skia_src_path)/image/SkDataPixelRef.cpp',
         '<(skia_src_path)/image/SkImage.cpp',
         '<(skia_src_path)/image/SkImagePriv.cpp',
         '<(skia_src_path)/image/SkImage_Codec.cpp',
@@ -217,9 +211,7 @@
         '<(skia_src_path)/pipe/SkGPipeRead.cpp',
         '<(skia_src_path)/pipe/SkGPipeWrite.cpp',
 
-        '<(skia_include_path)/core/Sk64.h',
         '<(skia_include_path)/core/SkAdvancedTypefaceMetrics.h',
-        '<(skia_include_path)/core/SkAlpha.h',
         '<(skia_include_path)/core/SkBitmap.h',
         '<(skia_include_path)/core/SkBitmapDevice.h',
         '<(skia_include_path)/core/SkBlitRow.h',
@@ -255,6 +247,7 @@
         '<(skia_include_path)/core/SkImageEncoder.h',
         '<(skia_include_path)/core/SkImageFilter.h',
         '<(skia_include_path)/core/SkImageFilterUtils.h',
+        '<(skia_include_path)/core/SkImageInfo.h',
         '<(skia_include_path)/core/SkInstCnt.h',
         '<(skia_include_path)/core/SkMallocPixelRef.h',
         '<(skia_include_path)/core/SkMask.h',
@@ -262,6 +255,7 @@
         '<(skia_include_path)/core/SkMath.h',
         '<(skia_include_path)/core/SkMatrix.h',
         '<(skia_include_path)/core/SkMetaData.h',
+        '<(skia_include_path)/core/SkOnce.h',
         '<(skia_include_path)/core/SkOSFile.h',
         '<(skia_include_path)/core/SkPackBits.h',
         '<(skia_include_path)/core/SkPaint.h',
@@ -272,6 +266,7 @@
         '<(skia_include_path)/core/SkPicture.h',
         '<(skia_include_path)/core/SkPixelRef.h',
         '<(skia_include_path)/core/SkPoint.h',
+        '<(skia_include_path)/core/SkPreConfig.h',
         '<(skia_include_path)/core/SkRasterizer.h',
         '<(skia_include_path)/core/SkReader32.h',
         '<(skia_include_path)/core/SkRect.h',
@@ -279,7 +274,6 @@
         '<(skia_include_path)/core/SkRegion.h',
         '<(skia_include_path)/core/SkRRect.h',
         '<(skia_include_path)/core/SkScalar.h',
-        '<(skia_include_path)/core/SkScalarCompare.h',
         '<(skia_include_path)/core/SkShader.h',
         '<(skia_include_path)/core/SkStream.h',
         '<(skia_include_path)/core/SkString.h',
@@ -295,7 +289,6 @@
         '<(skia_include_path)/core/SkTSearch.h',
         '<(skia_include_path)/core/SkTemplates.h',
         '<(skia_include_path)/core/SkThread.h',
-        '<(skia_include_path)/core/SkThread_platform.h',
         '<(skia_include_path)/core/SkTime.h',
         '<(skia_include_path)/core/SkTLazy.h',
         '<(skia_include_path)/core/SkTrace.h',
@@ -309,18 +302,8 @@
         '<(skia_include_path)/core/SkXfermode.h',
 
         # Lazy decoding:
-        '<(skia_include_path)/lazy/SkBitmapFactory.h',
-        '<(skia_include_path)/lazy/SkImageCache.h',
-        '<(skia_include_path)/lazy/SkLruImageCache.h',
-        '<(skia_include_path)/lazy/SkPurgeableImageCache.h',
-
-        '<(skia_src_path)/lazy/SkBitmapFactory.cpp',
-        '<(skia_src_path)/lazy/SkLazyPixelRef.h',
-        '<(skia_src_path)/lazy/SkLazyPixelRef.cpp',
-        '<(skia_src_path)/lazy/SkLruImageCache.cpp',
-        '<(skia_src_path)/lazy/SkPurgeableMemoryBlock.h',
-        '<(skia_src_path)/lazy/SkPurgeableMemoryBlock_common.cpp',
-        '<(skia_src_path)/lazy/SkPurgeableImageCache.cpp',
+        '<(skia_src_path)/lazy/SkCachingPixelRef.cpp',
+        '<(skia_src_path)/lazy/SkCachingPixelRef.h',
 
         # Path ops
         '<(skia_include_path)/pathops/SkPathOps.h',
@@ -379,9 +362,3 @@
         '<(skia_src_path)/pathops/SkReduceOrder.h',
     ],
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

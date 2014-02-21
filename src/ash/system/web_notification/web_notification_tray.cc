@@ -195,7 +195,7 @@ void WorkAreaObserver::UpdateShelf() {
   if (shelf_)
     return;
 
-  shelf_ = ShelfLayoutManager::ForLauncher(root_window_);
+  shelf_ = ShelfLayoutManager::ForShelf(root_window_);
   if (shelf_)
     shelf_->AddObserver(this);
 }
@@ -311,7 +311,7 @@ WebNotificationTray::WebNotificationTray(
       ui::EF_LEFT_MOUSE_BUTTON | ui::EF_RIGHT_MOUSE_BUTTON);
   tray_container()->AddChildView(button_);
   SetContentsBackground();
-  tray_container()->set_border(NULL);
+  tray_container()->SetBorder(views::Border::NullBorder());
   SetVisible(false);
   message_center_tray_.reset(new message_center::MessageCenterTray(
       this,
@@ -416,6 +416,9 @@ bool WebNotificationTray::ShowPopups() {
 }
 
 void WebNotificationTray::HidePopups() {
+  DCHECK(popup_collection_.get());
+
+  popup_collection_->MarkAllPopupsShown();
   popup_collection_.reset();
   work_area_observer_->StopObserving();
 }
@@ -428,7 +431,7 @@ bool WebNotificationTray::ShouldShowMessageCenter() {
         status_area_widget()->system_tray()->HasNotificationBubble());
 }
 
-bool WebNotificationTray::ShouldBlockLauncherAutoHide() const {
+bool WebNotificationTray::ShouldBlockShelfAutoHide() const {
   return should_block_shelf_auto_hide_;
 }
 
@@ -446,11 +449,16 @@ void WebNotificationTray::ShowMessageCenterBubble() {
     message_center_tray_->ShowMessageCenterBubble();
 }
 
+void WebNotificationTray::UpdateAfterLoginStatusChange(
+    user::LoginStatus login_status) {
+  OnMessageCenterTrayChanged();
+}
+
 void WebNotificationTray::SetShelfAlignment(ShelfAlignment alignment) {
   if (alignment == shelf_alignment())
     return;
   internal::TrayBackgroundView::SetShelfAlignment(alignment);
-  tray_container()->set_border(NULL);
+  tray_container()->SetBorder(views::Border::NullBorder());
   // Destroy any existing bubble so that it will be rebuilt correctly.
   message_center_tray_->HideMessageCenterBubble();
   message_center_tray_->HidePopupBubble();
@@ -517,6 +525,12 @@ bool WebNotificationTray::ShowNotifierSettings() {
     return true;
   }
   return ShowMessageCenterInternal(true /* show_settings */);
+}
+
+bool WebNotificationTray::IsContextMenuEnabled() const {
+  user::LoginStatus login_status = status_area_widget()->login_status();
+  return login_status != user::LOGGED_IN_NONE
+      && login_status != user::LOGGED_IN_LOCKED;
 }
 
 message_center::MessageCenterTray* WebNotificationTray::GetMessageCenterTray() {

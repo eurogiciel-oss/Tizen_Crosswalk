@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="pt-BR">
+<translation id="3234920859344197194">Este site está usando o plug-in do Google Chrome Frame, que em breve deixará de receber atualizações de segurança e de estabilidade. Desinstale o plug-in e faça upgrade para um navegador moderno.</translation>
 <translation id="8914504000324227558">Reiniciar o Google Chrome</translation>
 <translation id="8000275528373650868">O Google Chrome requer o Windows Vista ou o Windows XP com SP2 ou superior.</translation>
 <translation id="8485767968786176057">Neste caso, o endereço listado no certificado não corresponde ao endereço do site que seu navegador tentou acessar. Uma possível razão para isso é suas comunicações estarem sendo interceptadas por um invasor que está apresentando um certificado de outro site, o que causa incompatibilidade. Outra possível razão é o servidor estar configurado para retornar o mesmo certificado para diversos sites, incluindo o que você está tentando visitar, mas esse certificado não ser válido para todos esses sites. O Google Chrome pode afirmar com certeza que você acessou &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/ strong&gt;, mas não pode confirmar se esse é o mesmo site &lt;strong&gt;<ph name="DOMAIN"/>&lt;/ strong&gt; que você pretendia acessar. Se você continuar, o Google Chrome não verificará se há quaisquer outras incompatibilidades de nome.</translation>
@@ -23,7 +24,6 @@
 <translation id="4891791193823137474">Executar o Google Chrome em segundo plano</translation>
 <translation id="2896252579017640304">Iniciar aplicativos do Google Chrome</translation>
 <translation id="2370289711218562573">O Google Chrome está importando os Favoritos.</translation>
-<translation id="8762286861469007470">Detector de portal prisioneiro do Google Chrome</translation>
 <translation id="2721687379934343312">No Mac, as senhas são salvas em seu Keychain e podem ser acessadas ou sincronizadas por outros usuários do Google Chrome ao compartilhar esta conta SO X.</translation>
 <translation id="1761870329818521071">Não é possível instalar a mesma versão do Frame do Google Chrome que está em execução. Feche o Frame do Google Chrome e tente novamente.</translation>
 <translation id="6014844626092547096">Agora, você está conectado ao Google Chrome. A sincronização está desativada por seu administrador.</translation>
@@ -57,10 +57,10 @@
 <translation id="1697213158865901863">Frame do Google Chrome</translation>
 <translation id="4513711165509885787">Seus dados para cobrança foram salvos no Google Chrome.</translation>
 <translation id="7098166902387133879">O Google Chrome está usando seu microfone.</translation>
-<translation id="3590194807845837023">Desbloquear perfil e reiniciar</translation>
 <translation id="4053720452172726777">Personalizar e controlar o Google Chrome</translation>
 <translation id="6423071462708908582">Você tentou acessar &lt;strong&gt;<ph name="DOMAIN"/>&lt;/strong&gt;, mas o servidor apresentou um certificado expirado. Nenhuma informação está disponível para indicar se o certificado foi comprometido desde a expiração. Isso significa que o Google Chrome não pode garantir que você está se comunicando com &lt;strong&gt;<ph name="DOMAIN2"/>&lt;/strong&gt;, e não com um invasor. O relógio do computador está definido como <ph name="CURRENT_TIME"/>. Isso está correto? Caso contrário, você deve corrigir o erro e atualizar esta página.</translation>
 <translation id="3197823471738295152">O dispositivo está atualizado.</translation>
+<translation id="8286862437124483331">O Google Chrome está tentando mostrar senhas. Digite sua senha do Windows para permitir isso.</translation>
 <translation id="3889417619312448367">Desinstalar o Google Chrome</translation>
 <translation id="1434626383986940139">Aplicativos Canary do Google Chrome</translation>
 <translation id="8551886023433311834">Atualização quase concluída! Reinicie seu dispositivo para concluir a atualização.</translation>
@@ -181,7 +181,6 @@ Se você decidir fazer login assim mesmo, as informações do Google Chrome, com
 <translation id="7396375882099008034">Permitir que o Google Chrome acesse a rede em suas configurações de
         firewall ou antivírus.</translation>
 <translation id="9102715433345326100">Este arquivo é malicioso e foi bloqueado pelo Google Chrome.</translation>
-<translation id="3170677364322086041">Este site está usando o plug-in do Google Chrome Frame, que não recebe mais atualizações de segurança e de estabilidade. Desinstale o plug-in e faça upgrade para um navegador moderno.</translation>
 <translation id="8205111949707227942">Opcional: ajude a melhorar este sistema operacional enviando-nos estatísticas de uso e relatórios de problemas.</translation>
 <translation id="7253415505590551024">Há downloads em andamento. Deseja sair do Google Chrome e cancelar os downloads?</translation>
 <translation id="7196020411877309443">Por que estou vendo este aviso?</translation>
@@ -198,6 +197,7 @@ Se você decidir fazer login assim mesmo, as informações do Google Chrome, com
           Configurações da LAN
           e desmarque a opção &quot;Usar um servidor proxy para a rede local&quot;.</translation>
 <translation id="7825851276765848807">Houve uma falha na instalação devido a um erro não-especificado. Faça o download do Google Chrome novamente.</translation>
+<translation id="4919523385405675060">Este site está usando o plug-in do Google Chrome Frame, que em breve deixará de receber atualizações de segurança e de estabilidade. Desinstale o plug-in e faça o download de um navegador compatível.</translation>
 <translation id="1061257178446858647">Você já está conectado ao Google Chrome! Seus favoritos, histórico e outras configurações serão sincronizados com sua Conta do Google.</translation>
 <translation id="3335672657969596251">O Google Chrome não é compatível com o <ph name="OS_NAME"/>.</translation>
 <translation id="4458285410772214805">Saia e faça login novamente para que esta alteração entre em vigor.</translation>

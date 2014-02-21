@@ -183,7 +183,6 @@ public:
     virtual Document* ownerDocument() const;
     bool canBind() const { return m_origin != TypeBuilder::CSS::StyleSheetOrigin::User_agent && m_origin != TypeBuilder::CSS::StyleSheetOrigin::User; }
     CSSStyleSheet* pageStyleSheet() const { return m_pageStyleSheet.get(); }
-    bool isReparsing() const { return m_isReparsing; }
     void reparseStyleSheet(const String&);
     bool setText(const String&, ExceptionState&);
     String ruleSelector(const InspectorCSSId&, ExceptionState&);
@@ -249,36 +248,35 @@ private:
     TypeBuilder::CSS::StyleSheetOrigin::Enum m_origin;
     String m_documentURL;
     bool m_isRevalidating;
-    bool m_isReparsing;
     ParsedStyleSheet* m_parsedStyleSheet;
     mutable CSSRuleVector m_flatRules;
     Listener* m_listener;
     mutable String m_sourceURL;
 };
 
-class InspectorStyleSheetForInlineStyle : public InspectorStyleSheet {
+class InspectorStyleSheetForInlineStyle FINAL : public InspectorStyleSheet {
 public:
     static PassRefPtr<InspectorStyleSheetForInlineStyle> create(InspectorPageAgent*, InspectorResourceAgent*, const String& id, PassRefPtr<Element>, TypeBuilder::CSS::StyleSheetOrigin::Enum, Listener*);
 
     void didModifyElementAttribute();
-    virtual bool getText(String* result) const;
-    virtual CSSStyleDeclaration* styleForId(const InspectorCSSId& id) const { ASSERT_UNUSED(id, !id.ordinal()); return inlineStyle(); }
-    virtual TypeBuilder::CSS::StyleSheetOrigin::Enum origin() const { return TypeBuilder::CSS::StyleSheetOrigin::Regular; }
+    virtual bool getText(String* result) const OVERRIDE;
+    virtual CSSStyleDeclaration* styleForId(const InspectorCSSId& id) const OVERRIDE { ASSERT_UNUSED(id, !id.ordinal()); return inlineStyle(); }
+    virtual TypeBuilder::CSS::StyleSheetOrigin::Enum origin() const OVERRIDE { return TypeBuilder::CSS::StyleSheetOrigin::Regular; }
 
 protected:
     InspectorStyleSheetForInlineStyle(InspectorPageAgent*, InspectorResourceAgent*, const String& id, PassRefPtr<Element>, TypeBuilder::CSS::StyleSheetOrigin::Enum, Listener*);
 
-    virtual Document* ownerDocument() const;
-    virtual PassRefPtr<CSSRuleSourceData> ruleSourceDataFor(CSSStyleDeclaration* style) const { ASSERT_UNUSED(style, style == inlineStyle()); return m_ruleSourceData; }
-    virtual unsigned ruleIndexByStyle(CSSStyleDeclaration*) const { return 0; }
-    virtual bool ensureParsedDataReady();
-    virtual PassRefPtr<InspectorStyle> inspectorStyleForId(const InspectorCSSId&);
+    virtual Document* ownerDocument() const OVERRIDE;
+    virtual PassRefPtr<CSSRuleSourceData> ruleSourceDataFor(CSSStyleDeclaration* style) const OVERRIDE { ASSERT_UNUSED(style, style == inlineStyle()); return m_ruleSourceData; }
+    virtual unsigned ruleIndexByStyle(CSSStyleDeclaration*) const OVERRIDE { return 0; }
+    virtual bool ensureParsedDataReady() OVERRIDE;
+    virtual PassRefPtr<InspectorStyle> inspectorStyleForId(const InspectorCSSId&) OVERRIDE;
     virtual String sourceMapURL() const OVERRIDE { return String(); }
     virtual String sourceURL() const OVERRIDE { return String(); }
 
     // Also accessed by friend class InspectorStyle.
-    virtual bool setStyleText(CSSStyleDeclaration*, const String&);
-    virtual PassOwnPtr<Vector<unsigned> > lineEndings() const;
+    virtual bool setStyleText(CSSStyleDeclaration*, const String&) OVERRIDE;
+    virtual PassOwnPtr<Vector<unsigned> > lineEndings() const OVERRIDE;
 
 private:
     CSSStyleDeclaration* inlineStyle() const;

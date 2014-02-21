@@ -28,7 +28,10 @@
 #ifndef V8_HEAP_INL_H_
 #define V8_HEAP_INL_H_
 
+#include <cmath>
+
 #include "heap.h"
+#include "heap-profiler.h"
 #include "isolate.h"
 #include "list-inl.h"
 #include "objects.h"
@@ -217,10 +220,7 @@ MaybeObject* Heap::AllocateRaw(int size_in_bytes,
   ASSERT(AllowHandleAllocation::IsAllowed());
   ASSERT(AllowHeapAllocation::IsAllowed());
   ASSERT(gc_state_ == NOT_IN_GC);
-  ASSERT(space != NEW_SPACE ||
-         retry_space == OLD_POINTER_SPACE ||
-         retry_space == OLD_DATA_SPACE ||
-         retry_space == LO_SPACE);
+  HeapProfiler* profiler = isolate_->heap_profiler();
 #ifdef DEBUG
   if (FLAG_gc_interval >= 0 &&
       !disallow_allocation_failure_ &&
@@ -230,12 +230,17 @@ MaybeObject* Heap::AllocateRaw(int size_in_bytes,
   isolate_->counters()->objs_since_last_full()->Increment();
   isolate_->counters()->objs_since_last_young()->Increment();
 #endif
+
+  HeapObject* object;
   MaybeObject* result;
   if (NEW_SPACE == space) {
     result = new_space_.AllocateRaw(size_in_bytes);
-    if (always_allocate() && result->IsFailure()) {
+    if (always_allocate() && result->IsFailure() && retry_space != NEW_SPACE) {
       space = retry_space;
     } else {
+      if (profiler->is_tracking_allocations() && result->To(&object)) {
+        profiler->AllocationEvent(object->address(), size_in_bytes);
+      }
       return result;
     }
   }
@@ -257,6 +262,9 @@ MaybeObject* Heap::AllocateRaw(int size_in_bytes,
     result = map_space_->AllocateRaw(size_in_bytes);
   }
   if (result->IsFailure()) old_gen_exhausted_ = true;
+  if (profiler->is_tracking_allocations() && result->To(&object)) {
+    profiler->AllocationEvent(object->address(), size_in_bytes);
+  }
   return result;
 }
 
@@ -478,6 +486,38 @@ void Heap::ScavengePointer(HeapObject** p) {
 }
 
 
+void Heap::UpdateAllocationSiteFeedback(HeapObject* object) {
+  Heap* heap = object->GetHeap();
+  ASSERT(heap->InNewSpace(object));
+
+  if (!FLAG_allocation_site_pretenuring ||
+      !heap->new_space_high_promotion_mode_active_ ||
+      !AllocationSite::CanTrack(object->map()->instance_type())) return;
+
+  // Either object is the last object in the from space, or there is another
+  // object of at least word size (the header map word) following it, so
+  // suffices to compare ptr and top here.
+  Address ptr = object->address() + object->Size();
+  Address top = heap->new_space()->FromSpacePageHigh();
+  ASSERT(ptr == top || ptr + HeapObject::kHeaderSize <= top);
+  if (ptr == top) return;
+
+  HeapObject* candidate = HeapObject::FromAddress(ptr);
+  if (candidate->map() != heap->allocation_memento_map()) return;
+
+  AllocationMemento* memento = AllocationMemento::cast(candidate);
+  if (!memento->IsValid()) return;
+
+  if (memento->GetAllocationSite()->IncrementMementoFoundCount() &&
+      heap->allocation_sites_scratchpad_length <
+      kAllocationSiteScratchpadSize) {
+    heap->allocation_sites_scratchpad[
+        heap->allocation_sites_scratchpad_length++] =
+        memento->GetAllocationSite();
+  }
+}
+
+
 void Heap::ScavengeObject(HeapObject** p, HeapObject* object) {
   ASSERT(object->GetIsolate()->heap()->InFromSpace(object));
 
@@ -496,12 +536,7 @@ void Heap::ScavengeObject(HeapObject** p, HeapObject* object) {
     return;
   }
 
-  if (FLAG_trace_track_allocation_sites && object->IsJSObject()) {
-    if (AllocationMemento::FindForJSObject(JSObject::cast(object), true) !=
-        NULL) {
-      object->GetIsolate()->heap()->allocation_mementos_found_++;
-    }
-  }
+  UpdateAllocationSiteFeedback(object);
 
   // AllocationMementos are unrooted and shouldn't survive a scavenge
   ASSERT(object->map() != object->GetHeap()->allocation_memento_map());
@@ -510,10 +545,13 @@ void Heap::ScavengeObject(HeapObject** p, HeapObject* object) {
 }
 
 
-bool Heap::CollectGarbage(AllocationSpace space, const char* gc_reason) {
+bool Heap::CollectGarbage(AllocationSpace space,
+                          const char* gc_reason,
+                          const v8::GCCallbackFlags callbackFlags) {
   const char* collector_reason = NULL;
   GarbageCollector collector = SelectGarbageCollector(space, &collector_reason);
-  return CollectGarbage(space, collector, gc_reason, collector_reason);
+  return CollectGarbage(
+      space, collector, gc_reason, collector_reason, callbackFlags);
 }
 
 
@@ -536,10 +574,10 @@ MaybeObject* Heap::PrepareForCompare(String* str) {
 }
 
 
-intptr_t Heap::AdjustAmountOfExternalAllocatedMemory(
-    intptr_t change_in_bytes) {
+int64_t Heap::AdjustAmountOfExternalAllocatedMemory(
+    int64_t change_in_bytes) {
   ASSERT(HasBeenSetUp());
-  intptr_t amount = amount_of_external_allocated_memory_ + change_in_bytes;
+  int64_t amount = amount_of_external_allocated_memory_ + change_in_bytes;
   if (change_in_bytes > 0) {
     // Avoid overflow.
     if (amount > amount_of_external_allocated_memory_) {
@@ -549,7 +587,7 @@ intptr_t Heap::AdjustAmountOfExternalAllocatedMemory(
       amount_of_external_allocated_memory_ = 0;
       amount_of_external_allocated_memory_at_last_global_gc_ = 0;
     }
-    intptr_t amount_since_last_global_gc = PromotedExternalMemorySize();
+    int64_t amount_since_last_global_gc = PromotedExternalMemorySize();
     if (amount_since_last_global_gc > external_allocation_limit_) {
       CollectAllGarbage(kNoGCFlags, "external memory allocation limit reached");
     }
@@ -568,9 +606,9 @@ intptr_t Heap::AdjustAmountOfExternalAllocatedMemory(
     PrintF("Adjust amount of external memory: delta=%6" V8_PTR_PREFIX "d KB, "
            "amount=%6" V8_PTR_PREFIX "d KB, since_gc=%6" V8_PTR_PREFIX "d KB, "
            "isolate=0x%08" V8PRIxPTR ".\n",
-           change_in_bytes / KB,
-           amount_of_external_allocated_memory_ / KB,
-           PromotedExternalMemorySize() / KB,
+           static_cast<intptr_t>(change_in_bytes / KB),
+           static_cast<intptr_t>(amount_of_external_allocated_memory_ / KB),
+           static_cast<intptr_t>(PromotedExternalMemorySize() / KB),
            reinterpret_cast<intptr_t>(isolate()));
   }
   ASSERT(amount_of_external_allocated_memory_ >= 0);
@@ -629,7 +667,7 @@ Isolate* Heap::isolate() {
     }                                                                          \
     if (__maybe_object__->IsRetryAfterGC()) {                                  \
       /* TODO(1181417): Fix this. */                                           \
-      v8::internal::V8::FatalProcessOutOfMemory("CALL_AND_RETRY_LAST", true);  \
+      v8::internal::Heap::FatalProcessOutOfMemory("CALL_AND_RETRY_LAST", true);\
     }                                                                          \
     RETURN_EMPTY;                                                              \
   } while (false)
@@ -641,7 +679,7 @@ Isolate* Heap::isolate() {
       FUNCTION_CALL,                                                       \
       RETURN_VALUE,                                                        \
       RETURN_EMPTY,                                                        \
-      v8::internal::V8::FatalProcessOutOfMemory("CALL_AND_RETRY", true))
+      v8::internal::Heap::FatalProcessOutOfMemory("CALL_AND_RETRY", true))
 
 #define CALL_HEAP_FUNCTION(ISOLATE, FUNCTION_CALL, TYPE)                      \
   CALL_AND_RETRY_OR_DIE(ISOLATE,                                              \
@@ -732,69 +770,6 @@ Object* Heap::ToBoolean(bool condition) {
 void Heap::CompletelyClearInstanceofCache() {
   set_instanceof_cache_map(the_hole_value());
   set_instanceof_cache_function(the_hole_value());
-}
-
-
-MaybeObject* TranscendentalCache::Get(Type type, double input) {
-  SubCache* cache = caches_[type];
-  if (cache == NULL) {
-    caches_[type] = cache = new SubCache(isolate_, type);
-  }
-  return cache->Get(input);
-}
-
-
-Address TranscendentalCache::cache_array_address() {
-  return reinterpret_cast<Address>(caches_);
-}
-
-
-double TranscendentalCache::SubCache::Calculate(double input) {
-  switch (type_) {
-    case ACOS:
-      return acos(input);
-    case ASIN:
-      return asin(input);
-    case ATAN:
-      return atan(input);
-    case COS:
-      return fast_cos(input);
-    case EXP:
-      return exp(input);
-    case LOG:
-      return fast_log(input);
-    case SIN:
-      return fast_sin(input);
-    case TAN:
-      return fast_tan(input);
-    default:
-      return 0.0;  // Never happens.
-  }
-}
-
-
-MaybeObject* TranscendentalCache::SubCache::Get(double input) {
-  Converter c;
-  c.dbl = input;
-  int hash = Hash(c);
-  Element e = elements_[hash];
-  if (e.in[0] == c.integers[0] &&
-      e.in[1] == c.integers[1]) {
-    ASSERT(e.output != NULL);
-    isolate_->counters()->transcendental_cache_hit()->Increment();
-    return e.output;
-  }
-  double answer = Calculate(input);
-  isolate_->counters()->transcendental_cache_miss()->Increment();
-  Object* heap_number;
-  { MaybeObject* maybe_heap_number =
-        isolate_->heap()->AllocateHeapNumber(answer);
-    if (!maybe_heap_number->ToObject(&heap_number)) return maybe_heap_number;
-  }
-  elements_[hash].in[0] = c.integers[0];
-  elements_[hash].in[1] = c.integers[1];
-  elements_[hash].output = heap_number;
-  return heap_number;
 }
 
 

@@ -32,31 +32,32 @@
 #define RTCVoidRequestImpl_h
 
 #include "core/dom/ActiveDOMObject.h"
-#include "core/platform/mediastream/RTCVoidRequest.h"
+#include "platform/mediastream/RTCVoidRequest.h"
 
 namespace WebCore {
 
 class RTCErrorCallback;
 class VoidCallback;
 
-class RTCVoidRequestImpl : public RTCVoidRequest, public ActiveDOMObject {
+class RTCVoidRequestImpl FINAL : public RTCVoidRequest, public ActiveDOMObject {
 public:
-    static PassRefPtr<RTCVoidRequestImpl> create(ExecutionContext*, PassRefPtr<VoidCallback>, PassRefPtr<RTCErrorCallback>);
+    static PassRefPtr<RTCVoidRequestImpl> create(ExecutionContext*, PassOwnPtr<VoidCallback>, PassOwnPtr<RTCErrorCallback>);
     virtual ~RTCVoidRequestImpl();
 
-    virtual void requestSucceeded();
-    virtual void requestFailed(const String& error);
+    // RTCVoidRequest
+    virtual void requestSucceeded() OVERRIDE;
+    virtual void requestFailed(const String& error) OVERRIDE;
 
     // ActiveDOMObject
     virtual void stop() OVERRIDE;
 
 private:
-    RTCVoidRequestImpl(ExecutionContext*, PassRefPtr<VoidCallback>, PassRefPtr<RTCErrorCallback>);
+    RTCVoidRequestImpl(ExecutionContext*, PassOwnPtr<VoidCallback>, PassOwnPtr<RTCErrorCallback>);
 
     void clear();
 
-    RefPtr<VoidCallback> m_successCallback;
-    RefPtr<RTCErrorCallback> m_errorCallback;
+    OwnPtr<VoidCallback> m_successCallback;
+    OwnPtr<RTCErrorCallback> m_errorCallback;
 };
 
 } // namespace WebCore

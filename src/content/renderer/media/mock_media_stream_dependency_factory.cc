@@ -115,6 +115,24 @@ class MockMediaStream : public webrtc::MediaStreamInterface {
   webrtc::ObserverInterface* observer_;
 };
 
+MockVideoRenderer::MockVideoRenderer()
+    : width_(0),
+      height_(0),
+      num_(0) {}
+
+MockVideoRenderer::~MockVideoRenderer() {}
+
+bool MockVideoRenderer::SetSize(int width, int height, int reserved) {
+  width_ = width;
+  height_ = height;
+  return true;
+}
+
+bool MockVideoRenderer::RenderFrame(const cricket::VideoFrame* frame) {
+  ++num_;
+  return true;
+}
+
 MockAudioSource::MockAudioSource(
     const webrtc::MediaConstraintsInterface* constraints)
     : observer_(NULL),
@@ -176,8 +194,7 @@ void MockVideoSource::RemoveSink(cricket::VideoRenderer* output) {
 }
 
 cricket::VideoRenderer* MockVideoSource::FrameInput() {
-  NOTIMPLEMENTED();
-  return NULL;
+  return &renderer_;
 }
 
 void MockVideoSource::RegisterObserver(webrtc::ObserverInterface* observer) {
@@ -367,7 +384,7 @@ class MockIceCandidate : public IceCandidateInterface {
 };
 
 MockMediaStreamDependencyFactory::MockMediaStreamDependencyFactory()
-    : MediaStreamDependencyFactory(NULL, NULL),
+    : MediaStreamDependencyFactory(NULL),
       mock_pc_factory_created_(false) {
 }
 
@@ -386,7 +403,7 @@ scoped_refptr<webrtc::PeerConnectionInterface>
 MockMediaStreamDependencyFactory::CreatePeerConnection(
     const webrtc::PeerConnectionInterface::IceServers& ice_servers,
     const webrtc::MediaConstraintsInterface* constraints,
-    WebKit::WebFrame* frame,
+    blink::WebFrame* frame,
     webrtc::PeerConnectionObserver* observer) {
   DCHECK(mock_pc_factory_created_);
   return new talk_base::RefCountedObject<MockPeerConnectionImpl>(this);
@@ -409,10 +426,19 @@ MockMediaStreamDependencyFactory::CreateLocalVideoSource(
   return last_video_source_;
 }
 
+scoped_refptr<webrtc::VideoSourceInterface>
+MockMediaStreamDependencyFactory::CreateVideoSource(
+    cricket::VideoCapturer* capturer,
+    const webrtc::MediaConstraintsInterface* constraints) {
+  last_video_source_ = new talk_base::RefCountedObject<MockVideoSource>();
+  last_video_source_->SetVideoCapturer(capturer);
+  return last_video_source_;
+}
+
 scoped_refptr<WebAudioCapturerSource>
 MockMediaStreamDependencyFactory::CreateWebAudioSource(
-    WebKit::WebMediaStreamSource* source,
-    RTCMediaConstraints* constraints) {
+    blink::WebMediaStreamSource* source,
+    const RTCMediaConstraints& constraints) {
   return NULL;
 }
 
@@ -452,13 +478,14 @@ MockMediaStreamDependencyFactory::CreateLocalAudioTrack(
     const std::string& id,
     const scoped_refptr<WebRtcAudioCapturer>& capturer,
     WebAudioCapturerSource* webaudio_source,
-    webrtc::AudioSourceInterface* source,
-    const webrtc::MediaConstraintsInterface* constraints) {
+    webrtc::AudioSourceInterface* source) {
   DCHECK(mock_pc_factory_created_);
-  DCHECK(!capturer.get());
+  blink::WebMediaConstraints constraints;
+  scoped_refptr<WebRtcAudioCapturer> audio_capturer = capturer ?
+      capturer : WebRtcAudioCapturer::CreateCapturer(-1, StreamDeviceInfo(),
+                                                     constraints, NULL);
   return WebRtcLocalAudioTrack::Create(
-      id, WebRtcAudioCapturer::CreateCapturer(), webaudio_source,
-      source, constraints);
+      id, audio_capturer, webaudio_source, source);
 }
 
 SessionDescriptionInterface*
@@ -478,9 +505,11 @@ MockMediaStreamDependencyFactory::CreateIceCandidate(
 }
 
 scoped_refptr<WebRtcAudioCapturer>
-MockMediaStreamDependencyFactory::MaybeCreateAudioCapturer(
-    int render_view_id, const StreamDeviceInfo& device_info) {
-  return WebRtcAudioCapturer::CreateCapturer();
+MockMediaStreamDependencyFactory::CreateAudioCapturer(
+    int render_view_id, const StreamDeviceInfo& device_info,
+    const blink::WebMediaConstraints& constraints) {
+  return WebRtcAudioCapturer::CreateCapturer(-1, device_info,
+                                             constraints, NULL);
 }
 
 }  // namespace content

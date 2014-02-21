@@ -29,17 +29,18 @@
 #include "core/html/HTMLIFrameElement.h"
 #include "core/frame/Frame.h"
 #include "core/page/Page.h"
-#include "core/page/Settings.h"
-#include "core/platform/graphics/Font.h"
-#include "core/platform/graphics/GraphicsContextStateSaver.h"
-#include "core/platform/graphics/Path.h"
+#include "core/frame/Settings.h"
 #include "core/plugins/PluginView.h"
+#include "core/rendering/LayoutRectRecorder.h"
 #include "core/rendering/PaintInfo.h"
 #include "core/rendering/RenderTheme.h"
 #include "core/rendering/RenderView.h"
+#include "platform/fonts/Font.h"
 #include "platform/fonts/FontSelector.h"
-#include "platform/graphics/TextRun.h"
+#include "platform/graphics/GraphicsContextStateSaver.h"
+#include "platform/graphics/Path.h"
 #include "platform/text/PlatformLocale.h"
+#include "platform/text/TextRun.h"
 
 namespace WebCore {
 
@@ -61,16 +62,15 @@ RenderEmbeddedObject::RenderEmbeddedObject(Element* element)
 
 RenderEmbeddedObject::~RenderEmbeddedObject()
 {
-    if (frameView())
-        frameView()->removeWidgetToUpdate(this);
 }
 
-bool RenderEmbeddedObject::requiresLayer() const
+LayerType RenderEmbeddedObject::layerTypeRequired() const
 {
-    if (RenderPart::requiresLayer())
-        return true;
+    LayerType type = RenderPart::layerTypeRequired();
+    if (type != NoLayer)
+        return type;
 
-    return allowsAcceleratedCompositing();
+    return allowsAcceleratedCompositing() ? NormalLayer : NoLayer;
 }
 
 bool RenderEmbeddedObject::allowsAcceleratedCompositing() const
@@ -83,9 +83,9 @@ static String unavailablePluginReplacementText(Node* node, RenderEmbeddedObject:
     Locale& locale = node ? toElement(node)->locale() : Locale::defaultLocale();
     switch (pluginUnavailabilityReason) {
     case RenderEmbeddedObject::PluginMissing:
-        return locale.queryString(WebKit::WebLocalizedString::MissingPluginText);
+        return locale.queryString(blink::WebLocalizedString::MissingPluginText);
     case RenderEmbeddedObject::PluginBlockedByContentSecurityPolicy:
-        return locale.queryString(WebKit::WebLocalizedString::BlockedPluginText);
+        return locale.queryString(blink::WebLocalizedString::BlockedPluginText);
     }
 
     ASSERT_NOT_REACHED();
@@ -196,6 +196,7 @@ void RenderEmbeddedObject::layout()
     ASSERT(needsLayout());
 
     LayoutSize oldSize = contentBoxRect().size();
+    LayoutRectRecorder recorder(*this);
 
     updateLogicalWidth();
     updateLogicalHeight();
@@ -208,7 +209,7 @@ void RenderEmbeddedObject::layout()
     updateLayerTransform();
 
     if (!widget() && frameView())
-        frameView()->addWidgetToUpdate(this);
+        frameView()->addWidgetToUpdate(*this);
 
     clearNeedsLayout();
 
@@ -244,31 +245,7 @@ void RenderEmbeddedObject::layout()
     statePusher.pop();
 }
 
-void RenderEmbeddedObject::viewCleared()
-{
-    // This is required for <object> elements whose contents are rendered by WebCore (e.g. src="foo.html").
-    if (node() && widget() && widget()->isFrameView()) {
-        FrameView* view = toFrameView(widget());
-        int marginWidth = -1;
-        int marginHeight = -1;
-        if (node()->hasTagName(iframeTag)) {
-            HTMLIFrameElement* frame = toHTMLIFrameElement(node());
-            marginWidth = frame->marginWidth();
-            marginHeight = frame->marginHeight();
-        }
-        if (marginWidth != -1)
-            view->setMarginWidth(marginWidth);
-        if (marginHeight != -1)
-            view->setMarginHeight(marginHeight);
-    }
-}
-
-bool RenderEmbeddedObject::scroll(ScrollDirection direction, ScrollGranularity granularity, float, Node**)
-{
-    return false;
-}
-
-bool RenderEmbeddedObject::logicalScroll(ScrollLogicalDirection direction, ScrollGranularity granularity, float multiplier, Node** stopNode)
+bool RenderEmbeddedObject::scroll(ScrollDirection direction, ScrollGranularity granularity, float)
 {
     return false;
 }

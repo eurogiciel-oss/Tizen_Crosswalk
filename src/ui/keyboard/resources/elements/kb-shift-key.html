@@ -6,7 +6,7 @@
 
 <polymer-element name="kb-shift-key"
     attributes="lowerCaseKeysetId upperCaseKeysetId"
-    class="shift dark" char="Shift" on-pointerout="out" extends="kb-key">
+    class="shift dark" char="Shift" on-pointerout="{{out}}" extends="kb-key">
   <script>
     (function () {
 
@@ -129,7 +129,7 @@
         },
 
         generateLongPressTimer: function() {
-          return this.asyncMethod(function() {
+          return this.async(function() {
             var detail = this.populateDetails();
             if (state == KEY_STATES.LOCKED) {
               // We don't care about the longpress if we are already

@@ -31,8 +31,6 @@
 
 namespace WebCore {
 
-class FilterEffect;
-
 class RenderSVGResourceFilterPrimitive FINAL : public RenderSVGHiddenContainer {
 public:
     explicit RenderSVGResourceFilterPrimitive(SVGElement* filterPrimitiveElement)
@@ -40,13 +38,12 @@ public:
     {
     }
 
-    virtual void styleDidChange(StyleDifference, const RenderStyle*);
+    virtual bool isChildAllowed(RenderObject*, RenderStyle*) const OVERRIDE { return false; }
 
-    virtual const char* renderName() const { return "RenderSVGResourceFilterPrimitive"; }
-    virtual bool isSVGResourceFilterPrimitive() const { return true; }
+    virtual void styleDidChange(StyleDifference, const RenderStyle*) OVERRIDE;
 
-    // They depend on the RenderObject argument of RenderSVGResourceFilter::applyResource.
-    static FloatRect determineFilterPrimitiveSubregion(FilterEffect*);
+    virtual const char* renderName() const OVERRIDE { return "RenderSVGResourceFilterPrimitive"; }
+    virtual bool isSVGResourceFilterPrimitive() const OVERRIDE { return true; }
 
     inline void primitiveAttributeChanged(const QualifiedName& attribute)
     {

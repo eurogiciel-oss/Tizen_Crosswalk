@@ -36,10 +36,15 @@
 #include "RuntimeEnabledFeatures.h"
 #include "SVGNames.h"
 #include "core/dom/Element.h"
-#include "core/dom/custom/CustomElementCallbackScheduler.h"
 #include "core/dom/custom/CustomElementObserver.h"
+#include "core/dom/custom/CustomElementScheduler.h"
 
 namespace WebCore {
+
+CustomElementMicrotaskImportStep* CustomElement::didCreateImport(HTMLImportChild* import)
+{
+    return CustomElementScheduler::scheduleImport(import);
+}
 
 Vector<AtomicString>& CustomElement::embedderCustomElementNames()
 {
@@ -99,13 +104,14 @@ void CustomElement::define(Element* element, PassRefPtr<CustomElementDefinition>
         ASSERT_NOT_REACHED();
         break;
 
-    case Element::WaitingForParser:
-        definitions().add(element, definition);
-        break;
-
     case Element::WaitingForUpgrade:
         definitions().add(element, definition);
-        CustomElementCallbackScheduler::scheduleCreatedCallback(definition->callbacks(), element);
+        if (element->inDocument() && element->document().domWindow())
+            CustomElementScheduler::scheduleAttachedCallback(definition->callbacks(), element);
+        // FIXME: Push this through the callback scheduler. That
+        // design makes resolve and define robust to being called
+        // during other operations.
+        definition->callbacks()->created(element);
         break;
     }
 }
@@ -117,21 +123,10 @@ CustomElementDefinition* CustomElement::definitionFor(Element* element)
     return definition;
 }
 
-void CustomElement::didFinishParsingChildren(Element* element)
-{
-    ASSERT(element->customElementState() == Element::WaitingForParser);
-    element->setCustomElementState(Element::WaitingForUpgrade);
-
-    CustomElementObserver::notifyElementDidFinishParsingChildren(element);
-
-    if (CustomElementDefinition* definition = definitions().get(element))
-        CustomElementCallbackScheduler::scheduleCreatedCallback(definition->callbacks(), element);
-}
-
 void CustomElement::attributeDidChange(Element* element, const AtomicString& name, const AtomicString& oldValue, const AtomicString& newValue)
 {
     ASSERT(element->customElementState() == Element::Upgraded);
-    CustomElementCallbackScheduler::scheduleAttributeChangedCallback(definitionFor(element)->callbacks(), element, name, oldValue, newValue);
+    CustomElementScheduler::scheduleAttributeChangedCallback(definitionFor(element)->callbacks(), element, name, oldValue, newValue);
 }
 
 void CustomElement::didEnterDocument(Element* element, const Document& document)
@@ -139,7 +134,7 @@ void CustomElement::didEnterDocument(Element* element, const Document& document)
     ASSERT(element->customElementState() == Element::Upgraded);
     if (!document.domWindow())
         return;
-    CustomElementCallbackScheduler::scheduleEnteredViewCallback(definitionFor(element)->callbacks(), element);
+    CustomElementScheduler::scheduleAttachedCallback(definitionFor(element)->callbacks(), element);
 }
 
 void CustomElement::didLeaveDocument(Element* element, const Document& document)
@@ -147,7 +142,7 @@ void CustomElement::didLeaveDocument(Element* element, const Document& document)
     ASSERT(element->customElementState() == Element::Upgraded);
     if (!document.domWindow())
         return;
-    CustomElementCallbackScheduler::scheduleLeftViewCallback(definitionFor(element)->callbacks(), element);
+    CustomElementScheduler::scheduleDetachedCallback(definitionFor(element)->callbacks(), element);
 }
 
 void CustomElement::wasDestroyed(Element* element)
@@ -157,7 +152,6 @@ void CustomElement::wasDestroyed(Element* element)
         ASSERT_NOT_REACHED();
         break;
 
-    case Element::WaitingForParser:
     case Element::WaitingForUpgrade:
     case Element::Upgraded:
         definitions().remove(element);

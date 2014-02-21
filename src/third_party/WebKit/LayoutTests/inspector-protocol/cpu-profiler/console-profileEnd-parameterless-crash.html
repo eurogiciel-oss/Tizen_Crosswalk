@@ -22,9 +22,11 @@ function test()
     InspectorTest.sendCommand("Runtime.evaluate", { expression: "collectProfiles()"}, didCollectProfiles);
 
     var headers = [];
-    InspectorTest.eventHandler["Profiler.addProfileHeader"] = function(messageObject)
+    InspectorTest.eventHandler["Profiler.consoleProfileFinished"] = function(messageObject)
     {
-        headers.push(messageObject["params"]["header"]);
+        headers.push({
+            title: messageObject["params"]["title"]
+        });
     }
 
     function didCollectProfiles(messageObject)
@@ -35,7 +37,6 @@ function test()
         for (var i = 0; i < headers.length; i++) {
             if (headers[i].title === "titled") {
                 InspectorTest.log("SUCCESS: titled profile found");
-                InspectorTest.sendCommand("Profiler.clearProfiles", {});
                 InspectorTest.completeTest();
                 return;
             }

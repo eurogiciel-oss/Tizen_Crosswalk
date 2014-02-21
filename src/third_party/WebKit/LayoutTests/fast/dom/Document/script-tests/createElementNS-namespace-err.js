@@ -23,13 +23,14 @@ function stringForExceptionCode(c)
     return c;
 }
 
-function assertEquals(actual, expect, m)
+function assertExceptionCode(exception, expect, m)
 {
+    var actual = exception.code;
     if (actual !== expect) {
         m += "; expected " + stringForExceptionCode(expect) + ", threw " + stringForExceptionCode(actual);
         testFailed(m);
     } else {
-        m += "; threw " + stringForExceptionCode(actual);;
+        m += "; threw " + exception.toString();
         testPassed(m);
     }
 }
@@ -37,10 +38,10 @@ function assertEquals(actual, expect, m)
 var allNSTests = [
    { args: [undefined, undefined] },
    { args: [null, undefined] },
-   { args: [undefined, null], code: 5 },
-   { args: [null, null], code: 5 },
+   { args: [undefined, null] },
+   { args: [null, null] },
    { args: [null, ""], code: 5 },
-   { args: ["", null], code: 5 },
+   { args: ["", null] },
    { args: ["", ""], code: 5 },
    { args: [null, "<div>"], code: 5 },
    { args: [null, "0div"], code: 5 },
@@ -86,7 +87,7 @@ var allNSTests = [
 
 var allNoNSTests = [
    { args: [undefined] },
-   { args: [null], code: 5 },
+   { args: [null] },
    { args: [""], code: 5 },
    { args: ["<div>"], code: 5 },
    { args: ["0div"], code: 5 },
@@ -152,14 +153,10 @@ function runNSTests(tests, doc, createFunctionName)
             doc[createFunctionName].apply(doc, test.args);
             assert(!("code" in test), msg);
         } catch (e) {
-            assertEquals(e.code, test.code || "expected no exception", msg);
+            assertExceptionCode(e, test.code || "expected no exception", msg);
         }
     }
 }
-
-// Moz throws a "Not enough arguments" exception in these, we don't:
-shouldBeEqualToString("document.createElementNS().toString()", "[object Element]");
-shouldBeEqualToString("document.createElementNS(\"http://www.example.com\").toString()", "[object Element]");
 
 debug("HTML tests:")
 runNSTests(allNSTests, document, "createElementNS");

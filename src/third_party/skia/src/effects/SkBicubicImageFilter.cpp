@@ -40,7 +40,8 @@ SkBicubicImageFilter* SkBicubicImageFilter::CreateMitchell(const SkSize& scale,
     return SkNEW_ARGS(SkBicubicImageFilter, (scale, gMitchellCoefficients, input));
 }
 
-SkBicubicImageFilter::SkBicubicImageFilter(SkFlattenableReadBuffer& buffer) : INHERITED(buffer) {
+SkBicubicImageFilter::SkBicubicImageFilter(SkFlattenableReadBuffer& buffer)
+  : INHERITED(1, buffer) {
     SkDEBUGCODE(bool success =) buffer.readScalarArray(fCoefficients, 16);
     SkASSERT(success);
     fScale.fWidth = buffer.readScalar();
@@ -83,9 +84,10 @@ bool SkBicubicImageFilter::onFilterImage(Proxy* proxy,
                                          const SkBitmap& source,
                                          const SkMatrix& matrix,
                                          SkBitmap* result,
-                                         SkIPoint* loc) {
+                                         SkIPoint* offset) {
     SkBitmap src = source;
-    if (getInput(0) && !getInput(0)->filterImage(proxy, source, matrix, &src, loc)) {
+    SkIPoint srcOffset = SkIPoint::Make(0, 0);
+    if (getInput(0) && !getInput(0)->filterImage(proxy, source, matrix, &src, &srcOffset)) {
         return false;
     }
 
@@ -106,16 +108,16 @@ bool SkBicubicImageFilter::onFilterImage(Proxy* proxy,
         return false;
     }
     result->setConfig(src.config(), dstIRect.width(), dstIRect.height());
-    result->allocPixels();
-    if (!result->getPixels()) {
+    if (!result->allocPixels()) {
         return false;
     }
 
     SkRect srcRect;
     src.getBounds(&srcRect);
+    srcRect.offset(SkPoint::Make(SkIntToScalar(srcOffset.fX), SkIntToScalar(srcOffset.fY)));
     SkMatrix inverse;
     inverse.setRectToRect(dstRect, srcRect, SkMatrix::kFill_ScaleToFit);
-    inverse.postTranslate(SkFloatToScalar(-0.5f), SkFloatToScalar(-0.5f));
+    inverse.postTranslate(-0.5f, -0.5f);
 
     for (int y = dstIRect.fTop; y < dstIRect.fBottom; ++y) {
         SkPMColor* dptr = result->getAddr32(dstIRect.fLeft, y);
@@ -157,6 +159,8 @@ bool SkBicubicImageFilter::onFilterImage(Proxy* proxy,
             *dptr++ = cubicBlend(fCoefficients, fracty, s0, s1, s2, s3);
         }
     }
+    offset->fX = dstIRect.fLeft;
+    offset->fY = dstIRect.fTop;
     return true;
 }
 

@@ -8,8 +8,11 @@ namespace sync_file_system {
 namespace drive_backend {
 
 const char kSyncRootFolderTitle[] = "Chrome Syncable FileSystem";
+const char kSyncRootFolderTitleDev[] = "Chrome Syncable FileSystem Dev";
+const char kMimeTypeOctetStream[] = "application/octet-stream";
+
 const base::FilePath::CharType kDatabaseName[] =
-    FILE_PATH_LITERAL("DriveMetadata");
+    FILE_PATH_LITERAL("DriveMetadata_v2");
 
 const char kDatabaseVersionKey[] = "VERSION";
 const int64 kCurrentDatabaseVersion = 3;

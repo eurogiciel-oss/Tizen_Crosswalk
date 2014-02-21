@@ -1,10 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script>
-    if (window.internals)
-        window.internals.settings.setCSSExclusionsEnabled(true);
-    </script>
     <style>
     .region, .content {
         font: 50px/1 Ahem, sans-serif;
@@ -12,7 +8,7 @@
     .region {
         width: 100px;
         height: 100px;
-        -webkit-shape-inside: rectangle(0, 0, 100%, 100%);
+        shape-inside: rectangle(0, 0, 100%, 100%);
     }
     .content * {
         color: green;

@@ -10,9 +10,13 @@
 #include "base/command_line.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
-#include "base/threading/thread.h"
+#include "base/message_loop/message_loop.h"
 #include "jni/MojoMain_jni.h"
+#include "mojo/services/native_viewport/native_viewport_service.h"
+#include "mojo/shell/context.h"
+#include "mojo/shell/init.h"
 #include "mojo/shell/run.h"
+#include "mojo/shell/service_manager.h"
 #include "ui/gl/gl_surface_egl.h"
 
 using base::LazyInstance;
@@ -26,47 +30,33 @@ base::AtExitManager* g_at_exit = 0;
 LazyInstance<scoped_ptr<base::MessageLoop> > g_java_message_loop =
     LAZY_INSTANCE_INITIALIZER;
 
-LazyInstance<scoped_ptr<base::Thread> > g_shell_thread =
-    LAZY_INSTANCE_INITIALIZER;
-
 LazyInstance<scoped_ptr<shell::Context> > g_context =
     LAZY_INSTANCE_INITIALIZER;
 
-void InitializeLogging() {
-  logging::LoggingSettings settings;
-  settings.logging_dest = logging::LOG_TO_SYSTEM_DEBUG_LOG;
-  settings.dcheck_state =
-      logging::ENABLE_DCHECK_FOR_NON_OFFICIAL_RELEASE_BUILDS;
-  logging::InitLogging(settings);
-  // To view log output with IDs and timestamps use "adb logcat -v threadtime".
-  logging::SetLogItems(false,    // Process ID
-                       false,    // Thread ID
-                       false,    // Timestamp
-                       false);   // Tick count
-}
+class NativeViewportServiceLoader : public shell::ServiceManager::Loader {
+ public:
+  NativeViewportServiceLoader() {}
+  virtual ~NativeViewportServiceLoader() {}
 
-struct ShellInit {
-  scoped_refptr<base::SingleThreadTaskRunner> java_runner;
-  base::android::ScopedJavaGlobalRef<jobject> activity;
+ private:
+  virtual void Load(const GURL& url,
+                    ScopedMessagePipeHandle service_handle)
+      MOJO_OVERRIDE {
+    service_.reset(CreateNativeViewportService(service_handle.Pass()));
+    service_->set_context(g_context.Get().get());
+  }
+  scoped_ptr<services::NativeViewportService> service_;
 };
 
-void StartOnShellThread(ShellInit* init) {
-  shell::Context* context = new shell::Context();
-
-  context->set_activity(init->activity.obj());
-  context->task_runners()->set_java_runner(init->java_runner.get());
-  delete init;
-
-  g_context.Get().reset(context);
-  shell::Run(context);
-}
+LazyInstance<scoped_ptr<NativeViewportServiceLoader> >
+    g_viewport_service_loader = LAZY_INSTANCE_INITIALIZER;
 
 }  // namspace
 
 static void Init(JNIEnv* env, jclass clazz, jobject context) {
   base::android::ScopedJavaLocalRef<jobject> scoped_context(env, context);
 
-  base::android::InitApplicationContext(scoped_context);
+  base::android::InitApplicationContext(env, scoped_context);
 
   if (g_at_exit)
     return;
@@ -74,10 +64,9 @@ static void Init(JNIEnv* env, jclass clazz, jobject context) {
   // TODO(abarth): Currently we leak g_at_exit.
 
   CommandLine::Init(0, 0);
-  InitializeLogging();
+  mojo::shell::InitializeLogging();
 
-  g_java_message_loop.Get().reset(
-      new base::MessageLoop(base::MessageLoop::TYPE_UI));
+  g_java_message_loop.Get().reset(new base::MessageLoopForUI);
   base::MessageLoopForUI::current()->Start();
 
   // TODO(abarth): At which point should we switch to cross-platform
@@ -87,24 +76,34 @@ static void Init(JNIEnv* env, jclass clazz, jobject context) {
 }
 
 static void Start(JNIEnv* env, jclass clazz, jobject context, jstring jurl) {
-  if (jurl) {
-    std::string app_url = base::android::ConvertJavaStringToUTF8(env, jurl);
+  std::string app_url;
+#if defined(MOJO_SHELL_DEBUG_URL)
+  app_url = MOJO_SHELL_DEBUG_URL;
+  // Sleep for 5 seconds to give the debugger a chance to attach.
+  sleep(5);
+#else
+  if (jurl)
+    app_url = base::android::ConvertJavaStringToUTF8(env, jurl);
+#endif
+  if (!app_url.empty()) {
     std::vector<std::string> argv;
     argv.push_back("mojo_shell");
-    argv.push_back("--app=" + app_url);
+    argv.push_back(app_url);
     CommandLine::ForCurrentProcess()->InitFromArgv(argv);
   }
 
-  ShellInit* init = new ShellInit();
-  init->java_runner = base::MessageLoopForUI::current()->message_loop_proxy();
-  init->activity.Reset(env, context);
+  base::android::ScopedJavaGlobalRef<jobject> activity;
+  activity.Reset(env, context);
 
-  g_shell_thread.Get().reset(new base::Thread("shell_thread"));
-  g_shell_thread.Get()->Start();
-  g_shell_thread.Get()->message_loop()->PostTask(FROM_HERE,
-      base::Bind(StartOnShellThread, init));
+  shell::Context* shell_context = new shell::Context();
+  shell_context->set_activity(activity.obj());
+  g_viewport_service_loader.Get().reset(new NativeViewportServiceLoader());
+  shell_context->service_manager()->SetLoaderForURL(
+      g_viewport_service_loader.Get().get(),
+      GURL("mojo:mojo_native_viewport_service"));
 
-  // TODO(abarth): Currently we leak g_shell_thread.
+  g_context.Get().reset(shell_context);
+  shell::Run(shell_context);
 }
 
 bool RegisterMojoMain(JNIEnv* env) {

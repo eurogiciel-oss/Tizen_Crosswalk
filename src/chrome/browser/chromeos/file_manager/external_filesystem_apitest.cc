@@ -11,12 +11,12 @@
 #include "chrome/browser/chromeos/file_manager/drive_test_util.h"
 #include "chrome/browser/drive/fake_drive_service.h"
 #include "chrome/browser/extensions/extension_apitest.h"
-#include "chrome/browser/google_apis/test_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/test/test_utils.h"
+#include "google_apis/drive/test_util.h"
 #include "webkit/browser/fileapi/external_mount_points.h"
 
 // Tests for access to external file systems (as defined in
@@ -43,6 +43,7 @@
 // - Doing searches on drive file system from file browser extension (using
 //   fileBrowserPrivate API).
 
+using drive::DriveIntegrationServiceFactory;
 using extensions::Extension;
 
 namespace file_manager {
@@ -88,19 +89,19 @@ bool InitializeLocalFileSystem(base::ScopedTempDir* tmp_dir,
 
   *mount_point_dir = tmp_dir->path().AppendASCII("mount");
   // Create the mount point.
-  if (!file_util::CreateDirectory(*mount_point_dir))
+  if (!base::CreateDirectory(*mount_point_dir))
     return false;
 
   base::FilePath test_dir = mount_point_dir->AppendASCII("test_dir");
-  if (!file_util::CreateDirectory(test_dir))
+  if (!base::CreateDirectory(test_dir))
     return false;
 
   base::FilePath test_subdir = test_dir.AppendASCII("empty_test_dir");
-  if (!file_util::CreateDirectory(test_subdir))
+  if (!base::CreateDirectory(test_subdir))
     return false;
 
   test_subdir = test_dir.AppendASCII("subdir");
-  if (!file_util::CreateDirectory(test_subdir))
+  if (!base::CreateDirectory(test_subdir))
     return false;
 
   base::FilePath test_file = test_dir.AppendASCII("test_file.xul");
@@ -249,6 +250,7 @@ class LocalFileSystemExtensionApiTest : public FileSystemExtensionApiTestBase {
     EXPECT_TRUE(content::BrowserContext::GetMountPoints(browser()->profile())->
         RegisterFileSystem(kLocalMountPointName,
                            fileapi::kFileSystemTypeNativeLocal,
+                           fileapi::FileSystemMountOption(),
                            mount_point_dir_));
   }
 
@@ -275,6 +277,7 @@ class RestrictedFileSystemExtensionApiTest
     EXPECT_TRUE(content::BrowserContext::GetMountPoints(browser()->profile())->
         RegisterFileSystem(kRestrictedMountPointName,
                            fileapi::kFileSystemTypeRestrictedNativeLocal,
+                           fileapi::FileSystemMountOption(),
                            mount_point_dir_));
   }
 
@@ -296,10 +299,13 @@ class DriveFileSystemExtensionApiTest : public FileSystemExtensionApiTestBase {
     // initialized by EventRouter.
     ASSERT_TRUE(test_cache_root_.CreateUniqueTempDir());
 
-    drive::DriveIntegrationServiceFactory::SetFactoryForTest(
-        base::Bind(
-            &DriveFileSystemExtensionApiTest::CreateDriveIntegrationService,
-            base::Unretained(this)));
+    // This callback will get called during Profile creation.
+    create_drive_integration_service_ = base::Bind(
+        &DriveFileSystemExtensionApiTest::CreateDriveIntegrationService,
+        base::Unretained(this));
+    service_factory_for_test_.reset(
+        new DriveIntegrationServiceFactory::ScopedFactoryForTest(
+            &create_drive_integration_service_));
   }
 
   // FileSystemExtensionApiTestBase OVERRIDE.
@@ -324,6 +330,10 @@ class DriveFileSystemExtensionApiTest : public FileSystemExtensionApiTestBase {
 
   base::ScopedTempDir test_cache_root_;
   drive::FakeDriveService* fake_drive_service_;
+  DriveIntegrationServiceFactory::FactoryCallback
+      create_drive_integration_service_;
+  scoped_ptr<DriveIntegrationServiceFactory::ScopedFactoryForTest>
+      service_factory_for_test_;
 };
 
 //

@@ -11,7 +11,6 @@
 /** @const */ var ListItem = cr.ui.ListItem;
 /** @const */ var Menu = cr.ui.Menu;
 /** @const */ var MenuButton = cr.ui.MenuButton;
-/** @const */ var Promise = cr.Promise;
 /** @const */ var Splitter = cr.ui.Splitter;
 /** @const */ var TreeItem = cr.ui.TreeItem;
 
@@ -314,6 +313,12 @@ function handleLoadForTree(e) {
   processHash();
 }
 
+/**
+ * Returns a promise for all the URLs in the {@code nodes} and the direct
+ * children of {@code nodes}.
+ * @param {!Array.<BookmarkTreeNode>} nodes .
+ * @return {!Promise.<Array.<string>>} .
+ */
 function getAllUrls(nodes) {
   var urls = [];
 
@@ -337,20 +342,13 @@ function getAllUrls(nodes) {
     if (bmm.isFolder(node))
       return bmm.loadSubtree(node.id);
     // Not a folder so we already have all the data we need.
-    return new Promise(node);
+    return Promise.resolve(node);
   });
 
-  var urlsPromise = new Promise();
-
-  var p = Promise.all.apply(null, promises);
-  p.addListener(function(nodes) {
-    nodes.forEach(function(node) {
-      addNodes(node);
-    });
-    urlsPromise.value = urls;
+  return Promise.all(promises).then(function(nodes) {
+    nodes.forEach(addNodes);
+    return urls;
   });
-
-  return urlsPromise;
 }
 
 /**
@@ -381,7 +379,7 @@ function getNodesForOpen(target) {
  * Returns a promise that will contain all URLs of all the selected bookmarks
  * and the nested bookmarks for use with the open commands.
  * @param {HTMLElement} target The target list or tree.
- * @return {Promise} .
+ * @return {Promise.<Array.<string>>} .
  */
 function getUrlsForOpenCommands(target) {
   return getAllUrls(getNodesForOpen(target));
@@ -418,7 +416,7 @@ function updateOpenCommand(e, command, singularId, pluralId, commandDisabled) {
     return;
   }
 
-  getUrlsForOpenCommands(e.target).addListener(function(urls) {
+  getUrlsForOpenCommands(e.target).then(function(urls) {
     var disabled = !urls.length;
     command.disabled = disabled;
     e.canExecute = !disabled;
@@ -670,7 +668,20 @@ function updateEditingCommands() {
   });
 }
 
-function handleChangeForTree(e) {
+function rateLimit(func, ms) {
+  if (func.rateLimitId_) {
+    clearTimeout(func.rateLimitId_);
+    delete func.rateLimitId_;
+  }
+  func.rateLimitId_ = setTimeout(func, ms);
+}
+
+function handleChangeForTree() {
+  // This should be rate limited based on the keyboard repeat rate.
+  rateLimit(handleChangeForTreeHelper, 50);
+}
+
+function handleChangeForTreeHelper() {
   updateAllCommands();
   navigateTo(tree.selectedItem.bookmarkId, updateHash);
 }
@@ -804,7 +815,7 @@ function openBookmarks(kind, opt_eventTarget) {
   // the whole tree since we would like to minimize the amount of data sent.
 
   var urlsP = getUrlsForOpenCommands(opt_eventTarget);
-  urlsP.addListener(function(urls) {
+  urlsP.then(function(urls) {
     getLinkController().openUrls(urls, kind);
     chrome.bookmarkManagerPrivate.recordLaunch();
   });
@@ -824,27 +835,42 @@ function openItem() {
 }
 
 /**
+ * Refreshes search results after delete or undo-delete.
+ * This ensures children of deleted folders do not remain in results
+ */
+function updateSearchResults() {
+  if (list.isSearch()) {
+    list.reload();
+  }
+}
+
+/**
  * Deletes the selected bookmarks. The bookmarks are saved in memory in case
  * the user needs to undo the deletion.
  */
 function deleteBookmarks() {
   var selectedIds = getSelectedBookmarkIds();
+  var filteredIds = getFilteredSelectedBookmarkIds();
   lastDeletedNodes = [];
 
   function performDelete() {
-    chrome.bookmarkManagerPrivate.removeTrees(selectedIds);
+    // Only remove filtered ids.
+    chrome.bookmarkManagerPrivate.removeTrees(filteredIds);
     $('undo-delete-command').canExecuteChange();
     performGlobalUndo = undoDelete;
   }
 
   // First, store information about the bookmarks being deleted.
+  // Store all selected ids.
   selectedIds.forEach(function(id) {
     chrome.bookmarks.getSubTree(id, function(results) {
       lastDeletedNodes.push(results);
 
       // When all nodes have been saved, perform the deletion.
-      if (lastDeletedNodes.length === selectedIds.length)
+      if (lastDeletedNodes.length === selectedIds.length) {
         performDelete();
+        updateSearchResults();
+      }
     });
   });
 }
@@ -875,6 +901,8 @@ function restoreTree(node, parentId) {
         restoreTree(child, result.id);
       });
     }
+
+    updateSearchResults();
   });
 }
 
@@ -1081,6 +1109,43 @@ function pasteBookmark(id) {
 }
 
 /**
+ * Returns true if child is contained in another selected folder.
+ * Traces parent nodes up the tree until a selected ancestor or root is found.
+ */
+function hasSelectedAncestor(parentNode) {
+  function contains(arr, item) {
+    for (var i = 0; i < arr.length; i++)
+        if (arr[i] === item)
+          return true;
+    return false;
+  }
+
+  // Don't search top level, cannot select permanent nodes in search.
+  if (parentNode == null || parentNode.id <= 2)
+    return false;
+
+  // Found selected ancestor.
+  if (contains(getSelectedBookmarkNodes(), parentNode))
+    return true;
+
+  // Keep digging.
+  return hasSelectedAncestor(tree.getBookmarkNodeById(parentNode.parentId));
+}
+
+function getFilteredSelectedBookmarkIds() {
+  // Remove duplicates from filteredIds and return.
+  var filteredIds = new Array();
+  // Selected nodes to iterate through for matches.
+  var nodes = getSelectedBookmarkNodes();
+
+  for (var i = 0; i < nodes.length; i++)
+    if (!hasSelectedAncestor(tree.getBookmarkNodeById(nodes[i].parentId)))
+      filteredIds.splice(0, 0, nodes[i].id);
+
+  return filteredIds;
+}
+
+/**
  * Handler for the command event. This is used for context menu of list/tree
  * and organized menu.
  * @param {!Event} e The event object.
@@ -1134,7 +1199,10 @@ function handleCommand(e) {
     case 'cut-command':
       recordUserAction('Cut');
       chrome.bookmarkManagerPrivate.cut(getSelectedBookmarkIds(),
-                                        updatePasteCommand);
+                                        function() {
+                                          updatePasteCommand();
+                                          updateSearchResults();
+                                        });
       break;
     case 'paste-from-organize-menu-command':
       pasteBookmark(list.parentId);
@@ -1215,7 +1283,11 @@ function initializeBookmarkManager() {
   if (!chrome.bookmarks)
     console.error('Bookmarks extension API is not available');
 
-  chrome.bookmarkManagerPrivate.getStrings(loadLocalizedStrings);
+  chrome.bookmarkManagerPrivate.getStrings(continueInitializeBookmarkManager);
+}
+
+function continueInitializeBookmarkManager(localizedStrings) {
+  loadLocalizedStrings(localizedStrings);
 
   bmm.treeLookup[searchTreeItem.bookmarkId] = searchTreeItem;
 

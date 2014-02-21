@@ -28,9 +28,8 @@
 #include "core/fetch/CrossOriginAccessControl.h"
 
 #include "platform/network/HTTPParsers.h"
-#include "platform/network/ResourceRequest.h"
 #include "platform/network/ResourceResponse.h"
-#include "weborigin/SecurityOrigin.h"
+#include "platform/weborigin/SecurityOrigin.h"
 #include "wtf/Threading.h"
 #include "wtf/text/AtomicString.h"
 #include "wtf/text/StringBuilder.h"
@@ -42,7 +41,7 @@ bool isOnAccessControlSimpleRequestMethodWhitelist(const String& method)
     return method == "GET" || method == "HEAD" || method == "POST";
 }
 
-bool isOnAccessControlSimpleRequestHeaderWhitelist(const String& name, const String& value)
+bool isOnAccessControlSimpleRequestHeaderWhitelist(const AtomicString& name, const AtomicString& value)
 {
     if (equalIgnoringCase(name, "accept")
         || equalIgnoringCase(name, "accept-language")
@@ -53,7 +52,7 @@ bool isOnAccessControlSimpleRequestHeaderWhitelist(const String& name, const Str
 
     // Preflight is required for MIME types that can not be sent via form submission.
     if (equalIgnoringCase(name, "content-type")) {
-        String mimeType = extractMIMETypeFromMediaType(value);
+        AtomicString mimeType = extractMIMETypeFromMediaType(value);
         return equalIgnoringCase(mimeType, "application/x-www-form-urlencoded")
             || equalIgnoringCase(mimeType, "multipart/form-data")
             || equalIgnoringCase(mimeType, "text/plain");
@@ -103,7 +102,7 @@ void updateRequestForAccessControl(ResourceRequest& request, SecurityOrigin* sec
     request.setAllowCookies(allowCredentials == AllowStoredCredentials);
 
     if (securityOrigin)
-        request.setHTTPOrigin(securityOrigin->toString());
+        request.setHTTPOrigin(securityOrigin->toAtomicString());
 }
 
 ResourceRequest createAccessControlPreflightRequest(const ResourceRequest& request, SecurityOrigin* securityOrigin)
@@ -124,15 +123,19 @@ ResourceRequest createAccessControlPreflightRequest(const ResourceRequest& reque
 
         HTTPHeaderMap::const_iterator end = requestHeaderFields.end();
         for (; it != end; ++it) {
-            headerBuffer.append(',');
-            headerBuffer.append(' ');
+            headerBuffer.appendLiteral(", ");
             headerBuffer.append(it->key);
         }
 
-        preflightRequest.setHTTPHeaderField("Access-Control-Request-Headers", headerBuffer.toString().lower());
+        preflightRequest.setHTTPHeaderField("Access-Control-Request-Headers", AtomicString(headerBuffer.toString().lower()));
     }
 
     return preflightRequest;
+}
+
+static bool isOriginSeparator(UChar ch)
+{
+    return isASCIISpace(ch) || ch == ',';
 }
 
 bool passesAccessControlCheck(const ResourceResponse& response, StoredCredentials includeCredentials, SecurityOrigin* securityOrigin, String& errorDescription)
@@ -140,30 +143,36 @@ bool passesAccessControlCheck(const ResourceResponse& response, StoredCredential
     AtomicallyInitializedStatic(AtomicString&, accessControlAllowOrigin = *new AtomicString("access-control-allow-origin", AtomicString::ConstructFromLiteral));
     AtomicallyInitializedStatic(AtomicString&, accessControlAllowCredentials = *new AtomicString("access-control-allow-credentials", AtomicString::ConstructFromLiteral));
 
+    if (!response.httpStatusCode()) {
+        errorDescription = "Received an invalid response. Origin '" + securityOrigin->toString() + "' is therefore not allowed access.";
+        return false;
+    }
+
     // A wildcard Access-Control-Allow-Origin can not be used if credentials are to be sent,
     // even with Access-Control-Allow-Credentials set to true.
-    const String& accessControlOriginString = response.httpHeaderField(accessControlAllowOrigin);
-    if (accessControlOriginString == "*" && includeCredentials == DoNotAllowStoredCredentials)
+    const AtomicString& accessControlOriginString = response.httpHeaderField(accessControlAllowOrigin);
+    if (accessControlOriginString == starAtom && includeCredentials == DoNotAllowStoredCredentials)
         return true;
 
-    // FIXME: Access-Control-Allow-Origin can contain a list of origins.
-    if (accessControlOriginString != securityOrigin->toString()) {
-        if (accessControlOriginString == "*") {
-            errorDescription = "Wildcards cannot be used in the 'Access-Control-Allow-Origin' header when the credentials flag is true. Origin '" + securityOrigin->toString() + "' is therefore not allowed access.";
+    if (accessControlOriginString != securityOrigin->toAtomicString()) {
+        if (accessControlOriginString == starAtom) {
+            errorDescription = "A wildcard '*' cannot be used in the 'Access-Control-Allow-Origin' header when the credentials flag is true. Origin '" + securityOrigin->toString() + "' is therefore not allowed access.";
         } else if (accessControlOriginString.isEmpty()) {
             errorDescription = "No 'Access-Control-Allow-Origin' header is present on the requested resource. Origin '" + securityOrigin->toString() + "' is therefore not allowed access.";
+        } else if (accessControlOriginString.string().find(isOriginSeparator, 0) != kNotFound) {
+            errorDescription = "The 'Access-Control-Allow-Origin' header contains multiple values '" + accessControlOriginString + "', but only one is allowed. Origin '" + securityOrigin->toString() + "' is therefore not allowed access.";
         } else {
             KURL headerOrigin(KURL(), accessControlOriginString);
             if (!headerOrigin.isValid())
                 errorDescription = "The 'Access-Control-Allow-Origin' header contains the invalid value '" + accessControlOriginString + "'. Origin '" + securityOrigin->toString() + "' is therefore not allowed access.";
             else
-                errorDescription = "The 'Access-Control-Allow-Origin' whitelists only '" + accessControlOriginString + "'. Origin '" + securityOrigin->toString() + "' is not in the list, and is therefore not allowed access.";
+                errorDescription = "The 'Access-Control-Allow-Origin' header has a value '" + accessControlOriginString + "' that is not equal to the supplied origin. Origin '" + securityOrigin->toString() + "' is therefore not allowed access.";
         }
         return false;
     }
 
     if (includeCredentials == AllowStoredCredentials) {
-        const String& accessControlCredentialsString = response.httpHeaderField(accessControlAllowCredentials);
+        const AtomicString& accessControlCredentialsString = response.httpHeaderField(accessControlAllowCredentials);
         if (accessControlCredentialsString != "true") {
             errorDescription = "Credentials flag is 'true', but the 'Access-Control-Allow-Credentials' header is '" + accessControlCredentialsString + "'. It must be 'true' to allow credentials.";
             return false;

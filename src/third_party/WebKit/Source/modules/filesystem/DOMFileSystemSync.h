@@ -42,7 +42,7 @@ class FileEntrySync;
 class FileWriterSync;
 class ExceptionState;
 
-class DOMFileSystemSync : public DOMFileSystemBase, public ScriptWrappable {
+class DOMFileSystemSync FINAL : public DOMFileSystemBase, public ScriptWrappable {
 public:
     static PassRefPtr<DOMFileSystemSync> create(ExecutionContext* context, const String& name, FileSystemType type, const KURL& rootURL)
     {
@@ -52,6 +52,8 @@ public:
     static PassRefPtr<DOMFileSystemSync> create(DOMFileSystemBase*);
 
     virtual ~DOMFileSystemSync();
+
+    virtual void reportError(PassOwnPtr<ErrorCallback>, PassRefPtr<FileError>) OVERRIDE;
 
     PassRefPtr<DirectoryEntrySync> root();
 

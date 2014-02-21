@@ -21,22 +21,15 @@
 #include "chrome/browser/chromeos/login/user_manager.h"
 #include "chrome/browser/chromeos/policy/device_policy_builder.h"
 #include "chrome/browser/chromeos/policy/device_policy_cros_browser_test.h"
+#include "chrome/browser/chromeos/policy/proto/chrome_device_policy.pb.h"
 #include "chrome/browser/chromeos/policy/user_cloud_policy_manager_chromeos.h"
 #include "chrome/browser/chromeos/policy/user_cloud_policy_manager_factory_chromeos.h"
 #include "chrome/browser/chromeos/profiles/profile_helper.h"
 #include "chrome/browser/chromeos/settings/device_settings_service.h"
 #include "chrome/browser/extensions/api/power/power_api_manager.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/policy/cloud/cloud_policy_core.h"
-#include "chrome/browser/policy/cloud/cloud_policy_store.h"
-#include "chrome/browser/policy/cloud/policy_builder.h"
-#include "chrome/browser/policy/external_data_fetcher.h"
-#include "chrome/browser/policy/mock_policy_service.h"
-#include "chrome/browser/policy/policy_service.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/policy/profile_policy_connector_factory.h"
-#include "chrome/browser/policy/proto/chromeos/chrome_device_policy.pb.h"
-#include "chrome/browser/policy/proto/cloud/device_management_backend.pb.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/common/extensions/api/power.h"
@@ -49,11 +42,18 @@
 #include "chromeos/dbus/fake_session_manager_client.h"
 #include "chromeos/dbus/power_manager/policy.pb.h"
 #include "chromeos/dbus/power_policy_controller.h"
+#include "components/policy/core/common/cloud/cloud_policy_core.h"
+#include "components/policy/core/common/cloud/cloud_policy_store.h"
+#include "components/policy/core/common/cloud/policy_builder.h"
+#include "components/policy/core/common/external_data_fetcher.h"
+#include "components/policy/core/common/mock_policy_service.h"
+#include "components/policy/core/common/policy_service.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_source.h"
 #include "content/public/test/test_utils.h"
 #include "crypto/rsa_private_key.h"
+#include "policy/proto/device_management_backend.pb.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -151,14 +151,15 @@ PowerPolicyBrowserTestBase::PowerPolicyBrowserTestBase()
 }
 
 void PowerPolicyBrowserTestBase::SetUpInProcessBrowserTestFixture() {
+  power_manager_client_ = new chromeos::FakePowerManagerClient;
+  fake_dbus_thread_manager()->SetPowerManagerClient(
+      scoped_ptr<chromeos::PowerManagerClient>(power_manager_client_));
+
   DevicePolicyCrosBrowserTest::SetUpInProcessBrowserTestFixture();
 
   // Initialize device policy.
   InstallOwnerKey();
   MarkAsEnterpriseOwned();
-
-  power_manager_client_ =
-      fake_dbus_thread_manager()->fake_power_manager_client();
 }
 
 void PowerPolicyBrowserTestBase::SetUpOnMainThread() {
@@ -180,7 +181,7 @@ void PowerPolicyBrowserTestBase::InstallUserKey() {
                    .AppendASCII("policy.pub");
   std::vector<uint8> user_key_bits;
   ASSERT_TRUE(user_policy_.GetSigningKey()->ExportPublicKey(&user_key_bits));
-  ASSERT_TRUE(file_util::CreateDirectory(user_key_file.DirName()));
+  ASSERT_TRUE(base::CreateDirectory(user_key_file.DirName()));
   ASSERT_EQ(file_util::WriteFile(
                 user_key_file,
                 reinterpret_cast<const char*>(user_key_bits.data()),
@@ -289,7 +290,7 @@ void PowerPolicyInSessionBrowserTest::SetUpOnMainThread() {
 // Verifies that device policy is applied on the login screen.
 IN_PROC_BROWSER_TEST_F(PowerPolicyLoginScreenBrowserTest, SetDevicePolicy) {
   pm::PowerManagementPolicy power_management_policy =
-      power_manager_client_->get_policy();
+      power_manager_client_->policy();
   power_management_policy.mutable_ac_delays()->set_screen_dim_ms(5000);
   power_management_policy.mutable_ac_delays()->set_screen_off_ms(7000);
   power_management_policy.mutable_ac_delays()->set_idle_ms(9000);
@@ -309,26 +310,26 @@ IN_PROC_BROWSER_TEST_F(PowerPolicyLoginScreenBrowserTest, SetDevicePolicy) {
       set_login_screen_power_management(kLoginScreenPowerManagementPolicy);
   StoreAndReloadDevicePolicyAndWaitForLoginProfileChange();
   EXPECT_EQ(GetDebugString(power_management_policy),
-            GetDebugString(power_manager_client_->get_policy()));
+            GetDebugString(power_manager_client_->policy()));
 }
 
 // Verifies that device policy is ignored during a session.
 IN_PROC_BROWSER_TEST_F(PowerPolicyInSessionBrowserTest, SetDevicePolicy) {
   pm::PowerManagementPolicy power_management_policy =
-      power_manager_client_->get_policy();
+      power_manager_client_->policy();
 
   em::ChromeDeviceSettingsProto& proto(device_policy()->payload());
   proto.mutable_login_screen_power_management()->
       set_login_screen_power_management(kLoginScreenPowerManagementPolicy);
   StoreAndReloadDevicePolicyAndWaitForLoginProfileChange();
   EXPECT_EQ(GetDebugString(power_management_policy),
-            GetDebugString(power_manager_client_->get_policy()));
+            GetDebugString(power_manager_client_->policy()));
 }
 
 // Verifies that user policy is applied during a session.
 IN_PROC_BROWSER_TEST_F(PowerPolicyInSessionBrowserTest, SetUserPolicy) {
   pm::PowerManagementPolicy power_management_policy =
-      power_manager_client_->get_policy();
+      power_manager_client_->policy();
   power_management_policy.mutable_ac_delays()->set_screen_dim_ms(5000);
   power_management_policy.mutable_ac_delays()->set_screen_lock_ms(6000);
   power_management_policy.mutable_ac_delays()->set_screen_off_ms(7000);
@@ -378,14 +379,14 @@ IN_PROC_BROWSER_TEST_F(PowerPolicyInSessionBrowserTest, SetUserPolicy) {
   user_policy_.payload().mutable_waitforinitialuseractivity()->set_value(true);
   StoreAndReloadUserPolicy();
   EXPECT_EQ(GetDebugString(power_management_policy),
-            GetDebugString(power_manager_client_->get_policy()));
+            GetDebugString(power_manager_client_->policy()));
 }
 
 // Verifies that screen wake locks can be enabled and disabled by extensions and
 // user policy during a session.
 IN_PROC_BROWSER_TEST_F(PowerPolicyInSessionBrowserTest, AllowScreenWakeLocks) {
   pm::PowerManagementPolicy baseline_policy =
-      power_manager_client_->get_policy();
+      power_manager_client_->policy();
 
   // Default settings should have delays.
   pm::PowerManagementPolicy power_management_policy = baseline_policy;
@@ -408,24 +409,23 @@ IN_PROC_BROWSER_TEST_F(PowerPolicyInSessionBrowserTest, AllowScreenWakeLocks) {
   policy.mutable_battery_delays()->set_screen_dim_ms(0);
   policy.mutable_battery_delays()->set_screen_off_ms(0);
   policy.set_ac_idle_action(
-      power_manager_client_->get_policy().ac_idle_action());
+      power_manager_client_->policy().ac_idle_action());
   policy.set_battery_idle_action(
-      power_manager_client_->get_policy().battery_idle_action());
-  policy.set_reason(power_manager_client_->get_policy().reason());
+      power_manager_client_->policy().battery_idle_action());
+  policy.set_reason(power_manager_client_->policy().reason());
   EXPECT_EQ(GetDebugString(policy),
-            GetDebugString(power_manager_client_->get_policy()));
+            GetDebugString(power_manager_client_->policy()));
 
   // Engage the user policy and verify that the defaults take effect again.
   user_policy_.payload().mutable_allowscreenwakelocks()->set_value(false);
   StoreAndReloadUserPolicy();
   policy = baseline_policy;
-  policy.set_ac_idle_action(
-      power_manager_client_->get_policy().ac_idle_action());
+  policy.set_ac_idle_action(power_manager_client_->policy().ac_idle_action());
   policy.set_battery_idle_action(
-      power_manager_client_->get_policy().battery_idle_action());
-  policy.set_reason(power_manager_client_->get_policy().reason());
+      power_manager_client_->policy().battery_idle_action());
+  policy.set_reason(power_manager_client_->policy().reason());
   EXPECT_EQ(GetDebugString(policy),
-            GetDebugString(power_manager_client_->get_policy()));
+            GetDebugString(power_manager_client_->policy()));
 }
 
 }  // namespace policy

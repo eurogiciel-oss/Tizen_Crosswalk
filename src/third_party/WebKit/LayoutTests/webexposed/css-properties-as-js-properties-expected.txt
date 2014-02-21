@@ -102,6 +102,7 @@ floodColor
 floodOpacity
 font
 fontFamily
+fontKerning
 fontSize
 fontStretch
 fontStyle
@@ -126,6 +127,7 @@ height
 imageRendering
 isolation
 justifyContent
+justifySelf
 kerning
 left
 length
@@ -186,6 +188,7 @@ position
 quotes
 resize
 right
+scrollBehavior
 shapeImageThreshold
 shapeInside
 shapeMargin
@@ -316,7 +319,6 @@ webkitFilter
 webkitFlowFrom
 webkitFlowInto
 webkitFontFeatureSettings
-webkitFontKerning
 webkitFontSizeDelta
 webkitFontSmoothing
 webkitFontVariantLigatures

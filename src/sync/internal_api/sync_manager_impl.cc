@@ -40,6 +40,7 @@
 #include "sync/js/js_reply_handler.h"
 #include "sync/notifier/invalidation_util.h"
 #include "sync/notifier/invalidator.h"
+#include "sync/notifier/object_id_invalidation_map.h"
 #include "sync/protocol/proto_value_conversions.h"
 #include "sync/protocol/sync.pb.h"
 #include "sync/syncable/directory.h"
@@ -190,20 +191,8 @@ SyncManagerImpl::SyncManagerImpl(const std::string& name)
       "getNotificationInfo",
       &SyncManagerImpl::GetNotificationInfo);
   BindJsMessageHandler(
-      "getRootNodeDetails",
-      &SyncManagerImpl::GetRootNodeDetails);
-  BindJsMessageHandler(
-      "getNodeSummariesById",
-      &SyncManagerImpl::GetNodeSummariesById);
-  BindJsMessageHandler(
-     "getNodeDetailsById",
-      &SyncManagerImpl::GetNodeDetailsById);
-  BindJsMessageHandler(
       "getAllNodes",
       &SyncManagerImpl::GetAllNodes);
-  BindJsMessageHandler(
-      "getChildNodeIds",
-      &SyncManagerImpl::GetChildNodeIds);
   BindJsMessageHandler(
       "getClientServerTraffic",
       &SyncManagerImpl::GetClientServerTraffic);
@@ -330,11 +319,11 @@ void SyncManagerImpl::ConfigureSyncer(
   ConfigurationParams params(GetSourceFromReason(reason),
                              to_download,
                              new_routing_info,
-                             ready_task);
+                             ready_task,
+                             retry_task);
 
   scheduler_->Start(SyncScheduler::CONFIGURATION_MODE);
-  if (!scheduler_->ScheduleConfiguration(params))
-    retry_task.Run();
+  scheduler_->ScheduleConfiguration(params);
 }
 
 void SyncManagerImpl::Init(
@@ -344,7 +333,7 @@ void SyncManagerImpl::Init(
     int port,
     bool use_ssl,
     scoped_ptr<HttpPostProviderFactory> post_factory,
-    const std::vector<ModelSafeWorker*>& workers,
+    const std::vector<scoped_refptr<ModelSafeWorker> >& workers,
     ExtensionsActivity* extensions_activity,
     SyncManager::ChangeDelegate* change_delegate,
     const SyncCredentials& credentials,
@@ -422,11 +411,12 @@ void SyncManagerImpl::Init(
 
   std::string sync_id = directory()->cache_guid();
 
+  DVLOG(1) << "Setting sync client ID: " << sync_id;
   allstatus_.SetSyncId(sync_id);
+  DVLOG(1) << "Setting invalidator client ID: " << invalidator_client_id;
   allstatus_.SetInvalidatorClientId(invalidator_client_id);
 
-  DVLOG(1) << "Setting sync client ID: " << sync_id;
-  DVLOG(1) << "Setting invalidator client ID: " << invalidator_client_id;
+  model_type_registry_.reset(new ModelTypeRegistry(workers, directory()));
 
   // Build a SyncSessionContext and store the worker in it.
   DVLOG(1) << "Sync is bringing up SyncSessionContext.";
@@ -436,11 +426,11 @@ void SyncManagerImpl::Init(
   session_context_ = internal_components_factory->BuildContext(
       connection_manager_.get(),
       directory(),
-      workers,
       extensions_activity,
       listeners,
       &debug_info_event_listener_,
       &traffic_recorder_,
+      model_type_registry_.get(),
       invalidator_client_id).Pass();
   session_context_->set_account_name(credentials.email);
   scheduler_ = internal_components_factory->BuildScheduler(
@@ -525,7 +515,7 @@ void SyncManagerImpl::StartSyncingNormally(
   // appropriately set and that it's only modified when switching to normal
   // mode.
   DCHECK(thread_checker_.CalledOnValidThread());
-  session_context_->set_routing_info(routing_info);
+  session_context_->SetRoutingInfo(routing_info);
   scheduler_->Start(SyncScheduler::NORMAL_MODE);
 }
 
@@ -637,6 +627,7 @@ void SyncManagerImpl::ShutdownOnSyncThread() {
 
   scheduler_.reset();
   session_context_.reset();
+  model_type_registry_.reset();
 
   if (sync_encryption_handler_) {
     sync_encryption_handler_->RemoveObserver(&debug_info_event_listener_);
@@ -933,8 +924,8 @@ void SyncManagerImpl::OnSyncEngineEvent(const SyncEngineEvent& event) {
   // whether we should sync again.
   if (event.what_happened == SyncEngineEvent::SYNC_CYCLE_ENDED) {
     if (!initialized_) {
-      LOG(INFO) << "OnSyncCycleCompleted not sent because sync api is not "
-                << "initialized";
+      DVLOG(1) << "OnSyncCycleCompleted not sent because sync api is not "
+               << "initialized";
       return;
     }
 
@@ -1040,16 +1031,6 @@ JsArgList SyncManagerImpl::GetNotificationInfo(
   return JsArgList(&return_args);
 }
 
-JsArgList SyncManagerImpl::GetRootNodeDetails(
-    const JsArgList& args) {
-  ReadTransaction trans(FROM_HERE, GetUserShare());
-  ReadNode root(&trans);
-  root.InitByRootLookup();
-  base::ListValue return_args;
-  return_args.Append(root.GetDetailsAsValue());
-  return JsArgList(&return_args);
-}
-
 JsArgList SyncManagerImpl::GetClientServerTraffic(
     const JsArgList& args) {
   base::ListValue return_args;
@@ -1059,90 +1040,12 @@ JsArgList SyncManagerImpl::GetClientServerTraffic(
   return JsArgList(&return_args);
 }
 
-namespace {
-
-int64 GetId(const base::ListValue& ids, int i) {
-  std::string id_str;
-  if (!ids.GetString(i, &id_str)) {
-    return kInvalidId;
-  }
-  int64 id = kInvalidId;
-  if (!base::StringToInt64(id_str, &id)) {
-    return kInvalidId;
-  }
-  return id;
-}
-
-JsArgList GetNodeInfoById(
-    const JsArgList& args,
-    UserShare* user_share,
-    base::DictionaryValue* (BaseNode::*info_getter)() const) {
-  CHECK(info_getter);
-  base::ListValue return_args;
-  base::ListValue* node_summaries = new base::ListValue();
-  return_args.Append(node_summaries);
-  const base::ListValue* id_list = NULL;
-  ReadTransaction trans(FROM_HERE, user_share);
-  if (args.Get().GetList(0, &id_list)) {
-    CHECK(id_list);
-    for (size_t i = 0; i < id_list->GetSize(); ++i) {
-      int64 id = GetId(*id_list, i);
-      if (id == kInvalidId) {
-        continue;
-      }
-      ReadNode node(&trans);
-      if (node.InitByIdLookup(id) != BaseNode::INIT_OK) {
-        continue;
-      }
-      node_summaries->Append((node.*info_getter)());
-    }
-  }
-  return JsArgList(&return_args);
-}
-
-}  // namespace
-
-JsArgList SyncManagerImpl::GetNodeSummariesById(const JsArgList& args) {
-  return GetNodeInfoById(args, GetUserShare(), &BaseNode::GetSummaryAsValue);
-}
-
-JsArgList SyncManagerImpl::GetNodeDetailsById(const JsArgList& args) {
-  return GetNodeInfoById(args, GetUserShare(), &BaseNode::GetDetailsAsValue);
-}
-
 JsArgList SyncManagerImpl::GetAllNodes(const JsArgList& args) {
-  base::ListValue return_args;
-  base::ListValue* result = new base::ListValue();
-  return_args.Append(result);
-
   ReadTransaction trans(FROM_HERE, GetUserShare());
-  std::vector<const syncable::EntryKernel*> entry_kernels;
-  trans.GetDirectory()->GetAllEntryKernels(trans.GetWrappedTrans(),
-                                           &entry_kernels);
-
-  for (std::vector<const syncable::EntryKernel*>::const_iterator it =
-           entry_kernels.begin(); it != entry_kernels.end(); ++it) {
-    result->Append((*it)->ToValue(trans.GetCryptographer()));
-  }
-
-  return JsArgList(&return_args);
-}
-
-JsArgList SyncManagerImpl::GetChildNodeIds(const JsArgList& args) {
   base::ListValue return_args;
-  base::ListValue* child_ids = new base::ListValue();
-  return_args.Append(child_ids);
-  int64 id = GetId(args.Get(), 0);
-  if (id != kInvalidId) {
-    ReadTransaction trans(FROM_HERE, GetUserShare());
-    syncable::Directory::Metahandles child_handles;
-    trans.GetDirectory()->GetChildHandlesByHandle(trans.GetWrappedTrans(),
-                                                  id, &child_handles);
-    for (syncable::Directory::Metahandles::const_iterator it =
-             child_handles.begin(); it != child_handles.end(); ++it) {
-      child_ids->Append(new base::StringValue(base::Int64ToString(*it)));
-    }
-  }
+  scoped_ptr<base::ListValue> nodes(
+      trans.GetDirectory()->GetAllNodeDetails(trans.GetWrappedTrans()));
+  return_args.Append(nodes.release());
   return JsArgList(&return_args);
 }
 

@@ -35,7 +35,7 @@ ScrollbarLayerImplBase* ScrollbarLayerImplBase::ToScrollbarLayer() {
 }
 
 gfx::Rect ScrollbarLayerImplBase::ScrollbarLayerRectToContentRect(
-    gfx::RectF layer_rect) const {
+    const gfx::RectF& layer_rect) const {
   // Don't intersect with the bounds as in LayerRectToContentRect() because
   // layer_rect here might be in coordinates of the containing layer.
   gfx::RectF content_rect = gfx::ScaleRect(layer_rect,
@@ -66,6 +66,9 @@ void ScrollbarLayerImplBase::SetVerticalAdjust(float vertical_adjust) {
 }
 
 void ScrollbarLayerImplBase::SetVisibleToTotalLengthRatio(float ratio) {
+  if (!IsThumbResizable())
+    return;
+
   if (visible_to_total_length_ratio_ == ratio)
     return;
   visible_to_total_length_ratio_ = ratio;

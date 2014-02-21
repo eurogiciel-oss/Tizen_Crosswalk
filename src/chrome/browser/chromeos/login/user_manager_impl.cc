@@ -12,6 +12,7 @@
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/files/file_path.h"
+#include "base/format_macros.h"
 #include "base/logging.h"
 #include "base/metrics/histogram.h"
 #include "base/prefs/pref_registry_simple.h"
@@ -27,10 +28,9 @@
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chrome_notification_types.h"
+#include "chrome/browser/chromeos/base/locale_util.h"
 #include "chrome/browser/chromeos/login/auth_sync_observer.h"
 #include "chrome/browser/chromeos/login/auth_sync_observer_factory.h"
-#include "chrome/browser/chromeos/login/default_pinned_apps_field_trial.h"
-#include "chrome/browser/chromeos/login/language_switch_menu.h"
 #include "chrome/browser/chromeos/login/login_display.h"
 #include "chrome/browser/chromeos/login/login_utils.h"
 #include "chrome/browser/chromeos/login/multi_profile_first_run_notification.h"
@@ -39,18 +39,18 @@
 #include "chrome/browser/chromeos/login/supervised_user_manager_impl.h"
 #include "chrome/browser/chromeos/login/user_image_manager_impl.h"
 #include "chrome/browser/chromeos/login/wizard_controller.h"
+#include "chrome/browser/chromeos/policy/browser_policy_connector_chromeos.h"
 #include "chrome/browser/chromeos/policy/device_local_account.h"
 #include "chrome/browser/chromeos/profiles/profile_helper.h"
 #include "chrome/browser/chromeos/session_length_limiter.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/managed_mode/managed_user_service.h"
-#include "chrome/browser/policy/browser_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/sync/profile_sync_service.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/common/crash_keys.h"
 #include "chrome/common/pref_names.h"
 #include "chromeos/chromeos_switches.h"
 #include "chromeos/cryptohome/async_method_caller.h"
@@ -68,20 +68,6 @@
 using content::BrowserThread;
 
 namespace chromeos {
-
-struct UpdateUserAccountDataCallbackData {
-  UpdateUserAccountDataCallbackData(const std::string& user_id,
-                                    const string16& display_name,
-                                    const std::string& raw_locale)
-      : user_id_(user_id),
-        display_name_(display_name),
-        raw_locale_(raw_locale) {}
-  std::string user_id_;
-  string16 display_name_;
-  std::string raw_locale_;
-  std::string resolved_locale_;
-};
-
 namespace {
 
 // A vector pref of the the regular users known on this device, arranged in LRU
@@ -97,14 +83,21 @@ const char kPublicAccounts[] = "PublicAccounts";
 const char kPublicAccountPendingDataRemoval[] =
     "PublicAccountPendingDataRemoval";
 
-// A dictionary that maps usernames to the displayed name.
+// A dictionary that maps user IDs to the displayed name.
 const char kUserDisplayName[] = "UserDisplayName";
 
-// A dictionary that maps usernames to the displayed (non-canonical) emails.
+// A dictionary that maps user IDs to the user's given name.
+const char kUserGivenName[] = "UserGivenName";
+
+// A dictionary that maps user IDs to the displayed (non-canonical) emails.
 const char kUserDisplayEmail[] = "UserDisplayEmail";
 
-// A dictionary that maps usernames to OAuth token presence flag.
+// A dictionary that maps user IDs to OAuth token presence flag.
 const char kUserOAuthTokenStatus[] = "OAuthTokenStatus";
+
+// A dictionary that maps user IDs to a flag indicating whether online
+// authentication against GAIA should be enforced during the next sign-in.
+const char kUserForceOnlineSignin[] = "UserForceOnlineSignin";
 
 // A string pref containing the ID of the last user who logged in if it was
 // a regular user or an empty string if it was another type of user (guest,
@@ -129,7 +122,7 @@ void OnRemoveUserComplete(const std::string& user_email,
 // Helper function that copies users from |users_list| to |users_vector| and
 // |users_set|. Duplicates and users already present in |existing_users| are
 // skipped.
-void ParseUserList(const ListValue& users_list,
+void ParseUserList(const base::ListValue& users_list,
                    const std::set<std::string>& existing_users,
                    std::vector<std::string>* users_vector,
                    std::set<std::string>* users_set) {
@@ -161,14 +154,17 @@ class UserHashMatcher {
   const std::string& username_hash;
 };
 
-// Runs on SequencedWorkerPool thread.
-static void UpdateUserAccountDataImplCheckAndResolveLocale(
-    std::string* raw_account_locale,
-    std::string* resolved_account_locale) {
+// Runs on SequencedWorkerPool thread. Passes resolved locale to
+// |on_resolve_callback| on UI thread.
+void ResolveLocale(
+    const std::string& raw_locale,
+    base::Callback<void(const std::string&)> on_resolve_callback) {
   DCHECK(!BrowserThread::CurrentlyOn(BrowserThread::UI));
+  std::string resolved_locale;
   // Ignore result
-  l10n_util::CheckAndResolveLocale(*raw_account_locale,
-                                   resolved_account_locale);
+  l10n_util::CheckAndResolveLocale(raw_locale, &resolved_locale);
+  BrowserThread::PostTask(BrowserThread::UI, FROM_HERE,
+      base::Bind(on_resolve_callback, resolved_locale));
 }
 
 }  // namespace
@@ -179,9 +175,11 @@ void UserManager::RegisterPrefs(PrefRegistrySimple* registry) {
   registry->RegisterListPref(kPublicAccounts);
   registry->RegisterStringPref(kPublicAccountPendingDataRemoval, "");
   registry->RegisterStringPref(kLastLoggedInRegularUser, "");
-  registry->RegisterDictionaryPref(kUserOAuthTokenStatus);
   registry->RegisterDictionaryPref(kUserDisplayName);
+  registry->RegisterDictionaryPref(kUserGivenName);
   registry->RegisterDictionaryPref(kUserDisplayEmail);
+  registry->RegisterDictionaryPref(kUserOAuthTokenStatus);
+  registry->RegisterDictionaryPref(kUserForceOnlineSignin);
   SupervisedUserManager::RegisterPrefs(registry);
   SessionLengthLimiter::RegisterPrefs(registry);
 }
@@ -198,11 +196,11 @@ UserManagerImpl::UserManagerImpl()
       is_current_user_new_(false),
       is_current_user_ephemeral_regular_user_(false),
       ephemeral_users_enabled_(false),
-      user_image_manager_(new UserImageManagerImpl),
       supervised_user_manager_(new SupervisedUserManagerImpl(this)),
       manager_creation_time_(base::TimeTicks::Now()),
       multi_profile_first_run_notification_(
           new MultiProfileFirstRunNotification) {
+  UpdateNumberOfUsers();
   // UserManager instance should be used only on UI thread.
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   registrar_.Add(this, chrome::NOTIFICATION_OWNERSHIP_STATUS_CHANGED,
@@ -223,6 +221,17 @@ UserManagerImpl::UserManagerImpl()
                  base::Unretained(this)));
   multi_profile_user_controller_.reset(new MultiProfileUserController(
       this, g_browser_process->local_state()));
+
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
+  policy_observer_.reset(new policy::CloudExternalDataPolicyObserver(
+      cros_settings_,
+      this,
+      connector->GetDeviceLocalAccountPolicyService(),
+      policy::key::kUserAvatarImage,
+      this));
+  policy_observer_->Init();
+
   UpdateLoginState();
 }
 
@@ -251,12 +260,26 @@ void UserManagerImpl::Shutdown() {
   if (device_local_account_policy_service_)
     device_local_account_policy_service_->RemoveObserver(this);
 
-  user_image_manager_->Shutdown();
+  for (UserImageManagerMap::iterator it = user_image_managers_.begin(),
+                                     ie = user_image_managers_.end();
+       it != ie; ++it) {
+    it->second->Shutdown();
+  }
   multi_profile_user_controller_.reset();
+  policy_observer_.reset();
 }
 
-UserImageManager* UserManagerImpl::GetUserImageManager() {
-  return user_image_manager_.get();
+UserImageManager* UserManagerImpl::GetUserImageManager(
+    const std::string& user_id) {
+  UserImageManagerMap::iterator ui = user_image_managers_.find(user_id);
+  if (ui != user_image_managers_.end())
+    return ui->second.get();
+  linked_ptr<UserImageManagerImpl> mgr(new UserImageManagerImpl(
+      user_id,
+      cros_settings_,
+      this));
+  user_image_managers_[user_id] = mgr;
+  return mgr.get();
 }
 
 SupervisedUserManager* UserManagerImpl::GetSupervisedUserManager() {
@@ -301,9 +324,39 @@ const UserList& UserManagerImpl::GetLRULoggedInUsers() {
 }
 
 UserList UserManagerImpl::GetUnlockUsers() const {
+  const UserList& logged_in_users = GetLoggedInUsers();
+  if (logged_in_users.empty())
+    return UserList();
+
   UserList unlock_users;
-  if (primary_user_)
-    unlock_users.push_back(primary_user_);
+  Profile* profile = GetProfileByUser(primary_user_);
+  std::string primary_behavior =
+      profile->GetPrefs()->GetString(prefs::kMultiProfileUserBehavior);
+
+  // Specific case: only one logged in user or
+  // primary user has primary-only multi-profile policy.
+  if (logged_in_users.size() == 1 ||
+      primary_behavior == MultiProfileUserController::kBehaviorPrimaryOnly) {
+    if (primary_user_->can_lock())
+      unlock_users.push_back(primary_user_);
+  } else {
+    // Fill list of potential unlock users based on multi-profile policy state.
+    for (UserList::const_iterator it = logged_in_users.begin();
+         it != logged_in_users.end(); ++it) {
+      User* user = (*it);
+      Profile* profile = GetProfileByUser(user);
+      const std::string behavior =
+          profile->GetPrefs()->GetString(prefs::kMultiProfileUserBehavior);
+      if (behavior == MultiProfileUserController::kBehaviorUnrestricted &&
+          user->can_lock()) {
+        unlock_users.push_back(user);
+      } else if (behavior == MultiProfileUserController::kBehaviorPrimaryOnly) {
+        NOTREACHED()
+            << "Spotted primary-only multi-profile policy for non-primary user";
+      }
+    }
+  }
+
   return unlock_users;
 }
 
@@ -328,7 +381,7 @@ void UserManagerImpl::UserLoggedIn(const std::string& user_id,
     // Reset the new user flag if the user already exists.
     is_current_user_new_ = false;
     // Set active user wallpaper back.
-    WallpaperManager::Get()->SetUserWallpaper(active_user_->email());
+    WallpaperManager::Get()->SetUserWallpaperNow(active_user_->email());
     NotifyUserAddedToSession(user);
     return;
   }
@@ -384,11 +437,6 @@ void UserManagerImpl::UserLoggedIn(const std::string& user_id,
 
   UMA_HISTOGRAM_ENUMERATION("UserManager.LoginUserType",
                             active_user_->GetType(), User::NUM_USER_TYPES);
-
-  if (IsMultipleProfilesAllowed()) {
-    UMA_HISTOGRAM_COUNTS_100("MultiProfile.UserCount",
-                             GetLoggedInUsers().size());
-  }
 
   g_browser_process->local_state()->SetString(kLastLoggedInRegularUser,
     (active_user_->GetType() == User::USER_TYPE_REGULAR) ? user_id : "");
@@ -548,6 +596,13 @@ const User* UserManagerImpl::FindUser(const std::string& user_id) const {
   return FindUserInList(user_id);
 }
 
+User* UserManagerImpl::FindUserAndModify(const std::string& user_id) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  if (active_user_ && active_user_->email() == user_id)
+    return active_user_;
+  return FindUserInListAndModify(user_id);
+}
+
 const User* UserManagerImpl::GetLoggedInUser() const {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   return active_user_;
@@ -584,15 +639,32 @@ User* UserManagerImpl::GetUserByProfile(Profile* profile) const {
     const UserList& users = GetUsers();
     const UserList::const_iterator pos = std::find_if(
         users.begin(), users.end(), UserHashMatcher(username_hash));
-    return (pos != users.end()) ? *pos : NULL;
+    if (pos != users.end())
+      return *pos;
+
+    // Many tests do not have their users registered with UserManager and
+    // runs here. If |active_user_| matches |profile|, returns it.
+    return active_user_ &&
+                   ProfileHelper::GetProfilePathByUserIdHash(
+                       active_user_->username_hash()) == profile->GetPath()
+               ? active_user_
+               : NULL;
   }
   return active_user_;
 }
 
 Profile* UserManagerImpl::GetProfileByUser(const User* user) const {
-  if (IsMultipleProfilesAllowed())
-    return ProfileHelper::GetProfileByUserIdHash(user->username_hash());
-  return g_browser_process->profile_manager()->GetDefaultProfile();
+  Profile* profile = NULL;
+  if (IsMultipleProfilesAllowed() && user->is_profile_created())
+    profile = ProfileHelper::GetProfileByUserIdHash(user->username_hash());
+  else
+    profile = ProfileManager::GetActiveUserProfile();
+
+  // GetActiveUserProfile() or GetProfileByUserIdHash() returns a new instance
+  // of ProfileImpl(), but actually its OffTheRecordProfile() should be used.
+  if (profile && IsLoggedInAsGuest())
+    profile = profile->GetOffTheRecordProfile();
+  return profile;
 }
 
 void UserManagerImpl::SaveUserOAuthStatus(
@@ -607,7 +679,7 @@ void UserManagerImpl::SaveUserOAuthStatus(
 
   GetUserFlow(user_id)->HandleOAuthTokenStatusChange(oauth_token_status);
 
-  // Do not update local store if data stored or cached outside the user's
+  // Do not update local state if data stored or cached outside the user's
   // cryptohome is to be treated as ephemeral.
   if (IsUserNonCryptohomeDataEphemeral(user_id))
     return;
@@ -619,161 +691,122 @@ void UserManagerImpl::SaveUserOAuthStatus(
       new base::FundamentalValue(static_cast<int>(oauth_token_status)));
 }
 
-User::OAuthTokenStatus UserManagerImpl::LoadUserOAuthStatus(
-    const std::string& user_id) const {
+void UserManagerImpl::SaveForceOnlineSignin(const std::string& user_id,
+                                            bool force_online_signin) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
-  PrefService* local_state = g_browser_process->local_state();
-  const DictionaryValue* prefs_oauth_status =
-      local_state->GetDictionary(kUserOAuthTokenStatus);
-  int oauth_token_status = User::OAUTH_TOKEN_STATUS_UNKNOWN;
-  if (prefs_oauth_status &&
-      prefs_oauth_status->GetIntegerWithoutPathExpansion(
-          user_id, &oauth_token_status)) {
-    User::OAuthTokenStatus result =
-        static_cast<User::OAuthTokenStatus>(oauth_token_status);
-    if (result == User::OAUTH2_TOKEN_STATUS_INVALID)
-      GetUserFlow(user_id)->HandleOAuthTokenStatusChange(result);
-    return result;
-  }
-  return User::OAUTH_TOKEN_STATUS_UNKNOWN;
-}
-
-void UserManagerImpl::SaveUserDisplayName(const std::string& username,
-                                          const string16& display_name) {
-  UpdateUserAccountDataImpl(username, display_name, NULL);
-}
-
-void UserManagerImpl::UpdateUserAccountData(const std::string& username,
-                                            const string16& display_name,
-                                            const std::string& locale) {
-  UpdateUserAccountDataImpl(username, display_name, &locale);
-}
-
-// "second part" of UpdateUserAccountDataImpl is sometimes called as
-// callback after IO thread has resolved locale.
-void UserManagerImpl::UpdateUserAccountDataImplCallback(
-    const std::string& username,
-    const string16& display_name,
-    const std::string* resolved_account_locale) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-
-  User* user = FindUserAndModify(username);
-  if (!user)
-    return;  // Ignore if there is no such user.
-
-  // locale is not NULL if User Account has been downloaded
-  // (i.e. it is UpdateUserAccountData(), not SaveUserDisplayName() )
-  if (resolved_account_locale != NULL)
-    user->SetAccountLocale(*resolved_account_locale);
-
-  if (display_name.empty())
-    return;
-
-  user->set_display_name(display_name);
-
-  // Do not update local store if data stored or cached outside the user's
+  // Do not update local state if data stored or cached outside the user's
   // cryptohome is to be treated as ephemeral.
-  if (IsUserNonCryptohomeDataEphemeral(username))
+  if (IsUserNonCryptohomeDataEphemeral(user_id))
     return;
 
-  PrefService* local_state = g_browser_process->local_state();
-
-  DictionaryPrefUpdate display_name_update(local_state, kUserDisplayName);
-  display_name_update->SetWithoutPathExpansion(
-      username,
-      new base::StringValue(display_name));
-
-  supervised_user_manager_->UpdateManagerName(username, display_name);
+  DictionaryPrefUpdate force_online_update(g_browser_process->local_state(),
+                                           kUserForceOnlineSignin);
+  force_online_update->SetBooleanWithoutPathExpansion(user_id,
+                                                      force_online_signin);
 }
 
-// Proxy for the previous call.
-void UserManagerImpl::UpdateUserAccountDataImplCallbackDecorator(
-    const scoped_ptr<UpdateUserAccountDataCallbackData>& data) {
-  UpdateUserAccountDataImplCallback(
-      data->user_id_, data->display_name_, &(data->resolved_locale_));
-}
-
-void UserManagerImpl::UpdateUserAccountDataImpl(const std::string& username,
-                                                const string16& display_name,
-                                                const std::string* locale) {
+void UserManagerImpl::SaveUserDisplayName(const std::string& user_id,
+                                          const base::string16& display_name) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
-  // locale is not NULL if User Account has been downloaded
-  // (i.e. it is UpdateUserAccountData(), not SaveUserDisplayName() )
-  if ((locale != NULL) && (!locale->empty()) &&
-      (*locale != g_browser_process->GetApplicationLocale())) {
-    scoped_ptr<UpdateUserAccountDataCallbackData> data(
-        new UpdateUserAccountDataCallbackData(username, display_name, *locale));
+  if (User* user = FindUserAndModify(user_id)) {
+    user->set_display_name(display_name);
 
-    base::Closure resolver(
-        base::Bind(&UpdateUserAccountDataImplCheckAndResolveLocale,
-                   base::Unretained(&(data->raw_locale_)),
-                   base::Unretained(&(data->resolved_locale_))));
-    BrowserThread::PostBlockingPoolTaskAndReply(
-        FROM_HERE,
-        resolver,
-        base::Bind(&chromeos::UserManagerImpl::
-                        UpdateUserAccountDataImplCallbackDecorator,
-                   base::Unretained(this),
-                   base::Passed(&data)));
-  } else {
-    UpdateUserAccountDataImplCallback(username, display_name, locale);
+    // Do not update local state if data stored or cached outside the user's
+    // cryptohome is to be treated as ephemeral.
+    if (!IsUserNonCryptohomeDataEphemeral(user_id)) {
+      PrefService* local_state = g_browser_process->local_state();
+
+      DictionaryPrefUpdate display_name_update(local_state, kUserDisplayName);
+      display_name_update->SetWithoutPathExpansion(
+          user_id,
+          new base::StringValue(display_name));
+
+      supervised_user_manager_->UpdateManagerName(user_id, display_name);
+    }
   }
 }
 
-string16 UserManagerImpl::GetUserDisplayName(
-    const std::string& username) const {
-  const User* user = FindUser(username);
-  return user ? user->display_name() : string16();
+base::string16 UserManagerImpl::GetUserDisplayName(
+    const std::string& user_id) const {
+  const User* user = FindUser(user_id);
+  return user ? user->display_name() : base::string16();
 }
 
-void UserManagerImpl::SaveUserDisplayEmail(const std::string& username,
+void UserManagerImpl::SaveUserDisplayEmail(const std::string& user_id,
                                            const std::string& display_email) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
-  User* user = FindUserAndModify(username);
+  User* user = FindUserAndModify(user_id);
   if (!user)
     return;  // Ignore if there is no such user.
 
   user->set_display_email(display_email);
 
-  // Do not update local store if data stored or cached outside the user's
+  // Do not update local state if data stored or cached outside the user's
   // cryptohome is to be treated as ephemeral.
-  if (IsUserNonCryptohomeDataEphemeral(username))
+  if (IsUserNonCryptohomeDataEphemeral(user_id))
     return;
 
   PrefService* local_state = g_browser_process->local_state();
 
   DictionaryPrefUpdate display_email_update(local_state, kUserDisplayEmail);
   display_email_update->SetWithoutPathExpansion(
-      username,
+      user_id,
       new base::StringValue(display_email));
 }
 
 std::string UserManagerImpl::GetUserDisplayEmail(
-    const std::string& username) const {
-  const User* user = FindUser(username);
-  return user ? user->display_email() : username;
+    const std::string& user_id) const {
+  const User* user = FindUser(user_id);
+  return user ? user->display_email() : user_id;
+}
+
+void UserManagerImpl::UpdateUserAccountData(
+    const std::string& user_id,
+    const UserAccountData& account_data) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  SaveUserDisplayName(user_id, account_data.display_name());
+
+  if (User* user = FindUserAndModify(user_id)) {
+    base::string16 given_name = account_data.given_name();
+    user->set_given_name(given_name);
+    if (!IsUserNonCryptohomeDataEphemeral(user_id)) {
+      PrefService* local_state = g_browser_process->local_state();
+
+      DictionaryPrefUpdate given_name_update(local_state, kUserGivenName);
+      given_name_update->SetWithoutPathExpansion(
+          user_id,
+          new base::StringValue(given_name));
+    }
+  }
+
+  UpdateUserAccountLocale(user_id, account_data.locale());
 }
 
 // TODO(alemate): http://crbug.com/288941 : Respect preferred language list in
 // the Google user profile.
-void UserManagerImpl::RespectLocalePreference(Profile* profile,
-                                              const User* user) const {
+//
+// Returns true if callback will be called.
+bool UserManagerImpl::RespectLocalePreference(
+    Profile* profile,
+    const User* user,
+    scoped_ptr<locale_util::SwitchLanguageCallback> callback) const {
   if (g_browser_process == NULL)
-    return;
+    return false;
   if ((user == NULL) || (user != GetPrimaryUser()) ||
       (!user->is_profile_created()))
-    return;
+    return false;
 
   // In case of Multi Profile mode we don't apply profile locale because it is
   // unsafe.
   if (GetLoggedInUsers().size() != 1)
-    return;
+    return false;
   const PrefService* prefs = profile->GetPrefs();
   if (prefs == NULL)
-    return;
+    return false;
 
   std::string pref_locale;
   const std::string pref_app_locale =
@@ -788,7 +821,7 @@ void UserManagerImpl::RespectLocalePreference(Profile* profile,
   const std::string* account_locale = NULL;
   if (pref_locale.empty() && user->has_gaia_account()) {
     if (user->GetAccountLocale() == NULL)
-      return;  // wait until Account profile is loaded.
+      return false;  // wait until Account profile is loaded.
     account_locale = user->GetAccountLocale();
     pref_locale = *account_locale;
   }
@@ -812,7 +845,13 @@ void UserManagerImpl::RespectLocalePreference(Profile* profile,
   // is different from the login screen UI language, is not desirable. Note
   // that input method preferences are synced, so users can use their
   // farovite input methods as soon as the preferences are synced.
-  chromeos::LanguageSwitchMenu::SwitchLanguage(pref_locale);
+  locale_util::SwitchLanguage(pref_locale, false, callback.Pass());
+
+  return true;
+}
+
+void UserManagerImpl::StopPolicyObserverForTesting() {
+  policy_observer_.reset();
 }
 
 void UserManagerImpl::Observe(int type,
@@ -821,9 +860,11 @@ void UserManagerImpl::Observe(int type,
   switch (type) {
     case chrome::NOTIFICATION_OWNERSHIP_STATUS_CHANGED:
       if (!device_local_account_policy_service_) {
+        policy::BrowserPolicyConnectorChromeOS* connector =
+            g_browser_process->platform_part()
+                ->browser_policy_connector_chromeos();
         device_local_account_policy_service_ =
-            g_browser_process->browser_policy_connector()->
-                GetDeviceLocalAccountPolicyService();
+            connector->GetDeviceLocalAccountPolicyService();
         if (device_local_account_policy_service_)
           device_local_account_policy_service_->AddObserver(this);
       }
@@ -855,6 +896,22 @@ void UserManagerImpl::Observe(int type,
     default:
       NOTREACHED();
   }
+}
+
+void UserManagerImpl::OnExternalDataSet(const std::string& policy,
+                                        const std::string& user_id) {
+  GetUserImageManager(user_id)->OnExternalDataSet(policy);
+}
+
+void UserManagerImpl::OnExternalDataCleared(const std::string& policy,
+                                            const std::string& user_id) {
+  GetUserImageManager(user_id)->OnExternalDataCleared(policy);
+}
+
+void UserManagerImpl::OnExternalDataFetched(const std::string& policy,
+                                            const std::string& user_id,
+                                            scoped_ptr<std::string> data) {
+  GetUserImageManager(user_id)->OnExternalDataFetched(policy, data.Pass());
 }
 
 void UserManagerImpl::OnPolicyUpdated(const std::string& user_id) {
@@ -895,7 +952,8 @@ bool UserManagerImpl::IsCurrentUserNonCryptohomeDataEphemeral() const {
 
 bool UserManagerImpl::CanCurrentUserLock() const {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  return IsUserLoggedIn() && active_user_->can_lock();
+  return IsUserLoggedIn() && active_user_->can_lock() &&
+      GetCurrentUserFlow()->CanLockScreen();
 }
 
 bool UserManagerImpl::IsUserLoggedIn() const {
@@ -1057,12 +1115,15 @@ void UserManagerImpl::EnsureUsersLoaded() {
     supervised_user_manager_->RollbackUserCreationTransaction();
 
   PrefService* local_state = g_browser_process->local_state();
-  const ListValue* prefs_regular_users = local_state->GetList(kRegularUsers);
-  const ListValue* prefs_public_accounts =
+  const base::ListValue* prefs_regular_users =
+      local_state->GetList(kRegularUsers);
+  const base::ListValue* prefs_public_accounts =
       local_state->GetList(kPublicAccounts);
-  const DictionaryValue* prefs_display_names =
+  const base::DictionaryValue* prefs_display_names =
       local_state->GetDictionary(kUserDisplayName);
-  const DictionaryValue* prefs_display_emails =
+  const base::DictionaryValue* prefs_given_names =
+      local_state->GetDictionary(kUserGivenName);
+  const base::DictionaryValue* prefs_display_emails =
       local_state->GetDictionary(kUserDisplayEmail);
 
   // Load regular users and locally managed users.
@@ -1079,12 +1140,18 @@ void UserManagerImpl::EnsureUsersLoaded() {
     else
       user = User::CreateRegularUser(*it);
     user->set_oauth_token_status(LoadUserOAuthStatus(*it));
+    user->set_force_online_signin(LoadForceOnlineSignin(*it));
     users_.push_back(user);
 
-    string16 display_name;
+    base::string16 display_name;
     if (prefs_display_names->GetStringWithoutPathExpansion(*it,
                                                            &display_name)) {
       user->set_display_name(display_name);
+    }
+
+    base::string16 given_name;
+    if (prefs_given_names->GetStringWithoutPathExpansion(*it, &given_name)) {
+      user->set_given_name(given_name);
     }
 
     std::string display_email;
@@ -1106,7 +1173,10 @@ void UserManagerImpl::EnsureUsersLoaded() {
   }
   user_loading_stage_ = STAGE_LOADED;
 
-  user_image_manager_->LoadUserImages(users_);
+  for (UserList::iterator ui = users_.begin(), ue = users_.end();
+       ui != ue; ++ui) {
+    GetUserImageManager((*ui)->email())->LoadUserImage();
+  }
 }
 
 void UserManagerImpl::RetrieveTrustedDevicePolicies() {
@@ -1156,21 +1226,15 @@ void UserManagerImpl::RetrieveTrustedDevicePolicies() {
 }
 
 bool UserManagerImpl::AreEphemeralUsersEnabled() const {
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
   return ephemeral_users_enabled_ &&
-      (g_browser_process->browser_policy_connector()->IsEnterpriseManaged() ||
-      !owner_email_.empty());
+         (connector->IsEnterpriseManaged() || !owner_email_.empty());
 }
 
 UserList& UserManagerImpl::GetUsersAndModify() {
   EnsureUsersLoaded();
   return users_;
-}
-
-User* UserManagerImpl::FindUserAndModify(const std::string& user_id) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  if (active_user_ && active_user_->email() == user_id)
-    return active_user_;
-  return FindUserInListAndModify(user_id);
 }
 
 const User* UserManagerImpl::FindUserInList(const std::string& user_id) const {
@@ -1184,7 +1248,7 @@ const User* UserManagerImpl::FindUserInList(const std::string& user_id) const {
 
 const bool UserManagerImpl::UserExistsInList(const std::string& user_id) const {
   PrefService* local_state = g_browser_process->local_state();
-  const ListValue* user_list = local_state->GetList(kRegularUsers);
+  const base::ListValue* user_list = local_state->GetList(kRegularUsers);
   for (size_t i = 0; i < user_list->GetSize(); ++i) {
     std::string email;
     if (user_list->GetString(i, &email) && (user_id == email))
@@ -1210,8 +1274,7 @@ void UserManagerImpl::GuestUserLoggedIn() {
   // http://crosbug.com/230859
   active_user_->SetStubImage(User::kInvalidImageIndex, false);
   // Initializes wallpaper after active_user_ is set.
-  WallpaperManager::Get()->SetInitialUserWallpaper(UserManager::kGuestUserName,
-                                                   false);
+  WallpaperManager::Get()->SetUserWallpaperNow(UserManager::kGuestUserName);
 }
 
 void UserManagerImpl::AddUserRecord(User* user) {
@@ -1232,17 +1295,15 @@ void UserManagerImpl::RegularUserLoggedIn(const std::string& user_id) {
     active_user_ = User::CreateRegularUser(user_id);
     active_user_->set_oauth_token_status(LoadUserOAuthStatus(user_id));
     SaveUserDisplayName(active_user_->email(),
-                        UTF8ToUTF16(active_user_->GetAccountName(true)));
-    WallpaperManager::Get()->SetInitialUserWallpaper(user_id, true);
+                        base::UTF8ToUTF16(active_user_->GetAccountName(true)));
+    WallpaperManager::Get()->SetUserWallpaperNow(user_id);
   }
 
   AddUserRecord(active_user_);
 
-  user_image_manager_->UserLoggedIn(user_id, is_current_user_new_, false);
+  GetUserImageManager(user_id)->UserLoggedIn(is_current_user_new_, false);
 
   WallpaperManager::Get()->EnsureLoggedInUserWallpaperLoaded();
-
-  default_pinned_apps_field_trial::SetupForUser(user_id, is_current_user_new_);
 
   // Make sure that new data is persisted to Local State.
   g_browser_process->local_state()->CommitPendingWrite();
@@ -1254,8 +1315,8 @@ void UserManagerImpl::RegularUserLoggedInAsEphemeral(
   is_current_user_new_ = true;
   is_current_user_ephemeral_regular_user_ = true;
   active_user_ = User::CreateRegularUser(user_id);
-  user_image_manager_->UserLoggedIn(user_id, is_current_user_new_, false);
-  WallpaperManager::Get()->SetInitialUserWallpaper(user_id, false);
+  GetUserImageManager(user_id)->UserLoggedIn(is_current_user_new_, false);
+  WallpaperManager::Get()->SetUserWallpaperNow(user_id);
 }
 
 void UserManagerImpl::LocallyManagedUserLoggedIn(
@@ -1269,11 +1330,11 @@ void UserManagerImpl::LocallyManagedUserLoggedIn(
     is_current_user_new_ = true;
     active_user_ = User::CreateLocallyManagedUser(user_id);
     // Leaving OAuth token status at the default state = unknown.
-    WallpaperManager::Get()->SetInitialUserWallpaper(user_id, true);
+    WallpaperManager::Get()->SetUserWallpaperNow(user_id);
   } else {
     if (supervised_user_manager_->CheckForFirstRun(user_id)) {
       is_current_user_new_ = true;
-      WallpaperManager::Get()->SetInitialUserWallpaper(user_id, true);
+      WallpaperManager::Get()->SetUserWallpaperNow(user_id);
     } else {
       is_current_user_new_ = false;
     }
@@ -1291,7 +1352,7 @@ void UserManagerImpl::LocallyManagedUserLoggedIn(
                         active_user_->GetDisplayName());
   }
 
-  user_image_manager_->UserLoggedIn(user_id, is_current_user_new_, true);
+  GetUserImageManager(user_id)->UserLoggedIn(is_current_user_new_, true);
   WallpaperManager::Get()->EnsureLoggedInUserWallpaperLoaded();
 
   // Make sure that new data is persisted to Local State.
@@ -1304,21 +1365,22 @@ void UserManagerImpl::PublicAccountUserLoggedIn(User* user) {
   // The UserImageManager chooses a random avatar picture when a user logs in
   // for the first time. Tell the UserImageManager that this user is not new to
   // prevent the avatar from getting changed.
-  user_image_manager_->UserLoggedIn(user->email(), false, true);
+  GetUserImageManager(user->email())->UserLoggedIn(false, true);
   WallpaperManager::Get()->EnsureLoggedInUserWallpaperLoaded();
 }
 
-void UserManagerImpl::KioskAppLoggedIn(const std::string& username) {
+void UserManagerImpl::KioskAppLoggedIn(const std::string& app_id) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   policy::DeviceLocalAccount::Type device_local_account_type;
-  DCHECK(policy::IsDeviceLocalAccountUser(username,
+  DCHECK(policy::IsDeviceLocalAccountUser(app_id,
                                           &device_local_account_type));
   DCHECK_EQ(policy::DeviceLocalAccount::TYPE_KIOSK_APP,
             device_local_account_type);
 
-  active_user_ = User::CreateKioskAppUser(username);
+  active_user_ = User::CreateKioskAppUser(app_id);
   active_user_->SetStubImage(User::kInvalidImageIndex, false);
-  WallpaperManager::Get()->SetInitialUserWallpaper(username, false);
+
+  WallpaperManager::Get()->SetUserWallpaperNow(app_id);
 
   // TODO(bartfab): Add KioskAppUsers to the users_ list and keep metadata like
   // the kiosk_app_id in these objects, removing the need to re-parse the
@@ -1329,7 +1391,7 @@ void UserManagerImpl::KioskAppLoggedIn(const std::string& username) {
   for (std::vector<policy::DeviceLocalAccount>::const_iterator
            it = device_local_accounts.begin();
        it != device_local_accounts.end(); ++it) {
-    if (it->user_id == username) {
+    if (it->user_id == app_id) {
       account = &*it;
       break;
     }
@@ -1338,7 +1400,7 @@ void UserManagerImpl::KioskAppLoggedIn(const std::string& username) {
   if (account) {
     kiosk_app_id = account->kiosk_app_id;
   } else {
-    LOG(ERROR) << "Logged into nonexistent kiosk-app account: " << username;
+    LOG(ERROR) << "Logged into nonexistent kiosk-app account: " << app_id;
     NOTREACHED();
   }
 
@@ -1356,14 +1418,15 @@ void UserManagerImpl::RetailModeUserLoggedIn() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   is_current_user_new_ = true;
   active_user_ = User::CreateRetailModeUser();
-  user_image_manager_->UserLoggedIn(UserManager::kRetailModeUserName,
-                                    is_current_user_new_,
-                                    true);
-  WallpaperManager::Get()->SetInitialUserWallpaper(
-      UserManager::kRetailModeUserName, false);
+  GetUserImageManager(UserManager::kRetailModeUserName)->UserLoggedIn(
+      is_current_user_new_,
+      true);
+  WallpaperManager::Get()->SetUserWallpaperNow(
+      UserManager::kRetailModeUserName);
 }
 
 void UserManagerImpl::NotifyOnLogin() {
+  UpdateNumberOfUsers();
   CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   NotifyActiveUserHashChanged(active_user_->username_hash());
   NotifyActiveUserChanged(active_user_);
@@ -1385,6 +1448,40 @@ void UserManagerImpl::NotifyOnLogin() {
   }
 }
 
+User::OAuthTokenStatus UserManagerImpl::LoadUserOAuthStatus(
+    const std::string& user_id) const {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  PrefService* local_state = g_browser_process->local_state();
+  const base::DictionaryValue* prefs_oauth_status =
+      local_state->GetDictionary(kUserOAuthTokenStatus);
+  int oauth_token_status = User::OAUTH_TOKEN_STATUS_UNKNOWN;
+  if (prefs_oauth_status &&
+      prefs_oauth_status->GetIntegerWithoutPathExpansion(
+          user_id, &oauth_token_status)) {
+    User::OAuthTokenStatus result =
+        static_cast<User::OAuthTokenStatus>(oauth_token_status);
+    if (result == User::OAUTH2_TOKEN_STATUS_INVALID)
+      GetUserFlow(user_id)->HandleOAuthTokenStatusChange(result);
+    return result;
+  }
+  return User::OAUTH_TOKEN_STATUS_UNKNOWN;
+}
+
+bool UserManagerImpl::LoadForceOnlineSignin(const std::string& user_id) const {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  PrefService* local_state = g_browser_process->local_state();
+  const base::DictionaryValue* prefs_force_online =
+      local_state->GetDictionary(kUserForceOnlineSignin);
+  bool force_online_signin = false;
+  if (prefs_force_online) {
+    prefs_force_online->GetBooleanWithoutPathExpansion(user_id,
+                                                       &force_online_signin);
+  }
+  return force_online_signin;
+}
+
 void UserManagerImpl::UpdateOwnership() {
   bool is_owner = DeviceSettingsService::Get()->HasPrivateOwnerKey();
   VLOG(1) << "Current user " << (is_owner ? "is owner" : "is not owner");
@@ -1394,34 +1491,38 @@ void UserManagerImpl::UpdateOwnership() {
 
 void UserManagerImpl::RemoveNonCryptohomeData(const std::string& user_id) {
   WallpaperManager::Get()->RemoveUserWallpaperInfo(user_id);
-  user_image_manager_->DeleteUserImage(user_id);
+  GetUserImageManager(user_id)->DeleteUserImage();
 
   PrefService* prefs = g_browser_process->local_state();
-  DictionaryPrefUpdate prefs_oauth_update(prefs, kUserOAuthTokenStatus);
-  int oauth_status;
-  prefs_oauth_update->GetIntegerWithoutPathExpansion(user_id, &oauth_status);
-  prefs_oauth_update->RemoveWithoutPathExpansion(user_id, NULL);
-
   DictionaryPrefUpdate prefs_display_name_update(prefs, kUserDisplayName);
   prefs_display_name_update->RemoveWithoutPathExpansion(user_id, NULL);
+
+  DictionaryPrefUpdate prefs_given_name_update(prefs, kUserGivenName);
+  prefs_given_name_update->RemoveWithoutPathExpansion(user_id, NULL);
 
   DictionaryPrefUpdate prefs_display_email_update(prefs, kUserDisplayEmail);
   prefs_display_email_update->RemoveWithoutPathExpansion(user_id, NULL);
 
+  DictionaryPrefUpdate prefs_oauth_update(prefs, kUserOAuthTokenStatus);
+  prefs_oauth_update->RemoveWithoutPathExpansion(user_id, NULL);
+
+  DictionaryPrefUpdate prefs_force_online_update(prefs, kUserForceOnlineSignin);
+  prefs_force_online_update->RemoveWithoutPathExpansion(user_id, NULL);
+
   supervised_user_manager_->RemoveNonCryptohomeData(user_id);
 
-  multi_profile_user_controller_->RemoveCachedValue(user_id);
+  multi_profile_user_controller_->RemoveCachedValues(user_id);
 }
 
 User* UserManagerImpl::RemoveRegularOrLocallyManagedUserFromList(
-    const std::string& username) {
+    const std::string& user_id) {
   ListPrefUpdate prefs_users_update(g_browser_process->local_state(),
                                     kRegularUsers);
   prefs_users_update->Clear();
   User* user = NULL;
   for (UserList::iterator it = users_.begin(); it != users_.end(); ) {
     const std::string user_email = (*it)->email();
-    if (user_email == username) {
+    if (user_email == user_id) {
       user = *it;
       it = users_.erase(it);
     } else {
@@ -1516,14 +1617,14 @@ bool UserManagerImpl::UpdateAndCleanUpPublicAccounts(
   ListPrefUpdate prefs_public_accounts_update(g_browser_process->local_state(),
                                               kPublicAccounts);
   prefs_public_accounts_update->Clear();
-  for (std::vector<std::string>::const_iterator
-           it = new_public_accounts.begin();
+  for (std::vector<std::string>::const_iterator it =
+           new_public_accounts.begin();
        it != new_public_accounts.end(); ++it) {
     prefs_public_accounts_update->AppendString(*it);
   }
 
   // Remove the old public accounts from the user list.
-  for (UserList::iterator it = users_.begin(); it != users_.end(); ) {
+  for (UserList::iterator it = users_.begin(); it != users_.end();) {
     if ((*it)->GetType() == User::USER_TYPE_PUBLIC_ACCOUNT) {
       if (*it != GetLoggedInUser())
         delete *it;
@@ -1534,8 +1635,8 @@ bool UserManagerImpl::UpdateAndCleanUpPublicAccounts(
   }
 
   // Add the new public accounts to the front of the user list.
-  for (std::vector<std::string>::const_reverse_iterator
-           it = new_public_accounts.rbegin();
+  for (std::vector<std::string>::const_reverse_iterator it =
+           new_public_accounts.rbegin();
        it != new_public_accounts.rend(); ++it) {
     if (IsLoggedInAsPublicAccount() && *it == GetActiveUser()->email())
       users_.insert(users_.begin(), GetLoggedInUser());
@@ -1544,8 +1645,11 @@ bool UserManagerImpl::UpdateAndCleanUpPublicAccounts(
     UpdatePublicAccountDisplayName(*it);
   }
 
-  user_image_manager_->LoadUserImages(
-      UserList(users_.begin(), users_.begin() + new_public_accounts.size()));
+  for (UserList::iterator ui = users_.begin(),
+                          ue = users_.begin() + new_public_accounts.size();
+       ui != ue; ++ui) {
+    GetUserImageManager((*ui)->email())->LoadUserImage();
+  }
 
   // Remove data belonging to public accounts that are no longer found on the
   // user list.
@@ -1555,18 +1659,18 @@ bool UserManagerImpl::UpdateAndCleanUpPublicAccounts(
 }
 
 void UserManagerImpl::UpdatePublicAccountDisplayName(
-    const std::string& username) {
+    const std::string& user_id) {
   std::string display_name;
 
   if (device_local_account_policy_service_) {
     policy::DeviceLocalAccountPolicyBroker* broker =
-        device_local_account_policy_service_->GetBrokerForUser(username);
+        device_local_account_policy_service_->GetBrokerForUser(user_id);
     if (broker)
       display_name = broker->GetDisplayName();
   }
 
   // Set or clear the display name.
-  SaveUserDisplayName(username, UTF8ToUTF16(display_name));
+  SaveUserDisplayName(user_id, base::UTF8ToUTF16(display_name));
 }
 
 UserFlow* UserManagerImpl::GetCurrentUserFlow() const {
@@ -1626,9 +1730,9 @@ bool UserManagerImpl::AreLocallyManagedUsersAllowed() const {
   bool locally_managed_users_allowed = false;
   cros_settings_->GetBoolean(kAccountsPrefSupervisedUsersEnabled,
                              &locally_managed_users_allowed);
-  return ManagedUserService::AreManagedUsersEnabled() &&
-        (locally_managed_users_allowed ||
-         !g_browser_process->browser_policy_connector()->IsEnterpriseManaged());
+  policy::BrowserPolicyConnectorChromeOS* connector =
+      g_browser_process->platform_part()->browser_policy_connector_chromeos();
+  return locally_managed_users_allowed || !connector->IsEnterpriseManaged();
 }
 
 base::FilePath UserManagerImpl::GetUserProfileDir(
@@ -1640,20 +1744,10 @@ base::FilePath UserManagerImpl::GetUserProfileDir(
   const CommandLine& command_line = *CommandLine::ForCurrentProcess();
   if (command_line.HasSwitch(::switches::kMultiProfiles)) {
     const User* user = FindUser(user_id);
-    if (user && !user->username_hash().empty()) {
-      profile_dir = base::FilePath(
-          chrome::kProfileDirPrefix + user->username_hash());
-    }
+    if (user && !user->username_hash().empty())
+      profile_dir = ProfileHelper::GetUserProfileDir(user->username_hash());
   } else if (command_line.HasSwitch(chromeos::switches::kLoginProfile)) {
-    std::string login_profile_value =
-        command_line.GetSwitchValueASCII(chromeos::switches::kLoginProfile);
-    if (login_profile_value == chrome::kLegacyProfileDir ||
-        login_profile_value == chrome::kTestUserProfileDir) {
-      profile_dir = base::FilePath(login_profile_value);
-    } else {
-      profile_dir = base::FilePath(
-          chrome::kProfileDirPrefix + login_profile_value);
-    }
+    profile_dir = ProfileHelper::GetProfileDirByLegacyLoginProfileSwitch();
   } else {
     // We should never be logged in with no profile dir unless
     // multi-profiles are enabled.
@@ -1689,6 +1783,7 @@ void UserManagerImpl::NotifyActiveUserChanged(const User* active_user) {
 }
 
 void UserManagerImpl::NotifyUserAddedToSession(const User* added_user) {
+  UpdateNumberOfUsers();
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   FOR_EACH_OBSERVER(UserManager::UserSessionStateObserver,
                     session_state_observer_list_,
@@ -1802,15 +1897,17 @@ void UserManagerImpl::RestorePendingUserSessions() {
 
   if (!user_already_logged_in) {
     // Will call OnProfilePrepared() once profile has been loaded.
-    LoginUtils::Get()->PrepareProfile(UserContext(user_id,
-                                                  std::string(),  // password
-                                                  std::string(),  // auth_code
-                                                  user_id_hash,
-                                                  false),         // using_oauth
-                                      std::string(),  // display_email
-                                      false,          // has_cookies
-                                      true,           // has_active_session
-                                      this);
+    LoginUtils::Get()->PrepareProfile(
+        UserContext(user_id,
+                    std::string(),  // password
+                    std::string(),  // auth_code
+                    user_id_hash,
+                    false,         // using_oauth
+                    UserContext::AUTH_FLOW_OFFLINE),
+        std::string(),  // display_email
+        false,          // has_cookies
+        true,           // has_active_session
+        this);
   } else {
     RestorePendingUserSessions();
   }
@@ -1837,6 +1934,33 @@ void UserManagerImpl::OnUserNotAllowed() {
   LOG(ERROR) << "Shutdown session because a user is not allowed to be in the "
                 "current session";
   chrome::AttemptUserExit();
+}
+
+void UserManagerImpl::UpdateUserAccountLocale(const std::string& user_id,
+                                              const std::string& locale) {
+  if (!locale.empty() &&
+      locale != g_browser_process->GetApplicationLocale()) {
+    BrowserThread::PostBlockingPoolTask(
+        FROM_HERE,
+        base::Bind(ResolveLocale, locale,
+            base::Bind(&UserManagerImpl::DoUpdateAccountLocale,
+                       base::Unretained(this),
+                       user_id)));
+  } else {
+    DoUpdateAccountLocale(user_id, locale);
+  }
+}
+
+void UserManagerImpl::DoUpdateAccountLocale(
+    const std::string& user_id,
+    const std::string& resolved_locale) {
+  if (User* user = FindUserAndModify(user_id))
+    user->SetAccountLocale(resolved_locale);
+}
+
+void UserManagerImpl::UpdateNumberOfUsers() {
+  base::debug::SetCrashKeyValue(crash_keys::kNumberOfUsers,
+      base::StringPrintf("%" PRIuS, GetLoggedInUsers().size()));
 }
 
 }  // namespace chromeos

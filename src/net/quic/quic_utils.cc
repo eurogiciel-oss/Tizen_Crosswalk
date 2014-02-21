@@ -8,10 +8,12 @@
 
 #include <algorithm>
 
+#include "base/basictypes.h"
 #include "base/logging.h"
 #include "base/port.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/string_number_conversions.h"
+#include "net/quic/quic_write_blocked_list.h"
 
 using base::StringPiece;
 using std::string;
@@ -195,12 +197,15 @@ const char* QuicUtils::ErrorToString(QuicErrorCode error) {
     RETURN_STRING_LITERAL(QUIC_PACKET_WRITE_ERROR);
     RETURN_STRING_LITERAL(QUIC_PACKET_READ_ERROR);
     RETURN_STRING_LITERAL(QUIC_INVALID_STREAM_FRAME);
+    RETURN_STRING_LITERAL(QUIC_INVALID_HEADERS_STREAM_DATA);
     RETURN_STRING_LITERAL(QUIC_PROOF_INVALID);
     RETURN_STRING_LITERAL(QUIC_CRYPTO_DUPLICATE_TAG);
     RETURN_STRING_LITERAL(QUIC_CRYPTO_ENCRYPTION_LEVEL_INCORRECT);
     RETURN_STRING_LITERAL(QUIC_CRYPTO_SERVER_CONFIG_EXPIRED);
     RETURN_STRING_LITERAL(QUIC_INVALID_CHANNEL_ID_SIGNATURE);
     RETURN_STRING_LITERAL(QUIC_CRYPTO_SYMMETRIC_KEY_SETUP_FAILED);
+    RETURN_STRING_LITERAL(QUIC_CRYPTO_MESSAGE_WHILE_VALIDATING_CLIENT_HELLO);
+    RETURN_STRING_LITERAL(QUIC_VERSION_NEGOTIATION_MISMATCH);
     RETURN_STRING_LITERAL(QUIC_LAST_ERROR);
     // Intentionally have no default case, so we'll break the build
     // if we add errors and don't put them here.
@@ -277,6 +282,16 @@ string QuicUtils::StringToHexASCIIDump(StringPiece in_buffer) {
     s += '\n';
   }
   return s;
+}
+
+// static
+QuicPriority QuicUtils::LowestPriority() {
+  return QuicWriteBlockedList::kLowestPriority;
+}
+
+// static
+QuicPriority QuicUtils::HighestPriority() {
+  return QuicWriteBlockedList::kHighestPriority;
 }
 
 }  // namespace net

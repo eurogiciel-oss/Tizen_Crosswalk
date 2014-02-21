@@ -22,24 +22,22 @@
 #if ENABLE(SVG_FONTS)
 #include "core/svg/SVGAltGlyphItemElement.h"
 
-#include "SVGNames.h"
 #include "core/svg/SVGGlyphRefElement.h"
 
 namespace WebCore {
 
-inline SVGAltGlyphItemElement::SVGAltGlyphItemElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+inline SVGAltGlyphItemElement::SVGAltGlyphItemElement(Document& document)
+    : SVGElement(SVGNames::altGlyphItemTag, document)
 {
-    ASSERT(hasTagName(SVGNames::altGlyphItemTag));
     ScriptWrappable::init(this);
 }
 
-PassRefPtr<SVGAltGlyphItemElement> SVGAltGlyphItemElement::create(const QualifiedName& tagName, Document& document)
+PassRefPtr<SVGAltGlyphItemElement> SVGAltGlyphItemElement::create(Document& document)
 {
-    return adoptRef(new SVGAltGlyphItemElement(tagName, document));
+    return adoptRef(new SVGAltGlyphItemElement(document));
 }
 
-bool SVGAltGlyphItemElement::hasValidGlyphElements(Vector<String>& glyphNames) const
+bool SVGAltGlyphItemElement::hasValidGlyphElements(Vector<AtomicString>& glyphNames) const
 {
     // Spec: http://www.w3.org/TR/SVG/text.html#AltGlyphItemElement
     // The ‘altGlyphItem’ element defines a candidate set of possible glyph substitutions.
@@ -51,7 +49,7 @@ bool SVGAltGlyphItemElement::hasValidGlyphElements(Vector<String>& glyphNames) c
     // there is at least one glyph.
     for (Node* child = firstChild(); child; child = child->nextSibling()) {
         if (child->hasTagName(SVGNames::glyphRefTag)) {
-            String referredGlyphName;
+            AtomicString referredGlyphName;
             if (toSVGGlyphRefElement(child)->hasValidGlyphElement(referredGlyphName))
                 glyphNames.append(referredGlyphName);
             else {

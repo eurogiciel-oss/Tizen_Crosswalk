@@ -7,12 +7,12 @@
 #include "base/prefs/pref_service.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry.h"
-#include "chrome/browser/extensions/extension_prefs.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/tab_contents/render_view_context_menu_test_util.h"
 #include "chrome/test/base/chrome_render_view_host_test_harness.h"
 #include "chrome/test/base/testing_profile.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/browser/extension_prefs.h"
 #include "extensions/common/url_pattern.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/WebKit/public/web/WebContextMenuData.h"
@@ -37,10 +37,10 @@ class RenderViewContextMenuTest : public testing::Test {
 static content::ContextMenuParams CreateParams(int contexts) {
   content::ContextMenuParams rv;
   rv.is_editable = false;
-  rv.media_type = WebKit::WebContextMenuData::MediaTypeNone;
+  rv.media_type = blink::WebContextMenuData::MediaTypeNone;
   rv.page_url = GURL("http://test.page/");
 
-  static const char16 selected_text[] = { 's', 'e', 'l', 0 };
+  static const base::char16 selected_text[] = { 's', 'e', 'l', 0 };
   if (contexts & MenuItem::SELECTION)
     rv.selection_text = selected_text;
 
@@ -52,17 +52,17 @@ static content::ContextMenuParams CreateParams(int contexts) {
 
   if (contexts & MenuItem::IMAGE) {
     rv.src_url = GURL("http://test.image/");
-    rv.media_type = WebKit::WebContextMenuData::MediaTypeImage;
+    rv.media_type = blink::WebContextMenuData::MediaTypeImage;
   }
 
   if (contexts & MenuItem::VIDEO) {
     rv.src_url = GURL("http://test.video/");
-    rv.media_type = WebKit::WebContextMenuData::MediaTypeVideo;
+    rv.media_type = blink::WebContextMenuData::MediaTypeVideo;
   }
 
   if (contexts & MenuItem::AUDIO) {
     rv.src_url = GURL("http://test.audio/");
-    rv.media_type = WebKit::WebContextMenuData::MediaTypeAudio;
+    rv.media_type = blink::WebContextMenuData::MediaTypeAudio;
   }
 
   if (contexts & MenuItem::FRAME)

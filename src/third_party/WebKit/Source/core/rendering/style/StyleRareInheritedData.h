@@ -25,6 +25,7 @@
 #ifndef StyleRareInheritedData_h
 #define StyleRareInheritedData_h
 
+#include "core/css/StyleColor.h"
 #include "core/rendering/style/DataRef.h"
 #include "core/rendering/style/StyleVariableData.h"
 #include "platform/Length.h"
@@ -58,14 +59,14 @@ public:
 
     RefPtr<StyleImage> listStyleImage;
 
-    Color textStrokeColor;
+    StyleColor textStrokeColor;
     float textStrokeWidth;
-    Color textFillColor;
-    Color textEmphasisColor;
+    StyleColor textFillColor;
+    StyleColor textEmphasisColor;
 
-    Color visitedLinkTextStrokeColor;
-    Color visitedLinkTextFillColor;
-    Color visitedLinkTextEmphasisColor;
+    StyleColor visitedLinkTextStrokeColor;
+    StyleColor visitedLinkTextFillColor;
+    StyleColor visitedLinkTextEmphasisColor;
 
     RefPtr<ShadowList> textShadow; // Our text shadow information for shadowed text drawing.
     AtomicString highlight; // Apple-specific extension for custom highlight rendering.
@@ -101,7 +102,7 @@ public:
     unsigned m_imageRendering : 2; // EImageRendering
     unsigned m_lineSnap : 2; // LineSnap
     unsigned m_lineAlign : 1; // LineAlign
-    unsigned m_textUnderlinePosition : 3; // TextUnderlinePosition
+    unsigned m_textUnderlinePosition : 2; // TextUnderlinePosition
     unsigned m_rubyPosition : 1; // RubyPosition
     unsigned m_touchActionDelay : 1; // TouchActionDelay
 

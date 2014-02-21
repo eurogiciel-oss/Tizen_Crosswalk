@@ -21,7 +21,7 @@ WebPluginMimeType::WebPluginMimeType(const std::string& m,
                                      const std::string& d)
     : mime_type(m),
       file_extensions(),
-      description(ASCIIToUTF16(d)) {
+      description(base::ASCIIToUTF16(d)) {
   file_extensions.push_back(f);
 }
 
@@ -74,7 +74,7 @@ void WebPluginInfo::CreateVersionFromString(
   // Remove spaces and ')' from the version string,
   // Replace any instances of 'r', ',' or '(' with a dot.
   std::string version = UTF16ToASCII(version_string);
-  RemoveChars(version, ") ", &version);
+  base::RemoveChars(version, ") ", &version);
   std::replace(version.begin(), version.end(), 'd', '.');
   std::replace(version.begin(), version.end(), 'r', '.');
   std::replace(version.begin(), version.end(), ',', '.');

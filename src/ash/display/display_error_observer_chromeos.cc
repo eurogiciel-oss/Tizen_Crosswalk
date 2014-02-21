@@ -47,15 +47,18 @@ void DisplayErrorObserver::OnDisplayModeChangeFailed(
       kDisplayErrorNotificationId,
       l10n_util::GetStringUTF16(message_id),
       base::string16(),  // message
-      bundle.GetImageNamed(IDR_AURA_UBER_TRAY_DISPLAY),
+      bundle.GetImageNamed(IDR_AURA_NOTIFICATION_DISPLAY),
       base::string16(),  // display_source
-      message_center::NotifierId(system_notifier::NOTIFIER_DISPLAY_ERROR),
+      message_center::NotifierId(
+          message_center::NotifierId::SYSTEM_COMPONENT,
+          system_notifier::kNotifierDisplayError),
       message_center::RichNotificationData(),
       NULL));
   message_center::MessageCenter::Get()->AddNotification(notification.Pass());
 }
 
-string16 DisplayErrorObserver::GetTitleOfDisplayErrorNotificationForTest() {
+base::string16 DisplayErrorObserver::
+    GetTitleOfDisplayErrorNotificationForTest() {
   message_center::NotificationList::Notifications notifications =
       message_center::MessageCenter::Get()->GetVisibleNotifications();
   for (message_center::NotificationList::Notifications::const_iterator iter =

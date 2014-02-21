@@ -50,36 +50,35 @@
 #include "core/dom/DocumentMarkerController.h"
 #include "core/editing/Editor.h"
 #include "core/editing/SpellChecker.h"
-#include "core/history/HistoryItem.h"
 #include "core/html/HTMLFormElement.h"
 #include "core/html/HTMLInputElement.h"
 #include "core/html/HTMLMediaElement.h"
 #include "core/html/HTMLPlugInElement.h"
-#include "core/html/HTMLVideoElement.h"
 #include "core/html/MediaError.h"
 #include "core/loader/DocumentLoader.h"
 #include "core/loader/FrameLoader.h"
+#include "core/loader/HistoryItem.h"
 #include "core/page/ContextMenuController.h"
 #include "core/page/EventHandler.h"
 #include "core/frame/FrameView.h"
 #include "core/page/Page.h"
-#include "core/page/Settings.h"
-#include "core/platform/ContextMenu.h"
+#include "core/frame/Settings.h"
 #include "core/rendering/HitTestResult.h"
 #include "core/rendering/RenderWidget.h"
+#include "platform/ContextMenu.h"
 #include "platform/Widget.h"
 #include "platform/text/TextBreakIterator.h"
+#include "platform/weborigin/KURL.h"
 #include "public/platform/WebPoint.h"
 #include "public/platform/WebString.h"
 #include "public/platform/WebURL.h"
 #include "public/platform/WebURLResponse.h"
 #include "public/platform/WebVector.h"
-#include "weborigin/KURL.h"
 #include "wtf/text/WTFString.h"
 
 using namespace WebCore;
 
-namespace WebKit {
+namespace blink {
 
 // Figure out the URL of a page or subframe. Returns |page_type| as the type,
 // which indicates page or subframe, or ContextNodeType::NONE if the URL could not
@@ -225,7 +224,7 @@ void ContextMenuClientImpl::showContextMenu(const WebCore::ContextMenu* defaultM
         // We know that if absoluteMediaURL() is not empty, then this
         // is a media element.
         HTMLMediaElement* mediaElement = toHTMLMediaElement(r.innerNonSharedNode());
-        if (isHTMLVideoElement(mediaElement))
+        if (mediaElement->hasTagName(HTMLNames::videoTag))
             data.mediaType = WebContextMenuData::MediaTypeVideo;
         else if (mediaElement->hasTagName(HTMLNames::audioTag))
             data.mediaType = WebContextMenuData::MediaTypeAudio;
@@ -253,7 +252,7 @@ void ContextMenuClientImpl::showContextMenu(const WebCore::ContextMenu* defaultM
             Widget* widget = toRenderWidget(object)->widget();
             if (widget && widget->isPluginContainer()) {
                 data.mediaType = WebContextMenuData::MediaTypePlugin;
-                WebPluginContainerImpl* plugin = toPluginContainerImpl(widget);
+                WebPluginContainerImpl* plugin = toWebPluginContainerImpl(widget);
                 WebString text = plugin->plugin()->selectionAsText();
                 if (!text.isEmpty()) {
                     data.selectedText = text;
@@ -290,7 +289,7 @@ void ContextMenuClientImpl::showContextMenu(const WebCore::ContextMenu* defaultM
     data.pageURL = urlFromFrame(m_webView->mainFrameImpl()->frame());
     if (selectedFrame != m_webView->mainFrameImpl()->frame()) {
         data.frameURL = urlFromFrame(selectedFrame);
-        RefPtr<HistoryItem> historyItem = selectedFrame->loader().history()->currentItem();
+        RefPtr<HistoryItem> historyItem = selectedFrame->loader().currentItem();
         if (historyItem)
             data.frameHistoryItem = WebHistoryItem(historyItem);
     }
@@ -348,12 +347,10 @@ void ContextMenuClientImpl::showContextMenu(const WebCore::ContextMenu* defaultM
         }
     }
 
-#if OS(MACOSX)
     if (selectedFrame->editor().selectionHasStyle(CSSPropertyDirection, "ltr") != FalseTriState)
         data.writingDirectionLeftToRight |= WebContextMenuData::CheckableMenuItemChecked;
     if (selectedFrame->editor().selectionHasStyle(CSSPropertyDirection, "rtl") != FalseTriState)
         data.writingDirectionRightToLeft |= WebContextMenuData::CheckableMenuItemChecked;
-#endif // OS(MACOSX)
 
     // Now retrieve the security info.
     DocumentLoader* dl = selectedFrame->loader().documentLoader();
@@ -421,4 +418,4 @@ void ContextMenuClientImpl::populateCustomMenuItems(const WebCore::ContextMenu* 
     populateSubMenuItems(defaultMenu->items(), data->customItems);
 }
 
-} // namespace WebKit
+} // namespace blink

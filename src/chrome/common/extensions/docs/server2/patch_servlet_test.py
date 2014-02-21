@@ -6,7 +6,6 @@
 from HTMLParser import HTMLParser
 import unittest
 
-from empty_dir_file_system import EmptyDirFileSystem
 from fake_fetchers import ConfigureFakeFetchers
 from github_file_system_provider import GithubFileSystemProvider
 from host_file_system_provider import HostFileSystemProvider
@@ -125,11 +124,8 @@ class PatchServletTest(unittest.TestCase):
     # '_patch' is not included in paths below because it's stripped by Handler.
     issue = '14096030'
 
-    # extensions_sidenav.json is modified in the patch.
-    self._RenderAndAssertNotEqual('extensions/index.html', issue)
-
-    # apps_sidenav.json is not patched.
-    self._RenderAndAssertEqual('apps/about_apps.html', issue)
+    # TODO(kalman): Test with chrome_sidenav.json once the sidenav logic has
+    # stabilised.
 
     # extensions/runtime.html is removed in the patch, should redirect to the
     # apps version.

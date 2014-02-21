@@ -10,6 +10,9 @@
 // 2. UMA stats.
 // 3. Tracing of raw events.
 
+#include "base/memory/ref_counted.h"
+#include "base/task_runner.h"
+#include "media/cast/cast_config.h"
 #include "media/cast/logging/logging_defines.h"
 #include "media/cast/logging/logging_raw.h"
 #include "media/cast/logging/logging_stats.h"
@@ -17,51 +20,70 @@
 namespace media {
 namespace cast {
 
-class LoggingImpl {
+// Should only be called from the main thread.
+class LoggingImpl : public base::NonThreadSafe {
  public:
-  LoggingImpl(base::TickClock* clock,
-              bool enable_data_collection,
-              bool enable_uma_stats,
-              bool enable_tracing);
+  LoggingImpl(scoped_refptr<base::TaskRunner> main_thread_proxy,
+              const CastLoggingConfig& config);
 
   ~LoggingImpl();
 
-  void InsertFrameEvent(CastLoggingEvent event,
+  void InsertFrameEvent(const base::TimeTicks& time_of_event,
+                        CastLoggingEvent event,
                         uint32 rtp_timestamp,
-                        uint8 frame_id);
-  void InsertFrameEventWithSize(CastLoggingEvent event,
+                        uint32 frame_id);
+
+  void InsertFrameEventWithSize(const base::TimeTicks& time_of_event,
+                                CastLoggingEvent event,
                                 uint32 rtp_timestamp,
-                                uint8 frame_id,
+                                uint32 frame_id,
                                 int frame_size);
-  void InsertFrameEventWithDelay(CastLoggingEvent event,
+
+  void InsertFrameEventWithDelay(const base::TimeTicks& time_of_event,
+                                 CastLoggingEvent event,
                                  uint32 rtp_timestamp,
-                                 uint8 frame_id,
+                                 uint32 frame_id,
                                  base::TimeDelta delay);
-  void InsertPacketEvent(CastLoggingEvent event,
+
+  void InsertPacketListEvent(const base::TimeTicks& time_of_event,
+                             CastLoggingEvent event,
+                             const PacketList& packets);
+
+  void InsertPacketEvent(const base::TimeTicks& time_of_event,
+                         CastLoggingEvent event,
                          uint32 rtp_timestamp,
-                         uint8 frame_id,
+                         uint32 frame_id,
                          uint16 packet_id,
                          uint16 max_packet_id,
-                         int size);
-  void InsertGenericEvent(CastLoggingEvent event, int value);
+                         size_t size);
+
+  void InsertGenericEvent(const base::TimeTicks& time_of_event,
+                          CastLoggingEvent event,
+                          int value);
 
   // Get raw data.
   FrameRawMap GetFrameRawData();
   PacketRawMap GetPacketRawData();
   GenericRawMap GetGenericRawData();
+  AudioRtcpRawMap GetAudioRtcpRawData();
+  VideoRtcpRawMap GetVideoRtcpRawData();
+
   // Get stats only (computed when called). Triggers UMA stats when enabled.
-  const FrameStatsMap* GetFrameStatsData();
-  const PacketStatsMap* GetPacketStatsData();
+  const FrameStatsMap* GetFrameStatsData(const base::TimeTicks& now);
+  const PacketStatsMap* GetPacketStatsData(const base::TimeTicks& now);
   const GenericStatsMap* GetGenericStatsData();
 
-  void Reset();
+  // Reset raw logging data.
+  void ResetRaw();
+  // Reset stats logging data.
+  void ResetStats();
 
  private:
+  void InsertGenericUmaEvent(CastLoggingEvent event, int value);
+  scoped_refptr<base::TaskRunner> main_thread_proxy_;
+  const CastLoggingConfig config_;
   LoggingRaw raw_;
   LoggingStats stats_;
-  bool enable_data_collection_;
-  bool enable_uma_stats_;
-  bool enable_tracing_;
 
   DISALLOW_COPY_AND_ASSIGN(LoggingImpl);
 };

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2012 The Swarming Authors. All rights reserved.
+# Use of this source code is governed under the Apache License, Version 2.0 that
+# can be found in the LICENSE file.
 
 """Reads a .isolated, creates a tree of hardlinks and runs the test.
 
@@ -92,8 +92,11 @@ def get_flavor():
   return FLAVOR_MAPPING.get(sys.platform, 'linux')
 
 
-def os_link(source, link_name):
-  """Add support for os.link() on Windows."""
+def hardlink(source, link_name):
+  """Hardlinks a file.
+
+  Add support for os.link() on Windows.
+  """
   if sys.platform == 'win32':
     if not ctypes.windll.kernel32.CreateHardLinkW(
         unicode(link_name), unicode(source), 0):
@@ -129,7 +132,7 @@ def link_file(outfile, infile, action):
     os.symlink(infile, outfile)  # pylint: disable=E1101
   else:
     try:
-      os_link(infile, outfile)
+      hardlink(infile, outfile)
     except OSError as e:
       if action == HARDLINK:
         raise isolateserver.MappingError(
@@ -141,9 +144,14 @@ def link_file(outfile, infile, action):
       readable_copy(outfile, infile)
 
 
-def _set_write_bit(path, read_only):
-  """Sets or resets the executable bit on a file or directory."""
+def set_read_only(path, read_only):
+  """Sets or resets the write bit on a file or directory.
+
+  Zaps out access to 'group' and 'others'.
+  """
+  assert isinstance(read_only, bool), read_only
   mode = os.lstat(path).st_mode
+  # TODO(maruel): Stop removing GO bits.
   if read_only:
     mode = mode & 0500
   else:
@@ -153,36 +161,115 @@ def _set_write_bit(path, read_only):
   else:
     if stat.S_ISLNK(mode):
       # Skip symlink without lchmod() support.
-      logging.debug('Can\'t change +w bit on symlink %s' % path)
+      logging.debug(
+          'Can\'t change %sw bit on symlink %s',
+          '-' if read_only else '+', path)
       return
 
     # TODO(maruel): Implement proper DACL modification on Windows.
     os.chmod(path, mode)
 
 
-def make_writable(root, read_only):
-  """Toggle the writable bit on a directory tree."""
+def make_tree_read_only(root):
+  """Makes all the files in the directories read only.
+
+  Also makes the directories read only, only if it makes sense on the platform.
+
+  This means no file can be created or deleted.
+  """
+  logging.debug('make_tree_read_only(%s)', root)
   assert os.path.isabs(root), root
   for dirpath, dirnames, filenames in os.walk(root, topdown=True):
     for filename in filenames:
-      _set_write_bit(os.path.join(dirpath, filename), read_only)
+      set_read_only(os.path.join(dirpath, filename), True)
+    if sys.platform != 'win32':
+      # It must not be done on Windows.
+      for dirname in dirnames:
+        set_read_only(os.path.join(dirpath, dirname), True)
+  if sys.platform != 'win32':
+    set_read_only(root, True)
 
-    for dirname in dirnames:
-      _set_write_bit(os.path.join(dirpath, dirname), read_only)
+
+def make_tree_files_read_only(root):
+  """Makes all the files in the directories read only but not the directories
+  themselves.
+
+  This means files can be created or deleted.
+  """
+  logging.debug('make_tree_files_read_only(%s)', root)
+  assert os.path.isabs(root), root
+  if sys.platform != 'win32':
+    set_read_only(root, False)
+  for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+    for filename in filenames:
+      set_read_only(os.path.join(dirpath, filename), True)
+    if sys.platform != 'win32':
+      # It must not be done on Windows.
+      for dirname in dirnames:
+        set_read_only(os.path.join(dirpath, dirname), False)
+
+
+def make_tree_writeable(root):
+  """Makes all the files in the directories writeable.
+
+  Also makes the directories writeable, only if it makes sense on the platform.
+
+  It is different from make_tree_deleteable() because it unconditionally affects
+  the files.
+  """
+  logging.debug('make_tree_writeable(%s)', root)
+  assert os.path.isabs(root), root
+  if sys.platform != 'win32':
+    set_read_only(root, False)
+  for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+    for filename in filenames:
+      set_read_only(os.path.join(dirpath, filename), False)
+    if sys.platform != 'win32':
+      # It must not be done on Windows.
+      for dirname in dirnames:
+        set_read_only(os.path.join(dirpath, dirname), False)
+
+
+def make_tree_deleteable(root):
+  """Changes the appropriate permissions so the files in the directories can be
+  deleted.
+
+  On Windows, the files are modified. On other platforms, modify the directory.
+  It only does the minimum so the files can be deleted safely.
+
+  Warning on Windows: since file permission is modified, the file node is
+  modified. This means that for hard-linked files, every directory entry for the
+  file node has its file permission modified.
+  """
+  logging.debug('make_tree_deleteable(%s)', root)
+  assert os.path.isabs(root), root
+  if sys.platform != 'win32':
+    set_read_only(root, False)
+  for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+    if sys.platform == 'win32':
+      for filename in filenames:
+        set_read_only(os.path.join(dirpath, filename), False)
+    else:
+      for dirname in dirnames:
+        set_read_only(os.path.join(dirpath, dirname), False)
 
 
 def rmtree(root):
   """Wrapper around shutil.rmtree() to retry automatically on Windows."""
-  make_writable(root, False)
+  make_tree_deleteable(root)
+  logging.info('rmtree(%s)', root)
   if sys.platform == 'win32':
     for i in range(3):
       try:
         shutil.rmtree(root)
         break
       except WindowsError:  # pylint: disable=E0602
+        if i == 2:
+          raise
         delay = (i+1)*2
         print >> sys.stderr, (
-            'The test has subprocess outliving it. Sleep %d seconds.' % delay)
+            'Failed to delete %s. Maybe the test has subprocess outliving it.'
+            ' Sleep %d seconds.' % (root, delay))
         time.sleep(delay)
   else:
     shutil.rmtree(root)
@@ -191,6 +278,14 @@ def rmtree(root):
 def try_remove(filepath):
   """Removes a file without crashing even if it doesn't exist."""
   try:
+    # TODO(maruel): Not do it unless necessary since it slows this function
+    # down.
+    if sys.platform == 'win32':
+      # Deleting a read-only file will fail if it is read-only.
+      set_read_only(filepath, False)
+    else:
+      # Deleting a read-only file will fail if the directory is read-only.
+      set_read_only(os.path.dirname(filepath), False)
     os.remove(filepath)
   except OSError:
     pass
@@ -312,8 +407,14 @@ class DiskCache(isolateserver.LocalCache):
       return self._lru.keys_set()
 
   def touch(self, digest, size):
-    # Verify an actual file is valid. Note that is doesn't compute the hash so
-    # it could still be corrupted. Do it outside the lock.
+    """Verifies an actual file is valid.
+
+    Note that is doesn't compute the hash so it could still be corrupted if the
+    file size didn't change.
+
+    TODO(maruel): More stringent verification while keeping the check fast.
+    """
+    # Do the check outside the lock.
     if not isolateserver.is_valid_file(self._path(digest), size):
       return False
 
@@ -335,6 +436,10 @@ class DiskCache(isolateserver.LocalCache):
 
   def write(self, digest, content):
     path = self._path(digest)
+    # A stale broken file may remain. It is possible for the file to have write
+    # access bit removed which would cause the file_write() call to fail to open
+    # in write mode. Take no chance here.
+    try_remove(path)
     try:
       size = isolateserver.file_write(path, content)
     except:
@@ -345,13 +450,25 @@ class DiskCache(isolateserver.LocalCache):
       # caller, it will be logged there.
       try_remove(path)
       raise
+    # Make the file read-only in the cache.  This has a few side-effects since
+    # the file node is modified, so every directory entries to this file becomes
+    # read-only. It's fine here because it is a new file.
+    set_read_only(path, True)
     with self._lock:
       self._add(digest, size)
 
-  def link(self, digest, dest, file_mode=None):
-    link_file(dest, self._path(digest), HARDLINK)
+  def hardlink(self, digest, dest, file_mode):
+    """Hardlinks the file to |dest|.
+
+    Note that the file permission bits are on the file node, not the directory
+    entry, so changing the access bit on any of the directory entries for the
+    file node will affect them all.
+    """
+    path = self._path(digest)
+    link_file(dest, path, HARDLINK)
     if file_mode is not None:
-      os.chmod(dest, file_mode)
+      # Ignores all other bits.
+      os.chmod(dest, file_mode & 0500)
 
   def _load(self):
     """Loads state of the cache from json file."""
@@ -359,6 +476,11 @@ class DiskCache(isolateserver.LocalCache):
 
     if not os.path.isdir(self.cache_dir):
       os.makedirs(self.cache_dir)
+    else:
+      # Make sure the cache is read-only.
+      # TODO(maruel): Calculate the cost and optimize the performance
+      # accordingly.
+      make_tree_read_only(self.cache_dir)
 
     # Load state of the cache.
     if os.path.isfile(self.state_file):
@@ -367,7 +489,7 @@ class DiskCache(isolateserver.LocalCache):
       except ValueError as err:
         logging.error('Failed to load cache state: %s' % (err,))
         # Don't want to keep broken state file.
-        os.remove(self.state_file)
+        try_remove(self.state_file)
 
     # Ensure that all files listed in the state still exist and add new ones.
     previous = self._lru.keys_set()
@@ -403,6 +525,13 @@ class DiskCache(isolateserver.LocalCache):
   def _save(self):
     """Saves the LRU ordering."""
     self._lock.assert_locked()
+    if sys.platform != 'win32':
+      d = os.path.dirname(self.state_file)
+      if os.path.isdir(d):
+        # Necessary otherwise the file can't be created.
+        set_read_only(d, False)
+    if os.path.isfile(self.state_file):
+      set_read_only(self.state_file, False)
     self._lru.save(self.state_file)
 
   def _trim(self):
@@ -476,16 +605,47 @@ class DiskCache(isolateserver.LocalCache):
     try:
       if size == isolateserver.UNKNOWN_FILE_SIZE:
         size = os.stat(self._path(digest)).st_size
-      os.remove(self._path(digest))
+      try_remove(self._path(digest))
       self._removed.append(size)
     except OSError as e:
       logging.error('Error attempting to delete a file %s:\n%s' % (digest, e))
 
 
-def run_tha_test(isolated_hash, storage, cache, algo, outdir):
+def change_tree_read_only(rootdir, read_only):
+  """Changes the tree read-only bits according to the read_only specification.
+
+  The flag can be 0, 1 or 2, which will affect the possibility to modify files
+  and create or delete files.
+  """
+  if read_only == 2:
+    # Files and directories (except on Windows) are marked read only. This
+    # inhibits modifying, creating or deleting files in the test directory,
+    # except on Windows where creating and deleting files is still possible.
+    make_tree_read_only(rootdir)
+  elif read_only == 1:
+    # Files are marked read only but not the directories. This inhibits
+    # modifying files but creating or deleting files is still possible.
+    make_tree_files_read_only(rootdir)
+  elif read_only in (0, None):
+    # Anything can be modified. This is the default in the .isolated file
+    # format.
+    #
+    # TODO(maruel): This is currently dangerous as long as DiskCache.touch()
+    # is not yet changed to verify the hash of the content of the files it is
+    # looking at, so that if a test modifies an input file, the file must be
+    # deleted.
+    make_tree_writeable(rootdir)
+  else:
+    raise ValueError(
+        'change_tree_read_only(%s, %s): Unknown flag %s' %
+        (rootdir, read_only, read_only))
+
+
+def run_tha_test(isolated_hash, storage, cache, algo, outdir, extra_args):
   """Downloads the dependencies in the cache, hardlinks them into a |outdir|
   and runs the executable.
   """
+  result = 0
   try:
     try:
       settings = isolateserver.fetch_isolated(
@@ -497,14 +657,20 @@ def run_tha_test(isolated_hash, storage, cache, algo, outdir):
           os_flavor=get_flavor(),
           require_command=True)
     except isolateserver.ConfigError as e:
-      print >> sys.stderr, str(e)
-      return 1
+      tools.report_error(e)
+      result = 1
+      return result
 
-    if settings.read_only:
-      logging.info('Making files read only')
-      make_writable(outdir, True)
+    change_tree_read_only(outdir, settings.read_only)
     cwd = os.path.normpath(os.path.join(outdir, settings.relative_cwd))
-    logging.info('Running %s, cwd=%s' % (settings.command, cwd))
+    command = settings.command + extra_args
+
+    # subprocess.call doesn't consider 'cwd' when searching for executable.
+    # Yet isolate can specify command relative to 'cwd'. Convert it to absolute
+    # path if necessary.
+    if not os.path.isabs(command[0]):
+      command[0] = os.path.abspath(os.path.join(cwd, command[0]))
+    logging.info('Running %s, cwd=%s' % (command, cwd))
 
     # TODO(csharp): This should be specified somewhere else.
     # TODO(vadimsh): Pass it via 'env_vars' in manifest.
@@ -515,16 +681,31 @@ def run_tha_test(isolated_hash, storage, cache, algo, outdir):
           os.path.join(MAIN_DIR, RUN_TEST_CASES_LOG))
     try:
       with tools.Profiler('RunTest'):
-        return subprocess.call(settings.command, cwd=cwd, env=env)
-    except OSError:
-      print >> sys.stderr, 'Failed to run %s; cwd=%s' % (settings.command, cwd)
-      return 1
+        result = subprocess.call(command, cwd=cwd, env=env)
+    except OSError as e:
+      tools.report_error('Failed to run %s; cwd=%s: %s' % (command, cwd, e))
+      result = 1
   finally:
-    if outdir:
+    try:
       rmtree(outdir)
+    except OSError:
+      logging.warning('Leaking %s', outdir)
+      # Swallow the exception so it doesn't generate an infrastructure error.
+      #
+      # It usually happens on Windows when a child process is not properly
+      # terminated, usually because of a test case starting child processes
+      # that time out. This causes files to be locked and it becomes
+      # impossible to delete them.
+      #
+      # Only report an infrastructure error if the test didn't fail. This is
+      # because a swarming bot will likely not reboot. This situation will
+      # cause accumulation of temporary hardlink trees.
+      if not result:
+        raise
+  return result
 
 
-def main():
+def main(args):
   tools.disable_buffering()
   parser = tools.OptionParserWithLogging(
       usage='%prog <options>',
@@ -577,31 +758,30 @@ def main():
            'default=%default')
   parser.add_option_group(group)
 
-  options, args = parser.parse_args()
+  options, args = parser.parse_args(args)
 
   if bool(options.isolated) == bool(options.hash):
     logging.debug('One and only one of --isolated or --hash is required.')
     parser.error('One and only one of --isolated or --hash is required.')
-  if args:
-    logging.debug('Unsupported args %s' % ' '.join(args))
-    parser.error('Unsupported args %s' % ' '.join(args))
   if not options.isolate_server:
     parser.error('--isolate-server is required.')
 
   options.cache = os.path.abspath(options.cache)
   policies = CachePolicies(
       options.max_cache_size, options.min_free_space, options.max_items)
-  storage = isolateserver.get_storage(options.isolate_server, options.namespace)
   algo = isolateserver.get_hash_algo(options.namespace)
 
   try:
     # |options.cache| may not exist until DiskCache() instance is created.
     cache = DiskCache(options.cache, policies, algo)
     outdir = make_temp_dir('run_tha_test', options.cache)
-    return run_tha_test(
-        options.isolated or options.hash, storage, cache, algo, outdir)
+    with isolateserver.get_storage(
+        options.isolate_server, options.namespace) as storage:
+      return run_tha_test(
+          options.isolated or options.hash, storage, cache, algo, outdir, args)
   except Exception as e:
     # Make sure any exception is logged.
+    tools.report_error(e)
     logging.exception(e)
     return 1
 
@@ -609,4 +789,4 @@ def main():
 if __name__ == '__main__':
   # Ensure that we are always running with the correct encoding.
   fix_encoding.fix_encoding()
-  sys.exit(main())
+  sys.exit(main(sys.argv[1:]))

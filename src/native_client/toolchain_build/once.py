@@ -17,21 +17,44 @@ import logging
 import os
 import platform
 import shutil
+import subprocess
 import sys
 
+import command
 import directory_storage
 import file_tools
 import gsd_storage
 import hashing_tools
-import log_tools
+import substituter
 import working_directory
+
+
+class HumanReadableSignature(object):
+  """Accumator of signature information in human readable form.
+
+  A replacement for hashlib that collects the inputs for later display.
+  """
+  def __init__(self):
+    self._items = []
+
+  def update(self, data):
+    """Add an item to the signature."""
+    # Drop paranoid nulls for human readable output.
+    data = data.replace('\0', '')
+    self._items.append(data)
+
+  def hexdigest(self):
+    """Fake version of hexdigest that returns the inputs."""
+    return ('*' * 30 + ' PACKAGE SIGNATURE ' + '*' * 30 + '\n' +
+            '\n'.join(self._items) + '\n' +
+            '=' * 70 + '\n')
 
 
 class Once(object):
   """Class to memoize slow operations."""
 
   def __init__(self, storage, use_cached_results=True, cache_results=True,
-               print_url=None, check_call=None):
+               print_url=None, system_summary=None):
     """Constructor.
 
     Args:
@@ -42,17 +65,13 @@ class Once(object):
                      written to the cache.
       print_url: Function that accepts an URL for printing the build result,
                  or None.
-      check_call: A testing hook for allowing build commands to be intercepted.
-                  Same interface as subprocess.check_call.
     """
-    if check_call is None:
-      check_call = log_tools.CheckCall
     self._storage = storage
     self._directory_storage = directory_storage.DirectoryStorageAdapter(storage)
     self._use_cached_results = use_cached_results
     self._cache_results = cache_results
     self._print_url = print_url
-    self._check_call = check_call
+    self._system_summary = system_summary
 
   def KeyForOutput(self, package, output_hash):
     """Compute the key to store a give output in the data-store.
@@ -167,8 +186,8 @@ class Once(object):
           return True
     return False
 
-  def Run(self, package, inputs, output, commands, unpack_commands=None,
-          hashed_inputs=None, working_dir=None):
+  def Run(self, package, inputs, output, commands,
+          working_dir=None, memoize=True, signature_file=None):
     """Run an operation once, possibly hitting cache.
 
     Args:
@@ -176,45 +195,44 @@ class Once(object):
       inputs: A dict of names mapped to files that are inputs.
       output: An output directory.
       commands: A list of command.Command objects to run.
-      unpack_commands: A list of command.Command object to run before computing
-                       the build hash. Or None.
-      hashed_inputs: An alternate dict of inputs to use for hashing and after
-                     the packing stage (or None).
       working_dir: Working directory to use, or None for a temp dir.
+      memoize: Boolean indicating the the result should be memoized.
+      signature_file: File to write human readable build signatures to or None.
     """
     if working_dir is None:
       wdm = working_directory.TemporaryWorkingDirectory()
     else:
       wdm = working_directory.FixedWorkingDirectory(working_dir)
 
-    # Cleanup destination.
-    file_tools.RemoveDirectoryIfPresent(output)
-    os.mkdir(output)
+    file_tools.MakeDirectoryIfAbsent(output)
+
+    nonpath_subst = { 'package': package }
 
     with wdm as work_dir:
-      # Optionally unpack before hashing.
-      if unpack_commands is not None:
-        for command in unpack_commands:
-          command.Invoke(check_call=self._check_call, package=package,
-                         cwd=work_dir, inputs=inputs, output=output)
-
-      # Use an alternate input set from here on.
-      if hashed_inputs is not None:
-        inputs = hashed_inputs
-
       # Compute the build signature with modified inputs.
       build_signature = self.BuildSignature(
           package, inputs=inputs, commands=commands)
+      # Optionally write human readable version of signature.
+      if signature_file:
+        signature_file.write(self.BuildSignature(
+            package, inputs=inputs, commands=commands,
+            hasher=HumanReadableSignature()))
+        signature_file.flush()
 
       # We're done if it's in the cache.
-      if self.ReadMemoizedResultFromCache(package, build_signature, output):
+      if (memoize and
+          self.ReadMemoizedResultFromCache(package, build_signature, output)):
         return
-      for command in commands:
-        command.Invoke(check_call=self._check_call, package=package,
-                       cwd=work_dir, inputs=inputs, output=output,
-                       build_signature=build_signature)
 
-    self.WriteResultToCache(package, build_signature, output)
+      for command in commands:
+        paths = inputs.copy()
+        paths['output'] = output
+        nonpath_subst['build_signature'] = build_signature
+        subst = substituter.Substituter(work_dir, paths, nonpath_subst)
+        command.Invoke(subst)
+
+    if memoize:
+      self.WriteResultToCache(package, build_signature, output)
 
   def SystemSummary(self):
     """Gather a string describing intrinsic properties of the current machine.
@@ -222,19 +240,29 @@ class Once(object):
     Ideally this would capture anything relevant about the current machine that
     would cause build output to vary (other than build recipe + inputs).
     """
-    # Note there is no attempt to canonicalize these values.  If two
-    # machines that would in fact produce identical builds differ in
-    # these values, it just means that a superfluous build will be
-    # done once to get the mapping from new input hash to preexisting
-    # output hash into the cache.
-    assert len(sys.platform) != 0, len(platform.machine()) != 0
-    items = [
-        ('platform', sys.platform),
-        ('machine', platform.machine()),
-        ]
-    return str(items)
+    if self._system_summary is None:
+      # Note there is no attempt to canonicalize these values.  If two
+      # machines that would in fact produce identical builds differ in
+      # these values, it just means that a superfluous build will be
+      # done once to get the mapping from new input hash to preexisting
+      # output hash into the cache.
+      assert len(sys.platform) != 0, len(platform.machine()) != 0
+      # Use environment from command so we can access MinGW on windows.
+      env = command.PlatformEnvironment([])
+      gcc = file_tools.Which('gcc', paths=env['PATH'].split(os.pathsep))
+      p = subprocess.Popen(
+          [gcc, '-v'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+      _, gcc_version = p.communicate()
+      assert p.returncode == 0
+      items = [
+          ('platform', sys.platform),
+          ('machine', platform.machine()),
+          ('gcc-v', gcc_version),
+          ]
+      self._system_summary = str(items)
+    return self._system_summary
 
-  def BuildSignature(self, package, inputs, commands):
+  def BuildSignature(self, package, inputs, commands, hasher=None):
     """Compute a total checksum for a computation.
 
     The computed hash includes system properties, inputs, and the commands run.
@@ -244,10 +272,16 @@ class Once(object):
               inputs set.
       commands: A list of command.Command objects describing the commands run
                 for this computation.
+      hasher: Optional hasher to use.
     Returns:
-      A hex formatted sha1 to use as a computation key.
+      A hex formatted sha1 to use as a computation key or a human readable
+      signature.
     """
-    h = hashlib.sha1()
+    if hasher is None:
+      h = hashlib.sha1()
+    else:
+      h = hasher
+
     h.update('package:' + package)
     h.update('summary:' + self.SystemSummary())
     for command in commands:

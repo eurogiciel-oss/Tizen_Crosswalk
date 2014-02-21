@@ -8,6 +8,7 @@
 #include "cc/base/cc_export.h"
 #include "cc/resources/content_layer_updater.h"
 #include "skia/ext/refptr.h"
+#include "third_party/skia/include/core/SkBitmap.h"
 
 class SkCanvas;
 
@@ -17,8 +18,9 @@ class LayerPainter;
 class RenderingStatsInstrumenation;
 
 // This class rasterizes the content_rect into a skia bitmap canvas. It then
-// updates textures by copying from the canvas into the texture, using
-// MapSubImage if possible.
+// creates a ResourceUpdate with this bitmap canvas and inserts the
+// ResourceBundle to the provided ResourceUpdateQueue. Actual texture uploading
+// is done by ResourceUpdateController.
 class CC_EXPORT BitmapContentLayerUpdater : public ContentLayerUpdater {
  public:
   class Resource : public LayerUpdater::Resource {
@@ -28,7 +30,7 @@ class CC_EXPORT BitmapContentLayerUpdater : public ContentLayerUpdater {
     virtual ~Resource();
 
     virtual void Update(ResourceUpdateQueue* queue,
-                        gfx::Rect source_rect,
+                        const gfx::Rect& source_rect,
                         gfx::Vector2d dest_offset,
                         bool partial_update) OVERRIDE;
 
@@ -45,14 +47,14 @@ class CC_EXPORT BitmapContentLayerUpdater : public ContentLayerUpdater {
 
   virtual scoped_ptr<LayerUpdater::Resource> CreateResource(
       PrioritizedResourceManager* manager) OVERRIDE;
-  virtual void PrepareToUpdate(gfx::Rect content_rect,
+  virtual void PrepareToUpdate(const gfx::Rect& content_rect,
                                gfx::Size tile_size,
                                float contents_width_scale,
                                float contents_height_scale,
                                gfx::Rect* resulting_opaque_rect) OVERRIDE;
   void UpdateTexture(ResourceUpdateQueue* queue,
                      PrioritizedResource* resource,
-                     gfx::Rect source_rect,
+                     const gfx::Rect& source_rect,
                      gfx::Vector2d dest_offset,
                      bool partial_update);
   virtual void SetOpaque(bool opaque) OVERRIDE;
@@ -65,6 +67,7 @@ class CC_EXPORT BitmapContentLayerUpdater : public ContentLayerUpdater {
       int layer_id);
   virtual ~BitmapContentLayerUpdater();
 
+  SkBitmap bitmap_backing_;
   skia::RefPtr<SkCanvas> canvas_;
   gfx::Size canvas_size_;
   bool opaque_;

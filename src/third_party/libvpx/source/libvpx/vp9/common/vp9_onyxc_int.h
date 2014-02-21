@@ -25,24 +25,29 @@
 #include "vp9/common/vp9_postproc.h"
 #endif
 
-#define ALLOWED_REFS_PER_FRAME 3
+#define REFS_PER_FRAME 3
 
-#define NUM_REF_FRAMES_LOG2 3
-#define NUM_REF_FRAMES (1 << NUM_REF_FRAMES_LOG2)
+#define REF_FRAMES_LOG2 3
+#define REF_FRAMES (1 << REF_FRAMES_LOG2)
 
 // 1 scratch frame for the new frame, 3 for scaled references on the encoder
 // TODO(jkoleszar): These 3 extra references could probably come from the
 // normal reference pool.
-#define NUM_YV12_BUFFERS (NUM_REF_FRAMES + 4)
+#define FRAME_BUFFERS (REF_FRAMES + 4)
 
-#define NUM_FRAME_CONTEXTS_LOG2 2
-#define NUM_FRAME_CONTEXTS (1 << NUM_FRAME_CONTEXTS_LOG2)
+#define FRAME_CONTEXTS_LOG2 2
+#define FRAME_CONTEXTS (1 << FRAME_CONTEXTS_LOG2)
+
+extern const struct {
+  PARTITION_CONTEXT above;
+  PARTITION_CONTEXT left;
+} partition_context_lookup[BLOCK_SIZES];
 
 typedef struct frame_contexts {
   vp9_prob y_mode_prob[BLOCK_SIZE_GROUPS][INTRA_MODES - 1];
   vp9_prob uv_mode_prob[INTRA_MODES][INTRA_MODES - 1];
-  vp9_prob partition_prob[FRAME_TYPES][PARTITION_CONTEXTS][PARTITION_TYPES - 1];
-  vp9_coeff_probs_model coef_probs[TX_SIZES][BLOCK_TYPES];
+  vp9_prob partition_prob[PARTITION_CONTEXTS][PARTITION_TYPES - 1];
+  vp9_coeff_probs_model coef_probs[TX_SIZES][PLANE_TYPES];
   vp9_prob switchable_interp_prob[SWITCHABLE_FILTER_CONTEXTS]
                                  [SWITCHABLE_FILTERS - 1];
   vp9_prob inter_mode_probs[INTER_MODE_CONTEXTS][INTER_MODES - 1];
@@ -59,9 +64,9 @@ typedef struct {
   unsigned int y_mode[BLOCK_SIZE_GROUPS][INTRA_MODES];
   unsigned int uv_mode[INTRA_MODES][INTRA_MODES];
   unsigned int partition[PARTITION_CONTEXTS][PARTITION_TYPES];
-  vp9_coeff_count_model coef[TX_SIZES][BLOCK_TYPES];
-  unsigned int eob_branch[TX_SIZES][BLOCK_TYPES][REF_TYPES]
-                         [COEF_BANDS][PREV_COEF_CONTEXTS];
+  vp9_coeff_count_model coef[TX_SIZES][PLANE_TYPES];
+  unsigned int eob_branch[TX_SIZES][PLANE_TYPES][REF_TYPES]
+                         [COEF_BANDS][COEFF_CONTEXTS];
   unsigned int switchable_interp[SWITCHABLE_FILTER_CONTEXTS]
                                 [SWITCHABLE_FILTERS];
   unsigned int inter_mode[INTER_MODE_CONTEXTS][INTER_MODES];
@@ -76,11 +81,11 @@ typedef struct {
 
 
 typedef enum {
-  SINGLE_PREDICTION_ONLY = 0,
-  COMP_PREDICTION_ONLY   = 1,
-  HYBRID_PREDICTION      = 2,
-  NB_PREDICTION_TYPES    = 3,
-} COMPPREDMODE_TYPE;
+  SINGLE_REFERENCE      = 0,
+  COMPOUND_REFERENCE    = 1,
+  REFERENCE_MODE_SELECT = 2,
+  REFERENCE_MODES       = 3,
+} REFERENCE_MODE;
 
 typedef struct VP9Common {
   struct vpx_internal_error_info  error;
@@ -108,17 +113,16 @@ typedef struct VP9Common {
 
   YV12_BUFFER_CONFIG *frame_to_show;
 
-  YV12_BUFFER_CONFIG yv12_fb[NUM_YV12_BUFFERS];
-  int fb_idx_ref_cnt[NUM_YV12_BUFFERS]; /* reference counts */
-  int ref_frame_map[NUM_REF_FRAMES]; /* maps fb_idx to reference slot */
+  YV12_BUFFER_CONFIG *yv12_fb;
+  int *fb_idx_ref_cnt; /* reference counts */
+  int ref_frame_map[REF_FRAMES]; /* maps fb_idx to reference slot */
 
   // TODO(jkoleszar): could expand active_ref_idx to 4, with 0 as intra, and
   // roll new_fb_idx into it.
 
-  // Each frame can reference ALLOWED_REFS_PER_FRAME buffers
-  int active_ref_idx[ALLOWED_REFS_PER_FRAME];
-  struct scale_factors active_ref_scale[ALLOWED_REFS_PER_FRAME];
-  struct scale_factors_common active_ref_scale_comm[ALLOWED_REFS_PER_FRAME];
+  // Each frame can reference REFS_PER_FRAME buffers
+  int active_ref_idx[REFS_PER_FRAME];
+  struct scale_factors active_ref_scale[REFS_PER_FRAME];
   int new_fb_idx;
 
   YV12_BUFFER_CONFIG post_proc_buffer;
@@ -190,10 +194,10 @@ typedef struct VP9Common {
   int allow_comp_inter_inter;
   MV_REFERENCE_FRAME comp_fixed_ref;
   MV_REFERENCE_FRAME comp_var_ref[2];
-  COMPPREDMODE_TYPE comp_pred_mode;
+  REFERENCE_MODE reference_mode;
 
   FRAME_CONTEXT fc;  /* this frame entropy */
-  FRAME_CONTEXT frame_contexts[NUM_FRAME_CONTEXTS];
+  FRAME_CONTEXT frame_contexts[FRAME_CONTEXTS];
   unsigned int  frame_context_idx; /* Context to use/update */
   FRAME_COUNTS counts;
 
@@ -208,6 +212,15 @@ typedef struct VP9Common {
   int frame_parallel_decoding_mode;
 
   int log2_tile_cols, log2_tile_rows;
+
+  vpx_codec_frame_buffer_t *fb_list;  // External frame buffers
+  int fb_count;  // Total number of frame buffers
+  vpx_realloc_frame_buffer_cb_fn_t realloc_fb_cb;
+  void *user_priv;  // Private data associated with the external frame buffers.
+
+  int fb_lru;  // Flag telling if lru is on/off
+  uint32_t *fb_idx_ref_lru;  // Frame buffer lru cache
+  uint32_t fb_idx_ref_lru_count;
 } VP9_COMMON;
 
 // ref == 0 => LAST_FRAME
@@ -223,18 +236,34 @@ static YV12_BUFFER_CONFIG *get_frame_new_buffer(VP9_COMMON *cm) {
 
 static int get_free_fb(VP9_COMMON *cm) {
   int i;
-  for (i = 0; i < NUM_YV12_BUFFERS; i++)
-    if (cm->fb_idx_ref_cnt[i] == 0)
-      break;
+  uint32_t lru_count = cm->fb_idx_ref_lru_count + 1;
+  int free_buffer_idx = cm->fb_count;
+  for (i = 0; i < cm->fb_count; i++) {
+    if (!cm->fb_lru) {
+      if (cm->fb_idx_ref_cnt[i] == 0) {
+        free_buffer_idx = i;
+        break;
+      }
+    } else {
+      if (cm->fb_idx_ref_cnt[i] == 0 && cm->fb_idx_ref_lru[i] < lru_count) {
+        free_buffer_idx = i;
+        lru_count = cm->fb_idx_ref_lru[i];
+      }
+    }
+  }
 
-  assert(i < NUM_YV12_BUFFERS);
-  cm->fb_idx_ref_cnt[i] = 1;
-  return i;
+  assert(free_buffer_idx < cm->fb_count);
+  cm->fb_idx_ref_cnt[free_buffer_idx] = 1;
+  if (cm->fb_lru)
+    cm->fb_idx_ref_lru[free_buffer_idx] = ++cm->fb_idx_ref_lru_count;
+  return free_buffer_idx;
 }
 
 static void ref_cnt_fb(int *buf, int *idx, int new_idx) {
-  if (buf[*idx] > 0)
-    buf[*idx]--;
+  const int ref_index = *idx;
+
+  if (ref_index >= 0 && buf[ref_index] > 0)
+    buf[ref_index]--;
 
   *idx = new_idx;
 
@@ -243,6 +272,11 @@ static void ref_cnt_fb(int *buf, int *idx, int new_idx) {
 
 static int mi_cols_aligned_to_sb(int n_mis) {
   return ALIGN_POWER_OF_TWO(n_mis, MI_BLOCK_SIZE_LOG2);
+}
+
+static INLINE const vp9_prob* get_partition_probs(VP9_COMMON *cm, int ctx) {
+  return cm->frame_type == KEY_FRAME ? vp9_kf_partition_probs[ctx]
+                                     : cm->fc.partition_prob[ctx];
 }
 
 static INLINE void set_skip_context(
@@ -293,52 +327,40 @@ static INLINE int frame_is_intra_only(const VP9_COMMON *const cm) {
 static INLINE void update_partition_context(
     PARTITION_CONTEXT *above_seg_context,
     PARTITION_CONTEXT left_seg_context[8],
-    int mi_row, int mi_col,
-    BLOCK_SIZE sb_type,
-    BLOCK_SIZE sb_size) {
-  PARTITION_CONTEXT *above_ctx = above_seg_context + mi_col;
-  PARTITION_CONTEXT *left_ctx = left_seg_context + (mi_row & MI_MASK);
+    int mi_row, int mi_col, BLOCK_SIZE subsize, BLOCK_SIZE bsize) {
+  PARTITION_CONTEXT *const above_ctx = above_seg_context + mi_col;
+  PARTITION_CONTEXT *const left_ctx = left_seg_context + (mi_row & MI_MASK);
 
-  const int bsl = b_width_log2(sb_size), bs = (1 << bsl) / 2;
-  const int bwl = b_width_log2(sb_type);
-  const int bhl = b_height_log2(sb_type);
-  const int boffset = b_width_log2(BLOCK_64X64) - bsl;
-  const char pcval0 = ~(0xe << boffset);
-  const char pcval1 = ~(0xf << boffset);
-  const char pcvalue[2] = {pcval0, pcval1};
-
-  assert(MAX(bwl, bhl) <= bsl);
+  // num_4x4_blocks_wide_lookup[bsize] / 2
+  const int bs = num_8x8_blocks_wide_lookup[bsize];
 
   // update the partition context at the end notes. set partition bits
   // of block sizes larger than the current one to be one, and partition
   // bits of smaller block sizes to be zero.
-  vpx_memset(above_ctx, pcvalue[bwl == bsl], bs);
-  vpx_memset(left_ctx, pcvalue[bhl == bsl], bs);
+  vpx_memset(above_ctx, partition_context_lookup[subsize].above, bs);
+  vpx_memset(left_ctx, partition_context_lookup[subsize].left, bs);
 }
 
 static INLINE int partition_plane_context(
     const PARTITION_CONTEXT *above_seg_context,
     const PARTITION_CONTEXT left_seg_context[8],
-    int mi_row, int mi_col,
-    BLOCK_SIZE sb_type) {
+    int mi_row, int mi_col, BLOCK_SIZE bsize) {
   const PARTITION_CONTEXT *above_ctx = above_seg_context + mi_col;
   const PARTITION_CONTEXT *left_ctx = left_seg_context + (mi_row & MI_MASK);
 
-  int bsl = mi_width_log2(sb_type), bs = 1 << bsl;
+  const int bsl = mi_width_log2(bsize);
+  const int bs = 1 << bsl;
   int above = 0, left = 0, i;
-  int boffset = mi_width_log2(BLOCK_64X64) - bsl;
 
-  assert(mi_width_log2(sb_type) == mi_height_log2(sb_type));
+  assert(mi_width_log2(bsize) == mi_height_log2(bsize));
   assert(bsl >= 0);
-  assert(boffset >= 0);
 
-  for (i = 0; i < bs; i++)
-    above |= (above_ctx[i] & (1 << boffset));
-  for (i = 0; i < bs; i++)
-    left |= (left_ctx[i] & (1 << boffset));
-
-  above = (above > 0);
-  left  = (left > 0);
+  for (i = 0; i < bs; i++) {
+    above |= above_ctx[i];
+    left |= left_ctx[i];
+  }
+  above = (above & bs) > 0;
+  left  = (left & bs) > 0;
 
   return (left * 2 + above) + bsl * PARTITION_PLOFFSET;
 }

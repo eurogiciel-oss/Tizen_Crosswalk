@@ -133,7 +133,8 @@ bool UninstallView::Cancel() {
   return true;
 }
 
-string16 UninstallView::GetDialogButtonLabel(ui::DialogButton button) const {
+base::string16 UninstallView::GetDialogButtonLabel(
+    ui::DialogButton button) const {
   // Label the OK button 'Uninstall'; Cancel remains the same.
   if (button == ui::DIALOG_BUTTON_OK)
     return l10n_util::GetStringUTF16(IDS_UNINSTALL_BUTTON_TEXT);
@@ -149,7 +150,7 @@ void UninstallView::ButtonPressed(views::Button* sender,
   }
 }
 
-string16 UninstallView::GetWindowTitle() const {
+base::string16 UninstallView::GetWindowTitle() const {
   return l10n_util::GetStringUTF16(IDS_UNINSTALL_CHROME);
 }
 
@@ -158,7 +159,7 @@ int UninstallView::GetItemCount() const {
   return browsers_->size();
 }
 
-string16 UninstallView::GetItemAt(int index) {
+base::string16 UninstallView::GetItemAt(int index) {
   DCHECK_LT(index, static_cast<int>(browsers_->size()));
   BrowsersMap::const_iterator i = browsers_->begin();
   std::advance(i, index);
@@ -168,7 +169,7 @@ string16 UninstallView::GetItemAt(int index) {
 namespace chrome {
 
 int ShowUninstallBrowserPrompt(bool show_delete_profile) {
-  DCHECK_EQ(base::MessageLoop::TYPE_UI, base::MessageLoop::current()->type());
+  DCHECK(base::MessageLoopForUI::IsCurrent());
   int result = content::RESULT_CODE_NORMAL_EXIT;
   views::AcceleratorHandler accelerator_handler;
 

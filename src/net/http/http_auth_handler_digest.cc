@@ -18,6 +18,7 @@
 #include "net/http/http_auth.h"
 #include "net/http/http_request_info.h"
 #include "net/http/http_util.h"
+#include "url/gurl.h"
 
 namespace net {
 
@@ -304,7 +305,7 @@ void HttpAuthHandlerDigest::GetRequestMethodAndPath(
   const GURL& url = request->url;
 
   if (target_ == HttpAuth::AUTH_PROXY &&
-      (url.SchemeIs("https") || url.SchemeIs("ws") || url.SchemeIs("wss"))) {
+      (url.SchemeIs("https") || url.SchemeIsWSOrWSS())) {
     *method = "CONNECT";
     *path = GetHostAndPort(url);
   } else {
@@ -321,9 +322,9 @@ std::string HttpAuthHandlerDigest::AssembleResponseDigest(
     const std::string& nc) const {
   // ha1 = MD5(A1)
   // TODO(eroman): is this the right encoding?
-  std::string ha1 = base::MD5String(UTF16ToUTF8(credentials.username()) + ":" +
-                                    original_realm_ + ":" +
-                                    UTF16ToUTF8(credentials.password()));
+  std::string ha1 = base::MD5String(base::UTF16ToUTF8(credentials.username()) +
+                                    ":" + original_realm_ + ":" +
+                                    base::UTF16ToUTF8(credentials.password()));
   if (algorithm_ == HttpAuthHandlerDigest::ALGORITHM_MD5_SESS)
     ha1 = base::MD5String(ha1 + ":" + nonce_ + ":" + cnonce);
 
@@ -351,7 +352,7 @@ std::string HttpAuthHandlerDigest::AssembleCredentials(
   // TODO(eroman): is this the right encoding?
   std::string authorization = (std::string("Digest username=") +
                                HttpUtil::Quote(
-                                   UTF16ToUTF8(credentials.username())));
+                                   base::UTF16ToUTF8(credentials.username())));
   authorization += ", realm=" + HttpUtil::Quote(original_realm_);
   authorization += ", nonce=" + HttpUtil::Quote(nonce_);
   authorization += ", uri=" + HttpUtil::Quote(path);

@@ -31,11 +31,6 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/strings/string16.h"
 
-// This file declares "using base::Value", etc. at the bottom, so that
-// current code can use these classes without the base namespace. In
-// new code, please always use base::Value, etc. or add your own
-// "using" declaration.
-// http://crbug.com/88666
 namespace base {
 
 class DictionaryValue;
@@ -324,6 +319,11 @@ class BASE_EXPORT DictionaryValue : public Value {
   virtual bool RemoveWithoutPathExpansion(const std::string& key,
                                           scoped_ptr<Value>* out_value);
 
+  // Removes a path, clearing out all dictionaries on |path| that remain empty
+  // after removing the value at |path|.
+  virtual bool RemovePath(const std::string& path,
+                          scoped_ptr<Value>* out_value);
+
   // Makes a copy of |this| but doesn't include empty dictionaries and lists in
   // the copy.  This never returns NULL, even if |this| itself is empty.
   DictionaryValue* DeepCopyWithoutEmptyChildren() const;
@@ -343,6 +343,7 @@ class BASE_EXPORT DictionaryValue : public Value {
   class BASE_EXPORT Iterator {
    public:
     explicit Iterator(const DictionaryValue& target);
+    ~Iterator();
 
     bool IsAtEnd() const { return it_ == target_.dictionary_.end(); }
     void Advance() { ++it_; }
@@ -521,11 +522,5 @@ BASE_EXPORT inline std::ostream& operator<<(std::ostream& out,
 }
 
 }  // namespace base
-
-// http://crbug.com/88666
-using base::DictionaryValue;
-using base::ListValue;
-using base::StringValue;
-using base::Value;
 
 #endif  // BASE_VALUES_H_

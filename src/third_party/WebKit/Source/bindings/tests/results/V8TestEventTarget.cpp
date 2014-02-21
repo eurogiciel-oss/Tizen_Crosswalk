@@ -34,20 +34,15 @@
 #include "V8TestEventTarget.h"
 
 #include "RuntimeEnabledFeatures.h"
-#include "V8EventTarget.h"
 #include "V8Node.h"
-#include "bindings/v8/ExceptionMessages.h"
 #include "bindings/v8/ExceptionState.h"
-#include "bindings/v8/ScriptController.h"
-#include "bindings/v8/V8Binding.h"
 #include "bindings/v8/V8DOMConfiguration.h"
-#include "bindings/v8/V8DOMWrapper.h"
+#include "bindings/v8/V8ObjectConstructor.h"
 #include "core/dom/ContextFeatures.h"
 #include "core/dom/Document.h"
 #include "platform/TraceEvent.h"
 #include "wtf/GetPtr.h"
 #include "wtf/RefPtr.h"
-#include "wtf/UnusedParam.h"
 
 namespace WebCore {
 
@@ -71,7 +66,7 @@ void webCoreInitializeScriptWrappableForInterface(WebCore::TestEventTarget* obje
 }
 
 namespace WebCore {
-const WrapperTypeInfo V8TestEventTarget::wrapperTypeInfo = { V8TestEventTarget::GetTemplate, V8TestEventTarget::derefObject, 0, V8TestEventTarget::toEventTarget, 0, V8TestEventTarget::installPerContextEnabledPrototypeProperties, &V8EventTarget::wrapperTypeInfo, WrapperTypeObjectPrototype };
+const WrapperTypeInfo V8TestEventTarget::wrapperTypeInfo = { gin::kEmbedderBlink, V8TestEventTarget::domTemplate, V8TestEventTarget::derefObject, 0, V8TestEventTarget::toEventTarget, 0, V8TestEventTarget::installPerContextEnabledMethods, &V8EventTarget::wrapperTypeInfo, WrapperTypeObjectPrototype };
 
 namespace TestEventTargetV8Internal {
 
@@ -79,12 +74,14 @@ template <typename T> void V8_USE(T) { }
 
 static void itemMethod(const v8::FunctionCallbackInfo<v8::Value>& info)
 {
+    ExceptionState exceptionState(ExceptionState::ExecutionContext, "item", "TestEventTarget", info.Holder(), info.GetIsolate());
     if (UNLIKELY(info.Length() < 1)) {
-        throwTypeError(ExceptionMessages::failedToExecute("item", "TestEventTarget", ExceptionMessages::notEnoughArguments(1, info.Length())), info.GetIsolate());
+        exceptionState.throwTypeError(ExceptionMessages::notEnoughArguments(1, info.Length()));
+        exceptionState.throwIfNeeded();
         return;
     }
     TestEventTarget* imp = V8TestEventTarget::toNative(info.Holder());
-    V8TRYCATCH_VOID(unsigned, index, toUInt32(info[0]));
+    V8TRYCATCH_EXCEPTION_VOID(unsigned, index, toUInt32(info[0], exceptionState), exceptionState);
     v8SetReturnValue(info, imp->item(index));
 }
 
@@ -92,7 +89,7 @@ static void itemMethodCallback(const v8::FunctionCallbackInfo<v8::Value>& info)
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMMethod");
     TestEventTargetV8Internal::itemMethod(info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void namedItemMethod(const v8::FunctionCallbackInfo<v8::Value>& info)
@@ -110,12 +107,11 @@ static void namedItemMethodCallback(const v8::FunctionCallbackInfo<v8::Value>& i
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMMethod");
     TestEventTargetV8Internal::namedItemMethod(info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void indexedPropertyGetter(uint32_t index, const v8::PropertyCallbackInfo<v8::Value>& info)
 {
-    ASSERT(V8DOMWrapper::maybeDOMWrapper(info.Holder()));
     TestEventTarget* collection = V8TestEventTarget::toNative(info.Holder());
     RefPtr<Node> element = collection->item(index);
     if (!element)
@@ -127,13 +123,13 @@ static void indexedPropertyGetterCallback(uint32_t index, const v8::PropertyCall
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMIndexedProperty");
     TestEventTargetV8Internal::indexedPropertyGetter(index, info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void indexedPropertySetter(uint32_t index, v8::Local<v8::Value> jsValue, const v8::PropertyCallbackInfo<v8::Value>& info)
 {
     TestEventTarget* collection = V8TestEventTarget::toNative(info.Holder());
-    V8TRYCATCH_VOID(Node*, propertyValue, V8Node::HasInstance(jsValue, info.GetIsolate(), worldType(info.GetIsolate())) ? V8Node::toNative(v8::Handle<v8::Object>::Cast(jsValue)) : 0);
+    V8TRYCATCH_VOID(Node*, propertyValue, V8Node::hasInstance(jsValue, info.GetIsolate()) ? V8Node::toNative(v8::Handle<v8::Object>::Cast(jsValue)) : 0);
     bool result = collection->anonymousIndexedSetter(index, propertyValue);
     if (!result)
         return;
@@ -144,24 +140,25 @@ static void indexedPropertySetterCallback(uint32_t index, v8::Local<v8::Value> j
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMIndexedProperty");
     TestEventTargetV8Internal::indexedPropertySetter(index, jsValue, info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void indexedPropertyDeleter(unsigned index, const v8::PropertyCallbackInfo<v8::Boolean>& info)
 {
     TestEventTarget* collection = V8TestEventTarget::toNative(info.Holder());
-    ExceptionState es(info.GetIsolate());
-    bool result = collection->anonymousIndexedDeleter(index, es);
-    if (es.throwIfNeeded())
+    ExceptionState exceptionState(info.Holder(), info.GetIsolate());
+    DeleteResult result = collection->anonymousIndexedDeleter(index, exceptionState);
+    if (exceptionState.throwIfNeeded())
         return;
-    return v8SetReturnValueBool(info, result);
+    if (result != DeleteUnknownProperty)
+        return v8SetReturnValueBool(info, result == DeleteSuccess);
 }
 
 static void indexedPropertyDeleterCallback(uint32_t index, const v8::PropertyCallbackInfo<v8::Boolean>& info)
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMIndexedProperty");
     TestEventTargetV8Internal::indexedPropertyDeleter(index, info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void namedPropertyGetter(v8::Local<v8::String> name, const v8::PropertyCallbackInfo<v8::Value>& info)
@@ -173,9 +170,8 @@ static void namedPropertyGetter(v8::Local<v8::String> name, const v8::PropertyCa
     if (info.Holder()->HasRealNamedProperty(name))
         return;
 
-    ASSERT(V8DOMWrapper::maybeDOMWrapper(info.Holder()));
     TestEventTarget* collection = V8TestEventTarget::toNative(info.Holder());
-    AtomicString propertyName = toWebCoreAtomicString(name);
+    AtomicString propertyName = toCoreAtomicString(name);
     RefPtr<Node> element = collection->namedItem(propertyName);
     if (!element)
         return;
@@ -186,7 +182,7 @@ static void namedPropertyGetterCallback(v8::Local<v8::String> name, const v8::Pr
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMNamedProperty");
     TestEventTargetV8Internal::namedPropertyGetter(name, info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void namedPropertySetter(v8::Local<v8::String> name, v8::Local<v8::Value> jsValue, const v8::PropertyCallbackInfo<v8::Value>& info)
@@ -214,45 +210,46 @@ static void namedPropertySetterCallback(v8::Local<v8::String> name, v8::Local<v8
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMNamedProperty");
     TestEventTargetV8Internal::namedPropertySetter(name, jsValue, info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void namedPropertyDeleter(v8::Local<v8::String> name, const v8::PropertyCallbackInfo<v8::Boolean>& info)
 {
     TestEventTarget* collection = V8TestEventTarget::toNative(info.Holder());
-    AtomicString propertyName = toWebCoreAtomicString(name);
-    bool result = collection->anonymousNamedDeleter(propertyName);
-    return v8SetReturnValueBool(info, result);
+    AtomicString propertyName = toCoreAtomicString(name);
+    DeleteResult result = collection->anonymousNamedDeleter(propertyName);
+    if (result != DeleteUnknownProperty)
+        return v8SetReturnValueBool(info, result == DeleteSuccess);
 }
 
 static void namedPropertyDeleterCallback(v8::Local<v8::String> name, const v8::PropertyCallbackInfo<v8::Boolean>& info)
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMNamedProperty");
     TestEventTargetV8Internal::namedPropertyDeleter(name, info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void namedPropertyEnumerator(const v8::PropertyCallbackInfo<v8::Array>& info)
 {
-    ExceptionState es(info.GetIsolate());
+    ExceptionState exceptionState(info.Holder(), info.GetIsolate());
     TestEventTarget* collection = V8TestEventTarget::toNative(info.Holder());
     Vector<String> names;
-    collection->namedPropertyEnumerator(names, es);
-    if (es.throwIfNeeded())
+    collection->namedPropertyEnumerator(names, exceptionState);
+    if (exceptionState.throwIfNeeded())
         return;
-    v8::Handle<v8::Array> v8names = v8::Array::New(names.size());
+    v8::Handle<v8::Array> v8names = v8::Array::New(info.GetIsolate(), names.size());
     for (size_t i = 0; i < names.size(); ++i)
-        v8names->Set(v8::Integer::New(i, info.GetIsolate()), v8String(names[i], info.GetIsolate()));
+        v8names->Set(v8::Integer::New(info.GetIsolate(), i), v8String(info.GetIsolate(), names[i]));
     v8SetReturnValue(info, v8names);
 }
 
 static void namedPropertyQuery(v8::Local<v8::String> name, const v8::PropertyCallbackInfo<v8::Integer>& info)
 {
     TestEventTarget* collection = V8TestEventTarget::toNative(info.Holder());
-    AtomicString propertyName = toWebCoreAtomicString(name);
-    ExceptionState es(info.GetIsolate());
-    bool result = collection->namedPropertyQuery(propertyName, es);
-    if (es.throwIfNeeded())
+    AtomicString propertyName = toCoreAtomicString(name);
+    ExceptionState exceptionState(info.Holder(), info.GetIsolate());
+    bool result = collection->namedPropertyQuery(propertyName, exceptionState);
+    if (exceptionState.throwIfNeeded())
         return;
     if (!result)
         return;
@@ -263,14 +260,14 @@ static void namedPropertyEnumeratorCallback(const v8::PropertyCallbackInfo<v8::A
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMNamedProperty");
     TestEventTargetV8Internal::namedPropertyEnumerator(info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 static void namedPropertyQueryCallback(v8::Local<v8::String> name, const v8::PropertyCallbackInfo<v8::Integer>& info)
 {
     TRACE_EVENT_SET_SAMPLING_STATE("Blink", "DOMNamedProperty");
     TestEventTargetV8Internal::namedPropertyQuery(name, info);
-    TRACE_EVENT_SET_SAMPLING_STATE("V8", "Execution");
+    TRACE_EVENT_SET_SAMPLING_STATE("V8", "V8Execution");
 }
 
 } // namespace TestEventTargetV8Internal
@@ -280,30 +277,26 @@ static const V8DOMConfiguration::MethodConfiguration V8TestEventTargetMethods[] 
     {"namedItem", TestEventTargetV8Internal::namedItemMethodCallback, 0, 1},
 };
 
-static v8::Handle<v8::FunctionTemplate> ConfigureV8TestEventTargetTemplate(v8::Handle<v8::FunctionTemplate> desc, v8::Isolate* isolate, WrapperWorldType currentWorldType)
+static void configureV8TestEventTargetTemplate(v8::Handle<v8::FunctionTemplate> functionTemplate, v8::Isolate* isolate, WrapperWorldType currentWorldType)
 {
-    desc->ReadOnlyPrototype();
+    functionTemplate->ReadOnlyPrototype();
 
     v8::Local<v8::Signature> defaultSignature;
-    defaultSignature = V8DOMConfiguration::installDOMClassTemplate(desc, "TestEventTarget", V8EventTarget::GetTemplate(isolate, currentWorldType), V8TestEventTarget::internalFieldCount,
+    defaultSignature = V8DOMConfiguration::installDOMClassTemplate(functionTemplate, "TestEventTarget", V8EventTarget::domTemplate(isolate, currentWorldType), V8TestEventTarget::internalFieldCount,
+        0, 0,
         0, 0,
         V8TestEventTargetMethods, WTF_ARRAY_LENGTH(V8TestEventTargetMethods),
         isolate, currentWorldType);
-    UNUSED_PARAM(defaultSignature);
-    v8::Local<v8::ObjectTemplate> instance = desc->InstanceTemplate();
-    v8::Local<v8::ObjectTemplate> proto = desc->PrototypeTemplate();
-    UNUSED_PARAM(instance);
-    UNUSED_PARAM(proto);
-    desc->InstanceTemplate()->SetIndexedPropertyHandler(TestEventTargetV8Internal::indexedPropertyGetterCallback, TestEventTargetV8Internal::indexedPropertySetterCallback, 0, TestEventTargetV8Internal::indexedPropertyDeleterCallback, indexedPropertyEnumerator<TestEventTarget>);
-    desc->InstanceTemplate()->SetNamedPropertyHandler(TestEventTargetV8Internal::namedPropertyGetterCallback, TestEventTargetV8Internal::namedPropertySetterCallback, TestEventTargetV8Internal::namedPropertyQueryCallback, TestEventTargetV8Internal::namedPropertyDeleterCallback, TestEventTargetV8Internal::namedPropertyEnumeratorCallback);
-    desc->InstanceTemplate()->MarkAsUndetectable();
+    v8::Local<v8::ObjectTemplate> ALLOW_UNUSED instanceTemplate = functionTemplate->InstanceTemplate();
+    v8::Local<v8::ObjectTemplate> ALLOW_UNUSED prototypeTemplate = functionTemplate->PrototypeTemplate();
+    functionTemplate->InstanceTemplate()->SetIndexedPropertyHandler(TestEventTargetV8Internal::indexedPropertyGetterCallback, TestEventTargetV8Internal::indexedPropertySetterCallback, 0, TestEventTargetV8Internal::indexedPropertyDeleterCallback, indexedPropertyEnumerator<TestEventTarget>);
+    functionTemplate->InstanceTemplate()->SetNamedPropertyHandler(TestEventTargetV8Internal::namedPropertyGetterCallback, TestEventTargetV8Internal::namedPropertySetterCallback, TestEventTargetV8Internal::namedPropertyQueryCallback, TestEventTargetV8Internal::namedPropertyDeleterCallback, TestEventTargetV8Internal::namedPropertyEnumeratorCallback);
 
     // Custom toString template
-    desc->Set(v8::String::NewSymbol("toString"), V8PerIsolateData::current()->toStringTemplate());
-    return desc;
+    functionTemplate->Set(v8AtomicString(isolate, "toString"), V8PerIsolateData::current()->toStringTemplate());
 }
 
-v8::Handle<v8::FunctionTemplate> V8TestEventTarget::GetTemplate(v8::Isolate* isolate, WrapperWorldType currentWorldType)
+v8::Handle<v8::FunctionTemplate> V8TestEventTarget::domTemplate(v8::Isolate* isolate, WrapperWorldType currentWorldType)
 {
     V8PerIsolateData* data = V8PerIsolateData::from(isolate);
     V8PerIsolateData::TemplateMap::iterator result = data->templateMap(currentWorldType).find(&wrapperTypeInfo);
@@ -311,23 +304,17 @@ v8::Handle<v8::FunctionTemplate> V8TestEventTarget::GetTemplate(v8::Isolate* iso
         return result->value.newLocal(isolate);
 
     TRACE_EVENT_SCOPED_SAMPLING_STATE("Blink", "BuildDOMTemplate");
-    v8::HandleScope handleScope(isolate);
-    v8::Handle<v8::FunctionTemplate> templ =
-        ConfigureV8TestEventTargetTemplate(data->rawTemplate(&wrapperTypeInfo, currentWorldType), isolate, currentWorldType);
+    v8::EscapableHandleScope handleScope(isolate);
+    v8::Local<v8::FunctionTemplate> templ = v8::FunctionTemplate::New(isolate, V8ObjectConstructor::isValidConstructorMode);
+    configureV8TestEventTargetTemplate(templ, isolate, currentWorldType);
     data->templateMap(currentWorldType).add(&wrapperTypeInfo, UnsafePersistent<v8::FunctionTemplate>(isolate, templ));
-    return handleScope.Close(templ);
+    return handleScope.Escape(templ);
 }
 
-bool V8TestEventTarget::HasInstance(v8::Handle<v8::Value> jsValue, v8::Isolate* isolate, WrapperWorldType currentWorldType)
+bool V8TestEventTarget::hasInstance(v8::Handle<v8::Value> jsValue, v8::Isolate* isolate)
 {
-    return V8PerIsolateData::from(isolate)->hasInstance(&wrapperTypeInfo, jsValue, currentWorldType);
-}
-
-bool V8TestEventTarget::HasInstanceInAnyWorld(v8::Handle<v8::Value> jsValue, v8::Isolate* isolate)
-{
-    return V8PerIsolateData::from(isolate)->hasInstance(&wrapperTypeInfo, jsValue, MainWorld)
-        || V8PerIsolateData::from(isolate)->hasInstance(&wrapperTypeInfo, jsValue, IsolatedWorld)
-        || V8PerIsolateData::from(isolate)->hasInstance(&wrapperTypeInfo, jsValue, WorkerWorld);
+    return V8PerIsolateData::from(isolate)->hasInstanceInMainWorld(&wrapperTypeInfo, jsValue)
+        || V8PerIsolateData::from(isolate)->hasInstanceInNonMainWorld(&wrapperTypeInfo, jsValue);
 }
 
 EventTarget* V8TestEventTarget::toEventTarget(v8::Handle<v8::Object> object)
@@ -358,6 +345,12 @@ v8::Handle<v8::Object> V8TestEventTarget::createWrapper(PassRefPtr<TestEventTarg
 void V8TestEventTarget::derefObject(void* object)
 {
     fromInternalPointer(object)->deref();
+}
+
+template<>
+v8::Handle<v8::Value> toV8NoInline(TestEventTarget* impl, v8::Handle<v8::Object> creationContext, v8::Isolate* isolate)
+{
+    return toV8(impl, creationContext, isolate);
 }
 
 } // namespace WebCore

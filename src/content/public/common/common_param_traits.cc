@@ -7,6 +7,7 @@
 #include "content/public/common/content_constants.h"
 #include "content/public/common/page_state.h"
 #include "content/public/common/referrer.h"
+#include "content/public/common/url_utils.h"
 #include "net/base/host_port_pair.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/rect.h"
@@ -50,7 +51,7 @@ struct SkBitmap_Data {
 namespace IPC {
 
 void ParamTraits<GURL>::Write(Message* m, const GURL& p) {
-  DCHECK(p.possibly_invalid_spec().length() <= content::kMaxURLChars);
+  DCHECK(p.possibly_invalid_spec().length() <= content::GetMaxURLChars());
 
   // Beware of print-parse inconsistency which would change an invalid
   // URL into a valid one. Ideally, the message would contain this flag
@@ -69,7 +70,7 @@ void ParamTraits<GURL>::Write(Message* m, const GURL& p) {
 
 bool ParamTraits<GURL>::Read(const Message* m, PickleIterator* iter, GURL* p) {
   std::string s;
-  if (!m->ReadString(iter, &s) || s.length() > content::kMaxURLChars) {
+  if (!m->ReadString(iter, &s) || s.length() > content::GetMaxURLChars()) {
     *p = GURL();
     return false;
   }
@@ -125,26 +126,6 @@ void ParamTraits<content::PageState>::Log(
     const param_type& p, std::string* l) {
   l->append("(");
   LogParam(p.ToEncodedData(), l);
-  l->append(")");
-}
-
-void ParamTraits<content::Referrer>::Write(
-    Message* m, const param_type& p) {
-  WriteParam(m, p.url);
-  WriteParam(m, p.policy);
-}
-
-bool ParamTraits<content::Referrer>::Read(
-    const Message* m, PickleIterator* iter, param_type* r) {
-  return ReadParam(m, iter, &r->url) && ReadParam(m, iter, &r->policy);
-}
-
-void ParamTraits<content::Referrer>::Log(
-    const param_type& p, std::string* l) {
-  l->append("(");
-  LogParam(p.url, l);
-  l->append(",");
-  LogParam(p.policy, l);
   l->append(")");
 }
 

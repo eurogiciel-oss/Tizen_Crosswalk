@@ -26,8 +26,8 @@
 #ifndef FontResource_h
 #define FontResource_h
 
-#include "core/fetch/Resource.h"
 #include "core/fetch/ResourceClient.h"
+#include "core/fetch/ResourcePtr.h"
 #include "platform/fonts/FontOrientation.h"
 #include "platform/fonts/FontWidthVariant.h"
 #include "wtf/OwnPtr.h"
@@ -40,19 +40,20 @@ class SVGDocument;
 class SVGFontElement;
 class FontCustomPlatformData;
 
-class FontResource : public Resource {
+class FontResource FINAL : public Resource {
 public:
+    typedef ResourceClient ClientType;
+
     FontResource(const ResourceRequest&);
     virtual ~FontResource();
 
-    virtual void load(ResourceFetcher*, const ResourceLoaderOptions&);
+    virtual void load(ResourceFetcher*, const ResourceLoaderOptions&) OVERRIDE;
 
-    virtual void didAddClient(ResourceClient*);
+    virtual void didAddClient(ResourceClient*) OVERRIDE;
 
-    virtual void allClientsRemoved();
-    void willUseFontData();
+    virtual void allClientsRemoved() OVERRIDE;
     void beginLoadIfNeeded(ResourceFetcher* dl);
-    bool stillNeedsLoad() const { return !m_loadInitiated; }
+    virtual bool stillNeedsLoad() const OVERRIDE { return !m_loadInitiated; }
 
     bool ensureCustomFontData();
     FontPlatformData platformDataFromCustomData(float size, bool bold, bool italic, FontOrientation = Horizontal, FontWidthVariant = RegularWidth);
@@ -63,38 +64,24 @@ public:
 #endif
 
 private:
-    virtual void checkNotify();
+    virtual void checkNotify() OVERRIDE;
     OwnPtr<FontCustomPlatformData> m_fontData;
     bool m_loadInitiated;
 
 #if ENABLE(SVG_FONTS)
     RefPtr<WebCore::SVGDocument> m_externalSVGDocument;
 #endif
-    class FontResourceHistograms {
-    public:
-        enum UsageType {
-            StyledAndUsed,
-            StyledButNotUsed,
-            NotStyledButUsed,
-            UsageTypeMax
-        };
-        FontResourceHistograms() : m_styledTime(0) { }
-        ~FontResourceHistograms();
-        void willUseFontData();
-        void loadStarted();
-    private:
-        double m_styledTime;
-    };
-    FontResourceHistograms m_histograms;
 
     friend class MemoryCache;
 };
+
+DEFINE_RESOURCE_TYPE_CASTS(Font);
 
 class FontResourceClient : public ResourceClient {
 public:
     virtual ~FontResourceClient() { }
     static ResourceClientType expectedType() { return FontType; }
-    virtual ResourceClientType resourceClientType() const { return expectedType(); }
+    virtual ResourceClientType resourceClientType() const OVERRIDE FINAL { return expectedType(); }
     virtual void fontLoaded(FontResource*) { }
     virtual void didStartFontLoad(FontResource*) { }
 };

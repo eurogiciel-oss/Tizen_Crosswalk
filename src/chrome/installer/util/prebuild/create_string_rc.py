@@ -31,13 +31,12 @@ import os
 import sys
 from xml.dom import minidom
 
-# We are expected to use ../../../../third_party/python_24/python.exe
-from google import path_utils
+BASEDIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(BASEDIR, '../../../../tools/grit'))
+sys.path.append(os.path.join(BASEDIR, '../../../../tools/python'))
 
-# Quick hack to fix the path.
-sys.path.append(os.path.abspath('../../tools/grit'))
-sys.path.append(os.path.abspath('../tools/grit'))
 from grit.extern import tclib
+from google import path_utils
 
 # The IDs of strings we want to import from generated_resources.grd and include
 # in setup.exe's resources.
@@ -47,17 +46,12 @@ kStringIds = [
   'IDS_PRODUCT_APP_LAUNCHER_NAME',
   'IDS_PRODUCT_BINARIES_NAME',
   'IDS_PRODUCT_DESCRIPTION',
-  'IDS_PRODUCT_FRAME_NAME',
   'IDS_UNINSTALL_CHROME',
   'IDS_ABOUT_VERSION_COMPANY_NAME',
   'IDS_INSTALL_HIGHER_VERSION',
   'IDS_INSTALL_HIGHER_VERSION_APP_LAUNCHER',
-  'IDS_INSTALL_HIGHER_VERSION_CF',
-  'IDS_INSTALL_HIGHER_VERSION_CB_CF',
-  'IDS_INSTALL_SYSTEM_LEVEL_EXISTS',
   'IDS_INSTALL_FAILED',
   'IDS_SAME_VERSION_REPAIR_FAILED',
-  'IDS_SAME_VERSION_REPAIR_FAILED_CF',
   'IDS_SETUP_PATCH_FAILED',
   'IDS_INSTALL_OS_NOT_SUPPORTED',
   'IDS_INSTALL_OS_ERROR',
@@ -68,9 +62,7 @@ kStringIds = [
   'IDS_INSTALL_NO_PRODUCTS_TO_UPDATE',
   'IDS_UNINSTALL_COMPLETE',
   'IDS_INSTALL_DIR_IN_USE',
-  'IDS_INSTALL_NON_MULTI_INSTALLATION_EXISTS',
   'IDS_INSTALL_MULTI_INSTALLATION_EXISTS',
-  'IDS_INSTALL_READY_MODE_REQUIRES_CHROME',
   'IDS_INSTALL_INCONSISTENT_UPDATE_POLICY',
   'IDS_OEM_MAIN_SHORTCUT_NAME',
   'IDS_SHORTCUT_TOOLTIP',
@@ -80,6 +72,8 @@ kStringIds = [
   'IDS_UNINSTALL_APP_LAUNCHER',
   'IDS_APP_LIST_SHORTCUT_NAME',
   'IDS_APP_LIST_SHORTCUT_NAME_CANARY',
+  'IDS_APP_SHORTCUTS_SUBDIR_NAME',
+  'IDS_APP_SHORTCUTS_SUBDIR_NAME_CANARY',
 ]
 
 # The ID of the first resource string.

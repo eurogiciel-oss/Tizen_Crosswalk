@@ -39,27 +39,27 @@ class InspectorFrontendHost;
 class Page;
 }
 
-namespace WebKit {
+namespace blink {
 
 class WebDevToolsFrontendClient;
 class WebDevToolsFrontendImpl;
 
-class InspectorFrontendClientImpl : public WebCore::InspectorFrontendClient {
+class InspectorFrontendClientImpl FINAL : public WebCore::InspectorFrontendClient {
     WTF_MAKE_NONCOPYABLE(InspectorFrontendClientImpl);
 public:
     InspectorFrontendClientImpl(WebCore::Page*, WebDevToolsFrontendClient*, WebDevToolsFrontendImpl*);
     virtual ~InspectorFrontendClientImpl();
 
     // InspectorFrontendClient methods:
-    virtual void windowObjectCleared();
+    virtual void windowObjectCleared() OVERRIDE;
 
-    virtual void inspectedURLChanged(const WTF::String&);
+    virtual void inspectedURLChanged(const WTF::String&) OVERRIDE;
 
-    virtual void sendMessageToBackend(const WTF::String&);
+    virtual void sendMessageToBackend(const WTF::String&) OVERRIDE;
 
-    virtual void sendMessageToEmbedder(const WTF::String&);
+    virtual void sendMessageToEmbedder(const WTF::String&) OVERRIDE;
 
-    virtual bool isUnderTest();
+    virtual bool isUnderTest() OVERRIDE;
 
 private:
     WebCore::Page* m_frontendPage;
@@ -67,6 +67,6 @@ private:
     RefPtr<WebCore::InspectorFrontendHost> m_frontendHost;
 };
 
-} // namespace WebKit
+} // namespace blink
 
 #endif

@@ -60,13 +60,13 @@ void NewAvatarMenuButtonTest::CreateTestingProfile() {
 
   // Sign in the default profile
   ProfileInfoCache& cache = profile_manager->GetProfileInfoCache();
-  cache.SetUserNameOfProfileAtIndex(0, UTF8ToUTF16("user_name"));
+  cache.SetUserNameOfProfileAtIndex(0, base::UTF8ToUTF16("user_name"));
 
   base::FilePath path;
   PathService::Get(chrome::DIR_USER_DATA, &path);
   path = path.AppendASCII("test_profile");
   if (!base::PathExists(path))
-    ASSERT_TRUE(file_util::CreateDirectory(path));
+    ASSERT_TRUE(base::CreateDirectory(path));
   Profile* profile =
       Profile::CreateProfile(path, NULL, Profile::CREATE_MODE_SYNCHRONOUS);
   profile_manager->RegisterTestingProfile(profile, true, false);
@@ -82,8 +82,9 @@ void NewAvatarMenuButtonTest::StartAvatarMenu() {
   ASSERT_TRUE(button);
   ASSERT_FALSE(browser_view->frame()->GetAvatarMenuButton());
 
-  ProfileChooserView::set_close_on_deactivate(false);
-  ui::MouseEvent mouse_ev(ui::ET_MOUSE_RELEASED, gfx::Point(), gfx::Point(), 0);
+  ProfileChooserView::clear_close_on_deactivate_for_testing();
+  ui::MouseEvent mouse_ev(ui::ET_MOUSE_RELEASED, gfx::Point(), gfx::Point(), 0,
+                          0);
   button->NotifyClick(mouse_ev);
   base::MessageLoop::current()->RunUntilIdle();
   EXPECT_TRUE(ProfileChooserView::IsShowing());
@@ -109,9 +110,6 @@ IN_PROC_BROWSER_TEST_F(NewAvatarMenuButtonTest, SignOut) {
   const AvatarMenu::Item& menu_item_before =
       menu->GetItemAt(menu->GetActiveProfileIndex());
   EXPECT_FALSE(menu_item_before.signin_required);
-
-  ui::MouseEvent mouse_ev(ui::ET_MOUSE_RELEASED, gfx::Point(), gfx::Point(), 0);
-  menu->SetLogoutURL("about:blank");
 
   ProfileChooserView::profile_bubble_->LinkClicked(
       static_cast<views::Link*>(

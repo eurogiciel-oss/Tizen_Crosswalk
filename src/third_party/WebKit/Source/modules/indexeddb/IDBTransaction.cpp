@@ -28,7 +28,6 @@
 
 #include "bindings/v8/ExceptionState.h"
 #include "bindings/v8/ExceptionStatePlaceholder.h"
-#include "core/dom/DOMError.h"
 #include "core/dom/ExecutionContext.h"
 #include "core/events/EventQueue.h"
 #include "core/inspector/ScriptCallStack.h"
@@ -74,19 +73,6 @@ const AtomicString& IDBTransaction::modeVersionChange()
     DEFINE_STATIC_LOCAL(AtomicString, versionchange, ("versionchange", AtomicString::ConstructFromLiteral));
     return versionchange;
 }
-
-const AtomicString& IDBTransaction::modeReadOnlyLegacy()
-{
-    DEFINE_STATIC_LOCAL(AtomicString, readonly, ("0", AtomicString::ConstructFromLiteral));
-    return readonly;
-}
-
-const AtomicString& IDBTransaction::modeReadWriteLegacy()
-{
-    DEFINE_STATIC_LOCAL(AtomicString, readwrite, ("1", AtomicString::ConstructFromLiteral));
-    return readwrite;
-}
-
 
 IDBTransaction::IDBTransaction(ExecutionContext* context, int64_t id, const Vector<String>& objectStoreNames, IndexedDB::TransactionMode mode, IDBDatabase* db, IDBOpenDBRequest* openDBRequest, const IDBDatabaseMetadata& previousMetadata)
     : ActiveDOMObject(context)
@@ -136,10 +122,10 @@ void IDBTransaction::setError(PassRefPtr<DOMError> error)
     }
 }
 
-PassRefPtr<IDBObjectStore> IDBTransaction::objectStore(const String& name, ExceptionState& es)
+PassRefPtr<IDBObjectStore> IDBTransaction::objectStore(const String& name, ExceptionState& exceptionState)
 {
     if (m_state == Finished) {
-        es.throwDOMException(InvalidStateError, IDBDatabase::transactionFinishedErrorMessage);
+        exceptionState.throwDOMException(InvalidStateError, IDBDatabase::transactionFinishedErrorMessage);
         return 0;
     }
 
@@ -148,14 +134,14 @@ PassRefPtr<IDBObjectStore> IDBTransaction::objectStore(const String& name, Excep
         return it->value;
 
     if (!isVersionChange() && !m_objectStoreNames.contains(name)) {
-        es.throwDOMException(NotFoundError, IDBDatabase::noSuchObjectStoreErrorMessage);
+        exceptionState.throwDOMException(NotFoundError, IDBDatabase::noSuchObjectStoreErrorMessage);
         return 0;
     }
 
     int64_t objectStoreId = m_database->findObjectStoreId(name);
     if (objectStoreId == IDBObjectStoreMetadata::InvalidId) {
         ASSERT(isVersionChange());
-        es.throwDOMException(NotFoundError, IDBDatabase::noSuchObjectStoreErrorMessage);
+        exceptionState.throwDOMException(NotFoundError, IDBDatabase::noSuchObjectStoreErrorMessage);
         return 0;
     }
 
@@ -201,21 +187,22 @@ void IDBTransaction::setActive(bool active)
         backendDB()->commit(m_id);
 }
 
-void IDBTransaction::abort(ExceptionState& es)
+void IDBTransaction::abort(ExceptionState& exceptionState)
 {
     if (m_state == Finishing || m_state == Finished) {
-        es.throwDOMException(InvalidStateError, IDBDatabase::transactionFinishedErrorMessage);
+        exceptionState.throwDOMException(InvalidStateError, IDBDatabase::transactionFinishedErrorMessage);
         return;
     }
 
     m_state = Finishing;
 
-    if (!m_contextStopped) {
-        while (!m_requestList.isEmpty()) {
-            RefPtr<IDBRequest> request = *m_requestList.begin();
-            m_requestList.remove(request);
-            request->abort();
-        }
+    if (m_contextStopped)
+        return;
+
+    while (!m_requestList.isEmpty()) {
+        RefPtr<IDBRequest> request = *m_requestList.begin();
+        m_requestList.remove(request);
+        request->abort();
     }
 
     RefPtr<IDBTransaction> selfRef = this;
@@ -239,6 +226,12 @@ void IDBTransaction::unregisterRequest(IDBRequest* request)
 void IDBTransaction::onAbort(PassRefPtr<DOMError> prpError)
 {
     IDB_TRACE("IDBTransaction::onAbort");
+    if (m_contextStopped) {
+        RefPtr<IDBTransaction> protect(this);
+        m_database->transactionFinished(this);
+        return;
+    }
+
     RefPtr<DOMError> error = prpError;
     ASSERT(m_state != Finished);
 
@@ -275,6 +268,12 @@ void IDBTransaction::onAbort(PassRefPtr<DOMError> prpError)
 void IDBTransaction::onComplete()
 {
     IDB_TRACE("IDBTransaction::onComplete");
+    if (m_contextStopped) {
+        RefPtr<IDBTransaction> protect(this);
+        m_database->transactionFinished(this);
+        return;
+    }
+
     ASSERT(m_state != Finished);
     m_state = Finishing;
     m_objectStoreCleanupMap.clear();
@@ -295,7 +294,7 @@ bool IDBTransaction::hasPendingActivity() const
     return m_hasPendingActivity && !m_contextStopped;
 }
 
-IndexedDB::TransactionMode IDBTransaction::stringToMode(const String& modeString, ExceptionState& es)
+IndexedDB::TransactionMode IDBTransaction::stringToMode(const String& modeString, ExceptionState& exceptionState)
 {
     if (modeString.isNull()
         || modeString == IDBTransaction::modeReadOnly())
@@ -303,7 +302,7 @@ IndexedDB::TransactionMode IDBTransaction::stringToMode(const String& modeString
     if (modeString == IDBTransaction::modeReadWrite())
         return IndexedDB::TransactionReadWrite;
 
-    es.throwUninformativeAndGenericTypeError();
+    exceptionState.throwTypeError("The mode provided ('" + modeString + "') is not one of 'readonly' or 'readwrite'.");
     return IndexedDB::TransactionReadOnly;
 }
 
@@ -383,7 +382,7 @@ void IDBTransaction::stop()
 
 void IDBTransaction::enqueueEvent(PassRefPtr<Event> event)
 {
-    ASSERT_WITH_MESSAGE(m_state != Finished, "A finished transaction tried to enqueue an event of type %s.", event->type().string().utf8().data());
+    ASSERT_WITH_MESSAGE(m_state != Finished, "A finished transaction tried to enqueue an event of type %s.", event->type().utf8().data());
     if (m_contextStopped || !executionContext())
         return;
 
@@ -392,9 +391,9 @@ void IDBTransaction::enqueueEvent(PassRefPtr<Event> event)
     eventQueue->enqueueEvent(event);
 }
 
-IDBDatabaseBackendInterface* IDBTransaction::backendDB() const
+blink::WebIDBDatabase* IDBTransaction::backendDB() const
 {
-    return db()->backend();
+    return m_database->backend();
 }
 
 } // namespace WebCore

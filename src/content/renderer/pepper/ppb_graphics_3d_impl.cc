@@ -27,10 +27,10 @@
 
 using ppapi::thunk::EnterResourceNoLock;
 using ppapi::thunk::PPB_Graphics3D_API;
-using WebKit::WebConsoleMessage;
-using WebKit::WebFrame;
-using WebKit::WebPluginContainer;
-using WebKit::WebString;
+using blink::WebConsoleMessage;
+using blink::WebFrame;
+using blink::WebPluginContainer;
+using blink::WebString;
 
 namespace content {
 
@@ -69,20 +69,10 @@ PPB_Graphics3D_Impl::~PPB_Graphics3D_Impl() {
 }
 
 // static
-PP_Bool PPB_Graphics3D_Impl::IsGpuBlacklisted() {
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
-  if (command_line)
-    return PP_FromBool(command_line->HasSwitch(switches::kDisablePepper3d));
-  return PP_TRUE;
-}
-
-// static
 PP_Resource PPB_Graphics3D_Impl::Create(PP_Instance instance,
                                         PP_Resource share_context,
                                         const int32_t* attrib_list) {
   PPB_Graphics3D_API* share_api = NULL;
-  if (IsGpuBlacklisted())
-    return 0;
   if (share_context) {
     EnterResourceNoLock<PPB_Graphics3D_API> enter(share_context, true);
     if (enter.failed())
@@ -101,8 +91,6 @@ PP_Resource PPB_Graphics3D_Impl::CreateRaw(PP_Instance instance,
                                            PP_Resource share_context,
                                            const int32_t* attrib_list) {
   PPB_Graphics3D_API* share_api = NULL;
-  if (IsGpuBlacklisted())
-    return 0;
   if (share_context) {
     EnterResourceNoLock<PPB_Graphics3D_API> enter(share_context, true);
     if (enter.failed())
@@ -243,24 +231,27 @@ bool PPB_Graphics3D_Impl::InitRaw(PPB_Graphics3D_API* share_context,
   if (!plugin_instance)
     return false;
 
-  PlatformContext3D* share_platform_context = NULL;
-  if (share_context) {
-    PPB_Graphics3D_Impl* share_graphics =
-        static_cast<PPB_Graphics3D_Impl*>(share_context);
-    share_platform_context = share_graphics->platform_context();
-  }
-
+  const WebPreferences& prefs = static_cast<RenderViewImpl*>(plugin_instance->
+      GetRenderView())->webkit_preferences();
+  // 3D access might be disabled or blacklisted.
+  if (!prefs.pepper_3d_enabled)
+    return false;
   // If accelerated compositing of plugins is disabled, fail to create a 3D
   // context, because it won't be visible. This allows graceful fallback in the
   // modules.
-  const WebPreferences& prefs = static_cast<RenderViewImpl*>(plugin_instance->
-      GetRenderView())->webkit_preferences();
   if (!prefs.accelerated_compositing_for_plugins_enabled)
     return false;
 
   platform_context_.reset(new PlatformContext3D);
   if (!platform_context_)
     return false;
+
+  PlatformContext3D* share_platform_context = NULL;
+  if (share_context) {
+    PPB_Graphics3D_Impl* share_graphics =
+        static_cast<PPB_Graphics3D_Impl*>(share_context);
+    share_platform_context = share_graphics->platform_context();
+  }
 
   if (!platform_context_->Init(attrib_list, share_platform_context))
     return false;
@@ -287,7 +278,7 @@ void PPB_Graphics3D_Impl::OnConsoleMessage(const std::string& message,
   if (!frame)
     return;
   WebConsoleMessage console_message = WebConsoleMessage(
-      WebConsoleMessage::LevelError, WebString(UTF8ToUTF16(message)));
+      WebConsoleMessage::LevelError, WebString(base::UTF8ToUTF16(message)));
   frame->addMessageToConsole(console_message);
 }
 
@@ -334,7 +325,11 @@ void PPB_Graphics3D_Impl::SendContextLost() {
       static_cast<const PPP_Graphics3D*>(
           instance->module()->GetPluginInterface(
               PPP_GRAPHICS_3D_INTERFACE));
-  if (ppp_graphics_3d)
+  // We have to check *again* that the instance exists, because it could have
+  // been deleted during GetPluginInterface(). Even the PluginModule could be
+  // deleted, but in that case, the instance should also be gone, so the
+  // GetInstance check covers both cases.
+  if (ppp_graphics_3d && HostGlobals::Get()->GetInstance(this_pp_instance))
     ppp_graphics_3d->Graphics3DContextLost(this_pp_instance);
 }
 

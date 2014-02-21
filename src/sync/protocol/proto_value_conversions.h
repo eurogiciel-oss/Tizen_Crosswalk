@@ -14,6 +14,7 @@ class DictionaryValue;
 }
 
 namespace sync_pb {
+class AppListSpecifics;
 class AppNotification;
 class AppNotificationSettings;
 class AppSettingSpecifics;
@@ -46,6 +47,7 @@ class HistoryDeleteDirectiveSpecifics;
 class KeystoreEncryptionFlagsSpecifics;
 class Media;
 class ManagedUserSettingSpecifics;
+class ManagedUserSharedSettingSpecifics;
 class ManagedUserSpecifics;
 class NigoriSpecifics;
 class PasswordSpecifics;
@@ -58,6 +60,7 @@ class SessionSpecifics;
 class SessionTab;
 class SessionWindow;
 class SimpleCollapsedLayout;
+class SyncAttachmentId;
 class SyncCycleCompletedEventInfo;
 class SyncedNotification;
 class SyncedNotificationAction;
@@ -90,6 +93,10 @@ namespace syncer {
 // TODO(akalin): Perhaps extend this to decrypt?
 SYNC_EXPORT_PRIVATE base::DictionaryValue* EncryptedDataToValue(
     const sync_pb::EncryptedData& encrypted_data);
+
+// Sub-protocol of AppListSpecifics.
+SYNC_EXPORT_PRIVATE base::DictionaryValue* AppListSpecificsToValue(
+    const sync_pb::AppListSpecifics& proto);
 
 // Sub-protocol of AppSpecifics.
 SYNC_EXPORT_PRIVATE base::DictionaryValue* AppSettingsToValue(
@@ -225,6 +232,11 @@ SYNC_EXPORT_PRIVATE base::DictionaryValue* ManagedUserSettingSpecificsToValue(
 SYNC_EXPORT_PRIVATE base::DictionaryValue* ManagedUserSpecificsToValue(
     const sync_pb::ManagedUserSpecifics& managed_user_specifics);
 
+SYNC_EXPORT_PRIVATE base::DictionaryValue*
+    ManagedUserSharedSettingSpecificsToValue(
+        const sync_pb::ManagedUserSharedSettingSpecifics&
+            managed_user_shared_setting_specifics);
+
 SYNC_EXPORT_PRIVATE base::DictionaryValue* MediaToValue(
     const sync_pb::Media& media);
 
@@ -277,6 +289,9 @@ base::DictionaryValue* SyncCycleCompletedEventInfoToValue(
 
 base::DictionaryValue* ClientConfigParamsToValue(
     const sync_pb::ClientConfigParams& proto);
+
+SYNC_EXPORT_PRIVATE base::DictionaryValue* SyncAttachmentIdToValue(
+    const sync_pb::SyncAttachmentId& proto);
 
 }  // namespace syncer
 
